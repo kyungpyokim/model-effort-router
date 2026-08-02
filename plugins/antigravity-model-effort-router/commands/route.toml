@@ -1,0 +1,15 @@
+description = "Classify a task by difficulty and show the Antigravity model profile and launch command"
+prompt = """
+Classify the following task using the Model Effort Router policy in the extension context.
+
+Task:
+{{args}}
+
+Return exactly:
+1. Six factor scores
+2. Total score and L1-L5 level
+3. Preferred model class
+4. The instruction to run `agy-route --interactive -- {{args}}` when the task must execute under that model
+
+Do not claim the current session model has changed.
+"""

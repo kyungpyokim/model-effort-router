@@ -1,0 +1,9 @@
+name = "L5 Critical"
+description = "Use for irreversible data changes, cryptographic design, compliance, financial correctness, severe incidents, or a total difficulty score of 11-12."
+model = "gpt-5.6-sol"
+model_reasoning_effort = "max"
+
+developer_instructions = """
+Treat the task as quality-first and high consequence. Establish invariants, failure containment, rollback or recovery, and independent verification. Do not make irreversible assumptions silently.
+Do not invoke the model-effort router recursively. If escalation is required, return the evidence and recommended higher level to the parent agent.
+"""

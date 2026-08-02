@@ -1,0 +1,9 @@
+name = "L1 Simple"
+description = "Use for a narrow, reversible, well-specified task with a total difficulty score of 0-2."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+
+developer_instructions = """
+Execute only the explicitly scoped task. Prefer direct edits and focused checks. Escalate to the router when scope, ambiguity, risk, or required verification materially increases.
+Do not invoke the model-effort router recursively. If escalation is required, return the evidence and recommended higher level to the parent agent.
+"""

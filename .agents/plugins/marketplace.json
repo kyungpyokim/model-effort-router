@@ -1,0 +1,23 @@
+{
+  "name": "model-effort-router-bundle",
+  "interface": {
+    "displayName": "Model Effort Router"
+  },
+  "plugins": [
+    {
+      "name": "model-effort-router",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-model-effort-router"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL",
+        "products": [
+          "CODEX"
+        ]
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

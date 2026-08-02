@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+INTERACTIVE=0
+
+if [[ "${1:-}" == "--interactive" ]]; then
+  INTERACTIVE=1
+  shift
+fi
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
+if [[ "$#" -eq 0 ]]; then
+  echo "usage: agy-route [--interactive] -- <task>" >&2
+  exit 2
+fi
+
+TASK="$*"
+ARGS=("${ROOT_DIR}/scripts/router.py" "${TASK}" --platform antigravity --detect-antigravity-models --format command)
+if [[ "$INTERACTIVE" -eq 1 ]]; then
+  ARGS+=(--interactive)
+fi
+COMMAND="$(python3 "${ARGS[@]}")"
+echo "[model-effort-router] ${COMMAND}" >&2
+exec bash -c "${COMMAND}"

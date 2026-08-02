@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INTERACTIVE=0
+if [[ "${1:-}" == "--interactive" ]]; then INTERACTIVE=1; shift; fi
+if [[ "${1:-}" == "--" ]]; then shift; fi
+[[ "$#" -gt 0 ]] || { echo "usage: codex-route [--interactive] -- <task>" >&2; exit 2; }
+TASK="$*"
+ARGS=("${ROOT_DIR}/scripts/router.py" "${TASK}" --platform codex --format command)
+if [[ "$INTERACTIVE" -eq 1 ]]; then ARGS+=(--interactive); fi
+COMMAND="$(python3 "${ARGS[@]}")"
+echo "[model-effort-router] ${COMMAND}" >&2
+exec bash -c "${COMMAND}"

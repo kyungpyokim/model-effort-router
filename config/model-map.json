@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "levels": {
+    "L1": {
+      "name": "simple",
+      "score_min": 0,
+      "score_max": 2
+    },
+    "L2": {
+      "name": "standard",
+      "score_min": 3,
+      "score_max": 5
+    },
+    "L3": {
+      "name": "complex",
+      "score_min": 6,
+      "score_max": 8
+    },
+    "L4": {
+      "name": "advanced",
+      "score_min": 9,
+      "score_max": 10
+    },
+    "L5": {
+      "name": "critical",
+      "score_min": 11,
+      "score_max": 12
+    }
+  },
+  "platforms": {
+    "codex": {
+      "L1": {
+        "model": "gpt-5.6-luna",
+        "effort": "low"
+      },
+      "L2": {
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      "L3": {
+        "model": "gpt-5.6-terra",
+        "effort": "high"
+      },
+      "L4": {
+        "model": "gpt-5.6-sol",
+        "effort": "xhigh"
+      },
+      "L5": {
+        "model": "gpt-5.6-sol",
+        "effort": "max"
+      }
+    },
+    "claude-code": {
+      "L1": {
+        "model": "sonnet",
+        "effort": "low"
+      },
+      "L2": {
+        "model": "sonnet",
+        "effort": "medium"
+      },
+      "L3": {
+        "model": "sonnet",
+        "effort": "high"
+      },
+      "L4": {
+        "model": "opus",
+        "effort": "xhigh"
+      },
+      "L5": {
+        "model": "opus",
+        "effort": "max"
+      }
+    },
+    "antigravity": {
+      "L1": {
+        "patterns": [
+          "^Gemini .* Flash \\(Low\\)$",
+          "Flash.*Low",
+          "Low"
+        ],
+        "fallback": "Gemini 3.5 Flash (Low)"
+      },
+      "L2": {
+        "patterns": [
+          "^Gemini .* Flash \\(Medium\\)$",
+          "Flash.*Medium",
+          "Medium"
+        ],
+        "fallback": "Gemini 3.5 Flash (Medium)"
+      },
+      "L3": {
+        "patterns": [
+          "^Gemini .* Flash \\(High\\)$",
+          "Flash.*High",
+          "Sonnet.*Thinking"
+        ],
+        "fallback": "Gemini 3.5 Flash (High)"
+      },
+      "L4": {
+        "patterns": [
+          "^Gemini .* Pro \\(High\\)$",
+          "Pro.*High",
+          "Claude Sonnet .*\\(Thinking\\)",
+          "Sonnet.*Thinking"
+        ],
+        "fallback": "Gemini 3.1 Pro (High)"
+      },
+      "L5": {
+        "patterns": [
+          "Claude Opus .*\\(Thinking\\)",
+          "Opus.*Thinking",
+          "Pro.*High",
+          "Thinking"
+        ],
+        "fallback": "Claude Opus 4.6 (Thinking)"
+      }
+    }
+  },
+  "hard_floor_keywords": {
+    "L4": [
+      "authentication",
+      "authorization",
+      "oauth",
+      "oidc",
+      "saml",
+      "rbac",
+      "abac",
+      "payment",
+      "billing",
+      "production incident",
+      "prod incident",
+      "database migration",
+      "schema migration",
+      "security",
+      "public api",
+      "backward compatibility",
+      "multi-service deployment",
+      "인증",
+      "인가",
+      "결제",
+      "운영 장애",
+      "프로덕션",
+      "데이터베이스 마이그레이션",
+      "보안",
+      "공개 api"
+    ],
+    "L5": [
+      "irreversible",
+      "data deletion",
+      "drop table",
+      "truncate",
+      "cryptography",
+      "encryption protocol",
+      "compliance",
+      "legal correctness",
+      "financial ledger",
+      "live incident",
+      "material harm",
+      "비가역",
+      "데이터 삭제",
+      "테이블 삭제",
+      "암호 설계",
+      "컴플라이언스",
+      "법적",
+      "원장",
+      "대규모 실시간 장애"
+    ]
+  }
+}

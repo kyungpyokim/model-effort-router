@@ -1,0 +1,4 @@
+interface:
+  display_name: "Model Effort Router"
+  short_description: "Route coding tasks by difficulty to a model and effort profile"
+  default_prompt: "Create or update the Codex, Claude Code, and Antigravity model-effort routing plugins."

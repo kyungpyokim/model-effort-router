@@ -1,0 +1,21 @@
+{
+  "name": "model-effort-router",
+  "description": "Routes coding tasks by difficulty to Claude Code agents with matching models and effort levels.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Model Effort Router contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "routing",
+    "model",
+    "effort"
+  ],
+  "skills": [
+    "./skills/"
+  ],
+  "agents": [
+    "./agents/"
+  ]
+}

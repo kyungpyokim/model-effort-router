@@ -1,0 +1,34 @@
+{
+  "name": "model-effort-router",
+  "version": "1.0.0",
+  "description": "Routes coding tasks by difficulty to a Codex model and reasoning-effort profile.",
+  "author": {
+    "name": "Model Effort Router contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "routing",
+    "model",
+    "reasoning",
+    "effort"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Model Effort Router",
+    "shortDescription": "Difficulty-based Codex model and effort routing",
+    "longDescription": "Scores task complexity and delegates to a Codex agent profile with a matching GPT-5.6 model and reasoning effort.",
+    "developerName": "Model Effort Router contributors",
+    "category": "developer-tools",
+    "capabilities": [
+      "task classification",
+      "model routing",
+      "reasoning effort routing"
+    ],
+    "defaultPrompt": [
+      "Route this coding task to the right model and effort.",
+      "Classify this task from L1 to L5 before implementation."
+    ],
+    "brandColor": "#111827"
+  }
+}

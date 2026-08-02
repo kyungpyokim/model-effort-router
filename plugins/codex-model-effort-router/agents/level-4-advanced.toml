@@ -1,0 +1,9 @@
+name = "L4 Advanced"
+description = "Use for architecture, cross-service changes, security-sensitive work, production migrations, or a total difficulty score of 9-10."
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
+
+developer_instructions = """
+Prioritize correctness and blast-radius control. Analyze tradeoffs, compatibility, rollback, security, and migration sequencing. Require strong verification before declaring completion.
+Do not invoke the model-effort router recursively. If escalation is required, return the evidence and recommended higher level to the parent agent.
+"""
