@@ -128,8 +128,22 @@ def apply_hard_floor(task: str, config: dict, level: str) -> tuple[str, str | No
     return level, None
 
 
-def read_available_models(command: str = "agy") -> list[str]:
-    proc = subprocess.run([command, "models"], text=True, capture_output=True, check=False)
+DETECT_TIMEOUT_SECONDS = 20.0
+
+
+def read_available_models(command: str = "agy", timeout: float = DETECT_TIMEOUT_SECONDS) -> list[str]:
+    try:
+        proc = subprocess.run(
+            [command, "models"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"`{command} models` timed out after {timeout:g}s") from exc
+    except OSError as exc:
+        raise RuntimeError(f"`{command}` could not be executed: {exc}") from exc
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or f"{command} models failed")
     models: list[str] = []
@@ -158,11 +172,17 @@ def route(
     explicit_level: str | None = None,
     available_models: list[str] | None = None,
 ) -> RouteResult:
-    if explicit_factors is None:
-        factors, rationale = keyword_score(task)
-    else:
-        factors = {factor: clamp_score(int(explicit_factors.get(factor, 0))) for factor in FACTORS}
-        rationale = ["factor scores were provided explicitly"]
+    factors, rationale = keyword_score(task)
+    if explicit_factors:
+        overridden = []
+        for factor in FACTORS:
+            value = explicit_factors.get(factor)
+            if value is None:
+                continue
+            factors[factor] = clamp_score(int(value))
+            overridden.append(f"{factor}={factors[factor]}")
+        if overridden:
+            rationale.append("explicit factor scores applied: " + ", ".join(overridden))
 
     score = sum(factors.values())
     level = level_for_score(score)
@@ -228,6 +248,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     for factor in FACTORS:
         parser.add_argument(f"--{factor}", type=int, choices=(0, 1, 2))
     parser.add_argument("--detect-antigravity-models", action="store_true")
+    parser.add_argument(
+        "--detect-timeout",
+        type=float,
+        default=DETECT_TIMEOUT_SECONDS,
+        help="Seconds to wait for `agy models` before falling back to configured defaults",
+    )
     parser.add_argument("--available-models-file", type=Path)
     parser.add_argument("--format", choices=("json", "text", "command"), default="text")
     parser.add_argument("--interactive", action="store_true", help="Build an interactive-session command")
@@ -238,14 +264,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     config = load_config(args.config or default_config_path())
 
-    supplied = {factor: getattr(args, factor) for factor in FACTORS}
-    explicit_factors = None if all(v is None for v in supplied.values()) else {k: (0 if v is None else v) for k, v in supplied.items()}
+    explicit_factors = {factor: getattr(args, factor) for factor in FACTORS if getattr(args, factor) is not None}
 
     available = None
     if args.available_models_file:
         available = [line.strip() for line in args.available_models_file.read_text(encoding="utf-8").splitlines() if line.strip()]
     elif args.detect_antigravity_models:
-        available = read_available_models()
+        try:
+            available = read_available_models(timeout=args.detect_timeout)
+        except RuntimeError as exc:
+            print(f"model detection failed ({exc}); using configured fallbacks", file=sys.stderr)
 
     result = route(
         task=args.task,

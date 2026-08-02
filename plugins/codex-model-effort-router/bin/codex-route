@@ -1,13 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Resolve this script's real location so the launcher keeps working when it is
+# installed elsewhere as a symlink.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "${SOURCE}" ]]; do
+  LINK_DIR="$(cd -P "$(dirname "${SOURCE}")" && pwd)"
+  SOURCE="$(readlink "${SOURCE}")"
+  [[ "${SOURCE}" != /* ]] && SOURCE="${LINK_DIR}/${SOURCE}"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "${SOURCE}")" && pwd)"
+ROOT_DIR="${MODEL_EFFORT_ROUTER_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+ROUTER="${ROOT_DIR}/scripts/router.py"
+
+if [[ ! -f "${ROUTER}" ]]; then
+  echo "codex-route: router not found at ${ROUTER}" >&2
+  echo "codex-route: set MODEL_EFFORT_ROUTER_ROOT to the bundle root directory" >&2
+  exit 1
+fi
+
 INTERACTIVE=0
 if [[ "${1:-}" == "--interactive" ]]; then INTERACTIVE=1; shift; fi
 if [[ "${1:-}" == "--" ]]; then shift; fi
 [[ "$#" -gt 0 ]] || { echo "usage: codex-route [--interactive] -- <task>" >&2; exit 2; }
 TASK="$*"
-ARGS=("${ROOT_DIR}/scripts/router.py" "${TASK}" --platform codex --format command)
+ARGS=("${ROUTER}" "${TASK}" --platform codex --format command)
 if [[ "$INTERACTIVE" -eq 1 ]]; then ARGS+=(--interactive); fi
 COMMAND="$(python3 "${ARGS[@]}")"
 echo "[model-effort-router] ${COMMAND}" >&2
+if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then exit 0; fi
 exec bash -c "${COMMAND}"

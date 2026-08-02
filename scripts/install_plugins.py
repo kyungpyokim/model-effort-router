@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -32,16 +33,20 @@ def install_antigravity(bundle: Path, dry_run: bool) -> None:
     agy = shutil.which("agy") or "agy"
     plugin = bundle / "plugins" / "antigravity-model-effort-router"
     run([agy, "plugin", "install", str(plugin)], dry_run)
-    if not dry_run:
-        wrapper = plugin / "bin" / "agy-route"
-        bindir = Path.home() / ".local" / "bin"
-        bindir.mkdir(parents=True, exist_ok=True)
-        target = bindir / "agy-route"
-        shutil.copy2(wrapper, target)
-        target.chmod(0o755)
-        print(f"installed deterministic launcher -> {target}")
-    else:
-        print("+ install", plugin / "bin" / "agy-route", "to ~/.local/bin/agy-route")
+    wrapper = (plugin / "bin" / "agy-route").resolve()
+    target = Path.home() / ".local" / "bin" / "agy-route"
+    if dry_run:
+        print("+ symlink", wrapper, "->", target)
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.is_symlink() or target.exists():
+        existing = os.readlink(target) if target.is_symlink() else str(target)
+        print(f"replacing existing launcher at {target} (was: {existing})")
+        target.unlink()
+    # Symlink rather than copy: the launcher locates scripts/router.py relative to
+    # its own real path, so a plain copy into ~/.local/bin would break it.
+    target.symlink_to(wrapper)
+    print(f"installed deterministic launcher -> {target} -> {wrapper}")
 
 
 def main() -> int:
