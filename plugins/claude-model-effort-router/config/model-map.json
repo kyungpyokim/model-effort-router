@@ -116,55 +116,5 @@
         "fallback": "Claude Opus 4.6 (Thinking)"
       }
     }
-  },
-  "hard_floor_keywords": {
-    "L4": [
-      "authentication",
-      "authorization",
-      "oauth",
-      "oidc",
-      "saml",
-      "rbac",
-      "abac",
-      "payment",
-      "billing",
-      "production incident",
-      "prod incident",
-      "database migration",
-      "schema migration",
-      "security",
-      "public api",
-      "backward compatibility",
-      "multi-service deployment",
-      "인증",
-      "인가",
-      "결제",
-      "운영 장애",
-      "프로덕션",
-      "데이터베이스 마이그레이션",
-      "보안",
-      "공개 api"
-    ],
-    "L5": [
-      "irreversible",
-      "data deletion",
-      "drop table",
-      "truncate",
-      "cryptography",
-      "encryption protocol",
-      "compliance",
-      "legal correctness",
-      "financial ledger",
-      "live incident",
-      "material harm",
-      "비가역",
-      "데이터 삭제",
-      "테이블 삭제",
-      "암호 설계",
-      "컴플라이언스",
-      "법적",
-      "원장",
-      "대규모 실시간 장애"
-    ]
   }
 }

@@ -1,13 +1,15 @@
 from pathlib import Path
 from unittest import mock
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("router", ROOT / "scripts" / "router.py")
@@ -18,200 +20,199 @@ SPEC.loader.exec_module(router)
 CONFIG = router.load_config(ROOT / "config" / "model-map.json")
 
 
-class RouterTests(unittest.TestCase):
-    def test_simple_task(self):
-        result = router.route("버튼 문구 오탈자 수정", "codex", CONFIG)
-        self.assertEqual(result.level, "L1")
-        self.assertEqual(result.model, "gpt-5.6-luna")
-        self.assertEqual(result.effort, "low")
+def terra_output(level="L2", factors=None, rationale=None):
+    return json.dumps({
+        "level": level,
+        "factors": factors or {"scope": 1, "ambiguity": 0, "diagnosis": 0, "design": 1, "risk": 0, "verification": 1},
+        "rationale": rationale or ["Clear feature with focused verification."],
+        "hard_floor": None,
+    })
 
-    def test_standard_feature(self):
-        result = router.route(
-            "새 API endpoint 기능을 구현하고 unit test 추가",
-            "claude-code",
-            CONFIG,
-            explicit_factors={"scope": 1, "ambiguity": 0, "diagnosis": 0, "design": 1, "risk": 1, "verification": 1},
+
+class TerraClassifierTests(unittest.TestCase):
+    def test_uses_fixed_low_effort_terra_with_schema(self):
+        completed = subprocess.CompletedProcess([], 0, terra_output(), "")
+        captured = {}
+
+        def run_classifier(command, **kwargs):
+            captured["schema"] = json.loads(Path(command[command.index("--output-schema") + 1]).read_text(encoding="utf-8"))
+            return completed
+
+        with mock.patch.object(router.subprocess, "run", side_effect=run_classifier) as run:
+            result = router.classify_task("add a settings page", timeout=7)
+        command = run.call_args.args[0]
+        self.assertEqual(command[0:2], ["codex", "exec"])
+        self.assertIn("--ephemeral", command)
+        self.assertIn("--ignore-user-config", command)
+        self.assertIn("--ignore-rules", command)
+        self.assertIn("read-only", command)
+        self.assertEqual(command[command.index("--cd") + 1], str(Path(command[command.index("--output-schema") + 1]).parent))
+        self.assertIn("--skip-git-repo-check", command)
+        self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-terra")
+        self.assertEqual(command[command.index("--config") + 1], 'model_reasoning_effort="low"')
+        self.assertEqual(captured["schema"]["properties"]["level"]["enum"], list(router.LEVELS))
+        self.assertEqual(result.source, "terra")
+        self.assertEqual(run.call_args.kwargs["timeout"], 7)
+
+    def test_timeout_process_failure_and_invalid_output_fall_back_to_l3(self):
+        cases = (
+            subprocess.TimeoutExpired("codex", 1),
+            OSError("missing executable"),
+            subprocess.CompletedProcess([], 1, "", "failed"),
+            subprocess.CompletedProcess([], 0, '{"level":"L2"}', ""),
         )
-        self.assertEqual(result.level, "L2")
-        self.assertEqual(result.model, "sonnet")
-        self.assertEqual(result.effort, "medium")
+        for outcome in cases:
+            with self.subTest(outcome=type(outcome).__name__):
+                with mock.patch.object(router.subprocess, "run", side_effect=outcome if isinstance(outcome, Exception) else None, return_value=None if isinstance(outcome, Exception) else outcome):
+                    result = router.classify_task("task")
+                self.assertEqual(result.level, "L3")
+                self.assertEqual(result.source, "fallback")
+                self.assertEqual(result.factors, {factor: 1 for factor in router.FACTORS})
 
-    def test_security_floor(self):
-        result = router.route("OAuth 인증 보안 로직 변경", "codex", CONFIG)
-        self.assertIn(result.level, ("L4", "L5"))
-        self.assertEqual(result.model, "gpt-5.6-sol")
+    def test_schema_validation_rejects_extra_missing_and_bad_values(self):
+        for payload in (
+            {"level": "L2", "factors": {}, "rationale": ["x"]},
+            {"level": "L9", "factors": {factor: 0 for factor in router.FACTORS}, "rationale": ["x"], "hard_floor": None},
+            {"level": "L2", "factors": {factor: 0 for factor in router.FACTORS}, "rationale": [], "hard_floor": None},
+            {"level": "L2", "factors": {factor: 0 for factor in router.FACTORS}, "rationale": ["x"], "hard_floor": None, "extra": True},
+            {"level": "L1", "factors": {factor: 1 for factor in router.FACTORS}, "rationale": ["x"], "hard_floor": None},
+            {"level": "L2", "factors": {factor: 0 for factor in router.FACTORS}, "rationale": ["x"], "hard_floor": "L4"},
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError):
+                    router.validate_classifier_output(payload)
 
-    def test_critical_floor(self):
-        result = router.route("운영 financial ledger 데이터 삭제 마이그레이션", "claude-code", CONFIG)
+        valid_l1 = {
+            "level": "L1",
+            "factors": {factor: 2 if factor == "scope" else 0 for factor in router.FACTORS},
+            "rationale": ["One contained but substantial edit."],
+            "hard_floor": None,
+        }
+        self.assertEqual(router.validate_classifier_output(valid_l1).level, "L1")
+
+    def test_timeouts_must_be_finite_and_positive(self):
+        for option in ("--classifier-timeout", "--detect-timeout"):
+            for value in ("0", "-1", "nan", "inf"):
+                with self.subTest(option=option, value=value), contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        router.parse_args(["--platform", "codex", option, value, "task"])
+
+
+class RoutingTests(unittest.TestCase):
+    def test_classifier_route_uses_classified_level(self):
+        classification = router.Classification("L4", {factor: 1 for factor in router.FACTORS}, ["security-sensitive change"], "terra")
+        result = router.route("change auth", "codex", CONFIG, classifier=lambda _: classification)
+        self.assertEqual((result.level, result.model, result.effort, result.source), ("L4", "gpt-5.6-sol", "xhigh", "terra"))
+
+    def test_explicit_l5_bypasses_classifier(self):
+        classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
+        result = router.route("rename", "codex", CONFIG, explicit_level="L5", classifier=classifier)
         self.assertEqual(result.level, "L5")
-        self.assertEqual(result.model, "opus")
-        self.assertEqual(result.effort, "max")
+        classifier.assert_not_called()
+
+    def test_lower_explicit_level_remains_a_minimum_after_preflight(self):
+        higher = router.Classification("L5", {factor: 2 for factor in router.FACTORS}, ["critical"], "terra")
+        result = router.route("task", "claude-code", CONFIG, explicit_level="L2", classifier=lambda _: higher)
+        self.assertEqual(result.level, "L5")
+
+    def test_explicit_factors_override_terra_without_lowering_its_floor(self):
+        classification = router.Classification("L4", {factor: 1 for factor in router.FACTORS}, ["security-sensitive"], "terra")
+        classifier = mock.Mock(return_value=classification)
+        result = router.route("task", "claude-code", CONFIG, explicit_factors={"risk": 0}, classifier=classifier)
+        self.assertEqual(result.factors["risk"], 0)
+        self.assertEqual(result.level, "L4")
+        classifier.assert_called_once()
+
+    def test_explicit_level_is_a_minimum_with_factor_overrides(self):
+        classification = router.Classification("L3", {factor: 1 for factor in router.FACTORS}, ["complex"], "terra")
+        result = router.route("task", "claude-code", CONFIG, explicit_factors={factor: 2 for factor in router.FACTORS}, explicit_level="L2", classifier=lambda _: classification)
+        self.assertEqual(result.level, "L5")
 
     def test_antigravity_available_model_matching(self):
-        available = [
-            "Gemini 3.5 Flash (Low)",
-            "Gemini 3.5 Flash (High)",
-            "Claude Opus 4.6 (Thinking)",
-        ]
-        result = router.route(
-            "critical cryptography protocol design",
-            "antigravity",
-            CONFIG,
-            available_models=available,
-        )
-        self.assertEqual(result.level, "L5")
+        classification = router.Classification("L5", {factor: 2 for factor in router.FACTORS}, ["critical"], "terra")
+        result = router.route("task", "antigravity", CONFIG, available_models=["Gemini 3.5 Flash (Low)", "Claude Opus 4.6 (Thinking)"], classifier=lambda _: classification)
         self.assertEqual(result.model, "Claude Opus 4.6 (Thinking)")
         self.assertIsNone(result.effort)
 
-    def test_explicit_level_never_lowers(self):
-        result = router.route("rename one variable", "codex", CONFIG, explicit_level="L4")
-        self.assertEqual(result.level, "L4")
-
-
-TASK_WITH_MANY_SIGNALS = "간헐적 race condition 으로 여러 서비스 장애 근본 원인 분석 및 e2e 회귀 테스트"
-
-
-class ExplicitFactorTests(unittest.TestCase):
-    """Regression tests: a partially supplied factor must not zero the rest."""
-
-    def test_partial_factors_keep_keyword_scores(self):
-        baseline = router.route(TASK_WITH_MANY_SIGNALS, "codex", CONFIG)
-        partial = router.route(
-            TASK_WITH_MANY_SIGNALS, "codex", CONFIG, explicit_factors={"scope": 2}
-        )
-        self.assertEqual(partial.factors["scope"], 2)
-        for factor in ("diagnosis", "verification"):
-            self.assertEqual(
-                partial.factors[factor],
-                baseline.factors[factor],
-                f"{factor} was silently discarded by a partial override",
-            )
-        self.assertGreaterEqual(partial.score, baseline.score)
-
-    def test_partial_factor_cannot_lower_the_level(self):
-        baseline = router.route(TASK_WITH_MANY_SIGNALS, "codex", CONFIG)
-        partial = router.route(
-            TASK_WITH_MANY_SIGNALS, "codex", CONFIG, explicit_factors={"scope": 2}
-        )
-        self.assertEqual(router.higher_level(partial.level, baseline.level), partial.level)
-
-    def test_explicit_factor_overrides_the_keyword_value(self):
-        result = router.route(
-            "간헐적 race condition 디버깅", "codex", CONFIG, explicit_factors={"diagnosis": 0}
-        )
-        self.assertEqual(result.factors["diagnosis"], 0)
-
-    def test_full_explicit_factor_set_still_wins(self):
-        result = router.route(
-            TASK_WITH_MANY_SIGNALS,
-            "codex",
-            CONFIG,
-            explicit_factors={f: 0 for f in router.FACTORS},
-        )
-        self.assertEqual(result.score, 0)
-
-    def test_out_of_range_factor_is_rejected(self):
-        with self.assertRaises(ValueError):
-            router.route("simple task", "codex", CONFIG, explicit_factors={"scope": 3})
+    def test_main_reports_a_safe_fallback_on_stderr(self):
+        fallback = router.fallback_classification("process failed")
+        stderr = io.StringIO()
+        with mock.patch.object(router, "classify_task", return_value=fallback):
+            with contextlib.redirect_stderr(stderr):
+                self.assertEqual(router.main(["--platform", "codex", "--format", "command", "task"]), 0)
+        self.assertIn("safe L3 fallback applied", stderr.getvalue())
 
 
 class ModelDetectionTests(unittest.TestCase):
-    """Regression tests: model detection must not hang or leak raw exceptions."""
-
     def test_detection_passes_a_timeout(self):
-        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        completed = subprocess.CompletedProcess([], 0, "", "")
         with mock.patch.object(router.subprocess, "run", return_value=completed) as run:
             router.read_available_models(timeout=7)
-        self.assertEqual(run.call_args.kwargs.get("timeout"), 7)
+        self.assertEqual(run.call_args.kwargs["timeout"], 7)
 
-    def test_timeout_becomes_runtimeerror(self):
-        expired = subprocess.TimeoutExpired(cmd="agy models", timeout=1)
-        with mock.patch.object(router.subprocess, "run", side_effect=expired):
-            with self.assertRaises(RuntimeError) as ctx:
+    def test_timeout_and_missing_executable_become_runtime_errors(self):
+        with mock.patch.object(router.subprocess, "run", side_effect=subprocess.TimeoutExpired("agy", 1)):
+            with self.assertRaises(RuntimeError):
                 router.read_available_models(timeout=1)
-        self.assertIn("timed out", str(ctx.exception))
-
-    def test_missing_executable_becomes_runtimeerror(self):
         with self.assertRaises(RuntimeError):
             router.read_available_models(command="model-effort-router-no-such-binary")
 
-    def test_route_falls_back_when_no_models_detected(self):
-        result = router.route("irreversible cryptography compliance", "antigravity", CONFIG, available_models=None)
-        self.assertEqual(result.level, "L5")
+    def test_antigravity_uses_fallback_when_no_account_models_are_available(self):
+        classification = router.Classification("L5", {factor: 2 for factor in router.FACTORS}, ["critical"], "terra", "L5")
+        result = router.route("task", "antigravity", CONFIG, classifier=lambda _: classification)
         self.assertEqual(result.model, CONFIG["platforms"]["antigravity"]["L5"]["fallback"])
+        self.assertEqual(result.hard_floor, "L5")
 
 
-class LauncherTests(unittest.TestCase):
-    """Regression tests: launchers must resolve the bundle through a symlink."""
-
+class CommandAndLauncherTests(unittest.TestCase):
     LAUNCHERS = {
         "codex-route": "plugins/codex-model-effort-router/bin/codex-route",
         "claude-route": "plugins/claude-model-effort-router/bin/claude-route",
         "agy-route": "plugins/antigravity-model-effort-router/bin/agy-route",
     }
 
+    def test_shell_command_keeps_platform_specific_arguments(self):
+        classification = router.Classification("L4", {factor: 1 for factor in router.FACTORS}, ["advanced"], "terra", "L4")
+        result = router.route("task", "codex", CONFIG, classifier=lambda _: classification)
+        self.assertEqual(router.shell_command(result, "task", False)[:2], ["codex", "exec"])
+        self.assertIn("model_reasoning_effort=xhigh", router.shell_command(result, "task", False))
+
     def _run_via_symlink(self, name: str, extra_env: dict[str, str] | None = None):
         source = ROOT / self.LAUNCHERS[name]
         with tempfile.TemporaryDirectory() as tmp:
-            link = Path(tmp) / name
+            directory = Path(tmp)
+            fake_codex = directory / "codex"
+            fake_codex.write_text("#!/bin/sh\nprintf '%s\\n' '{\"level\":\"L1\",\"factors\":{\"scope\":0,\"ambiguity\":0,\"diagnosis\":0,\"design\":0,\"risk\":0,\"verification\":0},\"rationale\":[\"simple\"],\"hard_floor\":null}'\n", encoding="utf-8")
+            fake_codex.chmod(0o755)
+            link = directory / name
             link.symlink_to(source)
-            env = {**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1"}
+            env = {**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1", "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
             env.update(extra_env or {})
-            return subprocess.run(
-                [str(link), "--", "rename one variable"],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                env=env,
-            )
+            return subprocess.run([str(link), "--", "rename one variable"], capture_output=True, text=True, timeout=60, env=env)
 
-    def test_codex_launcher_works_through_a_symlink(self):
-        proc = self._run_via_symlink("codex-route")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("codex", proc.stderr)
-        self.assertNotIn("router not found", proc.stderr)
-
-    def test_claude_launcher_works_through_a_symlink(self):
-        proc = self._run_via_symlink("claude-route")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("--effort", proc.stderr)
-
-    def test_agy_launcher_works_through_a_symlink(self):
+    def test_launchers_work_through_symlinks_with_a_fake_preflight(self):
+        for name in ("codex-route", "claude-route"):
+            with self.subTest(name=name):
+                proc = self._run_via_symlink(name)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn("[model-effort-router]", proc.stderr)
         with tempfile.TemporaryDirectory() as tmp:
             models = Path(tmp) / "models.txt"
             models.write_text("Gemini 3.5 Flash (Low)\n", encoding="utf-8")
-            proc = self._run_via_symlink(
-                "agy-route", {"MODEL_EFFORT_ROUTER_MODELS_FILE": str(models)}
-            )
+            proc = self._run_via_symlink("agy-route", {"MODEL_EFFORT_ROUTER_MODELS_FILE": str(models)})
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("Gemini 3.5 Flash (Low)", proc.stderr)
 
     def test_launcher_reports_a_missing_bundle_clearly(self):
         with tempfile.TemporaryDirectory() as tmp:
-            proc = subprocess.run(
-                [str(ROOT / self.LAUNCHERS["codex-route"]), "--", "task"],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                env={**os.environ, "MODEL_EFFORT_ROUTER_ROOT": tmp},
-            )
+            proc = subprocess.run([str(ROOT / self.LAUNCHERS["codex-route"]), "--", "task"], capture_output=True, text=True, timeout=60, env={**os.environ, "MODEL_EFFORT_ROUTER_ROOT": tmp})
         self.assertEqual(proc.returncode, 1)
         self.assertIn("router not found", proc.stderr)
 
 
 class BundleParityTests(unittest.TestCase):
-    """The bundle ships verbatim copies; they must not drift apart."""
-
-    SHARED = (
-        "scripts/router.py",
-        "config/model-map.json",
-        "references/routing-policy.md",
-    )
-    PLUGINS = (
-        "plugins/codex-model-effort-router",
-        "plugins/claude-model-effort-router",
-        "plugins/antigravity-model-effort-router",
-    )
+    SHARED = ("scripts/router.py", "config/model-map.json", "references/routing-policy.md")
+    PLUGINS = ("plugins/codex-model-effort-router", "plugins/claude-model-effort-router", "plugins/antigravity-model-effort-router")
 
     def test_plugin_copies_match_the_bundle_root(self):
         for relative in self.SHARED:
@@ -219,11 +220,7 @@ class BundleParityTests(unittest.TestCase):
             for plugin in self.PLUGINS:
                 copy = ROOT / plugin / relative
                 self.assertTrue(copy.exists(), f"missing copy: {copy}")
-                self.assertEqual(
-                    hashlib.sha256(copy.read_bytes()).hexdigest(),
-                    expected,
-                    f"{copy} has drifted from {relative}",
-                )
+                self.assertEqual(hashlib.sha256(copy.read_bytes()).hexdigest(), expected, f"{copy} has drifted from {relative}")
 
 
 if __name__ == "__main__":
