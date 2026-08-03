@@ -22,10 +22,11 @@ Then invoke:
 /model-effort-router:model-effort-router <task>
 ```
 
-The router preflights each task with fixed `gpt-5.6-terra` / low effort and
-delegates to one of five plugin agents. The JSON response is schema-validated;
-failure safely selects L3. Each agent pins `model` and `effort` in frontmatter.
-The preflight requires an installed, authenticated Codex CLI.
+The router preflights each task with native `claude-sonnet-5` / low. Claude's
+JSON-schema output is read from its `structured_output` result field. Safe mode,
+no tools, plan permissions, no session persistence, and a temporary working
+directory isolate the classifier. Failure safely selects L3. Each agent pins
+`model` and `effort` in frontmatter.
 
 ## Validate
 

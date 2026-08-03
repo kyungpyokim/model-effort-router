@@ -17,7 +17,9 @@ from typing import Callable
 
 FACTORS = ("scope", "ambiguity", "diagnosis", "design", "risk", "verification")
 LEVELS = ("L1", "L2", "L3", "L4", "L5")
-CLASSIFIER_MODEL = "gpt-5.6-terra"
+CODEX_CLASSIFIER_MODEL = "gpt-5.6-terra"
+CLAUDE_CLASSIFIER_MODEL = "claude-sonnet-5"
+ANTIGRAVITY_CLASSIFIER_MODEL = "gemini-3.6-flash-low"
 CLASSIFIER_EFFORT = "low"
 CLASSIFIER_TIMEOUT_SECONDS = 20.0
 DETECT_TIMEOUT_SECONDS = 20.0
@@ -117,13 +119,13 @@ def fallback_classification(reason: str) -> Classification:
     return Classification(
         level="L3",
         factors={factor: 1 for factor in FACTORS},
-        rationale=[f"Terra preflight unavailable ({reason}); safe fallback L3 applied"],
+        rationale=[f"Semantic preflight unavailable ({reason}); safe fallback L3 applied"],
         source="fallback",
         hard_floor=None,
     )
 
 
-def validate_classifier_output(payload: object) -> Classification:
+def validate_classifier_output(payload: object, source: str = "classifier") -> Classification:
     if not isinstance(payload, dict) or set(payload) != {"level", "factors", "rationale", "hard_floor"}:
         raise ValueError("response must contain exactly level, factors, rationale, and hard_floor")
     level = payload["level"]
@@ -145,18 +147,27 @@ def validate_classifier_output(payload: object) -> Classification:
         raise ValueError("hard_floor must be L4, L5, or null")
     if hard_floor is not None and higher_level(level, hard_floor) != level:
         raise ValueError("level is lower than hard_floor")
-    return Classification(level, validated_factors, rationale, "terra", hard_floor)
+    return Classification(level, validated_factors, rationale, source, hard_floor)
 
 
-def classify_task(task: str, timeout: float = CLASSIFIER_TIMEOUT_SECONDS, command: str = "codex") -> Classification:
-    """Run the fixed low-effort Terra preflight, falling back to L3 on failure."""
+def classify_task(
+    task: str,
+    platform: str = "codex",
+    timeout: float = CLASSIFIER_TIMEOUT_SECONDS,
+    command: str | None = None,
+) -> Classification:
+    """Run the platform-native low-effort semantic preflight, falling back to L3."""
+    commands = {"codex": "codex", "claude-code": "claude", "antigravity": "agy"}
+    if platform not in commands:
+        raise ValueError(f"unknown platform: {platform}")
+    executable = command or commands[platform]
     try:
         with tempfile.TemporaryDirectory(prefix="model-effort-router-") as directory:
             schema_path = Path(directory) / "classification-schema.json"
             schema_path.write_text(json.dumps(CLASSIFIER_SCHEMA), encoding="utf-8")
-            proc = subprocess.run(
-                [
-                    command,
+            if platform == "codex":
+                launch = [
+                    executable,
                     "exec",
                     "--ephemeral",
                     "--ignore-user-config",
@@ -169,15 +180,56 @@ def classify_task(task: str, timeout: float = CLASSIFIER_TIMEOUT_SECONDS, comman
                     "--output-schema",
                     str(schema_path),
                     "--model",
-                    CLASSIFIER_MODEL,
+                    CODEX_CLASSIFIER_MODEL,
                     "--config",
                     f'model_reasoning_effort="{CLASSIFIER_EFFORT}"',
                     CLASSIFIER_PROMPT + task,
-                ],
+                ]
+            elif platform == "claude-code":
+                launch = [
+                    executable,
+                    "-p",
+                    "--model",
+                    CLAUDE_CLASSIFIER_MODEL,
+                    "--effort",
+                    CLASSIFIER_EFFORT,
+                    "--output-format",
+                    "json",
+                    "--json-schema",
+                    json.dumps(CLASSIFIER_SCHEMA),
+                    "--safe-mode",
+                    "--tools",
+                    "",
+                    "--permission-mode",
+                    "plan",
+                    "--no-session-persistence",
+                    CLASSIFIER_PROMPT + task,
+                ]
+            else:
+                launch = [
+                    executable,
+                    "--print",
+                    "--model",
+                    ANTIGRAVITY_CLASSIFIER_MODEL,
+                    "--effort",
+                    CLASSIFIER_EFFORT,
+                    "--mode",
+                    "plan",
+                    "--sandbox",
+                    "--disable-slash-commands",
+                    "--output-format",
+                    "json",
+                    "--json-schema",
+                    json.dumps(CLASSIFIER_SCHEMA),
+                    CLASSIFIER_PROMPT + task,
+                ]
+            proc = subprocess.run(
+                launch,
                 text=True,
                 capture_output=True,
                 check=False,
                 timeout=timeout,
+                cwd=directory,
             )
     except subprocess.TimeoutExpired:
         return fallback_classification(f"timed out after {timeout:g}s")
@@ -186,8 +238,14 @@ def classify_task(task: str, timeout: float = CLASSIFIER_TIMEOUT_SECONDS, comman
     if proc.returncode != 0:
         return fallback_classification("process failed")
     try:
-        return validate_classifier_output(json.loads(proc.stdout))
-    except (json.JSONDecodeError, ValueError, TypeError):
+        payload = json.loads(proc.stdout)
+        if platform in ("claude-code", "antigravity"):
+            if not isinstance(payload, dict):
+                raise ValueError("structured output must be an object")
+            payload = payload["structured_output"]
+        source = "terra" if platform == "codex" else CLAUDE_CLASSIFIER_MODEL if platform == "claude-code" else ANTIGRAVITY_CLASSIFIER_MODEL
+        return validate_classifier_output(payload, source)
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return fallback_classification("invalid structured output")
 
 
@@ -202,7 +260,7 @@ def maximum_classification(explicit_factors: dict[str, int] | None) -> Classific
     return Classification(
         level=level,
         factors=factors,
-        rationale=["Terra preflight skipped because explicit L5 is already maximal"],
+        rationale=["Semantic preflight skipped because explicit L5 is already maximal"],
         source="manual",
         hard_floor=None,
     )
@@ -252,7 +310,7 @@ def route(
     explicit_factors: dict[str, int] | None = None,
     explicit_level: str | None = None,
     available_models: list[str] | None = None,
-    classifier: Callable[[str], Classification] = classify_task,
+    classifier: Callable[[str], Classification] | None = None,
 ) -> RouteResult:
     # An L5 request is already the maximum safe route. Lower explicit levels are
     # minima, so they still need the semantic preflight to discover L4/L5 work.
@@ -260,7 +318,7 @@ def route(
     if manual:
         classification = maximum_classification(explicit_factors)
     else:
-        classification = classifier(task)
+        classification = classifier(task) if classifier else classify_task(task, platform=platform)
         if explicit_factors:
             classification = apply_factor_overrides(classification, explicit_factors)
     level = higher_level(classification.level, normalise_level(explicit_level)) if explicit_level else classification.level
@@ -330,10 +388,10 @@ def main(argv: list[str] | None = None) -> int:
         explicit_factors,
         args.level,
         available,
-        classifier=lambda task: classify_task(task, args.classifier_timeout),
+        classifier=lambda task: classify_task(task, args.platform, args.classifier_timeout),
     )
     if result.source == "fallback":
-        print("Terra preflight failed; safe L3 fallback applied", file=sys.stderr)
+        print("Semantic preflight failed; safe L3 fallback applied", file=sys.stderr)
     if args.format == "json":
         print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
     elif args.format == "command":

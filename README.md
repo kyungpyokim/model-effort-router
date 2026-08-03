@@ -5,14 +5,15 @@ profile for Codex, Claude Code, or Antigravity.
 
 ## Preflight classifier
 
-The CLI router asks the installed Codex CLI to classify the task with fixed
-`gpt-5.6-terra` / low effort. The response is constrained by a JSON schema and
-validated before it selects a profile. The preflight runs ephemerally in a
-temporary read-only directory without project or user rules.
-This requires an installed, authenticated Codex CLI.
+The CLI router uses the native CLI for the selected platform: Codex uses
+`gpt-5.6-terra` / low, Claude Code uses `claude-sonnet-5` / low, and
+Antigravity uses `gemini-3.6-flash-low`. Each preflight runs in an isolated
+temporary directory and validates structured JSON before selecting a profile.
+This requires the selected platform's installed, authenticated CLI.
 
-If Codex times out, cannot start, fails, or returns invalid JSON, routing uses
-the safe L3 profile. No keyword, Korean-particle, or homonym matching is used.
+If the selected classifier times out, cannot start, fails, or returns invalid
+JSON, routing uses the safe L3 profile. No keyword, Korean-particle, or homonym
+matching is used.
 
 ```bash
 python3 scripts/router.py --platform codex --format json "여러 서비스의 OAuth 인증 장애를 분석하고 수정"
@@ -32,7 +33,7 @@ python3 scripts/router.py --platform antigravity --detect-antigravity-models --f
 
 `--level` is a minimum. L1-L4 still run preflight so a semantic L4/L5 floor
 cannot be lowered; `--level L5` bypasses it because L5 is already maximal.
-Explicit factors override only those Terra scores, then preserve any higher
+Explicit factors override only those classifier scores, then preserve any higher
 semantic level returned by the preflight. A fallback is reported on stderr,
 including with `--format command`, so launchers never hide an L3 fallback.
 
@@ -48,7 +49,7 @@ scripts/router.py
 ```
 
 For Antigravity, use `--detect-antigravity-models` to select an account-local
-model after the Terra classification.
+model after classification.
 
 ## Install
 

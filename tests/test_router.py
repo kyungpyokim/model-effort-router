@@ -29,7 +29,7 @@ def terra_output(level="L2", factors=None, rationale=None):
     })
 
 
-class TerraClassifierTests(unittest.TestCase):
+class PlatformClassifierTests(unittest.TestCase):
     def test_uses_fixed_low_effort_terra_with_schema(self):
         completed = subprocess.CompletedProcess([], 0, terra_output(), "")
         captured = {}
@@ -53,6 +53,48 @@ class TerraClassifierTests(unittest.TestCase):
         self.assertEqual(captured["schema"]["properties"]["level"]["enum"], list(router.LEVELS))
         self.assertEqual(result.source, "terra")
         self.assertEqual(run.call_args.kwargs["timeout"], 7)
+        self.assertEqual(run.call_args.kwargs["cwd"], command[command.index("--cd") + 1])
+
+    def test_claude_uses_native_structured_output_without_tools_or_session(self):
+        completed = subprocess.CompletedProcess([], 0, json.dumps({"structured_output": json.loads(terra_output())}), "")
+        with mock.patch.object(router.subprocess, "run", return_value=completed) as run:
+            result = router.classify_task("add a settings page", platform="claude-code", timeout=7)
+        command = run.call_args.args[0]
+        self.assertEqual(command[:2], ["claude", "-p"])
+        self.assertEqual(command[command.index("--model") + 1], "claude-sonnet-5")
+        self.assertEqual(command[command.index("--effort") + 1], "low")
+        self.assertEqual(command[command.index("--output-format") + 1], "json")
+        self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
+        self.assertIn("--safe-mode", command)
+        self.assertEqual(command[command.index("--tools") + 1], "")
+        self.assertEqual(command[command.index("--permission-mode") + 1], "plan")
+        self.assertIn("--no-session-persistence", command)
+        self.assertNotIn("--setting-sources", command)
+        self.assertNotIn("--strict-mcp-config", command)
+        self.assertEqual(result.source, "claude-sonnet-5")
+        self.assertTrue(Path(run.call_args.kwargs["cwd"]).name.startswith("model-effort-router-"))
+
+    def test_antigravity_uses_isolated_structured_json_classifier(self):
+        completed = subprocess.CompletedProcess([], 0, json.dumps({"structured_output": json.loads(terra_output())}), "")
+        with mock.patch.object(router.subprocess, "run", return_value=completed) as run:
+            result = router.classify_task("add a settings page", platform="antigravity", timeout=7)
+        command = run.call_args.args[0]
+        self.assertEqual(command[:2], ["agy", "--print"])
+        self.assertEqual(command[command.index("--model") + 1], "gemini-3.6-flash-low")
+        self.assertEqual(command[command.index("--effort") + 1], "low")
+        self.assertEqual(command[command.index("--mode") + 1], "plan")
+        self.assertIn("--sandbox", command)
+        self.assertIn("--disable-slash-commands", command)
+        self.assertEqual(command[command.index("--output-format") + 1], "json")
+        self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
+        self.assertEqual(result.source, "gemini-3.6-flash-low")
+        self.assertTrue(Path(run.call_args.kwargs["cwd"]).name.startswith("model-effort-router-"))
+
+    def test_claude_requires_the_documented_structured_output_wrapper(self):
+        completed = subprocess.CompletedProcess([], 0, terra_output(), "")
+        with mock.patch.object(router.subprocess, "run", return_value=completed):
+            result = router.classify_task("task", platform="claude-code")
+        self.assertEqual((result.level, result.source), ("L3", "fallback"))
 
     def test_timeout_process_failure_and_invalid_output_fall_back_to_l3(self):
         cases = (
@@ -184,6 +226,12 @@ class CommandAndLauncherTests(unittest.TestCase):
             fake_codex = directory / "codex"
             fake_codex.write_text("#!/bin/sh\nprintf '%s\\n' '{\"level\":\"L1\",\"factors\":{\"scope\":0,\"ambiguity\":0,\"diagnosis\":0,\"design\":0,\"risk\":0,\"verification\":0},\"rationale\":[\"simple\"],\"hard_floor\":null}'\n", encoding="utf-8")
             fake_codex.chmod(0o755)
+            fake_claude = directory / "claude"
+            fake_claude.write_text("#!/bin/sh\nprintf '%s\\n' '{\"structured_output\":{\"level\":\"L1\",\"factors\":{\"scope\":0,\"ambiguity\":0,\"diagnosis\":0,\"design\":0,\"risk\":0,\"verification\":0},\"rationale\":[\"simple\"],\"hard_floor\":null}}'\n", encoding="utf-8")
+            fake_claude.chmod(0o755)
+            fake_agy = directory / "agy"
+            fake_agy.write_text("#!/bin/sh\nprintf '%s\\n' '{\"structured_output\":{\"level\":\"L1\",\"factors\":{\"scope\":0,\"ambiguity\":0,\"diagnosis\":0,\"design\":0,\"risk\":0,\"verification\":0},\"rationale\":[\"simple\"],\"hard_floor\":null}}'\n", encoding="utf-8")
+            fake_agy.chmod(0o755)
             link = directory / name
             link.symlink_to(source)
             env = {**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1", "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}

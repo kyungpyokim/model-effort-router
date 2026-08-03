@@ -1,7 +1,7 @@
 description = "Classify a task by difficulty and show the Antigravity model profile and launch command"
 prompt = """
 Do not score the task yourself. Run `python3 <extension-root>/scripts/router.py "{{args}}" --platform antigravity --detect-antigravity-models --format json`
-and use its fixed Terra preflight result as the source of truth.
+and use its fixed native `gemini-3.6-flash-low` preflight result as the source of truth.
 
 Task:
 {{args}}

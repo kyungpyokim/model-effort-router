@@ -2,8 +2,9 @@
 
 ## Classification
 
-Classify each coding task with the installed Codex CLI using fixed
-`gpt-5.6-terra` and low reasoning effort. Return structured JSON with all six
+Classify each coding task with its selected platform's native CLI: Codex uses
+`gpt-5.6-terra` / low, Claude Code uses `claude-sonnet-5` / low, and
+Antigravity uses `gemini-3.6-flash-low`. Return structured JSON with all six
 factor scores, a level, and a short rationale. The router validates the exact
 schema before using it; it never infers risk from keywords or language rules.
 
@@ -32,10 +33,10 @@ correctness, broad live incidents, or material harm.
 
 ## Overrides and failures
 
-- `--level` is a minimum, never a cap. L1-L4 still use Terra classification;
+- `--level` is a minimum, never a cap. L1-L4 still use semantic classification;
   `--level L5` skips it because no route can be higher.
-- Explicit factors override only their corresponding Terra scores. The router
-  recomputes the score minimum but never lowers Terra's semantic level.
+- Explicit factors override only their corresponding classifier scores. The router
+  recomputes the score minimum but never lowers the semantic level.
 - On timeout, process failure, or invalid structured output, select safe L3.
 
 ## Execution rules

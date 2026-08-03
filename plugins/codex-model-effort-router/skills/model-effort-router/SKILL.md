@@ -6,7 +6,7 @@ description: Classify the current coding request by difficulty from L1 to L5, th
 # Difficulty Router
 
 Do not score `$ARGUMENTS` in the current session. Resolve the included router
-relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --platform codex --format json`. Its fixed Terra preflight result is the source
+relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --platform codex --format json`. Its fixed Codex CLI `gpt-5.6-terra` / low preflight result is the source
 of truth.
 
 1. Announce: `Route: <level> · <model> · <effort>` from the JSON result.

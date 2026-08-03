@@ -8,8 +8,7 @@ effort: low
 # Difficulty Router
 
 Do not score `$ARGUMENTS` in the current session. Resolve the included router
-relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --platform claude-code --format json`. Its fixed Terra preflight result is the
-source of truth.
+relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --platform claude-code --format json`. Its fixed native `claude-sonnet-5` / low preflight result is the source of truth.
 
 1. Announce: `Route: <level> · <model> · <effort>` from the JSON result.
 2. Report when `source` is `fallback`.
