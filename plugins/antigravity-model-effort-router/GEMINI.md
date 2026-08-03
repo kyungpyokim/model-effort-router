@@ -1,6 +1,8 @@
 # Model Effort Router
 
-When the user invokes `/route`, classify the task using `references/routing-policy.md` and report the selected L1-L5 profile.
+When the user invokes `/route`, do not classify the task in the current
+session. Run `python3 <extension-root>/scripts/router.py "<task>" --platform antigravity --detect-antigravity-models --format json` and report its fixed
+Terra preflight result.
 
 Antigravity exposes effort as part of the model choice. A running extension command cannot reliably replace the current session model, so use `agy-route` to perform deterministic model selection before the target session starts.
 

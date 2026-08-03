@@ -21,7 +21,7 @@ Invoke the skill:
 /model-effort-router <task>
 ```
 
-## Deterministic CLI fallback
+## CLI preflight
 
 When the current Codex surface does not honor named plugin agents, run:
 
@@ -36,6 +36,11 @@ codex -m gpt-5.6-sol -c model_reasoning_effort=xhigh exec '<task>'
 ```
 
 The CLI launcher starts a new process because a plugin cannot reliably replace the model of an already-running parent turn on every Codex surface.
+
+Before selecting that process, the router runs fixed `gpt-5.6-terra` / low
+effort in a temporary read-only Codex session and validates its JSON response.
+Timeouts, process failures, and invalid output safely route to L3. `--level`
+is a minimum; only `--level L5` bypasses the preflight.
 
 ## Customize
 

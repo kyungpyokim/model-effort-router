@@ -34,7 +34,11 @@ For one-shot mode:
 ./bin/agy-route -- "<task>"
 ```
 
-The launcher calls `agy models`, matches the first available model for the selected level, then starts `agy --model ...`. In Antigravity, effort is represented in names such as `Gemini ... Flash (Low)` or `Claude ... (Thinking)` rather than a separate `--effort` flag.
+The router first classifies with fixed `gpt-5.6-terra` / low effort, validates
+the JSON response, then the launcher calls `agy models` and starts the first
+available model for the selected level. Classifier failures safely select L3.
+The preflight requires an installed, authenticated Codex CLI.
+In Antigravity, effort is represented in names such as `Gemini ... Flash (Low)` or `Claude ... (Thinking)` rather than a separate `--effort` flag.
 
 ## Customize
 

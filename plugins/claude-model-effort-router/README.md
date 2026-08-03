@@ -22,7 +22,10 @@ Then invoke:
 /model-effort-router:model-effort-router <task>
 ```
 
-The router itself runs cheaply, scores the task, and delegates to one of five plugin agents. Each agent pins `model` and `effort` in frontmatter.
+The router preflights each task with fixed `gpt-5.6-terra` / low effort and
+delegates to one of five plugin agents. The JSON response is schema-validated;
+failure safely selects L3. Each agent pins `model` and `effort` in frontmatter.
+The preflight requires an installed, authenticated Codex CLI.
 
 ## Validate
 
@@ -41,6 +44,8 @@ This prints a command such as:
 ```bash
 claude --model opus --effort xhigh -p '<task>'
 ```
+
+`--level` is a minimum, so L1-L4 still run preflight; `--level L5` bypasses it.
 
 ## Customize
 

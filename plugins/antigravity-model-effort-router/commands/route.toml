@@ -1,6 +1,7 @@
 description = "Classify a task by difficulty and show the Antigravity model profile and launch command"
 prompt = """
-Classify the following task using the Model Effort Router policy in the extension context.
+Do not score the task yourself. Run `python3 <extension-root>/scripts/router.py "{{args}}" --platform antigravity --detect-antigravity-models --format json`
+and use its fixed Terra preflight result as the source of truth.
 
 Task:
 {{args}}
