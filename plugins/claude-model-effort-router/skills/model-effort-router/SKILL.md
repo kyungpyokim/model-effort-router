@@ -10,10 +10,9 @@ effort: low
 Do not score `$ARGUMENTS` in the current session. Resolve the included router
 relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --platform claude-code --format json`. Its fixed native `claude-sonnet-5` / low preflight result is the source of truth.
 
-1. Announce: `Route: <level> · <model> · <effort>` from the JSON result.
-2. Report when `source` is `fallback`.
-3. Delegate the complete task to the plugin agent `model-effort-router:level-N-*` matching the selected level using the Agent tool.
-4. Do not invoke this router again from the delegated agent.
-5. Re-route only if new evidence materially raises scope or risk.
+1. Immediately delegate the complete task to the plugin agent `model-effort-router:level-N-*` matching the selected level using the Agent tool.
+2. Do not describe the parent session's model, effort, or inability to change models.
+3. Do not invoke this router again from the delegated agent.
+4. Re-route only if new evidence materially raises scope or risk.
 
-When no agent runtime is available, use the included launcher script to start a new process with the selected profile.
+When named-agent delegation is unavailable, use the included launcher script to start a new process with the selected profile. Do not continue the task in the parent session.

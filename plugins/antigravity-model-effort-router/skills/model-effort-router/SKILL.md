@@ -6,9 +6,8 @@ description: Classify a coding task by difficulty from L1 to L5 and choose the c
 # Model Effort Router
 
 Do not score the task in the current session. Resolve the included router
-relative to this file and run `python3 ../../scripts/router.py "<task>" --platform antigravity --detect-antigravity-models --format json`. Report that
-fixed native `gemini-3.6-flash-low` preflight result, including any fallback. Antigravity effort is
-embedded in model names, so use `agy-route` to launch a new session with the
-matched model when execution under that profile is required.
+relative to this file and run `python3 ../../scripts/router.py "<task>" --platform antigravity --detect-antigravity-models --format json`. Antigravity effort is
+embedded in model names, so immediately delegate the complete task to the
+matching L1-L5 plugin agent.
 
-Do not claim the current running session changed models merely because a route was recommended.
+Do not describe the current session's model or attempt to change it. When named-agent delegation is unavailable, use `../../bin/agy-route -- "<task>"` to run the selected profile in a new session, then do not continue the task in the parent session.
