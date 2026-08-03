@@ -216,8 +216,18 @@ class CommandAndLauncherTests(unittest.TestCase):
     def test_shell_command_keeps_platform_specific_arguments(self):
         classification = router.Classification("L4", {factor: 1 for factor in router.FACTORS}, ["advanced"], "terra", "L4")
         result = router.route("task", "codex", CONFIG, classifier=lambda _: classification)
-        self.assertEqual(router.shell_command(result, "task", False)[:2], ["codex", "exec"])
-        self.assertIn("model_reasoning_effort=xhigh", router.shell_command(result, "task", False))
+        command = router.shell_command(result, "task", False)
+        self.assertEqual(command[:2], ["codex", "exec"])
+        self.assertIn("model_reasoning_effort=xhigh", command)
+        self.assertIn("Prioritize correctness and blast-radius control.", " ".join(command))
+
+    def test_claude_and_antigravity_launch_the_selected_agent(self):
+        classification = router.Classification("L4", {factor: 1 for factor in router.FACTORS}, ["advanced"], "terra", "L4")
+        for platform in ("claude-code", "antigravity"):
+            with self.subTest(platform=platform):
+                result = router.route("task", platform, CONFIG, classifier=lambda _: classification)
+                command = router.shell_command(result, "task", False)
+                self.assertEqual(command[command.index("--agent") + 1], "level-4-advanced")
 
     def _run_via_symlink(self, name: str, extra_env: dict[str, str] | None = None):
         source = ROOT / self.LAUNCHERS[name]

@@ -28,6 +28,9 @@ no tools, plan permissions, no session persistence, and a temporary working
 directory isolate the classifier. Failure safely selects L3. Each agent pins
 `model` and `effort` in frontmatter.
 
+The deterministic launcher starts a new session with both `--agent` and the
+selected model/effort; it never tries to change the current session.
+
 ## Validate
 
 ```bash
@@ -43,7 +46,7 @@ python3 scripts/router.py --platform claude-code --format command "<task>"
 This prints a command such as:
 
 ```bash
-claude --model opus --effort xhigh -p '<task>'
+claude --agent level-4-advanced --model opus --effort xhigh -p '<task>'
 ```
 
 `--level` is a minimum, so L1-L4 still run preflight; `--level L5` bypasses it.

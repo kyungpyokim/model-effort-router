@@ -11,12 +11,14 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
 FACTORS = ("scope", "ambiguity", "diagnosis", "design", "risk", "verification")
 LEVELS = ("L1", "L2", "L3", "L4", "L5")
+LEVEL_NAMES = {"L1": "simple", "L2": "standard", "L3": "complex", "L4": "advanced", "L5": "critical"}
 CODEX_CLASSIFIER_MODEL = "gpt-5.6-terra"
 CLAUDE_CLASSIFIER_MODEL = "claude-sonnet-5"
 ANTIGRAVITY_CLASSIFIER_MODEL = "gemini-3.6-flash-low"
@@ -72,6 +74,19 @@ class RouteResult:
     rationale: list[str]
     source: str
     hard_floor: str | None
+
+
+def agent_name(level: str) -> str:
+    return f"level-{level[1:]}-{LEVEL_NAMES[level]}"
+
+
+def codex_agent_instructions(level: str) -> str:
+    filename = f"{agent_name(level)}.toml"
+    here = Path(__file__).resolve()
+    for candidate in (here.parent.parent / "agents" / filename, here.parent.parent / "plugins" / "codex-model-effort-router" / "agents" / filename):
+        if candidate.exists():
+            return tomllib.loads(candidate.read_text(encoding="utf-8"))["developer_instructions"]
+    raise FileNotFoundError(f"Codex agent profile not found: {filename}")
 
 
 def load_config(path: Path) -> dict:
@@ -336,12 +351,12 @@ def route(
 
 def shell_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
     if result.platform == "codex":
-        options = ["-m", result.model, "-c", f"model_reasoning_effort={result.effort}"]
+        options = ["-m", result.model, "-c", f"model_reasoning_effort={result.effort}", "-c", f"developer_instructions={json.dumps(codex_agent_instructions(result.level))}"]
         return ["codex", *options, task] if interactive else ["codex", "exec", *options, task]
     if result.platform == "claude-code":
-        base = ["claude", "--model", result.model, "--effort", str(result.effort)]
+        base = ["claude", "--agent", agent_name(result.level), "--model", result.model, "--effort", str(result.effort)]
         return base + ([task] if interactive else ["-p", task])
-    return ["agy", "--model", result.model, *( ["--prompt-interactive", task] if interactive else ["--prompt", task] )]
+    return ["agy", "--agent", agent_name(result.level), "--model", result.model, *( ["--prompt-interactive", task] if interactive else ["--prompt", task] )]
 
 
 def default_config_path() -> Path:

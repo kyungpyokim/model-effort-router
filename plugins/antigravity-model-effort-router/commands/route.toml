@@ -10,7 +10,7 @@ Return exactly:
 1. Six factor scores
 2. Total score and L1-L5 level
 3. Preferred model class
-4. The instruction to run `agy-route --interactive -- {{args}}` when the task must execute under that model
+4. The matching `level-N-*` plugin agent and the instruction to run `agy-route --interactive -- {{args}}` for a new routed session
 
-Do not claim the current session model has changed.
+Do not claim the current session model has changed. Delegate the work to the selected agent instead of continuing it in this session.
 """

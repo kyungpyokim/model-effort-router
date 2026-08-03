@@ -52,7 +52,7 @@ correctness, broad live incidents, or material harm.
 
 | Level | Model | Effort |
 |---|---|---|
-| L1 | gpt-5.6-luna | low |
+| L1 | gpt-5.6-terra | low |
 | L2 | gpt-5.6-terra | medium |
 | L3 | gpt-5.6-terra | high |
 | L4 | gpt-5.6-sol | xhigh |

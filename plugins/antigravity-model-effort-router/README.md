@@ -22,6 +22,9 @@ agy plugin install https://github.com/<owner>/<repo>
 
 This classifies and explains the route, but it does not pretend to replace the model of the already-running session.
 
+The plugin includes L1-L5 agents under `agents/`. `agy-route` starts a new
+session with the matching `--agent` and account-available model.
+
 ## Execute with automatic model selection
 
 ```bash

@@ -30,7 +30,7 @@
   "platforms": {
     "codex": {
       "L1": {
-        "model": "gpt-5.6-luna",
+        "model": "gpt-5.6-terra",
         "effort": "low"
       },
       "L2": {
