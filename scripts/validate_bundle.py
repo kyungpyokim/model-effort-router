@@ -26,17 +26,18 @@ def main() -> int:
     agy = root / "plugins" / "antigravity-model-effort-router"
 
     c_manifest = read_json(codex / ".codex-plugin" / "plugin.json")
-    assert c_manifest["name"] == "model-effort-router"
-    require(codex / "skills" / "model-effort-router" / "SKILL.md")
+    assert c_manifest["name"] == "model-effort"
+    require(codex / "skills" / "route" / "SKILL.md")
     assert len(list((codex / "agents").glob("*.toml"))) == 5
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
-    assert a_manifest["name"] == "model-effort-router"
-    require(claude / "skills" / "model-effort-router" / "SKILL.md")
+    assert a_manifest["name"] == "model-effort"
+    require(claude / "skills" / "route" / "SKILL.md")
     assert len(list((claude / "agents").glob("*.md"))) == 5
 
     g_manifest = read_json(agy / "gemini-extension.json")
-    assert g_manifest["name"] == "model-effort-router"
+    assert g_manifest["name"] == "model-effort"
+    require(agy / "skills" / "route" / "SKILL.md")
     require(agy / "GEMINI.md")
     require(agy / "commands" / "route.toml")
     require(agy / "bin" / "agy-route")

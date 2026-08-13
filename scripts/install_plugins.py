@@ -19,14 +19,14 @@ def run(cmd: list[str], dry_run: bool) -> None:
 def install_codex(bundle: Path, dry_run: bool) -> None:
     codex = shutil.which("codex") or "codex"
     run([codex, "plugin", "marketplace", "add", str(bundle)], dry_run)
-    run([codex, "plugin", "add", "model-effort-router@model-effort-router-bundle"], dry_run)
+    run([codex, "plugin", "add", "model-effort@model-effort-router-bundle"], dry_run)
     print("Codex local marketplace support can vary by client version. Use plugins/codex-model-effort-router/bin/codex-route when agent routing is not honored.")
 
 
 def install_claude(bundle: Path, scope: str, dry_run: bool) -> None:
     claude = shutil.which("claude") or "claude"
     run([claude, "plugin", "marketplace", "add", str(bundle), "--scope", scope], dry_run)
-    run([claude, "plugin", "install", "model-effort-router@model-effort-router-bundle", "--scope", scope], dry_run)
+    run([claude, "plugin", "install", "model-effort@model-effort-router-bundle", "--scope", scope], dry_run)
 
 
 def install_antigravity(bundle: Path, dry_run: bool) -> None:

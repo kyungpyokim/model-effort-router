@@ -5,7 +5,7 @@
   },
   "plugins": [
     {
-      "name": "model-effort-router",
+      "name": "model-effort",
       "source": {
         "source": "local",
         "path": "./plugins/codex-model-effort-router"

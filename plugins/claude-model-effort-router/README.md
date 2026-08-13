@@ -6,7 +6,7 @@ From Claude Code:
 
 ```text
 /plugin marketplace add /absolute/path/to/model-effort-router
-/plugin install model-effort-router@model-effort-router-bundle
+/plugin install model-effort@model-effort-router-bundle
 /reload-plugins
 ```
 
@@ -19,7 +19,7 @@ claude --plugin-dir .
 Then invoke:
 
 ```text
-/model-effort-router:model-effort-router <task>
+/model-effort:route <task>
 ```
 
 The router preflights each task with native `claude-sonnet-5` / low. Claude's

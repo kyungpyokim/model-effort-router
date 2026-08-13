@@ -1,5 +1,5 @@
 ---
-name: model-effort-router
+name: route
 description: Classify the current coding request by difficulty from L1 to L5, then delegate it to the Codex agent profile whose model and reasoning effort match that level. Use before implementation when the task should automatically select a model and effort based on scope, ambiguity, diagnosis, design, risk, and verification complexity.
 ---
 

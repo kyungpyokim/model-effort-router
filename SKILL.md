@@ -1,5 +1,5 @@
 ---
-name: model-effort-router
+name: model-effort
 description: Build, install, validate, or update the bundled Model Effort Router plugins for Codex, Claude Code, and Antigravity. Use when a user wants coding tasks classified by difficulty and routed to a matching model plus reasoning-effort profile, or wants the cross-platform plugin package customized, tested, or repackaged.
 ---
 
