@@ -6,7 +6,7 @@
   "description": "Difficulty-based model and effort routing plugins.",
   "plugins": [
     {
-      "name": "model-effort-router",
+      "name": "model-effort",
       "source": "./plugins/claude-model-effort-router",
       "description": "Routes coding tasks to Claude Code models and effort levels by difficulty.",
       "version": "1.0.0"

@@ -10,7 +10,7 @@ From the bundle root, register the local marketplace and install the plugin:
 
 ```bash
 codex plugin marketplace add /absolute/path/to/model-effort-router
-codex plugin add model-effort-router@model-effort-router-bundle
+codex plugin add model-effort@model-effort-router-bundle
 ```
 
 The plugin manifest is `.codex-plugin/plugin.json`.
@@ -21,7 +21,7 @@ delegates to the matching profile; it never tries to change a running parent tas
 Invoke the skill:
 
 ```text
-/model-effort-router <task>
+/model-effort:route <task>
 ```
 
 ## CLI preflight

@@ -1,5 +1,5 @@
 ---
-name: model-effort-router
+name: route
 description: Classify a coding task by difficulty from L1 to L5 and choose the closest available Antigravity model/effort variant. Use when the task should be routed by scope, ambiguity, diagnosis, design, risk, and verification complexity before execution.
 ---
 
