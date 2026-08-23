@@ -108,7 +108,14 @@ required a separate executor.
 
 ## Default model map
 
-Full slugs: luna = `gpt-5.6-luna`, sol = `gpt-5.6-sol`, terra = `gpt-5.6-terra`.
+Role mapping per platform — luna = light execution, sol = judgement and
+analysis, terra = wide long execution:
+
+| Role | Codex | Claude Code | Antigravity |
+|---|---|---|---|
+| luna | `gpt-5.6-luna` | `haiku` | Gemini Flash (Low/Medium/High) |
+| terra | `gpt-5.6-terra` | `sonnet` | Claude Sonnet (Thinking) |
+| sol | `gpt-5.6-sol` | `opus` | Gemini Pro (High) / Claude Opus (Thinking) |
 
 ### Codex (`task_type × level` matrix)
 
@@ -120,23 +127,30 @@ Full slugs: luna = `gpt-5.6-luna`, sol = `gpt-5.6-sol`, terra = `gpt-5.6-terra`.
 | local_refactoring | luna medium | luna high | luna xhigh | terra xhigh | terra max |
 | architectural_refactoring | sol medium | sol high | sol high → luna xhigh | sol xhigh → terra xhigh | sol max → terra max |
 
-`A → B` marks the two-stage path: A plans, B executes.
+### Claude Code (`task_type × level` matrix)
 
-Model roles: luna handles clearly defined coding work; sol owns judgement and
-analysis (design, review, architectural planning); terra owns wide, long
-execution (cross-module implementation, migrations, complex debugging).
+| task_type | L1 | L2 | L3 | L4 | L5 |
+|---|---|---|---|---|---|
+| implementation | haiku medium | haiku high | haiku xhigh | sonnet xhigh | sonnet max |
+| design | opus low | opus medium | opus high | opus xhigh | opus max |
+| review | opus low | opus medium | opus high | opus xhigh | opus max |
+| local_refactoring | haiku medium | haiku high | haiku xhigh | sonnet xhigh | sonnet max |
+| architectural_refactoring | opus medium | opus high | opus high → haiku xhigh | opus xhigh → sonnet xhigh | opus max → sonnet max |
 
-### Claude Code
+### Antigravity (`task_type × level` matrix, effort embedded in model names)
 
-| Level | Model | Effort |
-|---|---|---|
-| L1 | sonnet | low |
-| L2 | sonnet | medium |
-| L3 | sonnet | high |
-| L4 | opus | xhigh |
-| L5 | opus | max |
+Antigravity exposes effort in model display names; each cell holds ordered
+regular expressions matched against `agy models` output with a configured
+fallback, so account-local naming never breaks routing.
 
-### Antigravity
+| task_type | L1 | L2 | L3 | L4 | L5 |
+|---|---|---|---|---|---|
+| implementation | Flash Low | Flash Medium | Flash High | Sonnet Thinking | Opus Thinking |
+| design | Flash High | Pro High | Pro High | Pro High | Opus Thinking |
+| review | Flash High | Pro High | Pro High | Pro High | Opus Thinking |
+| local_refactoring | Flash Low | Flash Medium | Flash High | Sonnet Thinking | Opus Thinking |
+| architectural_refactoring | Flash High | Pro High | Pro High → Flash High | Pro High → Sonnet Thinking | Opus Thinking → Opus Thinking |
 
-Antigravity exposes effort in model display names. Match the first available
-model through the ordered regular expressions in `config/model-map.json`.
+`A → B` marks the two-stage path: A plans, B executes. Two-stage runs use the
+same plan-file protocol on every platform; only the launch argv differs
+(`codex exec`, `claude -p`, `agy --prompt`).

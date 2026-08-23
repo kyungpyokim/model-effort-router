@@ -19,7 +19,7 @@ Use this skill to maintain the three platform-specific plugins under `plugins/`.
 
 ## Constraints
 
-- Route Codex tasks through the `task_type × level` matrix; route Claude Code and Antigravity by level.
+- Route every platform through its `task_type × level` matrix; each platform maps the shared luna/sol/terra roles onto its own models.
 - Treat model and effort as one profile.
 - Preserve the five task types, five levels, six-factor scoring, and code-side security L4 floor unless the user explicitly requests a different policy.
 - Keep account-dependent model names editable in configuration.

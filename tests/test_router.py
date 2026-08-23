@@ -171,55 +171,80 @@ class EscalationTests(unittest.TestCase):
 
 
 class MatrixTests(unittest.TestCase):
+    CODEX_IMPL = ("gpt-5.6-luna", "medium"), ("gpt-5.6-luna", "high"), ("gpt-5.6-luna", "xhigh"), ("gpt-5.6-terra", "xhigh"), ("gpt-5.6-terra", "max")
     EXPECTED_SINGLE = {
-        ("implementation", "L1"): ("gpt-5.6-luna", "medium"),
-        ("implementation", "L2"): ("gpt-5.6-luna", "high"),
-        ("implementation", "L3"): ("gpt-5.6-luna", "xhigh"),
-        ("implementation", "L4"): ("gpt-5.6-terra", "xhigh"),
-        ("implementation", "L5"): ("gpt-5.6-terra", "max"),
-        ("local_refactoring", "L1"): ("gpt-5.6-luna", "medium"),
-        ("local_refactoring", "L2"): ("gpt-5.6-luna", "high"),
-        ("local_refactoring", "L3"): ("gpt-5.6-luna", "xhigh"),
-        ("local_refactoring", "L4"): ("gpt-5.6-terra", "xhigh"),
-        ("local_refactoring", "L5"): ("gpt-5.6-terra", "max"),
-        ("design", "L1"): ("gpt-5.6-sol", "low"),
-        ("design", "L2"): ("gpt-5.6-sol", "medium"),
-        ("design", "L3"): ("gpt-5.6-sol", "high"),
-        ("design", "L4"): ("gpt-5.6-sol", "xhigh"),
-        ("design", "L5"): ("gpt-5.6-sol", "max"),
-        ("review", "L1"): ("gpt-5.6-sol", "low"),
-        ("review", "L2"): ("gpt-5.6-sol", "medium"),
-        ("review", "L3"): ("gpt-5.6-sol", "high"),
-        ("review", "L4"): ("gpt-5.6-sol", "xhigh"),
-        ("review", "L5"): ("gpt-5.6-sol", "max"),
-        ("architectural_refactoring", "L1"): ("gpt-5.6-sol", "medium"),
-        ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
+        "codex": {
+            **{("implementation", level): cell for level, cell in zip(router.LEVELS, CODEX_IMPL)},
+            **{("local_refactoring", level): cell for level, cell in zip(router.LEVELS, CODEX_IMPL)},
+            **{(kind, level): ("gpt-5.6-sol", effort) for kind in ("design", "review") for level, effort in zip(router.LEVELS, ("low", "medium", "high", "xhigh", "max"))},
+            ("architectural_refactoring", "L1"): ("gpt-5.6-sol", "medium"),
+            ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
+        },
+        "claude-code": {
+            **{("implementation", level): cell for level, cell in zip(router.LEVELS, (("haiku", "medium"), ("haiku", "high"), ("haiku", "xhigh"), ("sonnet", "xhigh"), ("sonnet", "max")))},
+            **{("local_refactoring", level): cell for level, cell in zip(router.LEVELS, (("haiku", "medium"), ("haiku", "high"), ("haiku", "xhigh"), ("sonnet", "xhigh"), ("sonnet", "max")))},
+            **{(kind, level): ("opus", effort) for kind in ("design", "review") for level, effort in zip(router.LEVELS, ("low", "medium", "high", "xhigh", "max"))},
+            ("architectural_refactoring", "L1"): ("opus", "medium"),
+            ("architectural_refactoring", "L2"): ("opus", "high"),
+        },
+        "antigravity": {
+            **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, (
+                ("Gemini 3.5 Flash (Low)", None), ("Gemini 3.5 Flash (Medium)", None), ("Gemini 3.5 Flash (High)", None),
+                ("Claude Sonnet 4.6 (Thinking)", None), ("Claude Opus 4.6 (Thinking)", None),
+            ))},
+            **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
+                ("Gemini 3.5 Flash (High)", None), ("Gemini 3.1 Pro (High)", None), ("Gemini 3.1 Pro (High)", None),
+                ("Gemini 3.1 Pro (High)", None), ("Claude Opus 4.6 (Thinking)", None),
+            ))},
+            ("architectural_refactoring", "L1"): ("Gemini 3.5 Flash (High)", None),
+            ("architectural_refactoring", "L2"): ("Gemini 3.1 Pro (High)", None),
+        },
     }
     EXPECTED_STAGES = {
-        ("architectural_refactoring", "L3"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-luna", "xhigh")],
-        ("architectural_refactoring", "L4"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "xhigh")],
-        ("architectural_refactoring", "L5"): [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "max")],
+        "codex": {
+            ("architectural_refactoring", "L3"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-luna", "xhigh")],
+            ("architectural_refactoring", "L4"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "xhigh")],
+            ("architectural_refactoring", "L5"): [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "max")],
+        },
+        "claude-code": {
+            ("architectural_refactoring", "L3"): [("planner", "opus", "high"), ("implementer", "haiku", "xhigh")],
+            ("architectural_refactoring", "L4"): [("planner", "opus", "xhigh"), ("implementer", "sonnet", "xhigh")],
+            ("architectural_refactoring", "L5"): [("planner", "opus", "max"), ("implementer", "sonnet", "max")],
+        },
+        "antigravity": {
+            ("architectural_refactoring", "L3"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Gemini 3.5 Flash (High)", None)],
+            ("architectural_refactoring", "L4"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
+            ("architectural_refactoring", "L5"): [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Opus 4.6 (Thinking)", None)],
+        },
     }
 
     def test_every_matrix_cell_matches_the_final_spec(self):
-        for task_type in router.TASK_TYPES:
-            for level in router.LEVELS:
-                with self.subTest(cell=f"{task_type}/{level}"):
-                    result = routed(classifier=lambda _, t=task_type, l=level: classification(t, l))
-                    self.assertEqual(result.task_type, task_type)
-                    self.assertEqual(result.level, level)
-                    if (task_type, level) in self.EXPECTED_SINGLE:
-                        model, effort = self.EXPECTED_SINGLE[(task_type, level)]
-                        self.assertEqual(result.mode, "single")
-                        self.assertEqual((result.model, result.effort), (model, effort))
-                        self.assertIsNone(result.plan_dir)
-                    else:
-                        expected = self.EXPECTED_STAGES[(task_type, level)]
-                        self.assertEqual(result.mode, "two_stage")
-                        self.assertIsNone(result.model)
-                        self.assertIsNone(result.effort)
-                        self.assertIsNotNone(result.plan_dir)
-                        self.assertEqual([(s["role"], s["model"], s["effort"]) for s in result.stages], expected)
+        for platform in ("codex", "claude-code", "antigravity"):
+            for task_type in router.TASK_TYPES:
+                for level in router.LEVELS:
+                    with self.subTest(cell=f"{platform}/{task_type}/{level}"):
+                        result = routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
+                        self.assertEqual(result.task_type, task_type)
+                        self.assertEqual(result.level, level)
+                        if (task_type, level) in self.EXPECTED_SINGLE[platform]:
+                            model, effort = self.EXPECTED_SINGLE[platform][(task_type, level)]
+                            self.assertEqual(result.mode, "single")
+                            self.assertEqual((result.model, result.effort), (model, effort))
+                            self.assertIsNone(result.plan_dir)
+                        else:
+                            expected = self.EXPECTED_STAGES[platform][(task_type, level)]
+                            self.assertEqual(result.mode, "two_stage")
+                            self.assertIsNone(result.model)
+                            self.assertIsNotNone(result.plan_dir)
+                            self.assertEqual([(s["role"], s["model"], s["effort"]) for s in result.stages], expected)
+
+    def test_antigravity_patterns_match_account_models_before_fallback(self):
+        result = routed(
+            platform="antigravity",
+            classifier=lambda _: classification("implementation", "L2"),
+            available_models=["Gemini 3.5 Flash (Medium)", "Claude Opus 4.6 (Thinking)"],
+        )
+        self.assertEqual((result.model, result.effort), ("Gemini 3.5 Flash (Medium)", None))
 
 
 class RoutingTests(unittest.TestCase):
@@ -353,6 +378,22 @@ class CommandAndLauncherTests(unittest.TestCase):
                 result = routed(platform=platform, classifier=lambda _: classification("design", "L4"))
                 command = router.shell_command(result, "task", False)
                 self.assertEqual(command[command.index("--agent") + 1], "level-4-advanced")
+
+    def test_two_stage_commands_are_platform_native(self):
+        for platform, expected_head in (
+            ("claude-code", ["claude", "-p", "--model", "opus"]),
+            ("antigravity", ["agy", "--model", "Gemini 3.1 Pro (High)"]),
+        ):
+            with self.subTest(platform=platform):
+                result = routed(platform=platform, classifier=lambda _: classification("architectural_refactoring", "L4"))
+                planner, implementer = router.stage_commands(result, "task")
+                plan_path = str(Path(result.plan_dir) / "plan.json")
+                self.assertEqual(planner[:len(expected_head)], expected_head)
+                self.assertGreaterEqual(" ".join(planner).count(plan_path), 1)
+                self.assertGreaterEqual(" ".join(implementer).count(plan_path), 1)
+                chain = router.command_chain(result, "task")
+                self.assertTrue(chain.startswith("mkdir -p "))
+                self.assertIn("rm -rf ", chain)
 
     def _run_via_symlink(self, name: str, extra_env: dict[str, str] | None = None):
         source = ROOT / self.LAUNCHERS[name]

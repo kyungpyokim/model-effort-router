@@ -379,35 +379,59 @@ def apply_factor_overrides(classification: Classification, explicit_factors: dic
     )
 
 
-def load_codex_matrix(config: dict) -> dict:
-    platform = config.get("platforms", {}).get("codex")
-    matrix = platform.get("matrix") if isinstance(platform, dict) else None
-    if platform is None or platform.get("routing") != "task_matrix" or not isinstance(matrix, dict):
-        raise ValueError("config platforms.codex must define routing='task_matrix' with a matrix")
+SINGLE_ENTRY_KEYS = ({"model", "effort"}, {"patterns", "fallback"})
+
+
+def _valid_stage(stage: object) -> bool:
+    return isinstance(stage, dict) and (
+        set(stage) == {"role", "model", "effort"} or set(stage) == {"role", "patterns", "fallback"}
+    )
+
+
+def load_matrix(config: dict, platform: str) -> dict:
+    platform_config = config.get("platforms", {}).get(platform)
+    matrix = platform_config.get("matrix") if isinstance(platform_config, dict) else None
+    if platform_config is None or platform_config.get("routing") != "task_matrix" or not isinstance(matrix, dict):
+        raise ValueError(f"config platforms.{platform} must define routing='task_matrix' with a matrix")
     for task_type in TASK_TYPES:
         row = matrix.get(task_type)
         if not isinstance(row, dict):
-            raise ValueError(f"codex matrix is missing task_type {task_type}")
+            raise ValueError(f"{platform} matrix is missing task_type {task_type}")
         for level in LEVELS:
             entry = row.get(level)
             if not isinstance(entry, dict):
-                raise ValueError(f"codex matrix is missing {task_type}/{level}")
+                raise ValueError(f"{platform} matrix is missing {task_type}/{level}")
             if "stages" in entry:
                 stages = entry["stages"]
-                if not isinstance(stages, list) or not stages or any(
-                    not isinstance(stage, dict) or set(stage) != {"role", "model", "effort"} for stage in stages
-                ):
-                    raise ValueError(f"invalid stage profile at codex matrix {task_type}/{level}")
-            elif set(entry) != {"model", "effort"}:
-                raise ValueError(f"entry at codex matrix {task_type}/{level} must define model+effort or stages")
+                if not isinstance(stages, list) or not stages or not all(_valid_stage(stage) for stage in stages):
+                    raise ValueError(f"invalid stage profile at {platform} matrix {task_type}/{level}")
+            elif set(entry) not in SINGLE_ENTRY_KEYS:
+                raise ValueError(f"entry at {platform} matrix {task_type}/{level} must define model+effort, patterns+fallback, or stages")
     return matrix
 
 
-def resolve_codex_stages(matrix: dict, task_type: str, level: str) -> tuple[list[dict], str]:
+def resolve_stages(matrix: dict, task_type: str, level: str) -> tuple[list[dict], str]:
     entry = matrix[task_type][level]
     if "stages" in entry:
         return [dict(stage) for stage in entry["stages"]], "two_stage"
-    return [{"role": "executor", "model": entry["model"], "effort": entry["effort"]}], "single"
+    return [dict(entry)], "single"
+
+
+def materialise_stages(platform: str, raw_stages: list[dict], mode: str, available_models: list[str] | None) -> list[dict]:
+    """Normalise matrix entries into {role, model, effort} stages, resolving Antigravity patterns."""
+    stages = []
+    for stage in raw_stages:
+        stage = dict(stage)
+        if "patterns" in stage:
+            stage = {
+                "role": stage.get("role", "executor"),
+                "model": choose_antigravity_model(stage, available_models),
+                "effort": None,
+            }
+        else:
+            stage.setdefault("role", "executor")
+        stages.append(stage)
+    return stages
 
 
 def route(
@@ -442,21 +466,25 @@ def route(
     if explicit_task_type:
         rationale.append(f"explicit task_type {explicit_task_type} applied")
 
-    if platform == "codex":
-        matrix = load_codex_matrix(config)
-        stages, mode = resolve_codex_stages(matrix, task_type, level)
+    platform_config = config["platforms"][platform]
+    plan_dir = None
+    if isinstance(platform_config, dict) and platform_config.get("routing") == "task_matrix":
+        matrix = load_matrix(config, platform)
+        raw_stages, mode = resolve_stages(matrix, task_type, level)
+        stages = materialise_stages(platform, raw_stages, mode, available_models)
         if mode == "two_stage":
-            model, effort, plan_dir = None, None, str(Path(tempfile.gettempdir()) / f"codex-route-{uuid.uuid4().hex[:8]}")
+            plan_dir = str(Path(tempfile.gettempdir()) / f"codex-route-{uuid.uuid4().hex[:8]}")
+            model = effort = None
         else:
-            model, effort, plan_dir = stages[0]["model"], stages[0]["effort"], None
+            model, effort = stages[0]["model"], stages[0]["effort"]
     elif platform == "antigravity":
-        profile = config["platforms"][platform][level]
+        profile = platform_config[level]
         stages, mode = [{"role": "executor", "model": choose_antigravity_model(profile, available_models), "effort": None}], "single"
-        model, effort, plan_dir = stages[0]["model"], None, None
+        model, effort = stages[0]["model"], None
     else:
-        profile = config["platforms"][platform][level]
+        profile = platform_config[level]
         stages, mode = [{"role": "executor", "model": profile["model"], "effort": profile["effort"]}], "single"
-        model, effort, plan_dir = profile["model"], profile["effort"], None
+        model, effort = profile["model"], profile["effort"]
 
     return RouteResult(
         platform=platform,
@@ -501,24 +529,41 @@ def _codex_exec_command(model: str, effort: str, instructions: str, prompt: str,
     return ["codex", *options, prompt] if interactive else ["codex", "exec", *options, prompt]
 
 
-def stage_commands(result: RouteResult, task: str, interactive: bool = False) -> list[list[str]]:
-    """Build one argv per execution stage. Codex two-stage runs are always exec sessions."""
-    if result.platform != "codex":
-        return [shell_command(result, task, interactive=False)]
-    commands: list[list[str]] = []
-    plan_path = str(Path(result.plan_dir) / "plan.json") if result.plan_dir else None
-    if result.mode == "two_stage":
-        planner, implementer = result.stages
-        instructions = PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
-        prompt = f"{PLANNER_PROMPT_PREFIX}{task}\n\nWrite the plan JSON to exactly: {plan_path}\n"
-        commands.append(_codex_exec_command(planner["model"], planner["effort"], instructions, prompt, interactive=False))
-        instructions = IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
-        prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
-        commands.append(_codex_exec_command(implementer["model"], implementer["effort"], instructions, prompt, interactive=False))
-    else:
+def _claude_print_command(model: str, effort: str | None, prompt: str) -> list[str]:
+    command = ["claude", "-p", "--model", model]
+    if effort:
+        command += ["--effort", effort]
+    return [*command, prompt]
+
+
+def _agy_prompt_command(model: str, prompt: str) -> list[str]:
+    return ["agy", "--model", model, "--prompt", prompt]
+
+
+def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
+    if result.platform == "codex":
         stage = result.stages[0]
-        commands.append(_codex_exec_command(stage["model"], stage["effort"], codex_agent_instructions(result.level), task, interactive))
-    return commands
+        return _codex_exec_command(stage["model"], stage["effort"], codex_agent_instructions(result.level), task, interactive)
+    return shell_command(result, task, interactive=False)
+
+
+def stage_commands(result: RouteResult, task: str, interactive: bool = False) -> list[list[str]]:
+    """Build one argv per execution stage. Two-stage runs are always exec/print sessions."""
+    if result.mode != "two_stage":
+        return [_single_stage_command(result, task, interactive)]
+    plan_path = str(Path(result.plan_dir) / "plan.json")
+    planner, implementer = result.stages
+    instructions = PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
+    plan_prompt = f"{PLANNER_PROMPT_PREFIX}{task}\n\nWrite the plan JSON to exactly: {plan_path}\n"
+    execute_instructions = IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
+    execute_prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
+    builders = {
+        "codex": lambda stage, instr, prompt: _codex_exec_command(stage["model"], stage["effort"], instr, prompt, interactive=False),
+        "claude-code": lambda stage, instr, prompt: _claude_print_command(stage["model"], stage["effort"], f"{instr}\n\n{prompt}"),
+        "antigravity": lambda stage, instr, prompt: _agy_prompt_command(stage["model"], f"{instr}\n\n{prompt}"),
+    }
+    build = builders[result.platform]
+    return [build(planner, instructions, plan_prompt), build(implementer, execute_instructions, execute_prompt)]
 
 
 def command_chain(result: RouteResult, task: str, keep_plan: bool = False, interactive: bool = False) -> str | None:

@@ -32,121 +32,529 @@
       "routing": "task_matrix",
       "matrix": {
         "implementation": {
-          "L1": { "model": "gpt-5.6-luna", "effort": "medium" },
-          "L2": { "model": "gpt-5.6-luna", "effort": "high" },
-          "L3": { "model": "gpt-5.6-luna", "effort": "xhigh" },
-          "L4": { "model": "gpt-5.6-terra", "effort": "xhigh" },
-          "L5": { "model": "gpt-5.6-terra", "effort": "max" }
+          "L1": {
+            "model": "gpt-5.6-luna",
+            "effort": "medium"
+          },
+          "L2": {
+            "model": "gpt-5.6-luna",
+            "effort": "high"
+          },
+          "L3": {
+            "model": "gpt-5.6-luna",
+            "effort": "xhigh"
+          },
+          "L4": {
+            "model": "gpt-5.6-terra",
+            "effort": "xhigh"
+          },
+          "L5": {
+            "model": "gpt-5.6-terra",
+            "effort": "max"
+          }
         },
         "design": {
-          "L1": { "model": "gpt-5.6-sol", "effort": "low" },
-          "L2": { "model": "gpt-5.6-sol", "effort": "medium" },
-          "L3": { "model": "gpt-5.6-sol", "effort": "high" },
-          "L4": { "model": "gpt-5.6-sol", "effort": "xhigh" },
-          "L5": { "model": "gpt-5.6-sol", "effort": "max" }
+          "L1": {
+            "model": "gpt-5.6-sol",
+            "effort": "low"
+          },
+          "L2": {
+            "model": "gpt-5.6-sol",
+            "effort": "medium"
+          },
+          "L3": {
+            "model": "gpt-5.6-sol",
+            "effort": "high"
+          },
+          "L4": {
+            "model": "gpt-5.6-sol",
+            "effort": "xhigh"
+          },
+          "L5": {
+            "model": "gpt-5.6-sol",
+            "effort": "max"
+          }
         },
         "review": {
-          "L1": { "model": "gpt-5.6-sol", "effort": "low" },
-          "L2": { "model": "gpt-5.6-sol", "effort": "medium" },
-          "L3": { "model": "gpt-5.6-sol", "effort": "high" },
-          "L4": { "model": "gpt-5.6-sol", "effort": "xhigh" },
-          "L5": { "model": "gpt-5.6-sol", "effort": "max" }
+          "L1": {
+            "model": "gpt-5.6-sol",
+            "effort": "low"
+          },
+          "L2": {
+            "model": "gpt-5.6-sol",
+            "effort": "medium"
+          },
+          "L3": {
+            "model": "gpt-5.6-sol",
+            "effort": "high"
+          },
+          "L4": {
+            "model": "gpt-5.6-sol",
+            "effort": "xhigh"
+          },
+          "L5": {
+            "model": "gpt-5.6-sol",
+            "effort": "max"
+          }
         },
         "local_refactoring": {
-          "L1": { "model": "gpt-5.6-luna", "effort": "medium" },
-          "L2": { "model": "gpt-5.6-luna", "effort": "high" },
-          "L3": { "model": "gpt-5.6-luna", "effort": "xhigh" },
-          "L4": { "model": "gpt-5.6-terra", "effort": "xhigh" },
-          "L5": { "model": "gpt-5.6-terra", "effort": "max" }
+          "L1": {
+            "model": "gpt-5.6-luna",
+            "effort": "medium"
+          },
+          "L2": {
+            "model": "gpt-5.6-luna",
+            "effort": "high"
+          },
+          "L3": {
+            "model": "gpt-5.6-luna",
+            "effort": "xhigh"
+          },
+          "L4": {
+            "model": "gpt-5.6-terra",
+            "effort": "xhigh"
+          },
+          "L5": {
+            "model": "gpt-5.6-terra",
+            "effort": "max"
+          }
         },
         "architectural_refactoring": {
-          "L1": { "model": "gpt-5.6-sol", "effort": "medium" },
-          "L2": { "model": "gpt-5.6-sol", "effort": "high" },
+          "L1": {
+            "model": "gpt-5.6-sol",
+            "effort": "medium"
+          },
+          "L2": {
+            "model": "gpt-5.6-sol",
+            "effort": "high"
+          },
           "L3": {
             "stages": [
-              { "role": "planner", "model": "gpt-5.6-sol", "effort": "high" },
-              { "role": "implementer", "model": "gpt-5.6-luna", "effort": "xhigh" }
+              {
+                "role": "planner",
+                "model": "gpt-5.6-sol",
+                "effort": "high"
+              },
+              {
+                "role": "implementer",
+                "model": "gpt-5.6-luna",
+                "effort": "xhigh"
+              }
             ]
           },
           "L4": {
             "stages": [
-              { "role": "planner", "model": "gpt-5.6-sol", "effort": "xhigh" },
-              { "role": "implementer", "model": "gpt-5.6-terra", "effort": "xhigh" }
+              {
+                "role": "planner",
+                "model": "gpt-5.6-sol",
+                "effort": "xhigh"
+              },
+              {
+                "role": "implementer",
+                "model": "gpt-5.6-terra",
+                "effort": "xhigh"
+              }
             ]
           },
           "L5": {
             "stages": [
-              { "role": "planner", "model": "gpt-5.6-sol", "effort": "max" },
-              { "role": "implementer", "model": "gpt-5.6-terra", "effort": "max" }
+              {
+                "role": "planner",
+                "model": "gpt-5.6-sol",
+                "effort": "max"
+              },
+              {
+                "role": "implementer",
+                "model": "gpt-5.6-terra",
+                "effort": "max"
+              }
             ]
           }
         }
       }
     },
     "claude-code": {
-      "L1": {
-        "model": "sonnet",
-        "effort": "low"
-      },
-      "L2": {
-        "model": "sonnet",
-        "effort": "medium"
-      },
-      "L3": {
-        "model": "sonnet",
-        "effort": "high"
-      },
-      "L4": {
-        "model": "opus",
-        "effort": "xhigh"
-      },
-      "L5": {
-        "model": "opus",
-        "effort": "max"
+      "routing": "task_matrix",
+      "matrix": {
+        "implementation": {
+          "L1": {
+            "model": "haiku",
+            "effort": "medium"
+          },
+          "L2": {
+            "model": "haiku",
+            "effort": "high"
+          },
+          "L3": {
+            "model": "haiku",
+            "effort": "xhigh"
+          },
+          "L4": {
+            "model": "sonnet",
+            "effort": "xhigh"
+          },
+          "L5": {
+            "model": "sonnet",
+            "effort": "max"
+          }
+        },
+        "design": {
+          "L1": {
+            "model": "opus",
+            "effort": "low"
+          },
+          "L2": {
+            "model": "opus",
+            "effort": "medium"
+          },
+          "L3": {
+            "model": "opus",
+            "effort": "high"
+          },
+          "L4": {
+            "model": "opus",
+            "effort": "xhigh"
+          },
+          "L5": {
+            "model": "opus",
+            "effort": "max"
+          }
+        },
+        "review": {
+          "L1": {
+            "model": "opus",
+            "effort": "low"
+          },
+          "L2": {
+            "model": "opus",
+            "effort": "medium"
+          },
+          "L3": {
+            "model": "opus",
+            "effort": "high"
+          },
+          "L4": {
+            "model": "opus",
+            "effort": "xhigh"
+          },
+          "L5": {
+            "model": "opus",
+            "effort": "max"
+          }
+        },
+        "local_refactoring": {
+          "L1": {
+            "model": "haiku",
+            "effort": "medium"
+          },
+          "L2": {
+            "model": "haiku",
+            "effort": "high"
+          },
+          "L3": {
+            "model": "haiku",
+            "effort": "xhigh"
+          },
+          "L4": {
+            "model": "sonnet",
+            "effort": "xhigh"
+          },
+          "L5": {
+            "model": "sonnet",
+            "effort": "max"
+          }
+        },
+        "architectural_refactoring": {
+          "L1": {
+            "model": "opus",
+            "effort": "medium"
+          },
+          "L2": {
+            "model": "opus",
+            "effort": "high"
+          },
+          "L3": {
+            "stages": [
+              {
+                "role": "planner",
+                "model": "opus",
+                "effort": "high"
+              },
+              {
+                "role": "implementer",
+                "model": "haiku",
+                "effort": "xhigh"
+              }
+            ]
+          },
+          "L4": {
+            "stages": [
+              {
+                "role": "planner",
+                "model": "opus",
+                "effort": "xhigh"
+              },
+              {
+                "role": "implementer",
+                "model": "sonnet",
+                "effort": "xhigh"
+              }
+            ]
+          },
+          "L5": {
+            "stages": [
+              {
+                "role": "planner",
+                "model": "opus",
+                "effort": "max"
+              },
+              {
+                "role": "implementer",
+                "model": "sonnet",
+                "effort": "max"
+              }
+            ]
+          }
+        }
       }
     },
     "antigravity": {
-      "L1": {
-        "patterns": [
-          "^Gemini .* Flash \\(Low\\)$",
-          "Flash.*Low",
-          "Low"
-        ],
-        "fallback": "Gemini 3.5 Flash (Low)"
-      },
-      "L2": {
-        "patterns": [
-          "^Gemini .* Flash \\(Medium\\)$",
-          "Flash.*Medium",
-          "Medium"
-        ],
-        "fallback": "Gemini 3.5 Flash (Medium)"
-      },
-      "L3": {
-        "patterns": [
-          "^Gemini .* Flash \\(High\\)$",
-          "Flash.*High",
-          "Sonnet.*Thinking"
-        ],
-        "fallback": "Gemini 3.5 Flash (High)"
-      },
-      "L4": {
-        "patterns": [
-          "^Gemini .* Pro \\(High\\)$",
-          "Pro.*High",
-          "Claude Sonnet .*\\(Thinking\\)",
-          "Sonnet.*Thinking"
-        ],
-        "fallback": "Gemini 3.1 Pro (High)"
-      },
-      "L5": {
-        "patterns": [
-          "Claude Opus .*\\(Thinking\\)",
-          "Opus.*Thinking",
-          "Pro.*High",
-          "Thinking"
-        ],
-        "fallback": "Claude Opus 4.6 (Thinking)"
+      "routing": "task_matrix",
+      "matrix": {
+        "implementation": {
+          "L1": {
+            "patterns": [
+              "^Gemini .* Flash \\(Low\\)$",
+              "Flash.*Low",
+              "Low"
+            ],
+            "fallback": "Gemini 3.5 Flash (Low)"
+          },
+          "L2": {
+            "patterns": [
+              "^Gemini .* Flash \\(Medium\\)$",
+              "Flash.*Medium",
+              "Medium"
+            ],
+            "fallback": "Gemini 3.5 Flash (Medium)"
+          },
+          "L3": {
+            "patterns": [
+              "^Gemini .* Flash \\(High\\)$",
+              "Flash.*High",
+              "High"
+            ],
+            "fallback": "Gemini 3.5 Flash (High)"
+          },
+          "L4": {
+            "patterns": [
+              "Claude Sonnet .*\\(Thinking\\)",
+              "Sonnet.*Thinking"
+            ],
+            "fallback": "Claude Sonnet 4.6 (Thinking)"
+          },
+          "L5": {
+            "patterns": [
+              "Claude Opus .*\\(Thinking\\)",
+              "Opus.*Thinking"
+            ],
+            "fallback": "Claude Opus 4.6 (Thinking)"
+          }
+        },
+        "design": {
+          "L1": {
+            "patterns": [
+              "^Gemini .* Flash \\(High\\)$",
+              "Flash.*High",
+              "High"
+            ],
+            "fallback": "Gemini 3.5 Flash (High)"
+          },
+          "L2": {
+            "patterns": [
+              "^Gemini .* Pro \\(High\\)$",
+              "Pro.*High"
+            ],
+            "fallback": "Gemini 3.1 Pro (High)"
+          },
+          "L3": {
+            "patterns": [
+              "^Gemini .* Pro \\(High\\)$",
+              "Pro.*High"
+            ],
+            "fallback": "Gemini 3.1 Pro (High)"
+          },
+          "L4": {
+            "patterns": [
+              "^Gemini .* Pro \\(High\\)$",
+              "Pro.*High"
+            ],
+            "fallback": "Gemini 3.1 Pro (High)"
+          },
+          "L5": {
+            "patterns": [
+              "Claude Opus .*\\(Thinking\\)",
+              "Opus.*Thinking"
+            ],
+            "fallback": "Claude Opus 4.6 (Thinking)"
+          }
+        },
+        "review": {
+          "L1": {
+            "patterns": [
+              "^Gemini .* Flash \\(High\\)$",
+              "Flash.*High",
+              "High"
+            ],
+            "fallback": "Gemini 3.5 Flash (High)"
+          },
+          "L2": {
+            "patterns": [
+              "^Gemini .* Pro \\(High\\)$",
+              "Pro.*High"
+            ],
+            "fallback": "Gemini 3.1 Pro (High)"
+          },
+          "L3": {
+            "patterns": [
+              "^Gemini .* Pro \\(High\\)$",
+              "Pro.*High"
+            ],
+            "fallback": "Gemini 3.1 Pro (High)"
+          },
+          "L4": {
+            "patterns": [
+              "^Gemini .* Pro \\(High\\)$",
+              "Pro.*High"
+            ],
+            "fallback": "Gemini 3.1 Pro (High)"
+          },
+          "L5": {
+            "patterns": [
+              "Claude Opus .*\\(Thinking\\)",
+              "Opus.*Thinking"
+            ],
+            "fallback": "Claude Opus 4.6 (Thinking)"
+          }
+        },
+        "local_refactoring": {
+          "L1": {
+            "patterns": [
+              "^Gemini .* Flash \\(Low\\)$",
+              "Flash.*Low",
+              "Low"
+            ],
+            "fallback": "Gemini 3.5 Flash (Low)"
+          },
+          "L2": {
+            "patterns": [
+              "^Gemini .* Flash \\(Medium\\)$",
+              "Flash.*Medium",
+              "Medium"
+            ],
+            "fallback": "Gemini 3.5 Flash (Medium)"
+          },
+          "L3": {
+            "patterns": [
+              "^Gemini .* Flash \\(High\\)$",
+              "Flash.*High",
+              "High"
+            ],
+            "fallback": "Gemini 3.5 Flash (High)"
+          },
+          "L4": {
+            "patterns": [
+              "Claude Sonnet .*\\(Thinking\\)",
+              "Sonnet.*Thinking"
+            ],
+            "fallback": "Claude Sonnet 4.6 (Thinking)"
+          },
+          "L5": {
+            "patterns": [
+              "Claude Opus .*\\(Thinking\\)",
+              "Opus.*Thinking"
+            ],
+            "fallback": "Claude Opus 4.6 (Thinking)"
+          }
+        },
+        "architectural_refactoring": {
+          "L1": {
+            "patterns": [
+              "^Gemini .* Flash \\(High\\)$",
+              "Flash.*High",
+              "High"
+            ],
+            "fallback": "Gemini 3.5 Flash (High)"
+          },
+          "L2": {
+            "patterns": [
+              "^Gemini .* Pro \\(High\\)$",
+              "Pro.*High"
+            ],
+            "fallback": "Gemini 3.1 Pro (High)"
+          },
+          "L3": {
+            "stages": [
+              {
+                "role": "planner",
+                "patterns": [
+                  "^Gemini .* Pro \\(High\\)$",
+                  "Pro.*High"
+                ],
+                "fallback": "Gemini 3.1 Pro (High)"
+              },
+              {
+                "role": "implementer",
+                "patterns": [
+                  "^Gemini .* Flash \\(High\\)$",
+                  "Flash.*High",
+                  "High"
+                ],
+                "fallback": "Gemini 3.5 Flash (High)"
+              }
+            ]
+          },
+          "L4": {
+            "stages": [
+              {
+                "role": "planner",
+                "patterns": [
+                  "^Gemini .* Pro \\(High\\)$",
+                  "Pro.*High"
+                ],
+                "fallback": "Gemini 3.1 Pro (High)"
+              },
+              {
+                "role": "implementer",
+                "patterns": [
+                  "Claude Sonnet .*\\(Thinking\\)",
+                  "Sonnet.*Thinking"
+                ],
+                "fallback": "Claude Sonnet 4.6 (Thinking)"
+              }
+            ]
+          },
+          "L5": {
+            "stages": [
+              {
+                "role": "planner",
+                "patterns": [
+                  "Claude Opus .*\\(Thinking\\)",
+                  "Opus.*Thinking"
+                ],
+                "fallback": "Claude Opus 4.6 (Thinking)"
+              },
+              {
+                "role": "implementer",
+                "patterns": [
+                  "Claude Opus .*\\(Thinking\\)",
+                  "Opus.*Thinking"
+                ],
+                "fallback": "Claude Opus 4.6 (Thinking)"
+              }
+            ]
+          }
+        }
       }
     }
   }

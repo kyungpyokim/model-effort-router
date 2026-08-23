@@ -3,9 +3,11 @@
 A cross-platform bundle that routes a coding task to one model-and-effort
 profile for Codex, Claude Code, or Antigravity.
 
-Codex routing is two-dimensional: a `task_type` axis (implementation, design,
-review, local_refactoring, architectural_refactoring) and the difficulty level
-(L1-L5). Claude Code and Antigravity keep their level-based profiles.
+All three platforms share the same two-dimensional routing: a `task_type` axis
+(implementation, design, review, local_refactoring, architectural_refactoring)
+and the difficulty level (L1-L5), mapped onto each platform's own models
+(Codex: luna/sol/terra — Claude Code: haiku/sonnet/opus — Antigravity:
+Flash/Pro/Sonnet·Opus Thinking).
 
 ## Preflight classifier
 
