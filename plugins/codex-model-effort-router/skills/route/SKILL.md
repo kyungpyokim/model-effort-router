@@ -1,17 +1,23 @@
 ---
 name: route
-description: Classify the current coding request by difficulty from L1 to L5, then delegate it to the Codex agent profile whose model and reasoning effort match that level. Use before implementation when the task should automatically select a model and effort based on scope, ambiguity, diagnosis, design, risk, and verification complexity.
+description: Classify the current coding request by task_type and difficulty (L1-L5), then delegate it to the Codex agent profile whose model and reasoning effort match. Use before implementation when the task should automatically select a model and effort based on type, scope, ambiguity, diagnosis, design, risk, and verification complexity.
 ---
 
-# Difficulty Router
+# Task-Type and Difficulty Router
 
 Do not score `$ARGUMENTS` in the current session. Resolve the included router
 relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --platform codex --format json`. Its fixed Codex CLI `gpt-5.6-terra` / low preflight result is the source
 of truth.
 
-1. Immediately delegate the complete task to the matching level agent.
-2. Do not describe the parent session's model, effort, or inability to change models.
-3. Do not invoke this router again from the delegated agent.
-4. Re-route only if new evidence materially raises scope or risk.
+1. Read the JSON result's `mode`.
+2. For `single`, immediately delegate the complete task to the matching level
+   agent with the model and effort from the selected matrix row.
+3. For `two_stage` (`architectural_refactoring` L3+), run the printed stage
+   commands in order: the planner writes the plan file, then the executor
+   reads it together with the repository and implements it. Never run the
+   executor after a failed plan stage.
+4. Do not describe the parent session's model, effort, or inability to change models.
+5. Do not invoke this router again from a delegated or executed agent.
+6. Re-route only if new evidence materially raises scope or risk.
 
-When named-agent delegation is unavailable, run `../../bin/codex-route -- "$ARGUMENTS"` to execute the task in a new Codex process with the selected profile. Do not continue the task in the parent session.
+When named-agent delegation is unavailable, run `../../bin/codex-route -- "$ARGUMENTS"` to execute the task in a new Codex process with the selected profile; two-stage results execute as one success-dependent chain. Do not continue the task in the parent session.

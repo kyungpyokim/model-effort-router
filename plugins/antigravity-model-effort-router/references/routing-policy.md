@@ -4,9 +4,27 @@
 
 Classify each coding task with its selected platform's native CLI: Codex uses
 `gpt-5.6-terra` / low, Claude Code uses `claude-sonnet-5` / low, and
-Antigravity uses `gemini-3.6-flash-low`. Return structured JSON with all six
-factor scores, a level, and a short rationale. The router validates the exact
-schema before using it; it never infers risk from keywords or language rules.
+Antigravity uses `gemini-3.6-flash-low`. Return structured JSON with a
+`task_type`, all six factor scores, a level, six risk flags, a confidence, and
+a one-sentence reason. The router validates the exact schema before using it;
+it never infers risk from keywords or language rules.
+
+### Task types
+
+| `task_type` | Meaning |
+|---|---|
+| `implementation` | Build or change code directly: features, APIs, UI work, bug fixes, tests |
+| `design` | Decide structure or direction without editing code: architecture, API or data-model design, technology choice, planning |
+| `review` | Analyse existing code or plans to find problems: code, PR, security, performance, design review |
+| `local_refactoring` | Clean internals while preserving behaviour and module boundaries: extract functions, renames, deduplication, simplification in one module |
+| `architectural_refactoring` | Change module boundaries or system structure AND carry out the resulting edits: module splits, dependency inversion, state-management changes, data-layer redesign |
+
+Mixed tasks classify by their primary purpose. Design with sample code is
+`design`; implementation that needs small judgement calls is
+`implementation`; structural change followed by real multi-file edits is
+`architectural_refactoring`.
+
+### Factor scoring
 
 | Factor | 0 | 1 | 2 |
 |---|---|---|---|
@@ -25,38 +43,88 @@ schema before using it; it never infers risk from keywords or language rules.
 | 9-10 | L4 |
 | 11-12 | L5 |
 
-Apply at least L4 for authentication or authorization, public API
-compatibility, production incidents, database migrations, payments,
-security-sensitive code, or multi-service deployment. Apply L5 for
-irreversible deletion, cryptographic design, compliance/legal or financial
-correctness, broad live incidents, or material harm.
+Levels weigh complexity, scope, and risk above raw code volume.
+
+L1 is one function or file with explicit requirements. L2 touches a few files
+following existing patterns. L3 is feature-sized implementation with tests and
+bounded design judgement. L4 crosses modules or services and includes complex
+debugging or migration. L5 is open-ended, system-wide, or high failure cost.
+
+### Risk flags
+
+The classifier reports exactly these boolean flags; the router — not the
+prompt — applies policy:
+
+```text
+security_sensitive   authentication      authorization
+payment              data_migration      public_api_change
+```
+
+Any of `security_sensitive`, `authentication`, `authorization`, or `payment`
+forces a hard floor of L4. Each active `data_migration` or
+`public_api_change` escalates one further level. The result never exceeds L5.
 
 ## Overrides and failures
 
-- `--level` is a minimum, never a cap. L1-L4 still use semantic classification;
-  `--level L5` skips it because no route can be higher.
-- Explicit factors override only their corresponding classifier scores. The router
-  recomputes the score minimum but never lowers the semantic level.
-- On timeout, process failure, or invalid structured output, select safe L3.
+- `--task-type auto` (default) classifies the type. An explicit value replaces
+  only the classified type; level and risk flags are still judged. Invalid
+  values fail immediately instead of falling back.
+- `--level` is a minimum, never a cap. With both an explicit type and an
+  explicit `--level L5`, the preflight is skipped entirely because both axes
+  are pinned. An explicit `--level L5` alone still classifies so the task-type
+  axis picks the right profile row.
+- Explicit factors override only their corresponding classifier scores. The
+  router recomputes the score minimum but never lowers the semantic level.
+- On timeout, process failure, or invalid structured output, select the safe
+  fallback: `implementation` / `L3` / `luna xhigh`. The fallback is reported
+  on stderr.
 
 ## Execution rules
 
-1. State the selected level, model, and effort before substantial work.
+1. State the selected task_type, level, model, and effort before substantial work.
 2. Route once; do not recursively invoke the router from a routed agent.
 3. Re-evaluate only if scope or risk materially changes.
 4. Keep platform mappings editable in `config/model-map.json`.
 
+## Two-stage architectural refactoring
+
+`architectural_refactoring` at L3 or above runs as two chained stages:
+
+1. **Plan** — `sol` analyses the repository and writes a structured plan JSON
+   to a temporary run directory (`/tmp/codex-route-<run-id>/plan.json`). It
+   modifies no other file.
+2. **Execute** — the executor model reads the original request plus the plan
+   file, verifies the plan against the current repository state, applies the
+   changes, and runs the plan's validation commands.
+
+The execute stage runs only if the plan stage succeeds. On success the run
+directory is removed; on any failure it is preserved for inspection.
+`--keep-plan` preserves it even on success.
+
+Architectural refactoring that only needs a design document reclassifies as
+`design`; the two-stage path therefore always includes execution. L1-L2 rows
+stay single-stage because such small scopes should have been L3+ if they truly
+required a separate executor.
+
 ## Default model map
 
-### Codex
+Full slugs: luna = `gpt-5.6-luna`, sol = `gpt-5.6-sol`, terra = `gpt-5.6-terra`.
 
-| Level | Model | Effort |
-|---|---|---|
-| L1 | gpt-5.6-terra | low |
-| L2 | gpt-5.6-terra | medium |
-| L3 | gpt-5.6-terra | high |
-| L4 | gpt-5.6-sol | xhigh |
-| L5 | gpt-5.6-sol | max |
+### Codex (`task_type × level` matrix)
+
+| task_type | L1 | L2 | L3 | L4 | L5 |
+|---|---|---|---|---|---|
+| implementation | luna medium | luna high | luna xhigh | terra xhigh | terra max |
+| design | sol low | sol medium | sol high | sol xhigh | sol max |
+| review | sol low | sol medium | sol high | sol xhigh | sol max |
+| local_refactoring | luna medium | luna high | luna xhigh | terra xhigh | terra max |
+| architectural_refactoring | sol medium | sol high | sol high → luna xhigh | sol xhigh → terra xhigh | sol max → terra max |
+
+`A → B` marks the two-stage path: A plans, B executes.
+
+Model roles: luna handles clearly defined coding work; sol owns judgement and
+analysis (design, review, architectural planning); terra owns wide, long
+execution (cross-module implementation, migrations, complex debugging).
 
 ### Claude Code
 
