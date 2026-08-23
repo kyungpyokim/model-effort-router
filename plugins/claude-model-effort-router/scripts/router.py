@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Difficulty-based model and effort router for Codex, Claude Code, and Antigravity."""
+"""Task-type and difficulty based model/effort router for Codex, Claude Code, and Antigravity."""
 
 from __future__ import annotations
 
@@ -12,13 +12,27 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from dataclasses import asdict, dataclass
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 FACTORS = ("scope", "ambiguity", "diagnosis", "design", "risk", "verification")
 LEVELS = ("L1", "L2", "L3", "L4", "L5")
 LEVEL_NAMES = {"L1": "simple", "L2": "standard", "L3": "complex", "L4": "advanced", "L5": "critical"}
+TASK_TYPES = ("implementation", "design", "review", "local_refactoring", "architectural_refactoring")
+RISK_FLAGS = (
+    "security_sensitive",
+    "authentication",
+    "authorization",
+    "payment",
+    "data_migration",
+    "public_api_change",
+)
+SECURITY_FLOOR_FLAGS = ("security_sensitive", "authentication", "authorization", "payment")
+FALLBACK_TASK_TYPE = "implementation"
+SCHEMA_VERSION = 1
+
 CODEX_CLASSIFIER_MODEL = "gpt-5.6-terra"
 CLAUDE_CLASSIFIER_MODEL = "claude-sonnet-5"
 ANTIGRAVITY_CLASSIFIER_MODEL = "gemini-3.6-flash-low"
@@ -29,8 +43,9 @@ DETECT_TIMEOUT_SECONDS = 20.0
 CLASSIFIER_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["level", "factors", "rationale", "hard_floor"],
+    "required": ["task_type", "level", "factors", "risk_flags", "confidence", "reason"],
     "properties": {
+        "task_type": {"type": "string", "enum": list(TASK_TYPES)},
         "level": {"type": "string", "enum": list(LEVELS)},
         "factors": {
             "type": "object",
@@ -38,42 +53,77 @@ CLASSIFIER_SCHEMA = {
             "required": list(FACTORS),
             "properties": {factor: {"type": "integer", "minimum": 0, "maximum": 2} for factor in FACTORS},
         },
-        "rationale": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-        "hard_floor": {"type": ["string", "null"], "enum": ["L4", "L5", None]},
+        "risk_flags": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": list(RISK_FLAGS),
+            "properties": {flag: {"type": "boolean"} for flag in RISK_FLAGS},
+        },
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "reason": {"type": "string", "minLength": 1},
     },
 }
 
 CLASSIFIER_PROMPT = """Classify this coding task only; do not run commands or modify files.
+Choose exactly one task_type:
+- implementation: build or change code directly (features, APIs, UI work, bug fixes, tests).
+- design: decide structure or direction without editing code (architecture, API or data-model design, technology choice, implementation planning).
+- review: analyse existing code or plans to find problems (code, PR, security, performance, or design review).
+- local_refactoring: clean up internals while preserving behaviour and module boundaries (extract functions, renames, deduplication, simplification within one module).
+- architectural_refactoring: change module boundaries or system structure AND carry out the resulting edits (module splits, dependency inversion, state-management changes, data-layer redesign, moving responsibilities between services). If only a design is wanted, choose design instead.
 Score scope, ambiguity, diagnosis, design, risk, and verification from 0 to 2.
 Map totals 0-2 to L1, 3-5 to L2, 6-8 to L3, 9-10 to L4, and 11-12 to L5.
-Apply floors: L4 for authentication/authorization, public API compatibility,
-production incidents, database migrations, payments, security-sensitive code, or
-multi-service deployments; L5 for irreversible deletion, cryptographic design,
-compliance/legal or financial correctness, broad live incidents, or material harm.
-Set hard_floor to L4, L5, or null. Return the requested JSON only. Task:\n"""
+Set each risk_flag true only when the task genuinely involves that area; the router applies a hard L4 floor for security_sensitive/authentication/authorization/payment and one escalation level per data_migration/public_api_change.
+Set confidence between 0 and 1. Keep reason to one short sentence. Return the requested JSON only. Task:\n"""
+
+PLANNER_INSTRUCTIONS_TEMPLATE = """You are the planning stage of a two-stage architectural refactoring pipeline.
+Analyse the request against the current repository state and produce a structured implementation plan.
+Write the plan as JSON to exactly this path: {plan_path}
+Use this top-level shape:
+{{"schema_version": 1, "analysis": {{"current_structure": [], "constraints": [], "affected_areas": [], "risks": []}}, "implementation_plan": {{"steps": [], "expected_files": [], "compatibility_requirements": []}}, "validation": {{"commands": [], "acceptance_criteria": [], "rollback_notes": []}}}}
+Do not modify any repository file. Read-only analysis plus writing the single plan file is allowed.
+Cross-check the request against the real repository before writing the plan.
+Do not invoke the model-effort router recursively.
+If the repository cannot be analysed safely, exit non-zero without writing the plan."""
+
+IMPLEMENTER_INSTRUCTIONS_TEMPLATE = """You are the execution stage of a two-stage architectural refactoring pipeline.
+A structured plan file is provided at: {plan_path}
+Read the plan together with the original request and the current repository state first.
+If the repository conflicts with the plan, stop and report the difference instead of forcing the plan through.
+Execute the planned changes, run validation.commands, satisfy acceptance_criteria, and apply rollback_notes when validation fails.
+Do not blindly follow the plan when the repository state has moved on from what the planner saw.
+Do not invoke the model-effort router recursively."""
 
 
 @dataclass(frozen=True)
 class Classification:
+    task_type: str
     level: str
     factors: dict[str, int]
-    rationale: list[str]
+    risk_flags: dict[str, bool]
+    confidence: float | None
+    reason: str
     source: str
-    hard_floor: str | None = None
 
 
 @dataclass(frozen=True)
 class RouteResult:
     platform: str
+    task_type: str
+    base_level: str
     level: str
     level_name: str
     score: int
     factors: dict[str, int]
-    model: str
+    risk_flags: dict[str, bool]
+    confidence: float | None
+    model: str | None
     effort: str | None
+    mode: str
+    stages: list[dict]
+    plan_dir: str | None
     rationale: list[str]
     source: str
-    hard_floor: str | None
 
 
 def agent_name(level: str) -> str:
@@ -114,6 +164,12 @@ def normalise_level(level: str) -> str:
     return value
 
 
+def normalise_task_type(task_type: str) -> str:
+    if task_type not in TASK_TYPES:
+        raise ValueError(f"task type must be one of {', '.join(TASK_TYPES)}; got {task_type!r}")
+    return task_type
+
+
 def level_for_score(score: int) -> str:
     if score <= 2:
         return "L1"
@@ -131,38 +187,44 @@ def higher_level(a: str, b: str) -> str:
 
 
 def fallback_classification(reason: str) -> Classification:
+    """Safe landing used whenever the semantic preflight cannot produce valid output."""
     return Classification(
+        task_type=FALLBACK_TASK_TYPE,
         level="L3",
         factors={factor: 1 for factor in FACTORS},
-        rationale=[f"Semantic preflight unavailable ({reason}); safe fallback L3 applied"],
+        risk_flags={flag: False for flag in RISK_FLAGS},
+        confidence=None,
+        reason=f"Semantic preflight unavailable ({reason}); safe fallback applied",
         source="fallback",
-        hard_floor=None,
     )
 
 
 def validate_classifier_output(payload: object, source: str = "classifier") -> Classification:
-    if not isinstance(payload, dict) or set(payload) != {"level", "factors", "rationale", "hard_floor"}:
-        raise ValueError("response must contain exactly level, factors, rationale, and hard_floor")
-    level = payload["level"]
+    required = {"task_type", "level", "factors", "risk_flags", "confidence", "reason"}
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise ValueError("response must contain exactly task_type, level, factors, risk_flags, confidence, and reason")
+    task_type = normalise_task_type(payload["task_type"])
+    level = normalise_level(payload["level"])
     factors = payload["factors"]
-    rationale = payload["rationale"]
-    hard_floor = payload["hard_floor"]
-    if not isinstance(level, str):
-        raise ValueError("level must be a string")
-    level = normalise_level(level)
+    risk_flags = payload["risk_flags"]
+    confidence = payload["confidence"]
+    reason = payload["reason"]
     if not isinstance(factors, dict) or set(factors) != set(FACTORS):
         raise ValueError("factors must contain exactly the six routing factors")
     validated_factors = {factor: clamp_score(factors[factor]) for factor in FACTORS}
-    if not isinstance(rationale, list) or not rationale or any(not isinstance(item, str) or not item for item in rationale):
-        raise ValueError("rationale must be a non-empty list of strings")
     minimum_level = level_for_score(sum(validated_factors.values()))
     if higher_level(level, minimum_level) != level:
         raise ValueError("level is lower than its factor scores")
-    if hard_floor is not None and hard_floor not in ("L4", "L5"):
-        raise ValueError("hard_floor must be L4, L5, or null")
-    if hard_floor is not None and higher_level(level, hard_floor) != level:
-        raise ValueError("level is lower than hard_floor")
-    return Classification(level, validated_factors, rationale, source, hard_floor)
+    if not isinstance(risk_flags, dict) or set(risk_flags) != set(RISK_FLAGS):
+        raise ValueError(f"risk_flags must contain exactly {', '.join(RISK_FLAGS)}")
+    for flag in RISK_FLAGS:
+        if not isinstance(risk_flags[flag], bool):
+            raise ValueError(f"risk flag {flag} must be a boolean")
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
+        raise ValueError("confidence must be a number between 0 and 1")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("reason must be a non-empty string")
+    return Classification(task_type, level, validated_factors, dict(risk_flags), float(confidence), reason, source)
 
 
 def classify_task(
@@ -171,8 +233,13 @@ def classify_task(
     timeout: float = CLASSIFIER_TIMEOUT_SECONDS,
     command: str | None = None,
 ) -> Classification:
-    """Run the platform-native low-effort semantic preflight, falling back to L3."""
+    """Run the platform-native low-effort semantic preflight, falling back to safe defaults."""
     commands = {"codex": "codex", "claude-code": "claude", "antigravity": "agy"}
+
+    def fallback(exc: Exception) -> Classification:
+        detail = "timed out" if isinstance(exc, subprocess.TimeoutExpired) else "process could not start" if isinstance(exc, OSError) else "invalid structured output"
+        return fallback_classification(detail)
+
     if platform not in commands:
         raise ValueError(f"unknown platform: {platform}")
     executable = command or commands[platform]
@@ -200,6 +267,7 @@ def classify_task(
                     f'model_reasoning_effort="{CLASSIFIER_EFFORT}"',
                     CLASSIFIER_PROMPT + task,
                 ]
+                unwrap = lambda raw: json.loads(raw)
             elif platform == "claude-code":
                 launch = [
                     executable,
@@ -220,6 +288,7 @@ def classify_task(
                     "--no-session-persistence",
                     CLASSIFIER_PROMPT + task,
                 ]
+                unwrap = lambda raw: json.loads(raw)["structured_output"]
             else:
                 launch = [
                     executable,
@@ -238,33 +307,42 @@ def classify_task(
                     json.dumps(CLASSIFIER_SCHEMA),
                     CLASSIFIER_PROMPT + task,
                 ]
-            proc = subprocess.run(
-                launch,
-                text=True,
-                capture_output=True,
-                check=False,
-                timeout=timeout,
-                cwd=directory,
-            )
-    except subprocess.TimeoutExpired:
-        return fallback_classification(f"timed out after {timeout:g}s")
+                unwrap = lambda raw: json.loads(raw)["structured_output"]
+            try:
+                proc = subprocess.run(
+                    launch,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=timeout,
+                    cwd=directory,
+                )
+            except subprocess.TimeoutExpired as exc:
+                return fallback(exc)
+            except OSError as exc:
+                return fallback(exc)
+            if proc.returncode != 0:
+                return fallback_classification("process failed")
+            try:
+                payload = unwrap(proc.stdout)
+                source = "terra" if platform == "codex" else CLAUDE_CLASSIFIER_MODEL if platform == "claude-code" else ANTIGRAVITY_CLASSIFIER_MODEL
+                return validate_classifier_output(payload, source)
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                return fallback_classification("invalid structured output")
     except OSError:
-        return fallback_classification("process could not start")
-    if proc.returncode != 0:
-        return fallback_classification("process failed")
-    try:
-        payload = json.loads(proc.stdout)
-        if platform in ("claude-code", "antigravity"):
-            if not isinstance(payload, dict):
-                raise ValueError("structured output must be an object")
-            payload = payload["structured_output"]
-        source = "terra" if platform == "codex" else CLAUDE_CLASSIFIER_MODEL if platform == "claude-code" else ANTIGRAVITY_CLASSIFIER_MODEL
-        return validate_classifier_output(payload, source)
-    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-        return fallback_classification("invalid structured output")
+        return fallback_classification("temporary directory could not be created")
 
 
-def maximum_classification(explicit_factors: dict[str, int] | None) -> Classification:
+def apply_risk_escalation(level: str, risk_flags: dict[str, bool]) -> str:
+    """Security flags force an L4 floor; other flags escalate one level each."""
+    index = LEVELS.index(level)
+    index += sum(1 for flag in RISK_FLAGS if flag not in SECURITY_FLOOR_FLAGS and risk_flags.get(flag))
+    if any(risk_flags.get(flag) for flag in SECURITY_FLOOR_FLAGS):
+        index = max(index, LEVELS.index("L4"))
+    return LEVELS[min(index, len(LEVELS) - 1)]
+
+
+def maximum_classification(explicit_factors: dict[str, int] | None, task_type: str | None) -> Classification:
     """Build the bypass result for an explicit maximum-level request."""
     factors = {factor: 0 for factor in FACTORS}
     for factor, value in (explicit_factors or {}).items():
@@ -273,11 +351,13 @@ def maximum_classification(explicit_factors: dict[str, int] | None) -> Classific
         factors[factor] = clamp_score(value)
     level = level_for_score(sum(factors.values()))
     return Classification(
+        task_type=task_type or FALLBACK_TASK_TYPE,
         level=level,
         factors=factors,
-        rationale=["Semantic preflight skipped because explicit L5 is already maximal"],
+        risk_flags={flag: False for flag in RISK_FLAGS},
+        confidence=None,
+        reason="Semantic preflight skipped because both task_type and maximal level were pinned explicitly",
         source="manual",
-        hard_floor=None,
     )
 
 
@@ -289,12 +369,204 @@ def apply_factor_overrides(classification: Classification, explicit_factors: dic
         factors[factor] = clamp_score(value)
     minimum_level = level_for_score(sum(factors.values()))
     return Classification(
+        classification.task_type,
         higher_level(classification.level, minimum_level),
         factors,
-        [*classification.rationale, "explicit factor scores applied"],
+        classification.risk_flags,
+        classification.confidence,
+        classification.reason + "; explicit factor scores applied",
         classification.source,
-        classification.hard_floor,
     )
+
+
+def load_codex_matrix(config: dict) -> dict:
+    platform = config.get("platforms", {}).get("codex")
+    matrix = platform.get("matrix") if isinstance(platform, dict) else None
+    if platform is None or platform.get("routing") != "task_matrix" or not isinstance(matrix, dict):
+        raise ValueError("config platforms.codex must define routing='task_matrix' with a matrix")
+    for task_type in TASK_TYPES:
+        row = matrix.get(task_type)
+        if not isinstance(row, dict):
+            raise ValueError(f"codex matrix is missing task_type {task_type}")
+        for level in LEVELS:
+            entry = row.get(level)
+            if not isinstance(entry, dict):
+                raise ValueError(f"codex matrix is missing {task_type}/{level}")
+            if "stages" in entry:
+                stages = entry["stages"]
+                if not isinstance(stages, list) or not stages or any(
+                    not isinstance(stage, dict) or set(stage) != {"role", "model", "effort"} for stage in stages
+                ):
+                    raise ValueError(f"invalid stage profile at codex matrix {task_type}/{level}")
+            elif set(entry) != {"model", "effort"}:
+                raise ValueError(f"entry at codex matrix {task_type}/{level} must define model+effort or stages")
+    return matrix
+
+
+def resolve_codex_stages(matrix: dict, task_type: str, level: str) -> tuple[list[dict], str]:
+    entry = matrix[task_type][level]
+    if "stages" in entry:
+        return [dict(stage) for stage in entry["stages"]], "two_stage"
+    return [{"role": "executor", "model": entry["model"], "effort": entry["effort"]}], "single"
+
+
+def route(
+    task: str,
+    platform: str,
+    config: dict,
+    explicit_factors: dict[str, int] | None = None,
+    explicit_level: str | None = None,
+    explicit_task_type: str | None = None,
+    available_models: list[str] | None = None,
+    classifier: Callable[[str], Classification] | None = None,
+) -> RouteResult:
+    # The preflight is skipped only when both axes are pinned manually. An
+    # explicit L5 alone still classifies so the task_type axis picks the right
+    # profile row; the classified level can never lower the explicit maximum.
+    manual_bypass = explicit_task_type is not None and explicit_level is not None and normalise_level(explicit_level) == "L5"
+    if manual_bypass:
+        classification = maximum_classification(explicit_factors, normalise_task_type(explicit_task_type))
+    else:
+        classification = classifier(task) if classifier else classify_task(task, platform=platform)
+        if explicit_factors:
+            classification = apply_factor_overrides(classification, explicit_factors)
+    task_type = normalise_task_type(explicit_task_type) if explicit_task_type else classification.task_type
+    base_level = higher_level(classification.level, normalise_level(explicit_level)) if explicit_level else classification.level
+    level = apply_risk_escalation(base_level, classification.risk_flags)
+
+    rationale = [classification.reason]
+    if explicit_factors:
+        rationale.append("explicit factor scores applied")
+    if explicit_level:
+        rationale.append(f"explicit minimum level {normalise_level(explicit_level)} applied")
+    if explicit_task_type:
+        rationale.append(f"explicit task_type {explicit_task_type} applied")
+
+    if platform == "codex":
+        matrix = load_codex_matrix(config)
+        stages, mode = resolve_codex_stages(matrix, task_type, level)
+        if mode == "two_stage":
+            model, effort, plan_dir = None, None, str(Path(tempfile.gettempdir()) / f"codex-route-{uuid.uuid4().hex[:8]}")
+        else:
+            model, effort, plan_dir = stages[0]["model"], stages[0]["effort"], None
+    elif platform == "antigravity":
+        profile = config["platforms"][platform][level]
+        stages, mode = [{"role": "executor", "model": choose_antigravity_model(profile, available_models), "effort": None}], "single"
+        model, effort, plan_dir = stages[0]["model"], None, None
+    else:
+        profile = config["platforms"][platform][level]
+        stages, mode = [{"role": "executor", "model": profile["model"], "effort": profile["effort"]}], "single"
+        model, effort, plan_dir = profile["model"], profile["effort"], None
+
+    return RouteResult(
+        platform=platform,
+        task_type=task_type,
+        base_level=base_level,
+        level=level,
+        level_name=config["levels"][level]["name"],
+        score=sum(classification.factors.values()),
+        factors=dict(classification.factors),
+        risk_flags=dict(classification.risk_flags),
+        confidence=classification.confidence,
+        model=model,
+        effort=effort,
+        mode=mode,
+        stages=stages,
+        plan_dir=plan_dir,
+        rationale=rationale,
+        source=classification.source,
+    )
+
+
+def shell_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
+    """Legacy single-command launcher used by Claude Code and Antigravity platforms."""
+    if result.platform == "claude-code":
+        base = ["claude", "--agent", agent_name(result.level), "--model", result.model, "--effort", str(result.effort)]
+        return base + ([task] if interactive else ["-p", task])
+    if result.platform == "antigravity":
+        return ["agy", "--agent", agent_name(result.level), "--model", result.model, *( ["--prompt-interactive", task] if interactive else ["--prompt", task] )]
+    raise ValueError("use stage_commands for codex results")
+
+
+PLANNER_PROMPT_PREFIX = "Produce an architectural refactoring plan.\nOriginal request:\n"
+IMPLEMENTER_PROMPT_PREFIX = "Execute the prepared refactoring plan.\nOriginal request:\n"
+
+
+def _codex_exec_command(model: str, effort: str, instructions: str, prompt: str, interactive: bool) -> list[str]:
+    options = [
+        "-m", model,
+        "-c", f"model_reasoning_effort={effort}",
+        "-c", f"developer_instructions={json.dumps(instructions)}",
+    ]
+    return ["codex", *options, prompt] if interactive else ["codex", "exec", *options, prompt]
+
+
+def stage_commands(result: RouteResult, task: str, interactive: bool = False) -> list[list[str]]:
+    """Build one argv per execution stage. Codex two-stage runs are always exec sessions."""
+    if result.platform != "codex":
+        return [shell_command(result, task, interactive=False)]
+    commands: list[list[str]] = []
+    plan_path = str(Path(result.plan_dir) / "plan.json") if result.plan_dir else None
+    if result.mode == "two_stage":
+        planner, implementer = result.stages
+        instructions = PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
+        prompt = f"{PLANNER_PROMPT_PREFIX}{task}\n\nWrite the plan JSON to exactly: {plan_path}\n"
+        commands.append(_codex_exec_command(planner["model"], planner["effort"], instructions, prompt, interactive=False))
+        instructions = IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
+        prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
+        commands.append(_codex_exec_command(implementer["model"], implementer["effort"], instructions, prompt, interactive=False))
+    else:
+        stage = result.stages[0]
+        commands.append(_codex_exec_command(stage["model"], stage["effort"], codex_agent_instructions(result.level), task, interactive))
+    return commands
+
+
+def command_chain(result: RouteResult, task: str, keep_plan: bool = False, interactive: bool = False) -> str | None:
+    """Assemble a success-dependent shell chain. Returns None when nothing to print."""
+    commands = stage_commands(result, task, interactive)
+    parts = [shlex.join(command) for command in commands]
+    if result.mode != "two_stage":
+        return parts[0]
+    prefix = f"mkdir -p {shlex.quote(str(result.plan_dir))}"
+    cleanup = "" if keep_plan else f" && rm -rf {shlex.quote(str(result.plan_dir))}"
+    return f"{prefix} && {' && '.join(parts)}{cleanup}"
+
+
+def result_payload(result: RouteResult, commands: list[list[str]] | None = None) -> dict:
+    steps: list[dict] = []
+    ids = ["plan", "execute"] if result.mode == "two_stage" else ["execute"]
+    for position, stage in enumerate(result.stages):
+        step = {
+            "id": ids[position],
+            "role": stage["role"],
+            "model": stage["model"],
+            "effort": stage["effort"],
+            "depends_on": ["plan"] if position == 1 else [],
+        }
+        if commands:
+            step["command"] = commands[position]
+        if result.plan_dir:
+            plan_file = {"type": "plan_file", "path": str(Path(result.plan_dir) / "plan.json")}
+            if position == 0:
+                step["output"] = plan_file
+            else:
+                step["input"] = plan_file
+        steps.append(step)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "platform": result.platform,
+        "task_type": result.task_type,
+        "base_level": result.base_level,
+        "effective_level": result.level,
+        "score": result.score,
+        "factors": result.factors,
+        "risk_flags": [flag for flag, active in result.risk_flags.items() if active],
+        "confidence": result.confidence,
+        "mode": result.mode,
+        "source": result.source,
+        "rationale": result.rationale,
+        "steps": steps,
+    }
 
 
 def read_available_models(command: str = "agy", timeout: float = DETECT_TIMEOUT_SECONDS) -> list[str]:
@@ -318,47 +590,6 @@ def choose_antigravity_model(profile: dict, available: list[str] | None) -> str:
     return profile["fallback"]
 
 
-def route(
-    task: str,
-    platform: str,
-    config: dict,
-    explicit_factors: dict[str, int] | None = None,
-    explicit_level: str | None = None,
-    available_models: list[str] | None = None,
-    classifier: Callable[[str], Classification] | None = None,
-) -> RouteResult:
-    # An L5 request is already the maximum safe route. Lower explicit levels are
-    # minima, so they still need the semantic preflight to discover L4/L5 work.
-    manual = explicit_level is not None and normalise_level(explicit_level) == "L5"
-    if manual:
-        classification = maximum_classification(explicit_factors)
-    else:
-        classification = classifier(task) if classifier else classify_task(task, platform=platform)
-        if explicit_factors:
-            classification = apply_factor_overrides(classification, explicit_factors)
-    level = higher_level(classification.level, normalise_level(explicit_level)) if explicit_level else classification.level
-    rationale = list(classification.rationale)
-    if explicit_level:
-        rationale.append(f"explicit minimum level {normalise_level(explicit_level)} applied")
-
-    profile = config["platforms"][platform][level]
-    if platform == "antigravity":
-        model, effort = choose_antigravity_model(profile, available_models), None
-    else:
-        model, effort = profile["model"], profile["effort"]
-    return RouteResult(platform, level, config["levels"][level]["name"], sum(classification.factors.values()), classification.factors, model, effort, rationale, classification.source, classification.hard_floor)
-
-
-def shell_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
-    if result.platform == "codex":
-        options = ["-m", result.model, "-c", f"model_reasoning_effort={result.effort}", "-c", f"developer_instructions={json.dumps(codex_agent_instructions(result.level))}"]
-        return ["codex", *options, task] if interactive else ["codex", "exec", *options, task]
-    if result.platform == "claude-code":
-        base = ["claude", "--agent", agent_name(result.level), "--model", result.model, "--effort", str(result.effort)]
-        return base + ([task] if interactive else ["-p", task])
-    return ["agy", "--agent", agent_name(result.level), "--model", result.model, *( ["--prompt-interactive", task] if interactive else ["--prompt", task] )]
-
-
 def default_config_path() -> Path:
     here = Path(__file__).resolve()
     for candidate in (here.parent.parent / "config" / "model-map.json", here.parent / "config" / "model-map.json", here.parent.parent.parent / "config" / "model-map.json"):
@@ -373,6 +604,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--platform", choices=("codex", "claude-code", "antigravity"), required=True)
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--level", choices=(*LEVELS, *(level.lower() for level in LEVELS)))
+    parser.add_argument(
+        "--task-type",
+        choices=("auto", *TASK_TYPES),
+        default="auto",
+        help="Override automatic task-type classification (auto still classifies level and risk)",
+    )
+    parser.add_argument("--keep-plan", action="store_true", help="Preserve the two-stage plan directory on success")
     for factor in FACTORS:
         parser.add_argument(f"--{factor}", type=int, choices=(0, 1, 2))
     parser.add_argument("--classifier-timeout", type=positive_finite_float, default=CLASSIFIER_TIMEOUT_SECONDS)
@@ -380,7 +618,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--detect-timeout", type=positive_finite_float, default=DETECT_TIMEOUT_SECONDS)
     parser.add_argument("--available-models-file", type=Path)
     parser.add_argument("--format", choices=("json", "text", "command"), default="text")
-    parser.add_argument("--interactive", action="store_true", help="Build an interactive-session command")
+    parser.add_argument("--interactive", action="store_true", help="Build an interactive-session command (single-stage only)")
     return parser.parse_args(argv)
 
 
@@ -388,6 +626,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     config = load_config(args.config or default_config_path())
     explicit_factors = {factor: getattr(args, factor) for factor in FACTORS if getattr(args, factor) is not None}
+    explicit_task_type = None if args.task_type == "auto" else args.task_type
     available = None
     if args.available_models_file:
         available = [line.strip() for line in args.available_models_file.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -402,20 +641,31 @@ def main(argv: list[str] | None = None) -> int:
         config,
         explicit_factors,
         args.level,
+        explicit_task_type,
         available,
         classifier=lambda task: classify_task(task, args.platform, args.classifier_timeout),
     )
     if result.source == "fallback":
-        print("Semantic preflight failed; safe L3 fallback applied", file=sys.stderr)
+        print(
+            "Semantic preflight failed; safe fallback applied "
+            f"({result.task_type} / {result.level})",
+            file=sys.stderr,
+        )
     if args.format == "json":
-        print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
+        print(json.dumps(result_payload(result, stage_commands(result, args.task)), ensure_ascii=False, indent=2))
     elif args.format == "command":
-        print(shlex.join(shell_command(result, args.task, args.interactive)))
+        chain = command_chain(result, args.task, keep_plan=args.keep_plan, interactive=args.interactive)
+        print(chain if chain is not None else shlex.join(shell_command(result, args.task, args.interactive)))
     else:
-        effort = result.effort or "embedded in model"
-        print(f"{result.level} ({result.level_name}) | score={result.score} | model={result.model} | effort={effort}")
-        print("factors: " + ", ".join(f"{k}={v}" for k, v in result.factors.items()))
+        stages_text = " -> ".join(f"{stage['role']}={stage['model']}/{stage['effort'] or 'embedded'}" for stage in result.stages)
+        active_flags = [flag for flag, active in result.risk_flags.items() if active]
+        print(f"{result.level} ({result.level_name}) | type={result.task_type} | mode={result.mode} | score={result.score}")
+        print(f"stages: {stages_text}")
+        print("factors: " + ", ".join(f"{key}={value}" for key, value in result.factors.items()))
+        print("risk flags: " + (", ".join(active_flags) if active_flags else "none"))
         print("reason: " + "; ".join(result.rationale))
+        if result.plan_dir:
+            print(f"plan dir: {result.plan_dir}")
     return 0
 
 

@@ -29,25 +29,58 @@
   },
   "platforms": {
     "codex": {
-      "L1": {
-        "model": "gpt-5.6-terra",
-        "effort": "low"
-      },
-      "L2": {
-        "model": "gpt-5.6-terra",
-        "effort": "medium"
-      },
-      "L3": {
-        "model": "gpt-5.6-terra",
-        "effort": "high"
-      },
-      "L4": {
-        "model": "gpt-5.6-sol",
-        "effort": "xhigh"
-      },
-      "L5": {
-        "model": "gpt-5.6-sol",
-        "effort": "max"
+      "routing": "task_matrix",
+      "matrix": {
+        "implementation": {
+          "L1": { "model": "gpt-5.6-luna", "effort": "medium" },
+          "L2": { "model": "gpt-5.6-luna", "effort": "high" },
+          "L3": { "model": "gpt-5.6-luna", "effort": "xhigh" },
+          "L4": { "model": "gpt-5.6-terra", "effort": "xhigh" },
+          "L5": { "model": "gpt-5.6-terra", "effort": "max" }
+        },
+        "design": {
+          "L1": { "model": "gpt-5.6-sol", "effort": "low" },
+          "L2": { "model": "gpt-5.6-sol", "effort": "medium" },
+          "L3": { "model": "gpt-5.6-sol", "effort": "high" },
+          "L4": { "model": "gpt-5.6-sol", "effort": "xhigh" },
+          "L5": { "model": "gpt-5.6-sol", "effort": "max" }
+        },
+        "review": {
+          "L1": { "model": "gpt-5.6-sol", "effort": "low" },
+          "L2": { "model": "gpt-5.6-sol", "effort": "medium" },
+          "L3": { "model": "gpt-5.6-sol", "effort": "high" },
+          "L4": { "model": "gpt-5.6-sol", "effort": "xhigh" },
+          "L5": { "model": "gpt-5.6-sol", "effort": "max" }
+        },
+        "local_refactoring": {
+          "L1": { "model": "gpt-5.6-luna", "effort": "medium" },
+          "L2": { "model": "gpt-5.6-luna", "effort": "high" },
+          "L3": { "model": "gpt-5.6-luna", "effort": "xhigh" },
+          "L4": { "model": "gpt-5.6-terra", "effort": "xhigh" },
+          "L5": { "model": "gpt-5.6-terra", "effort": "max" }
+        },
+        "architectural_refactoring": {
+          "L1": { "model": "gpt-5.6-sol", "effort": "medium" },
+          "L2": { "model": "gpt-5.6-sol", "effort": "high" },
+          "L3": {
+            "stages": [
+              { "role": "planner", "model": "gpt-5.6-sol", "effort": "high" },
+              { "role": "implementer", "model": "gpt-5.6-luna", "effort": "xhigh" }
+            ]
+          },
+          "L4": {
+            "stages": [
+              { "role": "planner", "model": "gpt-5.6-sol", "effort": "xhigh" },
+              { "role": "implementer", "model": "gpt-5.6-terra", "effort": "xhigh" }
+            ]
+          },
+          "L5": {
+            "stages": [
+              { "role": "planner", "model": "gpt-5.6-sol", "effort": "max" },
+              { "role": "implementer", "model": "gpt-5.6-terra", "effort": "max" }
+            ]
+          }
+        }
       }
     },
     "claude-code": {
