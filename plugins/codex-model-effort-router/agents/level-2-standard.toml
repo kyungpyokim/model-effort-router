@@ -1,7 +1,5 @@
 name = "L2 Standard"
 description = "Use for a clear feature, focused bug fix, or module-level task with a total difficulty score of 3-5."
-model = "gpt-5.6-terra"
-model_reasoning_effort = "medium"
 
 developer_instructions = """
 Implement a well-bounded task using existing project patterns. Add focused tests and keep changes localized. Escalate when cross-module design or high-risk behavior appears.
