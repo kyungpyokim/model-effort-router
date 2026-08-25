@@ -20,4 +20,4 @@ of truth.
 5. Do not invoke this router again from a delegated or executed agent.
 6. Re-route only if new evidence materially raises scope or risk.
 
-When named-agent delegation is unavailable, run `../../bin/codex-route -- "$ARGUMENTS"` to execute the task in a new Codex process with the selected profile; two-stage results execute as one success-dependent chain. Do not continue the task in the parent session.
+When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `../../bin/codex-route --route-file <route.json>`. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.

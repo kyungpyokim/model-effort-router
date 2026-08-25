@@ -21,6 +21,13 @@ fi
 
 INTERACTIVE=0
 if [[ "${1:-}" == "--interactive" ]]; then INTERACTIVE=1; shift; fi
+if [[ "${1:-}" == "--route-file" ]]; then
+  [[ "$#" -eq 2 ]] || { echo "usage: codex-route --route-file <route.json>" >&2; exit 2; }
+  COMMAND="$(python3 "${ROUTER}" --route-file "$2")"
+  echo "[model-effort-router] ${COMMAND}" >&2
+  if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then exit 0; fi
+  exec bash -c "${COMMAND}"
+fi
 if [[ "${1:-}" == "--" ]]; then shift; fi
 [[ "$#" -gt 0 ]] || { echo "usage: codex-route [--interactive] -- <task>" >&2; exit 2; }
 TASK="$*"

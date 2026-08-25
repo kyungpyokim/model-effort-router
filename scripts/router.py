@@ -577,6 +577,34 @@ def command_chain(result: RouteResult, task: str, keep_plan: bool = False, inter
     return f"{prefix} && {' && '.join(parts)}{cleanup}"
 
 
+def command_chain_from_payload(payload: object) -> str:
+    """Return the already-classified platform command chain from a route JSON payload."""
+    if not isinstance(payload, dict) or payload.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError("route file must be a current route JSON payload")
+    platform = payload.get("platform")
+    executable = {"codex": "codex", "claude-code": "claude", "antigravity": "agy"}.get(platform)
+    if executable is None:
+        raise ValueError("route file must target a supported platform")
+    steps = payload.get("steps")
+    if not isinstance(steps, list) or not steps:
+        raise ValueError("route file must contain at least one execution step")
+    commands: list[list[str]] = []
+    for step in steps:
+        command = step.get("command") if isinstance(step, dict) else None
+        if not isinstance(command, list) or not command or command[0] != executable or not all(isinstance(arg, str) and arg for arg in command):
+            raise ValueError("route file contains an invalid platform command")
+        commands.append(command)
+    if payload.get("mode") == "single" and len(commands) == 1:
+        return shlex.join(commands[0])
+    if payload.get("mode") == "two_stage" and len(commands) == 2:
+        plan = steps[0].get("output") if isinstance(steps[0], dict) else None
+        plan_path = plan.get("path") if isinstance(plan, dict) else None
+        if not isinstance(plan_path, str) or not plan_path:
+            raise ValueError("two-stage route file must declare its plan output")
+        return f"mkdir -p {shlex.quote(str(Path(plan_path).parent))} && {' && '.join(shlex.join(command) for command in commands)}"
+    raise ValueError("route file mode does not match its execution steps")
+
+
 def result_payload(result: RouteResult, commands: list[list[str]] | None = None) -> dict:
     steps: list[dict] = []
     ids = ["plan", "execute"] if result.mode == "two_stage" else ["execute"]
@@ -645,8 +673,9 @@ def default_config_path() -> Path:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("task", help="Task description to classify")
-    parser.add_argument("--platform", choices=("codex", "claude-code", "antigravity"), required=True)
+    parser.add_argument("task", nargs="?", help="Task description to classify")
+    parser.add_argument("--route-file", type=Path, help="Replay an already-classified route JSON without classifying again")
+    parser.add_argument("--platform", choices=("codex", "claude-code", "antigravity"))
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--level", choices=(*LEVELS, *(level.lower() for level in LEVELS)))
     parser.add_argument(
@@ -664,11 +693,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--available-models-file", type=Path)
     parser.add_argument("--format", choices=("json", "text", "command"), default="text")
     parser.add_argument("--interactive", action="store_true", help="Build an interactive-session command (single-stage only)")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.route_file:
+        task_options = {
+            "--platform", "--config", "--level", "--task-type", "--keep-plan",
+            "--classifier-timeout", "--detect-antigravity-models", "--detect-timeout",
+            "--available-models-file", "--format", "--interactive",
+            *(f"--{factor}" for factor in FACTORS),
+        }
+        if args.task or any(option in argv for option in task_options):
+            parser.error("--route-file cannot be combined with task-routing options")
+    elif not args.task or not args.platform:
+        parser.error("task and --platform are required unless --route-file is used")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
+    if args.route_file:
+        try:
+            payload = json.loads(args.route_file.read_text(encoding="utf-8"))
+            print(command_chain_from_payload(payload))
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            print(f"invalid route file: {exc}", file=sys.stderr)
+            return 2
+        return 0
     config = load_config(args.config or default_config_path())
     explicit_factors = {factor: getattr(args, factor) for factor in FACTORS if getattr(args, factor) is not None}
     explicit_task_type = None if args.task_type == "auto" else args.task_type

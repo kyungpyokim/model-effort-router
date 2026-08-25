@@ -372,6 +372,64 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertEqual(second["depends_on"], ["plan"])
         self.assertEqual(first["output"]["path"], second["input"]["path"])
 
+    def test_route_file_replays_json_commands_without_reclassification(self):
+        result = routed(classifier=lambda _: classification("review", "L3"))
+        payload = router.result_payload(result, router.stage_commands(result, "task"))
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            output = io.StringIO()
+            with mock.patch.object(router, "classify_task", side_effect=AssertionError("must not reclassify")):
+                with contextlib.redirect_stdout(output):
+                    self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
+        self.assertIn("codex exec", output.getvalue())
+        self.assertIn("gpt-5.6-sol", output.getvalue())
+
+    def test_route_file_rejects_non_codex_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route.json"
+            route_file.write_text(json.dumps({"schema_version": 1, "platform": "codex", "mode": "single", "steps": [{"command": ["sh", "-c", "bad"]}]}), encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
+
+    def test_codex_launcher_replays_route_file_without_calling_codex(self):
+        result = routed(classifier=lambda _: classification("review", "L3"))
+        payload = router.result_payload(result, router.stage_commands(result, "task"))
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            route_file = directory / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            marker = directory / "codex-called"
+            fake_codex = directory / "codex"
+            fake_codex.write_text(f"#!/bin/sh\ntouch '{marker}'\n", encoding="utf-8")
+            fake_codex.chmod(0o755)
+            proc = subprocess.run(
+                [str(ROOT / self.LAUNCHERS["codex-route"]), "--route-file", str(route_file)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env={**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1", "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"},
+            )
+            self.assertFalse(marker.exists())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("gpt-5.6-sol", proc.stderr)
+
+    def test_claude_launcher_replays_route_file_without_calling_claude(self):
+        result = routed(platform="claude-code", classifier=lambda _: classification("review", "L3"))
+        payload = router.result_payload(result, router.stage_commands(result, "task"))
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            proc = subprocess.run(
+                [str(ROOT / self.LAUNCHERS["claude-route"]), "--route-file", str(route_file)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env={**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1"},
+            )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("claude --agent", proc.stderr)
+
     def test_claude_and_antigravity_launch_the_selected_agent(self):
         for platform in ("claude-code", "antigravity"):
             with self.subTest(platform=platform):
@@ -454,6 +512,7 @@ class ModelDetectionTests(unittest.TestCase):
 class BundleParityTests(unittest.TestCase):
     SHARED = ("scripts/router.py", "config/model-map.json", "references/routing-policy.md")
     PLUGINS = ("plugins/codex-model-effort-router", "plugins/claude-model-effort-router", "plugins/antigravity-model-effort-router")
+    PROMPT_HOOK_PLUGINS = PLUGINS[:2]
 
     def test_plugin_copies_match_the_bundle_root(self):
         for relative in self.SHARED:
@@ -462,6 +521,12 @@ class BundleParityTests(unittest.TestCase):
                 copy = ROOT / plugin / relative
                 self.assertTrue(copy.exists(), f"missing copy: {copy}")
                 self.assertEqual(hashlib.sha256(copy.read_bytes()).hexdigest(), expected, f"{copy} has drifted from {relative}")
+        relative = "scripts/prompt_hook.py"
+        expected = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+        for plugin in self.PROMPT_HOOK_PLUGINS:
+            copy = ROOT / plugin / relative
+            self.assertTrue(copy.exists(), f"missing copy: {copy}")
+            self.assertEqual(hashlib.sha256(copy.read_bytes()).hexdigest(), expected, f"{copy} has drifted from {relative}")
 
     def test_sync_script_reports_an_already_in_sync_bundle(self):
         proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "sync_bundle.py")], capture_output=True, text=True, timeout=60)
