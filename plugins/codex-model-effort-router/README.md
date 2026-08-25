@@ -36,15 +36,6 @@ Invoke the skill:
 /model-effort:route <task>
 ```
 
-## Force every normal prompt through the router
-
-This plugin's `UserPromptSubmit` hook classifies a prompt once as JSON, replays
-that exact route, and blocks the original session prompt. Restart Codex after
-updating the plugin for the hook manifest to load. The selected work runs in a
-new Codex process because a plugin cannot replace a running turn's model or
-effort; its output is therefore in that child process. Slash commands remain
-manual.
-
 ## CLI preflight
 
 When the current Codex surface does not honor named plugin agents, run:

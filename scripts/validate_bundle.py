@@ -27,14 +27,11 @@ def main() -> int:
 
     c_manifest = read_json(codex / ".codex-plugin" / "plugin.json")
     assert c_manifest["name"] == "model-effort"
-    assert c_manifest["hooks"] == "./hooks/hooks.json"
-    require(codex / "hooks" / "hooks.json")
     require(codex / "skills" / "route" / "SKILL.md")
     assert len(list((codex / "agents").glob("*.toml"))) == 5
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
     assert a_manifest["name"] == "model-effort"
-    require(claude / "hooks" / "hooks.json")
     require(claude / "skills" / "route" / "SKILL.md")
     assert len(list((claude / "agents").glob("*.md"))) == 5
 

@@ -1,6 +1,6 @@
 {
   "name": "model-effort",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Routes coding tasks by difficulty to a Codex model and reasoning-effort profile.",
   "author": {
     "name": "Model Effort Router contributors"
@@ -14,7 +14,6 @@
     "effort"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Model Effort Router",
     "shortDescription": "Difficulty-based Codex model and effort routing",

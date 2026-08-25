@@ -40,22 +40,6 @@ python3 scripts/router.py --platform codex --format json "작업" > /tmp/model-e
 plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort-route.json
 ```
 
-For two-stage routes, replay keeps the generated plan file for inspection.
-
-## Forced prompt routing (Codex and Claude Code)
-
-The Codex and Claude plugins register a `UserPromptSubmit` hook. After updating
-the plugin and restarting the host, each normal prompt is classified once into
-JSON, that exact JSON is replayed, and the original parent prompt is blocked.
-The hook passes `MODEL_EFFORT_ROUTER_HOOK_BYPASS=1` to its child processes, so
-the child cannot invoke the hook again.
-
-This is intentionally a new routed CLI process: neither host exposes a safe
-way for a plugin to change the model and effort of an already-running turn.
-Its output belongs to the routed child, not the blocked parent turn. Slash
-commands are left alone so `/model-effort:route` remains available for manual
-use.
-
 Risk policy lives in code, not in prompts: security, authentication,
 authorization, or payment flags force an L4 floor; data migration and public
 API changes escalate one level each.
