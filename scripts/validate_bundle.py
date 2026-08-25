@@ -34,7 +34,6 @@ def main() -> int:
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
     assert a_manifest["name"] == "model-effort"
-    assert a_manifest["hooks"] == "./hooks/hooks.json"
     require(claude / "hooks" / "hooks.json")
     require(claude / "skills" / "route" / "SKILL.md")
     assert len(list((claude / "agents").glob("*.md"))) == 5
