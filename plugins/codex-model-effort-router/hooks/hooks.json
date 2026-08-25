@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/prompt_hook.py\" codex",
+            "timeout": 600,
+            "statusMessage": "Routing task model and effort..."
+          }
+        ]
+      }
+    ]
+  }
+}

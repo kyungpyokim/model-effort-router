@@ -31,6 +31,14 @@ directory isolate the classifier. Failure safely selects L3. Each agent pins
 The deterministic launcher starts a new session with both `--agent` and the
 selected model/effort; it never tries to change the current session.
 
+## Force every normal prompt through the router
+
+The bundled `UserPromptSubmit` hook classifies once to JSON, replays that
+exact route, and blocks the original Claude Code prompt. Restart Claude Code
+after updating the plugin. The selected work runs in a new Claude process, so
+its output belongs to that process rather than the blocked parent turn. Slash
+commands remain manual.
+
 ## Validate
 
 ```bash

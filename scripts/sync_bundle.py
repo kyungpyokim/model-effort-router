@@ -13,6 +13,7 @@ PLUGINS = (
     "plugins/claude-model-effort-router",
     "plugins/antigravity-model-effort-router",
 )
+PROMPT_HOOK_PLUGINS = PLUGINS[:2]
 
 
 def digest(path: Path) -> str:
@@ -34,6 +35,16 @@ def main() -> int:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
             print(f"synced {plugin}/{relative}")
+    relative = "scripts/prompt_hook.py"
+    source = root / relative
+    expected = digest(source)
+    for plugin in PROMPT_HOOK_PLUGINS:
+        target = root / plugin / relative
+        if target.exists() and digest(target) == expected:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        print(f"synced {plugin}/{relative}")
     print("bundle copies are in sync")
     return 0
 
