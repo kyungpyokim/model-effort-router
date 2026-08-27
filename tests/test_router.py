@@ -558,7 +558,22 @@ class PaperthinIntegrationTests(unittest.TestCase):
     def test_autobahn_scope_guard_in_two_stage_execution(self):
         result_two_sec = routed(classifier=lambda _: classification("architectural_refactoring", "L3", flags={"authentication": True}))
         planner, implementer = router.stage_commands(result_two_sec, "refactor auth")
+        self.assertIn("Autobahn scope guard", " ".join(planner))
         self.assertIn("Autobahn scope guard", " ".join(implementer))
+
+    def test_autobahn_scope_guard_in_claude_and_antigravity_single_stage(self):
+        for platform in ("claude-code", "antigravity"):
+            with self.subTest(platform=platform):
+                result_sec = routed(platform=platform, classifier=lambda _: classification("implementation", "L1", flags={"security_sensitive": True}))
+                command = router.stage_commands(result_sec, "fix auth bug")[0]
+                self.assertIn("Autobahn scope guard", " ".join(command))
+
+                result_normal = routed(platform=platform, classifier=lambda _: classification("implementation", "L1"))
+                command_normal = router.stage_commands(result_normal, "fix bug")[0]
+                self.assertNotIn("Autobahn scope guard", " ".join(command_normal))
+
+    def test_autobahn_scope_guard_dry_constant(self):
+        self.assertTrue(router.AUTOBAHN_SCOPE_GUARD.endswith(router.AUTOBAHN_SCOPE_GUARD_INSTRUCTION))
 
 
 def shlex_quote(value: str) -> str:

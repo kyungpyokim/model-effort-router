@@ -8,7 +8,8 @@ Antigravity uses `gemini-3.6-flash-low`. Return structured JSON with a
 `task_type`, all six factor scores, a level, six risk flags, a confidence, and
 a one-sentence reason. The classifier applies a `readchk` reflex before scoring:
 restating intent internally and resolving referents. If genuine conflicting interpretations
-exist, ambiguity is scored as 2 and the surviving fork is stated in reason.
+exist, ambiguity is scored as 2 and the surviving fork is stated in reason (which
+may escalate borderline tasks by one level through the factor score).
 The router validates the exact schema before using it; it never infers risk from
 keywords or language rules.
 

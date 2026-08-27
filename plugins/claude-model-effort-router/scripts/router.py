@@ -97,10 +97,11 @@ Execute the planned changes, run validation.commands, satisfy acceptance_criteri
 Do not blindly follow the plan when the repository state has moved on from what the planner saw.
 Do not invoke the model-effort router recursively."""
 
-AUTOBAHN_SCOPE_GUARD = (
-    "Autobahn scope guard: Isolate security/auth/payment sensitive boundaries; "
+AUTOBAHN_SCOPE_GUARD_INSTRUCTION = (
+    "Isolate security/auth/payment sensitive boundaries; "
     "implement and verify safe scope first and document carved items."
 )
+AUTOBAHN_SCOPE_GUARD = f"Autobahn scope guard: {AUTOBAHN_SCOPE_GUARD_INSTRUCTION}"
 
 
 @dataclass(frozen=True)
@@ -549,13 +550,15 @@ def _agy_prompt_command(model: str, prompt: str) -> list[str]:
 
 
 def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
+    has_security_flag = any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS)
     if result.platform == "codex":
         stage = result.stages[0]
         instructions = codex_agent_instructions(result.level)
-        if any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS):
+        if has_security_flag:
             instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
         return _codex_exec_command(stage["model"], stage["effort"], instructions, task, interactive)
-    return shell_command(result, task, interactive=False)
+    prompt = f"[{AUTOBAHN_SCOPE_GUARD}]\n\n{task}" if has_security_flag else task
+    return shell_command(result, prompt, interactive=False)
 
 
 def stage_commands(result: RouteResult, task: str, interactive: bool = False) -> list[list[str]]:
@@ -564,10 +567,13 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
         return [_single_stage_command(result, task, interactive)]
     plan_path = str(Path(result.plan_dir) / "plan.json")
     planner, implementer = result.stages
+    has_security_flag = any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS)
     instructions = PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
+    if has_security_flag:
+        instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
     plan_prompt = f"{PLANNER_PROMPT_PREFIX}{task}\n\nWrite the plan JSON to exactly: {plan_path}\n"
     execute_instructions = IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
-    if any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS):
+    if has_security_flag:
         execute_instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
     execute_prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
     builders = {
@@ -658,7 +664,7 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None)
         payload["scope_guard"] = {
             "policy": "autobahn_scope_carve",
             "risk_flags": [flag for flag in active_risk_flags if flag in SECURITY_FLOOR_FLAGS],
-            "instruction": "Isolate security/auth/payment sensitive boundaries; implement and verify safe scope first and document carved items.",
+            "instruction": AUTOBAHN_SCOPE_GUARD_INSTRUCTION,
         }
     return payload
 
