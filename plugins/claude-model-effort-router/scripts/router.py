@@ -553,6 +553,7 @@ def _agy_prompt_command(model: str, prompt: str) -> list[str]:
 def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
     has_security_flag = any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS)
     if result.platform == "codex":
+        stage = result.stages[0]
         instructions = codex_agent_instructions(result.level)
         if has_security_flag:
             instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
