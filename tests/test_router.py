@@ -526,6 +526,56 @@ class BundleParityTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
+class PaperthinIntegrationTests(unittest.TestCase):
+    def test_readchk_instructions_in_classifier_prompt(self):
+        self.assertIn("Apply readchk before scoring", router.CLASSIFIER_PROMPT)
+        self.assertIn("restate the core intent internally and resolve referents", router.CLASSIFIER_PROMPT)
+        self.assertIn("score ambiguity as 2 and state the surviving fork in reason", router.CLASSIFIER_PROMPT)
+
+    def test_re0_and_debloat_in_two_stage_templates(self):
+        self.assertIn("Apply re0 and debloat principles", router.PLANNER_INSTRUCTIONS_TEMPLATE)
+        self.assertIn("clean v0 specification without speculative boilerplate", router.PLANNER_INSTRUCTIONS_TEMPLATE)
+        self.assertIn("Cut words, keep rules", router.PLANNER_INSTRUCTIONS_TEMPLATE)
+        self.assertIn("Apply re0 hygiene", router.IMPLEMENTER_INSTRUCTIONS_TEMPLATE)
+        self.assertIn("leave the codebase cleaner than found", router.IMPLEMENTER_INSTRUCTIONS_TEMPLATE)
+
+    def test_autobahn_scope_guard_injected_when_security_flags_active(self):
+        result_sec = routed(classifier=lambda _: classification("implementation", "L1", flags={"security_sensitive": True}))
+        command = router.stage_commands(result_sec, "fix payment")[0]
+        self.assertIn("Autobahn scope guard", " ".join(command))
+
+        payload_sec = router.result_payload(result_sec, [command])
+        self.assertIn("scope_guard", payload_sec)
+        self.assertEqual(payload_sec["scope_guard"]["policy"], "autobahn_scope_carve")
+        self.assertIn("security_sensitive", payload_sec["scope_guard"]["risk_flags"])
+
+        result_normal = routed(classifier=lambda _: classification("implementation", "L1"))
+        command_normal = router.stage_commands(result_normal, "simple task")[0]
+        self.assertNotIn("Autobahn scope guard", " ".join(command_normal))
+        payload_normal = router.result_payload(result_normal, [command_normal])
+        self.assertNotIn("scope_guard", payload_normal)
+
+    def test_autobahn_scope_guard_in_two_stage_execution(self):
+        result_two_sec = routed(classifier=lambda _: classification("architectural_refactoring", "L3", flags={"authentication": True}))
+        planner, implementer = router.stage_commands(result_two_sec, "refactor auth")
+        self.assertIn("Autobahn scope guard", " ".join(planner))
+        self.assertIn("Autobahn scope guard", " ".join(implementer))
+
+    def test_autobahn_scope_guard_in_claude_and_antigravity_single_stage(self):
+        for platform in ("claude-code", "antigravity"):
+            with self.subTest(platform=platform):
+                result_sec = routed(platform=platform, classifier=lambda _: classification("implementation", "L1", flags={"security_sensitive": True}))
+                command = router.stage_commands(result_sec, "fix auth bug")[0]
+                self.assertIn("Autobahn scope guard", " ".join(command))
+
+                result_normal = routed(platform=platform, classifier=lambda _: classification("implementation", "L1"))
+                command_normal = router.stage_commands(result_normal, "fix bug")[0]
+                self.assertNotIn("Autobahn scope guard", " ".join(command_normal))
+
+    def test_autobahn_scope_guard_dry_constant(self):
+        self.assertTrue(router.AUTOBAHN_SCOPE_GUARD.endswith(router.AUTOBAHN_SCOPE_GUARD_INSTRUCTION))
+
+
 def shlex_quote(value: str) -> str:
     import shlex
 

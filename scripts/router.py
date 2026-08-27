@@ -65,6 +65,7 @@ CLASSIFIER_SCHEMA = {
 }
 
 CLASSIFIER_PROMPT = """Classify this coding task only; do not run commands or modify files.
+Apply readchk before scoring: restate the core intent internally and resolve referents (e.g. this, that, ambiguous targets). If genuine conflicting interpretations exist, score ambiguity as 2 and state the surviving fork in reason.
 Choose exactly one task_type:
 - implementation: build or change code directly (features, APIs, UI work, bug fixes, tests).
 - design: decide structure or direction without editing code (architecture, API or data-model design, technology choice, implementation planning).
@@ -78,6 +79,7 @@ Set confidence between 0 and 1. Keep reason to one short sentence. Return the re
 
 PLANNER_INSTRUCTIONS_TEMPLATE = """You are the planning stage of a two-stage architectural refactoring pipeline.
 Analyse the request against the current repository state and produce a structured implementation plan.
+Apply re0 and debloat principles: write the plan as a clean v0 specification without speculative boilerplate or process noise. Cut words, keep rules: each step must be concise, mechanistic, and load-bearing.
 Write the plan as JSON to exactly this path: {plan_path}
 Use this top-level shape:
 {{"schema_version": 1, "analysis": {{"current_structure": [], "constraints": [], "affected_areas": [], "risks": []}}, "implementation_plan": {{"steps": [], "expected_files": [], "compatibility_requirements": []}}, "validation": {{"commands": [], "acceptance_criteria": [], "rollback_notes": []}}}}
@@ -89,10 +91,17 @@ If the repository cannot be analysed safely, exit non-zero without writing the p
 IMPLEMENTER_INSTRUCTIONS_TEMPLATE = """You are the execution stage of a two-stage architectural refactoring pipeline.
 A structured plan file is provided at: {plan_path}
 Read the plan together with the original request and the current repository state first.
+Apply re0 hygiene: leave the codebase cleaner than found, touch only what the plan requires, and remove scaffolding residue.
 If the repository conflicts with the plan, stop and report the difference instead of forcing the plan through.
 Execute the planned changes, run validation.commands, satisfy acceptance_criteria, and apply rollback_notes when validation fails.
 Do not blindly follow the plan when the repository state has moved on from what the planner saw.
 Do not invoke the model-effort router recursively."""
+
+AUTOBAHN_SCOPE_GUARD_INSTRUCTION = (
+    "Isolate security/auth/payment sensitive boundaries; "
+    "implement and verify safe scope first and document carved items."
+)
+AUTOBAHN_SCOPE_GUARD = f"Autobahn scope guard: {AUTOBAHN_SCOPE_GUARD_INSTRUCTION}"
 
 
 @dataclass(frozen=True)
@@ -541,10 +550,15 @@ def _agy_prompt_command(model: str, prompt: str) -> list[str]:
 
 
 def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
+    has_security_flag = any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS)
     if result.platform == "codex":
         stage = result.stages[0]
-        return _codex_exec_command(stage["model"], stage["effort"], codex_agent_instructions(result.level), task, interactive)
-    return shell_command(result, task, interactive=False)
+        instructions = codex_agent_instructions(result.level)
+        if has_security_flag:
+            instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
+        return _codex_exec_command(stage["model"], stage["effort"], instructions, task, interactive)
+    prompt = f"[{AUTOBAHN_SCOPE_GUARD}]\n\n{task}" if has_security_flag else task
+    return shell_command(result, prompt, interactive=False)
 
 
 def stage_commands(result: RouteResult, task: str, interactive: bool = False) -> list[list[str]]:
@@ -553,9 +567,14 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
         return [_single_stage_command(result, task, interactive)]
     plan_path = str(Path(result.plan_dir) / "plan.json")
     planner, implementer = result.stages
+    has_security_flag = any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS)
     instructions = PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
+    if has_security_flag:
+        instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
     plan_prompt = f"{PLANNER_PROMPT_PREFIX}{task}\n\nWrite the plan JSON to exactly: {plan_path}\n"
     execute_instructions = IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
+    if has_security_flag:
+        execute_instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
     execute_prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
     builders = {
         "codex": lambda stage, instr, prompt: _codex_exec_command(stage["model"], stage["effort"], instr, prompt, interactive=False),
@@ -625,7 +644,8 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None)
             else:
                 step["input"] = plan_file
         steps.append(step)
-    return {
+    active_risk_flags = [flag for flag, active in result.risk_flags.items() if active]
+    payload = {
         "schema_version": SCHEMA_VERSION,
         "platform": result.platform,
         "task_type": result.task_type,
@@ -633,13 +653,20 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None)
         "effective_level": result.level,
         "score": result.score,
         "factors": result.factors,
-        "risk_flags": [flag for flag, active in result.risk_flags.items() if active],
+        "risk_flags": active_risk_flags,
         "confidence": result.confidence,
         "mode": result.mode,
         "source": result.source,
         "rationale": result.rationale,
         "steps": steps,
     }
+    if any(flag in SECURITY_FLOOR_FLAGS for flag in active_risk_flags):
+        payload["scope_guard"] = {
+            "policy": "autobahn_scope_carve",
+            "risk_flags": [flag for flag in active_risk_flags if flag in SECURITY_FLOOR_FLAGS],
+            "instruction": AUTOBAHN_SCOPE_GUARD_INSTRUCTION,
+        }
+    return payload
 
 
 def read_available_models(command: str = "agy", timeout: float = DETECT_TIMEOUT_SECONDS) -> list[str]:
