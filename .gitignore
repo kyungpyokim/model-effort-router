@@ -1,3 +1,5 @@
+.worktrees/
+
 # macOS
 .DS_Store
 
