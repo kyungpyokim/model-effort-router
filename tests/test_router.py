@@ -338,7 +338,10 @@ class CommandAndLauncherTests(unittest.TestCase):
                 classifier=lambda _: classification("implementation", "L3"),
             )
             command_text = " ".join(router.stage_commands(result, "implement feature")[0])
-            self.assertIn("focused_tests", command_text)
+            self.assertIn(
+                "- focused_tests: Code changes need focused regression coverage.",
+                command_text,
+            )
             self.assertIn("report", command_text)
             self.assertIn("do not report an unrun check as passed", command_text)
 
@@ -347,8 +350,14 @@ class CommandAndLauncherTests(unittest.TestCase):
         planner, executor = router.stage_commands(result, "restructure modules")
         planner_text, executor_text = " ".join(planner), " ".join(executor)
         self.assertNotIn("focused_tests", planner_text)
-        self.assertIn("focused_tests", executor_text)
-        self.assertIn("plan_validation", executor_text)
+        self.assertIn(
+            "- focused_tests: Code changes need focused regression coverage.",
+            executor_text,
+        )
+        self.assertIn(
+            "- plan_validation: The planner artifact should be validated before execution.",
+            executor_text,
+        )
         self.assertIn("do not report an unrun check as passed", executor_text)
 
     def test_high_risk_verification_recommendations_reach_executor(self):
