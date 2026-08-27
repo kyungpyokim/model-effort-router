@@ -372,8 +372,13 @@ class CommandAndLauncherTests(unittest.TestCase):
             ),
         )
         command_text = " ".join(router.stage_commands(result, "migrate auth API")[0])
-        for check_id in ("security_review", "migration_safety", "contract_review", "broad_regression"):
-            self.assertIn(check_id, command_text)
+        for recommendation in (
+            "- security_review: A security, authentication, authorization, or payment risk is active.",
+            "- migration_safety: A data migration risk is active.",
+            "- contract_review: The route includes a design, review, or public API contract change.",
+            "- broad_regression: The effective level requires broad regression coverage.",
+        ):
+            self.assertIn(recommendation, command_text)
 
     def test_two_stage_chain_is_success_dependent_and_cleans_up(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
