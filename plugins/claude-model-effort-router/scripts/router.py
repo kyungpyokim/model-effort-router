@@ -519,7 +519,9 @@ def shell_command(result: RouteResult, task: str, interactive: bool) -> list[str
     """Legacy single-command launcher used by Claude Code and Antigravity platforms."""
     task = f"{task}\n\n{verification_handoff_instructions(result)}"
     if result.platform == "claude-code":
-        base = ["claude", "--agent", agent_name(result.level), "--model", result.model, "--effort", str(result.effort)]
+        base = ["claude", "--agent", agent_name(result.level), "--model", result.model]
+        if result.effort:
+            base += ["--effort", str(result.effort)]
         return base + ([task] if interactive else ["-p", task])
     if result.platform == "antigravity":
         return ["agy", "--agent", agent_name(result.level), "--model", result.model, *( ["--prompt-interactive", task] if interactive else ["--prompt", task] )]
@@ -844,7 +846,10 @@ def main(argv: list[str] | None = None) -> int:
         chain = command_chain(result, args.task, keep_plan=args.keep_plan, interactive=args.interactive)
         print(chain if chain is not None else shlex.join(shell_command(result, args.task, args.interactive)))
     else:
-        stages_text = " -> ".join(f"{stage['role']}={stage['model']}/{stage['effort'] or 'embedded'}" for stage in result.stages)
+        stages_text = " -> ".join(
+            f"{stage['role']}={stage['model']}/{stage['effort'] or ('embedded' if result.platform == 'antigravity' else 'none')}"
+            for stage in result.stages
+        )
         active_flags = [flag for flag, active in result.risk_flags.items() if active]
         print(f"{result.level} ({result.level_name}) | type={result.task_type} | mode={result.mode} | score={result.score}")
         print(f"stages: {stages_text}")

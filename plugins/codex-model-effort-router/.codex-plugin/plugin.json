@@ -1,6 +1,6 @@
 {
   "name": "model-effort",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Routes coding tasks by difficulty to a Codex model and reasoning-effort profile.",
   "author": {
     "name": "Model Effort Router contributors"

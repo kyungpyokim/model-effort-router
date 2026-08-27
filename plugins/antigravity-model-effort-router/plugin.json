@@ -1,6 +1,6 @@
 {
   "name": "model-effort",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Routes coding tasks by difficulty and launches Antigravity with the closest available model/effort variant.",
   "contextFileName": "GEMINI.md"
 }

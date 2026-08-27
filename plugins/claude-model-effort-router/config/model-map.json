@@ -179,15 +179,15 @@
         "implementation": {
           "L1": {
             "model": "haiku",
-            "effort": "medium"
+            "effort": null
           },
           "L2": {
-            "model": "haiku",
-            "effort": "high"
+            "model": "sonnet",
+            "effort": "medium"
           },
           "L3": {
-            "model": "haiku",
-            "effort": "xhigh"
+            "model": "sonnet",
+            "effort": "high"
           },
           "L4": {
             "model": "sonnet",
@@ -245,15 +245,15 @@
         "local_refactoring": {
           "L1": {
             "model": "haiku",
-            "effort": "medium"
+            "effort": null
           },
           "L2": {
-            "model": "haiku",
-            "effort": "high"
+            "model": "sonnet",
+            "effort": "medium"
           },
           "L3": {
-            "model": "haiku",
-            "effort": "xhigh"
+            "model": "sonnet",
+            "effort": "high"
           },
           "L4": {
             "model": "sonnet",
@@ -282,8 +282,8 @@
               },
               {
                 "role": "implementer",
-                "model": "haiku",
-                "effort": "xhigh"
+                "model": "sonnet",
+                "effort": "high"
               }
             ]
           },

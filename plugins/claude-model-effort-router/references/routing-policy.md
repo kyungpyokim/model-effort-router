@@ -165,11 +165,11 @@ analysis, terra = wide long execution:
 
 | task_type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation | haiku medium | haiku high | haiku xhigh | sonnet xhigh | sonnet max |
+| implementation | haiku | sonnet medium | sonnet high | sonnet xhigh | sonnet max |
 | design | opus low | opus medium | opus high | opus xhigh | opus max |
 | review | opus low | opus medium | opus high | opus xhigh | opus max |
-| local_refactoring | haiku medium | haiku high | haiku xhigh | sonnet xhigh | sonnet max |
-| architectural_refactoring | opus medium | opus high | opus high → haiku xhigh | opus xhigh → sonnet xhigh | opus max → sonnet max |
+| local_refactoring | haiku | sonnet medium | sonnet high | sonnet xhigh | sonnet max |
+| architectural_refactoring | opus medium | opus high | opus high → sonnet high | opus xhigh → sonnet xhigh | opus max → sonnet max |
 
 ### Antigravity (`task_type × level` matrix, effort embedded in model names)
 

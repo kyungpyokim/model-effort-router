@@ -181,8 +181,8 @@ class MatrixTests(unittest.TestCase):
             ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
         },
         "claude-code": {
-            **{("implementation", level): cell for level, cell in zip(router.LEVELS, (("haiku", "medium"), ("haiku", "high"), ("haiku", "xhigh"), ("sonnet", "xhigh"), ("sonnet", "max")))},
-            **{("local_refactoring", level): cell for level, cell in zip(router.LEVELS, (("haiku", "medium"), ("haiku", "high"), ("haiku", "xhigh"), ("sonnet", "xhigh"), ("sonnet", "max")))},
+            **{("implementation", level): cell for level, cell in zip(router.LEVELS, (("haiku", None), ("sonnet", "medium"), ("sonnet", "high"), ("sonnet", "xhigh"), ("sonnet", "max")))},
+            **{("local_refactoring", level): cell for level, cell in zip(router.LEVELS, (("haiku", None), ("sonnet", "medium"), ("sonnet", "high"), ("sonnet", "xhigh"), ("sonnet", "max")))},
             **{(kind, level): ("opus", effort) for kind in ("design", "review") for level, effort in zip(router.LEVELS, ("low", "medium", "high", "xhigh", "max"))},
             ("architectural_refactoring", "L1"): ("opus", "medium"),
             ("architectural_refactoring", "L2"): ("opus", "high"),
@@ -207,7 +207,7 @@ class MatrixTests(unittest.TestCase):
             ("architectural_refactoring", "L5"): [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "max")],
         },
         "claude-code": {
-            ("architectural_refactoring", "L3"): [("planner", "opus", "high"), ("implementer", "haiku", "xhigh")],
+            ("architectural_refactoring", "L3"): [("planner", "opus", "high"), ("implementer", "sonnet", "high")],
             ("architectural_refactoring", "L4"): [("planner", "opus", "xhigh"), ("implementer", "sonnet", "xhigh")],
             ("architectural_refactoring", "L5"): [("planner", "opus", "max"), ("implementer", "sonnet", "max")],
         },
@@ -525,6 +525,20 @@ class CommandAndLauncherTests(unittest.TestCase):
                 result = routed(platform=platform, classifier=lambda _: classification("design", "L4"))
                 command = router.shell_command(result, "task", False)
                 self.assertEqual(command[command.index("--agent") + 1], "level-4-advanced")
+
+    def test_claude_effort_omitted_for_haiku(self):
+        result_l1 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L1"))
+        self.assertEqual(result_l1.model, "haiku")
+        self.assertIsNone(result_l1.effort)
+        command_l1 = router.shell_command(result_l1, "task", False)
+        self.assertNotIn("--effort", command_l1)
+
+        result_l2 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L2"))
+        self.assertEqual(result_l2.model, "sonnet")
+        self.assertEqual(result_l2.effort, "medium")
+        command_l2 = router.shell_command(result_l2, "task", False)
+        self.assertIn("--effort", command_l2)
+        self.assertEqual(command_l2[command_l2.index("--effort") + 1], "medium")
 
     def test_two_stage_commands_are_platform_native(self):
         for platform, expected_head in (
