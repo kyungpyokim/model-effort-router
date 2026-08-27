@@ -21,3 +21,7 @@ of truth.
 6. Re-route only if new evidence materially raises scope or risk.
 
 When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `../../bin/codex-route --route-file <route.json>`. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
+
+The result's `verification` object is recommendation metadata only. Select
+repository-appropriate checks from its IDs and reasons; do not treat it as
+executed output, and do not add it to the replay command.

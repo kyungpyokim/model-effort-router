@@ -372,6 +372,39 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertEqual(second["depends_on"], ["plan"])
         self.assertEqual(first["output"]["path"], second["input"]["path"])
 
+    def test_two_stage_payload_recommends_code_and_plan_checks(self):
+        result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
+        verification = router.result_payload(result, router.stage_commands(result, "task"))["verification"]
+        self.assertEqual([check["id"] for check in verification["recommended"]], ["focused_tests", "plan_validation"])
+        self.assertEqual(
+            [check["id"] for check in verification["skipped"]],
+            ["contract_review", "security_review", "migration_safety", "broad_regression"],
+        )
+
+    def test_high_risk_payload_recommends_risk_and_contract_checks(self):
+        result = routed(
+            classifier=lambda _: classification(
+                "implementation",
+                "L2",
+                flags={"authentication": True, "data_migration": True, "public_api_change": True},
+            )
+        )
+        verification = router.result_payload(result, router.stage_commands(result, "task"))["verification"]
+        self.assertEqual(
+            [check["id"] for check in verification["recommended"]],
+            ["focused_tests", "contract_review", "security_review", "migration_safety", "broad_regression"],
+        )
+        self.assertEqual([check["id"] for check in verification["skipped"]], ["plan_validation"])
+
+    def test_design_payload_recommends_only_contract_review(self):
+        result = routed(classifier=lambda _: classification("design", "L2"))
+        verification = router.result_payload(result, router.stage_commands(result, "task"))["verification"]
+        self.assertEqual([check["id"] for check in verification["recommended"]], ["contract_review"])
+        self.assertEqual(
+            [check["id"] for check in verification["skipped"]],
+            ["focused_tests", "plan_validation", "security_review", "migration_safety", "broad_regression"],
+        )
+
     def test_route_file_replays_json_commands_without_reclassification(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
         payload = router.result_payload(result, router.stage_commands(result, "task"))

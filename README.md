@@ -40,6 +40,11 @@ python3 scripts/router.py --platform codex --format json "작업" > /tmp/model-e
 plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort-route.json
 ```
 
+The JSON also includes `verification.recommended` and `verification.skipped`.
+They identify repository-agnostic checks with reasons; they are not shell
+commands or execution results. Route-file replay ignores this guidance and
+reuses only the stored execution steps.
+
 Risk policy lives in code, not in prompts: security, authentication,
 authorization, or payment flags force an L4 floor; data migration and public
 API changes escalate one level each.

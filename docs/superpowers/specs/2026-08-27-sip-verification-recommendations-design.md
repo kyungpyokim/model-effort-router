@@ -5,7 +5,7 @@
 ## 범위
 
 이는 Paperthin에서 영감을 얻은 SIP의 첫 번째 증분이다. `scripts/router.py`가
-생성하는 기존 route JSON에 선택적 `verification` 객체를 추가한다. 명령 실행,
+생성하는 모든 route JSON에 추가 전용 `verification` 객체를 포함한다. 명령 실행,
 대상 저장소 검사, 실패한 실행자의 재시도, 모델·추론 수준 선택 변경, route-file
 명령 체인 변경은 포함하지 않는다.
 

@@ -624,6 +624,55 @@ def command_chain_from_payload(payload: object) -> str:
     raise ValueError("route file mode does not match its execution steps")
 
 
+def verification_recommendations(task_type: str, level: str, risk_flags: dict[str, bool], mode: str) -> dict[str, list[dict[str, str]]]:
+    """Return repository-agnostic verification guidance for an already selected route."""
+    has_security_risk = any(risk_flags.get(flag, False) for flag in SECURITY_FLOOR_FLAGS)
+    checks = (
+        (
+            "focused_tests",
+            task_type in {"implementation", "local_refactoring", "architectural_refactoring"},
+            "Code changes need focused regression coverage.",
+            "The route does not request a code change.",
+        ),
+        (
+            "plan_validation",
+            mode == "two_stage",
+            "The planner artifact should be validated before execution.",
+            "The route has no planner artifact.",
+        ),
+        (
+            "contract_review",
+            task_type in {"design", "review"} or risk_flags.get("public_api_change", False),
+            "The route includes a design, review, or public API contract change.",
+            "The route has no indicated external contract change.",
+        ),
+        (
+            "security_review",
+            has_security_risk,
+            "A security, authentication, authorization, or payment risk is active.",
+            "No security, authentication, authorization, or payment risk is active.",
+        ),
+        (
+            "migration_safety",
+            risk_flags.get("data_migration", False),
+            "A data migration risk is active.",
+            "No data migration risk is active.",
+        ),
+        (
+            "broad_regression",
+            level in {"L4", "L5"},
+            "The effective level requires broad regression coverage.",
+            "The effective level remains within a bounded scope.",
+        ),
+    )
+    recommended: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+    for check_id, applies, recommendation_reason, skipped_reason in checks:
+        target = recommended if applies else skipped
+        target.append({"id": check_id, "reason": recommendation_reason if applies else skipped_reason})
+    return {"recommended": recommended, "skipped": skipped}
+
+
 def result_payload(result: RouteResult, commands: list[list[str]] | None = None) -> dict:
     steps: list[dict] = []
     ids = ["plan", "execute"] if result.mode == "two_stage" else ["execute"]
@@ -659,6 +708,7 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None)
         "source": result.source,
         "rationale": result.rationale,
         "steps": steps,
+        "verification": verification_recommendations(result.task_type, result.level, result.risk_flags, result.mode),
     }
     if any(flag in SECURITY_FLOOR_FLAGS for flag in active_risk_flags):
         payload["scope_guard"] = {

@@ -16,3 +16,7 @@ relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --pl
 4. Re-route only if new evidence materially raises scope or risk.
 
 When named-agent delegation is unavailable, use the included launcher script to start a new process with the selected profile. Do not continue the task in the parent session.
+
+The result's `verification` object is recommendation metadata only. Select
+repository-appropriate checks from its IDs and reasons; do not treat it as
+executed output or add it to a replay command.

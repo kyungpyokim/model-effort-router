@@ -11,3 +11,7 @@ embedded in model names, so immediately delegate the complete task to the
 matching L1-L5 plugin agent.
 
 Do not describe the current session's model or attempt to change it. When named-agent delegation is unavailable, use `../../bin/agy-route -- "<task>"` to run the selected profile in a new session, then do not continue the task in the parent session.
+
+The result's `verification` object is recommendation metadata only. Select
+repository-appropriate checks from its IDs and reasons; do not treat it as
+executed output or add it to a replay command.
