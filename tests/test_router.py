@@ -331,6 +331,41 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertIn("model_reasoning_effort=xhigh", command)
         self.assertIn("Investigate dependencies and failure paths before editing.", " ".join(command))
 
+    def test_single_stage_commands_include_verification_handoff(self):
+        for platform in ("codex", "claude-code", "antigravity"):
+            result = routed(
+                platform=platform,
+                classifier=lambda _: classification("implementation", "L3"),
+            )
+            command_text = " ".join(router.stage_commands(result, "implement feature")[0])
+            self.assertIn("focused_tests", command_text)
+            self.assertIn("report", command_text)
+            self.assertIn("do not report an unrun check as passed", command_text)
+
+    def test_two_stage_only_executor_receives_verification_handoff(self):
+        result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
+        planner, executor = router.stage_commands(result, "restructure modules")
+        planner_text, executor_text = " ".join(planner), " ".join(executor)
+        self.assertNotIn("focused_tests", planner_text)
+        self.assertIn("focused_tests", executor_text)
+        self.assertIn("plan_validation", executor_text)
+        self.assertIn("do not report an unrun check as passed", executor_text)
+
+    def test_high_risk_verification_recommendations_reach_executor(self):
+        result = routed(
+            classifier=lambda _: classification(
+                "implementation", "L4",
+                flags={
+                    "authentication": True,
+                    "data_migration": True,
+                    "public_api_change": True,
+                },
+            ),
+        )
+        command_text = " ".join(router.stage_commands(result, "migrate auth API")[0])
+        for check_id in ("security_review", "migration_safety", "contract_review", "broad_regression"):
+            self.assertIn(check_id, command_text)
+
     def test_two_stage_chain_is_success_dependent_and_cleans_up(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
         chain = router.command_chain(result, "restructure modules")
