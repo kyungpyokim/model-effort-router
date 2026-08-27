@@ -11,7 +11,11 @@ of truth.
 
 1. Read the JSON result's `mode`.
 2. For `single`, immediately delegate the complete task to the matching level
-   agent with the model and effort from the selected matrix row.
+   agent with the model and effort from the selected matrix row. Pass the
+   complete generated route JSON along with the original task. The delegated
+   executor must use every `verification.recommended` ID and reason to select
+   applicable existing repository checks and report each result or why it was
+   not run.
 3. For `two_stage` (`architectural_refactoring` L3+), run the printed stage
    commands in order: the planner writes the plan file, then the executor
    reads it together with the repository and implements it. Never run the

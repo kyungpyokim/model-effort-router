@@ -581,6 +581,7 @@ class RouteSkillContractTests(unittest.TestCase):
         for plugin in ("codex", "claude", "antigravity"):
             path = ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md"
             primary = path.read_text(encoding="utf-8").split("When named-agent delegation is unavailable", 1)[0]
+            primary = " ".join(primary.split())
             with self.subTest(plugin=plugin):
                 self.assertIn("complete generated route JSON along with the original task", primary)
                 self.assertIn("every `verification.recommended` ID and reason", primary)
