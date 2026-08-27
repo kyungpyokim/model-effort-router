@@ -28,10 +28,10 @@
 {
   "verification": {
     "recommended": [
-      {"id": "focused_tests", "reason": "코드 변경에는 대상 범위의 회귀 검증이 필요합니다."}
+      {"id": "focused_tests", "reason": "Code changes need focused regression coverage."}
     ],
     "skipped": [
-      {"id": "security_review", "reason": "보안, 인증, 인가, 결제 위험 플래그가 활성화되지 않았습니다."}
+      {"id": "security_review", "reason": "No security, authentication, authorization, or payment risk is active."}
     ]
   }
 }

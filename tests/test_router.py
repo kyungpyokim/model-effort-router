@@ -342,7 +342,10 @@ class CommandAndLauncherTests(unittest.TestCase):
                 "- focused_tests: Code changes need focused regression coverage.",
                 command_text,
             )
-            self.assertIn("report", command_text)
+            self.assertIn(
+                "Report each recommended check's result or why it was not run.",
+                command_text,
+            )
             self.assertIn("Do not report an unrun check as passed", command_text)
 
     def test_two_stage_only_executor_receives_verification_handoff(self):
@@ -356,6 +359,10 @@ class CommandAndLauncherTests(unittest.TestCase):
         )
         self.assertIn(
             "- plan_validation: The planner artifact should be validated before execution.",
+            executor_text,
+        )
+        self.assertIn(
+            "Report each recommended check's result or why it was not run.",
             executor_text,
         )
         self.assertIn("Do not report an unrun check as passed", executor_text)
