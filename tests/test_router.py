@@ -576,6 +576,17 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertIn("router not found", proc.stderr)
 
 
+class RouteSkillContractTests(unittest.TestCase):
+    def test_named_executors_receive_route_json_and_report_recommended_checks(self):
+        for plugin in ("codex", "claude", "antigravity"):
+            path = ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md"
+            primary = path.read_text(encoding="utf-8").split("When named-agent delegation is unavailable", 1)[0]
+            with self.subTest(plugin=plugin):
+                self.assertIn("complete generated route JSON along with the original task", primary)
+                self.assertIn("every `verification.recommended` ID and reason", primary)
+                self.assertIn("report each result or why it was not run", primary)
+
+
 class ModelDetectionTests(unittest.TestCase):
     def test_detection_passes_a_timeout(self):
         completed = subprocess.CompletedProcess([], 0, "", "")
