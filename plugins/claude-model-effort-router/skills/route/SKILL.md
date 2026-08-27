@@ -10,9 +10,14 @@ effort: low
 Do not score `$ARGUMENTS` in the current session. Resolve the included router
 relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --platform claude-code --format json`. Its fixed native `claude-sonnet-5` / low preflight result is the source of truth.
 
-1. Immediately delegate the complete task to the plugin agent `model-effort:level-N-*` matching the selected level using the Agent tool.
+1. Immediately delegate the complete task to the plugin agent `model-effort:level-N-*` matching the selected level using the Agent tool. Pass the complete generated route JSON along with the original task. The delegated executor must use every `verification.recommended` ID and reason to select applicable existing repository checks and report each result or why it was not run.
 2. Do not describe the parent session's model, effort, or inability to change models.
 3. Do not invoke this router again from the delegated agent.
 4. Re-route only if new evidence materially raises scope or risk.
 
 When named-agent delegation is unavailable, use the included launcher script to start a new process with the selected profile. Do not continue the task in the parent session.
+
+The result's `verification` object is recommendation metadata only. The
+selected executor receives recommended IDs and reasons, selects applicable
+existing repository checks, and reports results or why a check was not run.
+Do not treat it as executed output or add it to a replay command.

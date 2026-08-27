@@ -331,6 +331,62 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertIn("model_reasoning_effort=xhigh", command)
         self.assertIn("Investigate dependencies and failure paths before editing.", " ".join(command))
 
+    def test_single_stage_commands_include_verification_handoff(self):
+        for platform in ("codex", "claude-code", "antigravity"):
+            result = routed(
+                platform=platform,
+                classifier=lambda _: classification("implementation", "L3"),
+            )
+            command_text = " ".join(router.stage_commands(result, "implement feature")[0])
+            self.assertIn(
+                "- focused_tests: Code changes need focused regression coverage.",
+                command_text,
+            )
+            self.assertIn(
+                "Report each recommended check's result or why it was not run.",
+                command_text,
+            )
+            self.assertIn("Do not report an unrun check as passed", command_text)
+
+    def test_two_stage_only_executor_receives_verification_handoff(self):
+        result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
+        planner, executor = router.stage_commands(result, "restructure modules")
+        planner_text, executor_text = " ".join(planner), " ".join(executor)
+        self.assertNotIn("focused_tests", planner_text)
+        self.assertIn(
+            "- focused_tests: Code changes need focused regression coverage.",
+            executor_text,
+        )
+        self.assertIn(
+            "- plan_validation: The planner artifact should be validated before execution.",
+            executor_text,
+        )
+        self.assertIn(
+            "Report each recommended check's result or why it was not run.",
+            executor_text,
+        )
+        self.assertIn("Do not report an unrun check as passed", executor_text)
+
+    def test_high_risk_verification_recommendations_reach_executor(self):
+        result = routed(
+            classifier=lambda _: classification(
+                "implementation", "L4",
+                flags={
+                    "authentication": True,
+                    "data_migration": True,
+                    "public_api_change": True,
+                },
+            ),
+        )
+        command_text = " ".join(router.stage_commands(result, "migrate auth API")[0])
+        for recommendation in (
+            "- security_review: A security, authentication, authorization, or payment risk is active.",
+            "- migration_safety: A data migration risk is active.",
+            "- contract_review: The route includes a design, review, or public API contract change.",
+            "- broad_regression: The effective level requires broad regression coverage.",
+        ):
+            self.assertIn(recommendation, command_text)
+
     def test_two_stage_chain_is_success_dependent_and_cleans_up(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
         chain = router.command_chain(result, "restructure modules")
@@ -371,6 +427,39 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertEqual(first["depends_on"], [])
         self.assertEqual(second["depends_on"], ["plan"])
         self.assertEqual(first["output"]["path"], second["input"]["path"])
+
+    def test_two_stage_payload_recommends_code_and_plan_checks(self):
+        result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
+        verification = router.result_payload(result, router.stage_commands(result, "task"))["verification"]
+        self.assertEqual([check["id"] for check in verification["recommended"]], ["focused_tests", "plan_validation"])
+        self.assertEqual(
+            [check["id"] for check in verification["skipped"]],
+            ["contract_review", "security_review", "migration_safety", "broad_regression"],
+        )
+
+    def test_high_risk_payload_recommends_risk_and_contract_checks(self):
+        result = routed(
+            classifier=lambda _: classification(
+                "implementation",
+                "L2",
+                flags={"authentication": True, "data_migration": True, "public_api_change": True},
+            )
+        )
+        verification = router.result_payload(result, router.stage_commands(result, "task"))["verification"]
+        self.assertEqual(
+            [check["id"] for check in verification["recommended"]],
+            ["focused_tests", "contract_review", "security_review", "migration_safety", "broad_regression"],
+        )
+        self.assertEqual([check["id"] for check in verification["skipped"]], ["plan_validation"])
+
+    def test_design_payload_recommends_only_contract_review(self):
+        result = routed(classifier=lambda _: classification("design", "L2"))
+        verification = router.result_payload(result, router.stage_commands(result, "task"))["verification"]
+        self.assertEqual([check["id"] for check in verification["recommended"]], ["contract_review"])
+        self.assertEqual(
+            [check["id"] for check in verification["skipped"]],
+            ["focused_tests", "plan_validation", "security_review", "migration_safety", "broad_regression"],
+        )
 
     def test_route_file_replays_json_commands_without_reclassification(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
@@ -492,6 +581,18 @@ class CommandAndLauncherTests(unittest.TestCase):
             proc = subprocess.run([str(ROOT / self.LAUNCHERS["codex-route"]), "--", "task"], capture_output=True, text=True, timeout=60, env={**os.environ, "MODEL_EFFORT_ROUTER_ROOT": tmp})
         self.assertEqual(proc.returncode, 1)
         self.assertIn("router not found", proc.stderr)
+
+
+class RouteSkillContractTests(unittest.TestCase):
+    def test_named_executors_receive_route_json_and_report_recommended_checks(self):
+        for plugin in ("codex", "claude", "antigravity"):
+            path = ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md"
+            primary = path.read_text(encoding="utf-8").split("When named-agent delegation is unavailable", 1)[0]
+            primary = " ".join(primary.split())
+            with self.subTest(plugin=plugin):
+                self.assertIn("complete generated route JSON along with the original task", primary)
+                self.assertIn("every `verification.recommended` ID and reason", primary)
+                self.assertIn("report each result or why it was not run", primary)
 
 
 class ModelDetectionTests(unittest.TestCase):

@@ -517,6 +517,7 @@ def route(
 
 def shell_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
     """Legacy single-command launcher used by Claude Code and Antigravity platforms."""
+    task = f"{task}\n\n{verification_handoff_instructions(result)}"
     if result.platform == "claude-code":
         base = ["claude", "--agent", agent_name(result.level), "--model", result.model, "--effort", str(result.effort)]
         return base + ([task] if interactive else ["-p", task])
@@ -556,6 +557,7 @@ def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> 
         instructions = codex_agent_instructions(result.level)
         if has_security_flag:
             instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
+        instructions = f"{instructions}\n\n{verification_handoff_instructions(result)}"
         return _codex_exec_command(stage["model"], stage["effort"], instructions, task, interactive)
     prompt = f"[{AUTOBAHN_SCOPE_GUARD}]\n\n{task}" if has_security_flag else task
     return shell_command(result, prompt, interactive=False)
@@ -575,6 +577,7 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
     execute_instructions = IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
     if has_security_flag:
         execute_instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
+    execute_instructions = f"{execute_instructions}\n\n{verification_handoff_instructions(result)}"
     execute_prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
     builders = {
         "codex": lambda stage, instr, prompt: _codex_exec_command(stage["model"], stage["effort"], instr, prompt, interactive=False),
@@ -624,6 +627,68 @@ def command_chain_from_payload(payload: object) -> str:
     raise ValueError("route file mode does not match its execution steps")
 
 
+def verification_recommendations(task_type: str, level: str, risk_flags: dict[str, bool], mode: str) -> dict[str, list[dict[str, str]]]:
+    """Return repository-agnostic verification guidance for an already selected route."""
+    has_security_risk = any(risk_flags.get(flag, False) for flag in SECURITY_FLOOR_FLAGS)
+    checks = (
+        (
+            "focused_tests",
+            task_type in {"implementation", "local_refactoring", "architectural_refactoring"},
+            "Code changes need focused regression coverage.",
+            "The route does not request a code change.",
+        ),
+        (
+            "plan_validation",
+            mode == "two_stage",
+            "The planner artifact should be validated before execution.",
+            "The route has no planner artifact.",
+        ),
+        (
+            "contract_review",
+            task_type in {"design", "review"} or risk_flags.get("public_api_change", False),
+            "The route includes a design, review, or public API contract change.",
+            "The route has no indicated external contract change.",
+        ),
+        (
+            "security_review",
+            has_security_risk,
+            "A security, authentication, authorization, or payment risk is active.",
+            "No security, authentication, authorization, or payment risk is active.",
+        ),
+        (
+            "migration_safety",
+            risk_flags.get("data_migration", False),
+            "A data migration risk is active.",
+            "No data migration risk is active.",
+        ),
+        (
+            "broad_regression",
+            level in {"L4", "L5"},
+            "The effective level requires broad regression coverage.",
+            "The effective level remains within a bounded scope.",
+        ),
+    )
+    recommended: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+    for check_id, applies, recommendation_reason, skipped_reason in checks:
+        target = recommended if applies else skipped
+        target.append({"id": check_id, "reason": recommendation_reason if applies else skipped_reason})
+    return {"recommended": recommended, "skipped": skipped}
+
+
+def verification_handoff_instructions(result: RouteResult) -> str:
+    """Format already-selected verification guidance for an executor prompt."""
+    checks = verification_recommendations(result.task_type, result.level, result.risk_flags, result.mode)["recommended"]
+    check_lines = "\n".join(f"- {check['id']}: {check['reason']}" for check in checks)
+    return (
+        "Verification handoff:\n"
+        f"Recommended checks:\n{check_lines}\n"
+        "Select and run only existing repository checks that apply. "
+        "Report each recommended check's result or why it was not run. "
+        "Do not report an unrun check as passed."
+    )
+
+
 def result_payload(result: RouteResult, commands: list[list[str]] | None = None) -> dict:
     steps: list[dict] = []
     ids = ["plan", "execute"] if result.mode == "two_stage" else ["execute"]
@@ -659,6 +724,7 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None)
         "source": result.source,
         "rationale": result.rationale,
         "steps": steps,
+        "verification": verification_recommendations(result.task_type, result.level, result.risk_flags, result.mode),
     }
     if any(flag in SECURITY_FLOOR_FLAGS for flag in active_risk_flags):
         payload["scope_guard"] = {

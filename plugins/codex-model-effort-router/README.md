@@ -72,6 +72,10 @@ bypasses the preflight entirely.
 For a skill-selected route, save its JSON once and replay it with
 `bin/codex-route --route-file <route.json>`; this executes the selected command
 without another preflight classification. Two-stage replay preserves its plan file.
+The JSON `verification` object contains recommended and skipped check IDs with
+reasons only; it does not execute checks. The selected executor receives its
+recommended checks and reports each result or why it was not run. Route-file
+replay ignores the JSON object and reuses only the stored execution steps.
 
 ## Customize
 
