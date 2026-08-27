@@ -343,7 +343,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 command_text,
             )
             self.assertIn("report", command_text)
-            self.assertIn("do not report an unrun check as passed", command_text)
+            self.assertIn("Do not report an unrun check as passed", command_text)
 
     def test_two_stage_only_executor_receives_verification_handoff(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
@@ -358,7 +358,7 @@ class CommandAndLauncherTests(unittest.TestCase):
             "- plan_validation: The planner artifact should be validated before execution.",
             executor_text,
         )
-        self.assertIn("do not report an unrun check as passed", executor_text)
+        self.assertIn("Do not report an unrun check as passed", executor_text)
 
     def test_high_risk_verification_recommendations_reach_executor(self):
         result = routed(

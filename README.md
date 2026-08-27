@@ -42,7 +42,9 @@ plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort
 
 The JSON also includes `verification.recommended` and `verification.skipped`.
 They identify repository-agnostic checks with reasons; they are not shell
-commands or execution results. Route-file replay ignores this guidance and
+commands or execution results. The selected executor receives recommended
+checks, selects applicable existing repository checks, and reports each result
+or why it was not run. Route-file replay ignores this JSON guidance and
 reuses only the stored execution steps.
 
 Risk policy lives in code, not in prompts: security, authentication,

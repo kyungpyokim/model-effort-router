@@ -17,6 +17,7 @@ relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --pl
 
 When named-agent delegation is unavailable, use the included launcher script to start a new process with the selected profile. Do not continue the task in the parent session.
 
-The result's `verification` object is recommendation metadata only. Select
-repository-appropriate checks from its IDs and reasons; do not treat it as
-executed output or add it to a replay command.
+The result's `verification` object is recommendation metadata only. The
+selected executor receives recommended IDs and reasons, selects applicable
+existing repository checks, and reports results or why a check was not run.
+Do not treat it as executed output or add it to a replay command.

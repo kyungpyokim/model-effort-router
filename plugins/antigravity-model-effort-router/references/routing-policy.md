@@ -98,6 +98,9 @@ Every JSON route includes a `verification` object with `recommended` and
 `skipped` lists. Each item has a stable `id` and a human-readable `reason`.
 It is guidance only: the router does not choose or execute repository-specific
 commands, and a skipped item does not prohibit an operator from running it.
+The selected executor receives the recommended IDs and reasons, chooses only
+applicable existing repository checks, then reports each result or why it was
+not run. An unrun check must never be reported as passed.
 
 The checks are evaluated in this order:
 
@@ -111,7 +114,8 @@ The checks are evaluated in this order:
 | `broad_regression` | The effective level is L4 or L5 |
 
 Route-file replay ignores `verification` when building the execution command;
-it reuses only the stored platform execution steps and never reclassifies.
+it reuses only the stored platform execution steps (including any handoff text
+already stored there) and never reclassifies or generates a new command.
 
 ## Two-stage architectural refactoring
 

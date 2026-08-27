@@ -517,6 +517,7 @@ def route(
 
 def shell_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
     """Legacy single-command launcher used by Claude Code and Antigravity platforms."""
+    task = f"{task}\n\n{verification_handoff_instructions(result)}"
     if result.platform == "claude-code":
         base = ["claude", "--agent", agent_name(result.level), "--model", result.model, "--effort", str(result.effort)]
         return base + ([task] if interactive else ["-p", task])
@@ -552,10 +553,10 @@ def _agy_prompt_command(model: str, prompt: str) -> list[str]:
 def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
     has_security_flag = any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS)
     if result.platform == "codex":
-        stage = result.stages[0]
         instructions = codex_agent_instructions(result.level)
         if has_security_flag:
             instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
+        instructions = f"{instructions}\n\n{verification_handoff_instructions(result)}"
         return _codex_exec_command(stage["model"], stage["effort"], instructions, task, interactive)
     prompt = f"[{AUTOBAHN_SCOPE_GUARD}]\n\n{task}" if has_security_flag else task
     return shell_command(result, prompt, interactive=False)
@@ -575,6 +576,7 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
     execute_instructions = IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
     if has_security_flag:
         execute_instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
+    execute_instructions = f"{execute_instructions}\n\n{verification_handoff_instructions(result)}"
     execute_prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
     builders = {
         "codex": lambda stage, instr, prompt: _codex_exec_command(stage["model"], stage["effort"], instr, prompt, interactive=False),
@@ -671,6 +673,19 @@ def verification_recommendations(task_type: str, level: str, risk_flags: dict[st
         target = recommended if applies else skipped
         target.append({"id": check_id, "reason": recommendation_reason if applies else skipped_reason})
     return {"recommended": recommended, "skipped": skipped}
+
+
+def verification_handoff_instructions(result: RouteResult) -> str:
+    """Format already-selected verification guidance for an executor prompt."""
+    checks = verification_recommendations(result.task_type, result.level, result.risk_flags, result.mode)["recommended"]
+    check_lines = "\n".join(f"- {check['id']}: {check['reason']}" for check in checks)
+    return (
+        "Verification handoff:\n"
+        f"Recommended checks:\n{check_lines}\n"
+        "Select and run only existing repository checks that apply. "
+        "Report each recommended check's result or why it was not run. "
+        "Do not report an unrun check as passed."
+    )
 
 
 def result_payload(result: RouteResult, commands: list[list[str]] | None = None) -> dict:
