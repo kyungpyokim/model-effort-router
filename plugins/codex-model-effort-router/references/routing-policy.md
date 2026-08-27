@@ -6,8 +6,11 @@ Classify each coding task with its selected platform's native CLI: Codex uses
 `gpt-5.6-terra` / low, Claude Code uses `claude-sonnet-5` / low, and
 Antigravity uses `gemini-3.6-flash-low`. Return structured JSON with a
 `task_type`, all six factor scores, a level, six risk flags, a confidence, and
-a one-sentence reason. The router validates the exact schema before using it;
-it never infers risk from keywords or language rules.
+a one-sentence reason. The classifier applies a `readchk` reflex before scoring:
+restating intent internally and resolving referents. If genuine conflicting interpretations
+exist, ambiguity is scored as 2 and the surviving fork is stated in reason.
+The router validates the exact schema before using it; it never infers risk from
+keywords or language rules.
 
 ### Task types
 
@@ -61,8 +64,10 @@ payment              data_migration      public_api_change
 ```
 
 Any of `security_sensitive`, `authentication`, `authorization`, or `payment`
-forces a hard floor of L4. Each active `data_migration` or
-`public_api_change` escalates one further level. The result never exceeds L5.
+forces a hard floor of L4 and activates an Autobahn scope guard instruction,
+isolating sensitive boundaries and requiring safe scopes to be verified first.
+Each active `data_migration` or `public_api_change` escalates one further level.
+The result never exceeds L5.
 
 ## Overrides and failures
 
@@ -92,10 +97,13 @@ forces a hard floor of L4. Each active `data_migration` or
 
 1. **Plan** — `sol` analyses the repository and writes a structured plan JSON
    to a temporary run directory (`/tmp/codex-route-<run-id>/plan.json`). It
-   modifies no other file.
+   modifies no other file. The planner applies `re0` and `debloat` principles:
+   producing a clean v0 specification without speculative boilerplate or process
+   noise, cutting words while keeping load-bearing rules and invariant mechanisms.
 2. **Execute** — the executor model reads the original request plus the plan
    file, verifies the plan against the current repository state, applies the
-   changes, and runs the plan's validation commands.
+   changes, and runs the plan's validation commands. The executor applies `re0`
+   hygiene, leaving touched artifacts cleaner than found and removing scaffolding residue.
 
 The execute stage runs only if the plan stage succeeds. On success the run
 directory is removed; on any failure it is preserved for inspection.
