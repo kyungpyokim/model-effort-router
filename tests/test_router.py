@@ -598,15 +598,38 @@ class CommandAndLauncherTests(unittest.TestCase):
 
 
 class RouteSkillContractTests(unittest.TestCase):
+    # Each skill introduces its degraded path with one of these lines; everything
+    # before it is the primary instruction the executor must satisfy.
+    FALLBACK_SENTINELS = (
+        "When named-agent delegation is unavailable",
+        "When the launcher script cannot start a subprocess",
+    )
+
+    def _primary_section(self, plugin: str) -> str:
+        path = ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md"
+        primary = path.read_text(encoding="utf-8")
+        for sentinel in self.FALLBACK_SENTINELS:
+            primary = primary.split(sentinel, 1)[0]
+        return " ".join(primary.split())
+
     def test_named_executors_receive_route_json_and_report_recommended_checks(self):
         for plugin in ("codex", "claude", "antigravity"):
-            path = ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md"
-            primary = path.read_text(encoding="utf-8").split("When named-agent delegation is unavailable", 1)[0]
-            primary = " ".join(primary.split())
+            primary = self._primary_section(plugin)
             with self.subTest(plugin=plugin):
-                self.assertIn("complete generated route JSON along with the original task", primary)
+                self.assertIn("complete generated route JSON", primary)
                 self.assertIn("every `verification.recommended` ID and reason", primary)
                 self.assertIn("report each result or why it was not run", primary)
+
+    def test_claude_skill_replays_stored_steps_for_both_modes(self):
+        primary = self._primary_section("claude")
+        # Model and effort must come from the matrix row, replayed verbatim, not
+        # from a level-only agent default.
+        self.assertIn("bin/claude-route --route-file", primary)
+        self.assertIn("steps[].command", primary)
+        self.assertIn("matrix `--model` and `--effort`", primary)
+        # Two-stage architectural refactoring is handled on the same path.
+        self.assertIn("two_stage", primary)
+        self.assertIn("runs the executor only if the plan step succeeds", primary)
 
 
 class ModelDetectionTests(unittest.TestCase):
