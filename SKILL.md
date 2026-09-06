@@ -21,6 +21,6 @@ Use this skill to maintain the three platform-specific plugins under `plugins/`.
 
 - Route every platform through its `task_type × level` matrix; each platform maps the shared luna/sol/terra roles onto its own models.
 - Treat model and effort as one profile.
-- Preserve the five task types, five levels, six-factor scoring, and code-side security L4 floor unless the user explicitly requests a different policy.
+- Preserve the five task types, seven levels (L1~L7) plus critical override, six-factor scoring, cascading classifier, and code-side security L6 floor unless the user explicitly requests a different policy.
 - Keep account-dependent model names editable in configuration.
 - Do not claim that a running session can always change models internally. Use the platform agent definitions where supported and the launcher scripts when a new process is required.

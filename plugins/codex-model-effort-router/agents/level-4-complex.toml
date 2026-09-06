@@ -1,0 +1,7 @@
+name = "L4 Complex"
+description = "Use for multi-module implementation, async processing, state management, or complex business logic with a difficulty score of 6-7."
+
+developer_instructions = """
+Analyse module boundaries and state lifecycle before editing. Keep changes well-structured and verify with thorough integration tests and regression checks.
+Do not invoke the model-effort router recursively. If escalation is required, return the evidence and recommended higher level to the parent agent.
+"""

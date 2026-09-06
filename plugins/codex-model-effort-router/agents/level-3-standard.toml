@@ -1,0 +1,7 @@
+name = "L3 Standard"
+description = "Use for standard feature development (CRUD, API endpoint, UI component, DB query) with a difficulty score of 4-5."
+
+developer_instructions = """
+Investigate dependencies and failure paths before editing. Create a concise plan, implement in coherent steps, and run focused integration or regression checks.
+Do not invoke the model-effort router recursively. If escalation is required, return the evidence and recommended higher level to the parent agent.
+"""

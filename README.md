@@ -1,26 +1,29 @@
-# Model Effort Router
+# Model Effort Router (v2.0)
 
 A cross-platform bundle that routes a coding task to one model-and-effort
 profile for Codex, Claude Code, or Antigravity.
 
 All three platforms share the same two-dimensional routing: a `task_type` axis
 (implementation, design, review, local_refactoring, architectural_refactoring)
-and the difficulty level (L1-L5), mapped onto each platform's own models
-(Codex: luna/sol/terra — Claude Code: haiku/sonnet/opus — Antigravity:
-Flash/Pro/Sonnet·Opus Thinking).
+and the difficulty level (L1–L7 plus Critical Override), mapped onto each platform's
+own models (Codex: luna/terra/sol/astra — Claude Code: haiku/sonnet/fable/opus —
+Antigravity: Flash/Pro/Sonnet Thinking/Opus Thinking).
 
-## Preflight classifier
+## Cascading preflight classifier
 
-The CLI router uses the native CLI for the selected platform: Codex uses
-`gpt-5.6-terra` / low, Claude Code uses `claude-sonnet-5` / low, and
-Antigravity uses `gemini-3.6-flash-low`. Each preflight runs in an isolated
-temporary directory and validates structured JSON (task_type, factor scores,
-risk flags, confidence) before selecting a profile. This requires the selected
-platform's installed, authenticated CLI.
+The CLI router evaluates tasks with a lightweight primary classifier and escalates to
+a mid-tier fallback model when confidence is low (< 0.80):
+
+- **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
+- **Claude Code**: `claude-haiku-4.5` (N/A) → `claude-sonnet-5` (medium)
+- **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
+
+Each preflight runs in an isolated temporary directory and validates structured JSON
+(task_type, six factor scores, six risk flags, confidence, reason) before selecting
+a profile.
 
 If the selected classifier times out, cannot start, fails, or returns invalid
-JSON, routing uses the safe fallback: implementation / L3 / luna xhigh. No
-keyword, Korean-particle, or homonym matching is used.
+JSON, routing uses the safe fallback: implementation / L3 / safe baseline.
 
 ```bash
 python3 scripts/router.py --platform codex --format json "여러 서비스의 OAuth 인증 장애를 분석하고 수정"
@@ -48,8 +51,8 @@ or why it was not run. Route-file replay ignores this JSON guidance and
 reuses only the stored execution steps.
 
 Risk policy lives in code, not in prompts: security, authentication,
-authorization, or payment flags force an L4 floor; data migration and public
-API changes escalate one level each.
+authorization, or payment flags force an L6 floor with Autobahn scope guards;
+data migration and public API changes escalate one level each.
 
 For Antigravity, detect account-local models before printing its command:
 
@@ -57,10 +60,9 @@ For Antigravity, detect account-local models before printing its command:
 python3 scripts/router.py --platform antigravity --detect-antigravity-models --format command "간헐적인 멀티서비스 장애의 근본 원인 분석"
 ```
 
-`--level` is a minimum. An explicit `--level L5` together with an explicit
-`--task-type` skips the preflight because both axes are pinned; `--level L5`
-alone still classifies to pick the right matrix row. Explicit factors override
-only those classifier scores. Fallbacks are always reported on stderr.
+`--level` is a minimum. An explicit `--level L7` or `--critical` together with an
+explicit `--task-type` skips the preflight because both axes are pinned; explicit
+factors override only those classifier scores. Fallbacks are always reported on stderr.
 
 ## Two-stage architectural refactoring
 

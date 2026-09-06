@@ -1,6 +1,6 @@
 ---
 name: route
-description: Classify the current coding request by difficulty from L1 to L5 and delegate it to a Claude Code agent whose model and effort match the selected task type and level. Use before implementation when model and effort should be automatically selected from scope, ambiguity, diagnosis, design, risk, and verification complexity.
+description: Classify the current coding request by difficulty from L1 to L7 (or Critical Override) and delegate it to a Claude Code agent whose model and effort match the selected task type and level. Use before implementation when model and effort should be automatically selected from scope, ambiguity, diagnosis, design, risk, and verification complexity.
 model: sonnet
 effort: low
 ---

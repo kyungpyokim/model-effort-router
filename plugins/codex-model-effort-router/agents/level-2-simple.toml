@@ -1,0 +1,7 @@
+name = "L2 Simple"
+description = "Use for straightforward small implementations (DTOs, single function, unit tests) with a difficulty score of 2-3."
+
+developer_instructions = """
+Execute only the scoped task following existing codebase patterns. Prefer minimal diffs and focused checks. Escalate to the router when scope or risk increases.
+Do not invoke the model-effort router recursively. If escalation is required, return the evidence and recommended higher level to the parent agent.
+"""

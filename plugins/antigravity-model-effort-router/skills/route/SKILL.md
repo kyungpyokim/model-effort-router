@@ -1,6 +1,6 @@
 ---
 name: route
-description: Classify a coding task by difficulty from L1 to L5 and choose the closest available Antigravity model/effort variant. Use when the task should be routed by scope, ambiguity, diagnosis, design, risk, and verification complexity before execution.
+description: Classify a coding task by difficulty from L1 to L7 (or Critical Override) and choose the closest available Antigravity model/effort variant. Use when the task should be routed by scope, ambiguity, diagnosis, design, risk, and verification complexity before execution.
 ---
 
 # Model Effort Router
@@ -8,7 +8,7 @@ description: Classify a coding task by difficulty from L1 to L5 and choose the c
 Do not score the task in the current session. Resolve the included router
 relative to this file and run `python3 ../../scripts/router.py "<task>" --platform antigravity --detect-antigravity-models --format json`. Antigravity effort is
 embedded in model names, so immediately delegate the complete task to the
-matching L1-L5 plugin agent. Pass the complete generated route JSON along with
+matching L1-L7 or Critical plugin agent. Pass the complete generated route JSON along with
 the original task. The delegated executor must use every
 `verification.recommended` ID and reason to select applicable existing
 repository checks and report each result or why it was not run.

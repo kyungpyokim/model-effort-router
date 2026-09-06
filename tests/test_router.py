@@ -23,32 +23,34 @@ NO_FLAGS = {flag: False for flag in router.RISK_FLAGS}
 BASE_FACTORS = {"scope": 1, "ambiguity": 0, "diagnosis": 0, "design": 1, "risk": 0, "verification": 1}
 
 
-def classifier_output(task_type="implementation", level="L2", factors=None, flags=None, confidence=0.9, reason="Clear scoped change.", raw=True):
+def classifier_output(task_type="implementation", level="L2", factors=None, flags=None, confidence=0.9, reason="Clear scoped change.", context_required=False, raw=True):
     payload = {
         "task_type": task_type,
         "level": level,
         "factors": dict(factors or BASE_FACTORS),
         "risk_flags": {**NO_FLAGS, **(flags or {})},
         "confidence": confidence,
+        "context_required": context_required,
         "reason": reason,
     }
     return json.dumps(payload) if raw else payload
 
 
-def classification(task_type="implementation", level="L2", factors=None, flags=None, source="terra"):
+def classification(task_type="implementation", level="L2", factors=None, flags=None, confidence=0.9, source="terra"):
     return router.Classification(
         task_type=task_type,
         level=level,
         factors=dict(factors or BASE_FACTORS),
         risk_flags={**NO_FLAGS, **(flags or {})},
-        confidence=0.9,
+        confidence=confidence,
         reason="classified",
         source=source,
+        context_required=False,
     )
 
 
 def routed(task="task", platform="codex", explicit_level=None, explicit_task_type=None,
-           explicit_factors=None, available_models=None, classifier=None):
+           explicit_factors=None, available_models=None, classifier=None, repo_aware=False, critical=False):
     return router.route(
         task, platform, CONFIG,
         explicit_factors=explicit_factors,
@@ -56,6 +58,8 @@ def routed(task="task", platform="codex", explicit_level=None, explicit_task_typ
         explicit_task_type=explicit_task_type,
         available_models=available_models,
         classifier=classifier or (lambda _: classification()),
+        repo_aware=repo_aware,
+        critical=critical,
     )
 
 
@@ -73,12 +77,43 @@ class PlatformClassifierTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertEqual(command[0:2], ["codex", "exec"])
         self.assertIn("--ephemeral", command)
-        self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-terra")
+        self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-luna")
+        self.assertIn('model_reasoning_effort="medium"', command)
         self.assertEqual(captured["schema"]["properties"]["task_type"]["enum"], list(router.TASK_TYPES))
         self.assertEqual(captured["schema"]["properties"]["risk_flags"]["required"], list(router.RISK_FLAGS))
         self.assertNotIn("hard_floor", captured["schema"]["properties"])
-        self.assertEqual(result.source, "terra")
+        self.assertEqual(result.source, "gpt-5.6-luna")
         self.assertEqual(run.call_args.kwargs["timeout"], 7)
+
+    def test_cascading_fallback_to_terra_on_low_confidence(self):
+        primary_output = classifier_output(level="L3", confidence=0.50)
+        fallback_output = classifier_output(level="L4", confidence=0.85)
+        calls = []
+
+        def fake_run(command, **kwargs):
+            model = command[command.index("--model") + 1]
+            calls.append(model)
+            out = fallback_output if model == "gpt-5.6-terra" else primary_output
+            return subprocess.CompletedProcess([], 0, out, "")
+
+        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+            result = router.classify_task("complex ambiguous task")
+        self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra"])
+        self.assertEqual(result.source, "gpt-5.6-terra")
+        self.assertEqual(result.level, "L4")
+
+    def test_repo_aware_uses_fallback_classifier_directly(self):
+        calls = []
+
+        def fake_run(command, **kwargs):
+            model = command[command.index("--model") + 1]
+            calls.append(model)
+            return subprocess.CompletedProcess([], 0, classifier_output(level="L4"), "")
+
+        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+            result = router.classify_task("fix intermittent bug", repo_aware=True)
+        self.assertEqual(calls, ["gpt-5.6-terra"])
+        self.assertEqual(result.source, "gpt-5.6-terra")
 
     def test_claude_uses_native_structured_output_without_tools_or_session(self):
         completed = subprocess.CompletedProcess([], 0, json.dumps({"structured_output": json.loads(classifier_output())}), "")
@@ -86,8 +121,10 @@ class PlatformClassifierTests(unittest.TestCase):
             result = router.classify_task("add a settings page", platform="claude-code", timeout=7)
         command = run.call_args.args[0]
         self.assertEqual(command[:2], ["claude", "-p"])
+        self.assertEqual(command[command.index("--model") + 1], "claude-haiku-4.5")
+        self.assertNotIn("--effort", command)
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
-        self.assertEqual(result.source, "claude-sonnet-5")
+        self.assertEqual(result.source, "claude-haiku-4.5")
         self.assertTrue(Path(run.call_args.kwargs["cwd"]).name.startswith("model-effort-router-"))
 
     def test_antigravity_uses_isolated_structured_json_classifier(self):
@@ -96,8 +133,44 @@ class PlatformClassifierTests(unittest.TestCase):
             result = router.classify_task("task", platform="antigravity", timeout=7)
         command = run.call_args.args[0]
         self.assertEqual(command[:2], ["agy", "--print"])
+        self.assertEqual(command[command.index("--model") + 1], "Gemini 3.8 Flash (Medium)")
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
-        self.assertEqual(result.source, "gemini-3.6-flash-low")
+        self.assertEqual(result.source, "Gemini 3.8 Flash (Medium)")
+
+    def test_claude_cascading_fallback_uses_sonnet_medium(self):
+        primary_output = json.dumps({"structured_output": json.loads(classifier_output(level="L2", confidence=0.45))})
+        fallback_output = json.dumps({"structured_output": json.loads(classifier_output(level="L3", confidence=0.88))})
+        calls = []
+
+        def fake_run(command, **kwargs):
+            model = command[command.index("--model") + 1]
+            effort = command[command.index("--effort") + 1] if "--effort" in command else None
+            calls.append((model, effort))
+            out = fallback_output if model == "claude-sonnet-5" else primary_output
+            return subprocess.CompletedProcess([], 0, out, "")
+
+        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+            result = router.classify_task("ambiguous task", platform="claude-code")
+        self.assertEqual(calls, [("claude-haiku-4.5", None), ("claude-sonnet-5", "medium")])
+        self.assertEqual(result.source, "claude-sonnet-5")
+        self.assertEqual(result.level, "L3")
+
+    def test_antigravity_cascading_fallback_to_pro_high(self):
+        primary_output = json.dumps({"structured_output": json.loads(classifier_output(level="L3", confidence=0.55))})
+        fallback_output = json.dumps({"structured_output": json.loads(classifier_output(level="L5", confidence=0.90))})
+        calls = []
+
+        def fake_run(command, **kwargs):
+            model = command[command.index("--model") + 1]
+            calls.append(model)
+            out = fallback_output if "Pro" in model else primary_output
+            return subprocess.CompletedProcess([], 0, out, "")
+
+        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+            result = router.classify_task("complex task", platform="antigravity")
+        self.assertEqual(calls, ["Gemini 3.8 Flash (Medium)", "Gemini 3.1 Pro (High)"])
+        self.assertEqual(result.source, "Gemini 3.1 Pro (High)")
+        self.assertEqual(result.level, "L5")
 
     def test_timeout_process_failure_and_invalid_output_fall_back(self):
         for outcome in (
@@ -147,11 +220,12 @@ class PlatformClassifierTests(unittest.TestCase):
 class EscalationTests(unittest.TestCase):
     def test_security_flags_force_an_l4_floor(self):
         cases = (
-            ("L1", {"authentication": True}, "L4"),
-            ("L2", {"payment": True}, "L4"),
-            ("L3", {"authorization": True}, "L4"),
-            ("L1", {"security_sensitive": True}, "L4"),
-            ("L5", {"security_sensitive": True}, "L5"),
+            ("L1", {"authentication": True}, "L6"),
+            ("L2", {"payment": True}, "L6"),
+            ("L3", {"authorization": True}, "L6"),
+            ("L1", {"security_sensitive": True}, "L6"),
+            ("L6", {"security_sensitive": True}, "L6"),
+            ("L7", {"security_sensitive": True}, "L7"),
         )
         for base, flags, expected in cases:
             with self.subTest(base=base, flags=flags):
@@ -164,57 +238,90 @@ class EscalationTests(unittest.TestCase):
             router.apply_risk_escalation("L3", {**NO_FLAGS, "data_migration": True, "public_api_change": True}),
             "L5",
         )
-        self.assertEqual(router.apply_risk_escalation("L5", {**NO_FLAGS, "data_migration": True}), "L5")
+        self.assertEqual(router.apply_risk_escalation("L7", {**NO_FLAGS, "data_migration": True}), "L7")
 
     def test_no_flags_keeps_the_base_level(self):
         self.assertEqual(router.apply_risk_escalation("L2", NO_FLAGS), "L2")
 
 
 class MatrixTests(unittest.TestCase):
-    CODEX_IMPL = ("gpt-5.6-luna", "medium"), ("gpt-5.6-luna", "high"), ("gpt-5.6-luna", "xhigh"), ("gpt-5.6-terra", "xhigh"), ("gpt-5.6-terra", "max")
+    CODEX_IMPL = (
+        ("gpt-5.6-luna", "low"),
+        ("gpt-5.6-luna", "medium"),
+        ("gpt-5.6-terra", "medium"),
+        ("gpt-5.6-terra", "high"),
+        ("gpt-5.6-sol", "high"),
+        ("gpt-5.6-sol", "xhigh"),
+        ("gpt-6-astra", "xhigh"),
+    )
     EXPECTED_SINGLE = {
         "codex": {
             **{("implementation", level): cell for level, cell in zip(router.LEVELS, CODEX_IMPL)},
             **{("local_refactoring", level): cell for level, cell in zip(router.LEVELS, CODEX_IMPL)},
-            **{(kind, level): ("gpt-5.6-sol", effort) for kind in ("design", "review") for level, effort in zip(router.LEVELS, ("low", "medium", "high", "xhigh", "max"))},
-            ("architectural_refactoring", "L1"): ("gpt-5.6-sol", "medium"),
-            ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
+            **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
+                ("gpt-5.6-luna", "medium"),
+                ("gpt-5.6-sol", "low"),
+                ("gpt-5.6-sol", "medium"),
+                ("gpt-5.6-sol", "high"),
+                ("gpt-5.6-sol", "high"),
+                ("gpt-5.6-sol", "xhigh"),
+                ("gpt-6-astra", "xhigh"),
+            ))},
+            ("architectural_refactoring", "L1"): ("gpt-5.6-luna", "medium"),
+            ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "medium"),
         },
         "claude-code": {
-            **{("implementation", level): cell for level, cell in zip(router.LEVELS, (("haiku", None), ("sonnet", "medium"), ("sonnet", "high"), ("sonnet", "xhigh"), ("sonnet", "max")))},
-            **{("local_refactoring", level): cell for level, cell in zip(router.LEVELS, (("haiku", None), ("sonnet", "medium"), ("sonnet", "high"), ("sonnet", "xhigh"), ("sonnet", "max")))},
-            **{(kind, level): ("opus", effort) for kind in ("design", "review") for level, effort in zip(router.LEVELS, ("low", "medium", "high", "xhigh", "max"))},
-            ("architectural_refactoring", "L1"): ("opus", "medium"),
-            ("architectural_refactoring", "L2"): ("opus", "high"),
+            **{("implementation", level): cell for level, cell in zip(router.LEVELS, (
+                ("claude-haiku-4-5", None), ("claude-haiku-4-5", None), ("claude-sonnet-5", "medium"), ("claude-sonnet-5", "high"),
+                ("claude-fable-5-1", "medium"), ("claude-fable-5-1", "high"), ("claude-fable-5-1", "xhigh"),
+            ))},
+            **{("local_refactoring", level): cell for level, cell in zip(router.LEVELS, (
+                ("claude-haiku-4-5", None), ("claude-haiku-4-5", None), ("claude-sonnet-5", "medium"), ("claude-sonnet-5", "high"),
+                ("claude-fable-5-1", "medium"), ("claude-fable-5-1", "high"), ("claude-fable-5-1", "xhigh"),
+            ))},
+            **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
+                ("claude-haiku-4-5", None), ("claude-opus-5", "low"), ("claude-opus-5", "medium"), ("claude-opus-5", "high"),
+                ("claude-fable-5-1", "high"), ("claude-fable-5-1", "xhigh"), ("claude-fable-5-1", "xhigh"),
+            ))},
+            ("architectural_refactoring", "L1"): ("claude-haiku-4-5", None),
+            ("architectural_refactoring", "L2"): ("claude-opus-5", "medium"),
         },
         "antigravity": {
             **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, (
-                ("Gemini 3.5 Flash (Low)", None), ("Gemini 3.5 Flash (Medium)", None), ("Gemini 3.5 Flash (High)", None),
-                ("Claude Sonnet 4.6 (Thinking)", None), ("Claude Opus 4.6 (Thinking)", None),
+                ("Gemini 3.8 Flash (High)", None), ("Gemini 3.8 Flash (High)", None), ("Gemini 3.8 Flash (High)", None),
+                ("Claude Sonnet 4.6 (Thinking)", None), ("Gemini 3.1 Pro (High)", None),
+                ("Claude Opus 4.6 (Thinking)", None), ("Claude Opus 4.6 (Thinking)", None),
             ))},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
-                ("Gemini 3.5 Flash (High)", None), ("Gemini 3.1 Pro (High)", None), ("Gemini 3.1 Pro (High)", None),
-                ("Gemini 3.1 Pro (High)", None), ("Claude Opus 4.6 (Thinking)", None),
+                ("Gemini 3.8 Flash (High)", None), ("Gemini 3.8 Flash (High)", None), ("Gemini 3.1 Pro (High)", None),
+                ("Gemini 3.1 Pro (High)", None), ("Gemini 3.1 Pro (High)", None),
+                ("Claude Opus 4.6 (Thinking)", None), ("Claude Opus 4.6 (Thinking)", None),
             ))},
-            ("architectural_refactoring", "L1"): ("Gemini 3.5 Flash (High)", None),
-            ("architectural_refactoring", "L2"): ("Gemini 3.1 Pro (High)", None),
+            ("architectural_refactoring", "L1"): ("Gemini 3.8 Flash (High)", None),
+            ("architectural_refactoring", "L2"): ("Gemini 3.8 Flash (High)", None),
         },
     }
     EXPECTED_STAGES = {
         "codex": {
-            ("architectural_refactoring", "L3"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-luna", "xhigh")],
-            ("architectural_refactoring", "L4"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "xhigh")],
-            ("architectural_refactoring", "L5"): [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "max")],
+            ("architectural_refactoring", "L3"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "medium")],
+            ("architectural_refactoring", "L4"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
+            ("architectural_refactoring", "L5"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
+            ("architectural_refactoring", "L6"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-sol", "xhigh")],
+            ("architectural_refactoring", "L7"): [("planner", "gpt-6-astra", "xhigh"), ("implementer", "gpt-5.6-sol", "xhigh")],
         },
         "claude-code": {
-            ("architectural_refactoring", "L3"): [("planner", "opus", "high"), ("implementer", "sonnet", "high")],
-            ("architectural_refactoring", "L4"): [("planner", "opus", "xhigh"), ("implementer", "sonnet", "xhigh")],
-            ("architectural_refactoring", "L5"): [("planner", "opus", "max"), ("implementer", "sonnet", "max")],
+            ("architectural_refactoring", "L3"): [("planner", "claude-fable-5-1", "high"), ("implementer", "claude-sonnet-5", "medium")],
+            ("architectural_refactoring", "L4"): [("planner", "claude-fable-5-1", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
+            ("architectural_refactoring", "L5"): [("planner", "claude-fable-5-1", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
+            ("architectural_refactoring", "L6"): [("planner", "claude-fable-5-1", "xhigh"), ("implementer", "claude-fable-5-1", "high")],
+            ("architectural_refactoring", "L7"): [("planner", "claude-fable-5-1", "max"), ("implementer", "claude-fable-5-1", "xhigh")],
         },
         "antigravity": {
-            ("architectural_refactoring", "L3"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Gemini 3.5 Flash (High)", None)],
+            ("architectural_refactoring", "L3"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Gemini 3.8 Flash (High)", None)],
             ("architectural_refactoring", "L4"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
-            ("architectural_refactoring", "L5"): [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Opus 4.6 (Thinking)", None)],
+            ("architectural_refactoring", "L5"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
+            ("architectural_refactoring", "L6"): [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Opus 4.6 (Thinking)", None)],
+            ("architectural_refactoring", "L7"): [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Opus 4.6 (Thinking)", None)],
         },
     }
 
@@ -241,37 +348,59 @@ class MatrixTests(unittest.TestCase):
     def test_antigravity_patterns_match_account_models_before_fallback(self):
         result = routed(
             platform="antigravity",
-            classifier=lambda _: classification("implementation", "L2"),
-            available_models=["Gemini 3.5 Flash (Medium)", "Claude Opus 4.6 (Thinking)"],
+            classifier=lambda _: classification("implementation", "L4"),
+            available_models=["Gemini 3.8 Flash (High)", "Claude Sonnet 4.6 (Thinking)"],
         )
-        self.assertEqual((result.model, result.effort), ("Gemini 3.5 Flash (Medium)", None))
+        self.assertEqual((result.model, result.effort), ("Claude Sonnet 4.6 (Thinking)", None))
 
 
 class RoutingTests(unittest.TestCase):
     def test_security_flag_promotes_an_l1_implementation_to_terra(self):
         result = routed(classifier=lambda _: classification("implementation", "L1", flags={"authentication": True}))
-        self.assertEqual((result.base_level, result.level), ("L1", "L4"))
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-terra", "xhigh"))
+        self.assertEqual((result.base_level, result.level), ("L1", "L6"))
+        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "xhigh"))
 
     def test_review_with_authorization_routes_sol_xhigh(self):
         result = routed(classifier=lambda _: classification("review", "L2", flags={"authorization": True}))
-        self.assertEqual((result.level, result.model, result.effort), ("L4", "gpt-5.6-sol", "xhigh"))
+        self.assertEqual((result.level, result.model, result.effort), ("L6", "gpt-5.6-sol", "xhigh"))
+
+    def test_confidence_bump_conservative_plus_one(self):
+        result = routed(classifier=lambda _: classification("implementation", "L3", confidence=0.70))
+        self.assertEqual((result.base_level, result.level), ("L4", "L4"))
+        self.assertEqual((result.model, result.effort), ("gpt-5.6-terra", "high"))
+        self.assertTrue(any("conservative +1 level applied" in r for r in result.rationale))
+
+    def test_critical_override_forces_highest_profile(self):
+        result = routed(critical=True)
+        self.assertEqual(result.level_name, "critical")
+        self.assertEqual((result.model, result.effort), ("gpt-6-astra", "max"))
+        self.assertTrue(any("Critical override applied" in r for r in result.rationale))
 
     def test_explicit_task_type_overrides_the_classified_type_but_not_level(self):
         spy = mock.Mock(return_value=classification("design", "L2"))
         result = routed(explicit_task_type="implementation", classifier=spy)
         spy.assert_called_once()
         self.assertEqual(result.task_type, "implementation")
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-luna", "high"))
+        self.assertEqual((result.model, result.effort), ("gpt-5.6-luna", "medium"))
 
     def test_explicit_l5_with_explicit_type_bypasses_the_classifier(self):
         classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
-        result = routed(explicit_level="L5", explicit_task_type="design", classifier=classifier)
+        result = routed(explicit_level="L7", explicit_task_type="design", classifier=classifier)
         classifier.assert_not_called()
-        self.assertEqual(result.level, "L5")
+        self.assertEqual(result.level, "L7")
         self.assertEqual(result.task_type, "design")
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "max"))
+        self.assertEqual((result.model, result.effort), ("gpt-6-astra", "xhigh"))
         self.assertEqual(result.source, "manual")
+
+    def test_critical_with_explicit_type_bypasses_the_classifier(self):
+        classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
+        result = routed(critical=True, explicit_task_type="implementation", classifier=classifier)
+        classifier.assert_not_called()
+        self.assertEqual(result.level, "critical")
+        self.assertEqual(result.task_type, "implementation")
+        self.assertEqual((result.model, result.effort), ("gpt-6-astra", "max"))
+        self.assertEqual(result.source, "manual")
+
 
     def test_explicit_l5_without_a_type_still_classifies_for_the_type_axis(self):
         spy = mock.Mock(return_value=classification("review", "L1"))
@@ -279,7 +408,7 @@ class RoutingTests(unittest.TestCase):
         spy.assert_called_once()
         self.assertEqual(result.task_type, "review")
         self.assertEqual(result.level, "L5")
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "max"))
+        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "high"))
 
     def test_lower_explicit_level_remains_a_minimum_after_preflight(self):
         higher = classification("design", "L5")
@@ -296,11 +425,37 @@ class RoutingTests(unittest.TestCase):
     def test_antigravity_available_model_matching(self):
         result = routed(
             platform="antigravity",
-            classifier=lambda _: classification("design", "L5"),
-            available_models=["Gemini 3.5 Flash (Low)", "Claude Opus 4.6 (Thinking)"],
+            classifier=lambda _: classification("design", "L6"),
+            available_models=["Gemini 3.8 Flash (High)", "Claude Opus 4.6 (Thinking)"],
         )
         self.assertEqual(result.model, "Claude Opus 4.6 (Thinking)")
         self.assertIsNone(result.effort)
+
+    def test_antigravity_l5_prefers_31_pro_high(self):
+        result = routed(
+            platform="antigravity",
+            classifier=lambda _: classification("implementation", "L5"),
+            available_models=["Gemini 3.8 Flash (High)", "Gemini 3.1 Pro (High)", "Claude Opus 4.6 (Thinking)"],
+        )
+        self.assertEqual(result.model, "Gemini 3.1 Pro (High)")
+        self.assertIsNone(result.effort)
+
+    def test_antigravity_l5_availability_fallback_to_sonnet_thinking(self):
+        result = routed(
+            platform="antigravity",
+            classifier=lambda _: classification("implementation", "L5"),
+            available_models=["Gemini 3.8 Flash (High)", "Claude Sonnet 4.6 (Thinking)", "Claude Opus 4.6 (Thinking)"],
+        )
+        self.assertEqual(result.model, "Claude Sonnet 4.6 (Thinking)")
+        self.assertIsNone(result.effort)
+
+    def test_auth_typo_in_readme_does_not_trigger_l6_floor(self):
+        # A documentation typo fix mentioning auth should not set security risk flags and should remain L1
+        fix = classification("implementation", "L1", flags=NO_FLAGS, confidence=0.98)
+        result = routed(task="README에서 auth 설명 오타 수정", classifier=lambda _: fix)
+        self.assertEqual(result.level, "L1")
+        self.assertFalse(any(result.risk_flags.values()))
+
 
     def test_main_reports_a_safe_fallback_on_stderr(self):
         stderr = io.StringIO()
@@ -327,8 +482,8 @@ class CommandAndLauncherTests(unittest.TestCase):
         result = routed(classifier=lambda _: classification("implementation", "L3"))
         command = router.stage_commands(result, "task")[0]
         self.assertEqual(command[:2], ["codex", "exec"])
-        self.assertIn("-m gpt-5.6-luna", " ".join(command[:command.index("task")]))
-        self.assertIn("model_reasoning_effort=xhigh", command)
+        self.assertIn("-m gpt-5.6-terra", " ".join(command[:command.index("task")]))
+        self.assertIn("model_reasoning_effort=medium", command)
         self.assertIn("Investigate dependencies and failure paths before editing.", " ".join(command))
 
     def test_single_stage_commands_include_verification_handoff(self):
@@ -393,7 +548,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertIn("mkdir -p ", chain)
         self.assertIn(" && ", chain)
         self.assertIn("-m gpt-5.6-sol", chain)
-        self.assertIn("-m gpt-5.6-luna", chain)
+        self.assertIn("-m gpt-5.6-terra", chain)
         self.assertIn(str(Path(result.plan_dir) / "plan.json"), chain)
         self.assertIn(f"rm -rf {shlex_quote(str(result.plan_dir))}", chain)
         kept = router.command_chain(result, "restructure modules", keep_plan=True)
@@ -477,7 +632,7 @@ class CommandAndLauncherTests(unittest.TestCase):
     def test_route_file_rejects_non_codex_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             route_file = Path(tmp) / "route.json"
-            route_file.write_text(json.dumps({"schema_version": 1, "platform": "codex", "mode": "single", "steps": [{"command": ["sh", "-c", "bad"]}]}), encoding="utf-8")
+            route_file.write_text(json.dumps({"schema_version": router.SCHEMA_VERSION, "platform": "codex", "mode": "single", "steps": [{"command": ["sh", "-c", "bad"]}]}), encoding="utf-8")
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
 
@@ -524,25 +679,25 @@ class CommandAndLauncherTests(unittest.TestCase):
             with self.subTest(platform=platform):
                 result = routed(platform=platform, classifier=lambda _: classification("design", "L4"))
                 command = router.shell_command(result, "task", False)
-                self.assertEqual(command[command.index("--agent") + 1], "level-4-advanced")
+                self.assertEqual(command[command.index("--agent") + 1], "level-4-complex")
 
     def test_claude_effort_omitted_for_haiku(self):
         result_l1 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L1"))
-        self.assertEqual(result_l1.model, "haiku")
+        self.assertEqual(result_l1.model, "claude-haiku-4-5")
         self.assertIsNone(result_l1.effort)
         command_l1 = router.shell_command(result_l1, "task", False)
         self.assertNotIn("--effort", command_l1)
 
-        result_l2 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L2"))
-        self.assertEqual(result_l2.model, "sonnet")
-        self.assertEqual(result_l2.effort, "medium")
-        command_l2 = router.shell_command(result_l2, "task", False)
-        self.assertIn("--effort", command_l2)
-        self.assertEqual(command_l2[command_l2.index("--effort") + 1], "medium")
+        result_l3 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L3"))
+        self.assertEqual(result_l3.model, "claude-sonnet-5")
+        self.assertEqual(result_l3.effort, "medium")
+        command_l3 = router.shell_command(result_l3, "task", False)
+        self.assertIn("--effort", command_l3)
+        self.assertEqual(command_l3[command_l3.index("--effort") + 1], "medium")
 
     def test_two_stage_commands_are_platform_native(self):
         for platform, expected_head in (
-            ("claude-code", ["claude", "-p", "--model", "opus"]),
+            ("claude-code", ["claude", "-p", "--model", "claude-fable-5-1"]),
             ("antigravity", ["agy", "--model", "Gemini 3.1 Pro (High)"]),
         ):
             with self.subTest(platform=platform):
@@ -555,6 +710,53 @@ class CommandAndLauncherTests(unittest.TestCase):
                 chain = router.command_chain(result, "task")
                 self.assertTrue(chain.startswith("mkdir -p "))
                 self.assertIn("rm -rf ", chain)
+
+    def test_claude_l6_prefers_fable_when_available(self):
+        result = routed(
+            platform="claude-code",
+            classifier=lambda _: classification("implementation", "L6"),
+            available_models=["claude-fable-5-1", "claude-opus-5"],
+        )
+        self.assertEqual((result.model, result.effort), ("claude-fable-5-1", "high"))
+
+    def test_claude_l6_falls_back_to_opus_when_fable_unavailable(self):
+        result = routed(
+            platform="claude-code",
+            classifier=lambda _: classification("implementation", "L6"),
+            available_models=["claude-opus-5", "claude-sonnet-5"],
+        )
+        self.assertEqual((result.model, result.effort), ("claude-opus-5", "high"))
+
+    def test_claude_critical_prefers_fable_and_falls_back_to_opus(self):
+        result_fable = routed(
+            platform="claude-code",
+            critical=True,
+            available_models=["claude-fable-5-1", "claude-opus-5"],
+        )
+        self.assertEqual((result_fable.model, result_fable.effort), ("claude-fable-5-1", "max"))
+
+        result_opus = routed(
+            platform="claude-code",
+            critical=True,
+            available_models=["claude-opus-5"],
+        )
+        self.assertEqual((result_opus.model, result_opus.effort), ("claude-opus-5", "max"))
+
+    def test_antigravity_l6_matches_fable_if_available(self):
+        result = routed(
+            platform="antigravity",
+            classifier=lambda _: classification("implementation", "L6"),
+            available_models=["Claude Fable 5.1 (Thinking)", "Claude Opus 4.6 (Thinking)"],
+        )
+        self.assertEqual(result.model, "Claude Fable 5.1 (Thinking)")
+
+    def test_antigravity_l6_falls_back_to_opus_if_fable_unavailable(self):
+        result = routed(
+            platform="antigravity",
+            classifier=lambda _: classification("implementation", "L6"),
+            available_models=["Claude Opus 4.6 (Thinking)"],
+        )
+        self.assertEqual(result.model, "Claude Opus 4.6 (Thinking)")
 
     def _run_via_symlink(self, name: str, extra_env: dict[str, str] | None = None):
         source = ROOT / self.LAUNCHERS[name]
@@ -585,10 +787,10 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertIn("[model-effort-router]", proc.stderr)
         with tempfile.TemporaryDirectory() as tmp:
             models = Path(tmp) / "models.txt"
-            models.write_text("Gemini 3.5 Flash (Low)\n", encoding="utf-8")
+            models.write_text("Gemini 3.8 Flash (High)\n", encoding="utf-8")
             proc = self._run_via_symlink("agy-route", {"MODEL_EFFORT_ROUTER_MODELS_FILE": str(models)})
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("Gemini 3.5 Flash (Low)", proc.stderr)
+        self.assertIn("Gemini 3.8 Flash (High)", proc.stderr)
 
     def test_launcher_reports_a_missing_bundle_clearly(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -598,8 +800,6 @@ class CommandAndLauncherTests(unittest.TestCase):
 
 
 class RouteSkillContractTests(unittest.TestCase):
-    # Each skill introduces its degraded path with one of these lines; everything
-    # before it is the primary instruction the executor must satisfy.
     FALLBACK_SENTINELS = (
         "When named-agent delegation is unavailable",
         "When the launcher script cannot start a subprocess",
@@ -622,12 +822,9 @@ class RouteSkillContractTests(unittest.TestCase):
 
     def test_claude_skill_replays_stored_steps_for_both_modes(self):
         primary = self._primary_section("claude")
-        # Model and effort must come from the matrix row, replayed verbatim, not
-        # from a level-only agent default.
         self.assertIn("bin/claude-route --route-file", primary)
         self.assertIn("steps[].command", primary)
         self.assertIn("matrix `--model` and `--effort`", primary)
-        # Two-stage architectural refactoring is handled on the same path.
         self.assertIn("two_stage", primary)
         self.assertIn("runs the executor only if the plan step succeeds", primary)
 
