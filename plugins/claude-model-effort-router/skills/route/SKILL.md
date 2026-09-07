@@ -20,8 +20,9 @@ Model and effort are one profile: both come from the selected `task_type × leve
 
 When the launcher script cannot start a subprocess, delegate the complete task with the Agent tool to the plugin agent `model-effort:level-N-*` matching the selected level, and set the Agent tool `model` parameter to the route JSON `steps[0].model` so the matrix model overrides the agent default. The Agent tool cannot override effort, so take this path only when the `level-N` agent's frontmatter effort already equals `steps[0].effort`; otherwise wait for the launcher. A `two_stage` route cannot be expressed through the Agent tool and always needs the launcher.
 
-Schema v3 `orchestration_eligible` is future metadata only. Respect
-`execution_strategy: direct`; existing v2 route files remain valid replay inputs.
+Schema v3 `orchestration_eligible` is future metadata only.
+`scripts/astra_adapter.py` is caller-invoked and digest-verified; respect
+`execution_strategy: direct` because direct v2 and v3 route-file replay never invokes it.
 
 The result's `verification` object is recommendation metadata only. The
 selected executor receives recommended IDs and reasons, selects applicable
