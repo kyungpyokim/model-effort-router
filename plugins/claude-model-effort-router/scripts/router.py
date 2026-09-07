@@ -13,7 +13,7 @@ import sys
 import tempfile
 import tomllib
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
@@ -466,8 +466,9 @@ def classify_task(
             task, platform, FALLBACK_CLASSIFIER_CONFIG[platform],
             timeout=timeout, command=command, available_models=available_models,
         )
-        if fallback_res.source != "fallback":
-            return fallback_res
+        if fallback_res.source == "fallback":
+            return replace(fallback_res, risk_flags=dict(primary.risk_flags))
+        return fallback_res
 
     return primary
 

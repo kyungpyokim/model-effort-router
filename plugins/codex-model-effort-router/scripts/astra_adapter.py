@@ -88,6 +88,7 @@ def run(repo: Path, route_file: Path, route_sha256: str, manifest_file: Path, ma
     route_file = route_file.resolve()
     manifest_file = manifest_file.resolve()
     repo = repo.resolve()
+    artifact_dir = artifact_dir.resolve()
     route_bytes = route_file.read_bytes()
     manifest_bytes = manifest_file.read_bytes()
     if hashlib.sha256(route_bytes).hexdigest() != route_sha256:
@@ -148,9 +149,6 @@ def run(repo: Path, route_file: Path, route_sha256: str, manifest_file: Path, ma
         results.append(result)
         preserve_inputs(artifact_dir, route_bytes, manifest_bytes)
         write_metadata(artifact_dir / "metadata.json", route_file=route_file, route_sha256=route_sha256, manifest_file=manifest_file, manifest_sha256=manifest_sha256, base_sha=fixed_base, attempt_results=results)
-        for previous in results:
-            if previous["worktree_created"]:
-                git(repo, "worktree", "remove", "--force", previous["worktree"])
         return 0
     return 1
 

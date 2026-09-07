@@ -110,6 +110,54 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(result.source, "gpt-5.6-terra")
         self.assertEqual(result.level, "L4")
 
+    def test_cascade_uses_safe_fallback_when_escalated_classifier_fails(self):
+        for primary_output in (
+            classifier_output(level="L2", confidence=0.40),
+            classifier_output(level="L2", confidence=0.95, context_required=True),
+        ):
+            with self.subTest(primary_output=primary_output):
+                calls = []
+
+                def fake_run(command, **kwargs):
+                    model = command[command.index("--model") + 1]
+                    calls.append(model)
+                    if model == "gpt-5.6-terra":
+                        return subprocess.CompletedProcess([], 1, "", "failed")
+                    return subprocess.CompletedProcess([], 0, primary_output, "")
+
+                with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+                    result = router.classify_task("ambiguous task")
+                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra"])
+                self.assertEqual(result.source, "fallback")
+                self.assertEqual(result.level, "L3")
+
+    def test_cascade_failure_preserves_primary_security_risk_in_route(self):
+        cases = (
+            (classifier_output(level="L2", confidence=0.40, flags={"payment": True}), "payment"),
+            (classifier_output(level="L2", confidence=0.95, context_required=True, flags={"authentication": True}), "authentication"),
+        )
+        for primary_output, risk_flag in cases:
+            with self.subTest(risk_flag=risk_flag):
+                calls = []
+
+                def fake_run(command, **kwargs):
+                    model = command[command.index("--model") + 1]
+                    calls.append(model)
+                    if model == "gpt-5.6-terra":
+                        return subprocess.CompletedProcess([], 1, "", "failed")
+                    return subprocess.CompletedProcess([], 0, primary_output, "")
+
+                with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+                    result = router.route("fix sensitive boundary", "codex", CONFIG)
+
+                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra"])
+                self.assertEqual((result.source, result.base_level, result.level), ("fallback", "L3", "L6"))
+                self.assertTrue(result.risk_flags[risk_flag])
+                command = router.stage_commands(result, "fix sensitive boundary")[0]
+                payload = router.result_payload(result, [command])
+                self.assertIn("Autobahn scope guard", " ".join(command))
+                self.assertIn(risk_flag, payload["scope_guard"]["risk_flags"])
+
     def test_repo_aware_uses_fallback_classifier_directly(self):
         calls = []
 

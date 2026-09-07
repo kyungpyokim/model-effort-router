@@ -26,7 +26,7 @@ class AstraAdapterTests(unittest.TestCase):
         subprocess.run(("git", "commit", "-qm", "base"), cwd=directory, check=True)
         return subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=directory, text=True).strip()
 
-    def invoke(self, repo: Path, route: Path, manifest: Path, base_sha: str, artifacts: Path, worker: str, digest: str | None = None) -> subprocess.CompletedProcess[str]:
+    def invoke(self, repo: Path, route: Path, manifest: Path, base_sha: str, artifacts: Path, worker: str, digest: str | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 sys.executable, str(ADAPTER), "--repo", str(repo), "--route-file", str(route),
@@ -38,6 +38,7 @@ class AstraAdapterTests(unittest.TestCase):
             capture_output=True,
             text=True,
             timeout=60,
+            cwd=cwd,
         )
 
     def test_runs_worker_once_in_an_isolated_fixed_base_worktree(self):
@@ -59,8 +60,27 @@ class AstraAdapterTests(unittest.TestCase):
             self.assertEqual(metadata["route_sha256"], hashlib.sha256(route.read_bytes()).hexdigest())
             self.assertEqual(metadata["attempts"], 1)
             self.assertTrue((artifacts / "attempt-1.log").exists())
+            self.assertEqual((artifacts / "attempt-1" / "owned.txt").read_text(encoding="utf-8"), "changed\n")
             self.assertEqual((artifacts / "manifest.json").read_text(encoding="utf-8"), manifest.read_text(encoding="utf-8"))
             self.assertEqual((repo / "owned.txt").read_text(encoding="utf-8"), "base\n")
+
+    def test_relative_artifact_dir_gives_worker_an_absolute_route_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo, route, manifest = root / "repo", root / "route.json", root / "manifest.json"
+            repo.mkdir()
+            base_sha = self.init_repo(repo)
+            route.write_text('{"schema_version": 3}', encoding="utf-8")
+            manifest.write_text('{"owned_files":["owned.txt"]}', encoding="utf-8")
+            worker = (
+                "import os, pathlib; "
+                "route = pathlib.Path(os.environ['ASTRA_ROUTE_FILE']); "
+                "assert route.is_absolute() and route.read_text() == '{\\\"schema_version\\\": 3}'; "
+                "pathlib.Path('owned.txt').write_text('changed\\n')"
+            )
+            proc = self.invoke(repo, route, manifest, base_sha, Path("artifacts"), worker, cwd=root)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual((root / "artifacts" / "attempt-1" / "owned.txt").read_text(encoding="utf-8"), "changed\n")
 
     def test_rejects_route_digest_mismatch_before_creating_a_worktree(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -164,7 +184,7 @@ class AstraAdapterTests(unittest.TestCase):
             self.assertEqual(len(set(attempts)), 2)
             self.assertTrue(all(path.exists() for path in attempts))
 
-    def test_cleans_the_first_failed_worktree_after_a_successful_retry(self):
+    def test_preserves_all_worktrees_after_a_successful_retry(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             repo, route, manifest, artifacts = root / "repo", root / "route.json", root / "manifest.json", root / "artifacts"
@@ -176,7 +196,9 @@ class AstraAdapterTests(unittest.TestCase):
             proc = self.invoke(repo, route, manifest, base_sha, artifacts, worker)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             metadata = json.loads((artifacts / "metadata.json").read_text(encoding="utf-8"))
-            self.assertFalse(Path(metadata["attempt_results"][0]["worktree"]).exists())
+            self.assertTrue(Path(metadata["attempt_results"][0]["worktree"]).exists())
+            self.assertTrue(Path(metadata["attempt_results"][1]["worktree"]).exists())
+            self.assertEqual((Path(metadata["attempt_results"][1]["worktree"]) / "owned.txt").read_text(encoding="utf-8"), "changed\n")
             self.assertTrue((artifacts / "attempt-1.log").exists())
 
     def test_worktree_creation_failure_still_preserves_attempt_logs(self):
