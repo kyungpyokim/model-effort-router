@@ -22,14 +22,19 @@ Then invoke:
 /model-effort:route <task>
 ```
 
-The router preflights each task with native `claude-sonnet-5` / low. Claude's
-JSON-schema output is read from its `structured_output` result field. Safe mode,
+The router preflights each task with native `claude-haiku-4-5`, then falls back
+to `claude-sonnet-5` / medium on low confidence. Claude's JSON-schema output is
+read from its `structured_output` result field. Safe mode,
 no tools, plan permissions, no session persistence, and a temporary working
 directory isolate the classifier. Failure safely selects L3. Each agent pins
 `model` and `effort` in frontmatter.
 
 The deterministic launcher starts a new session with both `--agent` and the
 selected model/effort; it never tries to change the current session.
+
+Route-file replay accepts existing v2 payloads. Schema v3 adds direct-only
+`execution_strategy` and future Astra `orchestration_eligible` metadata; it
+does not enable orchestration on Claude Code.
 
 ## Validate
 
@@ -49,7 +54,8 @@ This prints a command such as:
 claude --agent level-4-advanced --model opus --effort xhigh -p '<task>'
 ```
 
-`--level` is a minimum, so L1-L4 still run preflight; `--level L5` bypasses it.
+`--level` is a minimum; only `--level L7` with an explicit `--task-type`
+bypasses preflight.
 
 ## Customize
 
