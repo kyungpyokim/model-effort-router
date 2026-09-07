@@ -79,9 +79,10 @@ recommended checks and reports each result or why it was not run. Route-file
 replay ignores the JSON object and reuses only the stored execution steps.
 
 Schema v3 records `execution_strategy: "direct"` and
-`orchestration_eligible` separately. Eligibility is future Astra handoff
-metadata only; the adapter is absent, so this plugin always executes directly.
-Existing v2 route files replay unchanged.
+`orchestration_eligible` separately. `scripts/astra_adapter.py` is available as
+a caller-invoked isolated-worker boundary that revalidates worker inputs and
+preserves original verified artifacts, not a launcher target. Direct v2 and v3
+route-file replay never invokes it.
 
 ## Customize
 

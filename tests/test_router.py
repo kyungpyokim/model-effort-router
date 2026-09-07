@@ -697,6 +697,22 @@ class CommandAndLauncherTests(unittest.TestCase):
             with mock.patch.object(router, "classify_task", side_effect=AssertionError("must not reclassify")):
                 self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
 
+    def test_v2_and_v3_direct_replay_never_invokes_the_astra_adapter(self):
+        result = routed(classifier=lambda _: classification("review", "L3"))
+        v3 = router.result_payload(result, router.stage_commands(result, "task"))
+        v2 = dict(v3, schema_version=2)
+        v2.pop("execution_strategy")
+        v2.pop("orchestration_eligible")
+        for payload in (v2, v3):
+            with self.subTest(schema_version=payload["schema_version"]), tempfile.TemporaryDirectory() as tmp:
+                route_file = Path(tmp) / "route.json"
+                route_file.write_text(json.dumps(payload), encoding="utf-8")
+                output = io.StringIO()
+                with mock.patch.object(router.subprocess, "run", side_effect=AssertionError("direct replay must not invoke adapter")):
+                    with contextlib.redirect_stdout(output):
+                        self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
+                self.assertNotIn("astra_adapter.py", output.getvalue())
+
     def test_route_file_rejects_v3_missing_orchestration_contract(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
         payload = router.result_payload(result, router.stage_commands(result, "task"))
@@ -920,6 +936,17 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertIn("orchestration_eligible", text)
                 self.assertIn("execution_strategy", text)
                 self.assertIn("v2", text)
+
+    def test_docs_describe_the_available_adapter_without_changing_direct_replay(self):
+        paths = [ROOT / "README.md", ROOT / "references" / "routing-policy.md"]
+        for plugin in ("codex", "claude", "antigravity"):
+            base = ROOT / "plugins" / f"{plugin}-model-effort-router"
+            paths.extend([base / "README.md", base / "skills" / "route" / "SKILL.md"])
+        for path in paths:
+            with self.subTest(path=path):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("astra_adapter.py", text)
+                self.assertIn("never invokes", text)
 
     def test_plugin_readmes_do_not_advertise_stale_preflight_profiles(self):
         codex = (ROOT / "plugins" / "codex-model-effort-router" / "README.md").read_text(encoding="utf-8")

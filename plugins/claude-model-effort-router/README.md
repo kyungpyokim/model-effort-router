@@ -34,7 +34,9 @@ selected model/effort; it never tries to change the current session.
 
 Route-file replay accepts existing v2 payloads. Schema v3 adds direct-only
 `execution_strategy` and future Astra `orchestration_eligible` metadata; it
-does not enable orchestration on Claude Code.
+does not enable orchestration on Claude Code. `scripts/astra_adapter.py` is a
+caller-invoked boundary that revalidates worker inputs and preserves original
+verified artifacts; direct v2 and v3 route-file replay never invokes it.
 
 ## Validate
 

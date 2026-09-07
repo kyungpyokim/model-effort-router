@@ -47,7 +47,9 @@ In Antigravity, effort is represented in names such as `Gemini ... Flash (Low)` 
 
 Route-file replay accepts existing v2 payloads. Schema v3 records direct-only
 `execution_strategy` and future Astra `orchestration_eligible` metadata; it
-does not enable orchestration on Antigravity.
+does not enable orchestration on Antigravity. `scripts/astra_adapter.py` is a
+caller-invoked boundary that revalidates worker inputs and preserves original
+verified artifacts; direct v2 and v3 route-file replay never invokes it.
 
 ## Customize
 
