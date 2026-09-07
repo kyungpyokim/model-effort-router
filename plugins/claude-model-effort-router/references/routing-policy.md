@@ -28,7 +28,24 @@ Python Deterministic Mapping
   └─ Matrix lookup (task_type × level)
 ```
 
-The classifier returns structured JSON with `task_type`, six factor scores, `level`, six `risk_flags`, `confidence`, `context_required` (boolean), and a one-sentence `reason`. The classifier applies a `readchk` reflex before scoring: restating intent internally and resolving referents.
+The classifier returns structured JSON with `task_type`, six factor scores, `level`, six `risk_flags`, `confidence`, `context_required` (boolean), `delegability` (0–2), and a one-sentence `reason`. The classifier applies a `readchk` reflex before scoring: restating intent internally and resolving referents.
+
+### Delegability and orchestration candidates
+
+`delegability` is not a seventh difficulty factor. It cannot alter the score or
+level: `0` is mandatory for shared state, sequence-dependent work, risky work,
+or a tightly coupled deep problem; `1` permits separable analysis but leaves
+dependencies or ownership coupled; `2` requires independent subtasks, explicit
+file/artifact ownership, and independently verifiable results.
+
+Schema v3 route files always retain `execution_strategy: "direct"` in this
+release. `orchestration_eligible: true` is only recorded for safe Codex
+single-stage L5–L7 routes with `delegability: 2` and no risk flags. Critical,
+two-stage, non-Codex, and any risky routes are ineligible. The disabled adapter
+policy never emits `astra_orchestrated`; it cannot change direct execution.
+
+Replay accepts existing v2 route files unchanged. Only v3 requires the two
+orchestration fields; malformed v3 files are rejected before execution.
 
 ### Classifiers by Platform
 

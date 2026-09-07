@@ -15,6 +15,9 @@ repository checks and report each result or why it was not run.
 
 Do not describe the current session's model or attempt to change it. When named-agent delegation is unavailable, use `../../bin/agy-route -- "<task>"` to run the selected profile in a new session, then do not continue the task in the parent session.
 
+Schema v3 `orchestration_eligible` is future metadata only. Respect
+`execution_strategy: direct`; existing v2 route files remain valid replay inputs.
+
 The result's `verification` object is recommendation metadata only. The
 selected executor receives recommended IDs and reasons, selects applicable
 existing repository checks, and reports results or why a check was not run.

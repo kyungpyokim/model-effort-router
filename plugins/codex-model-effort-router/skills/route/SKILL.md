@@ -26,6 +26,10 @@ of truth.
 
 When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `../../bin/codex-route --route-file <route.json>`. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
 
+Schema v3 `orchestration_eligible` is future handoff metadata only. Respect
+`execution_strategy: direct`; no Astra adapter is available in this release.
+Existing v2 route files remain valid replay inputs.
+
 The result's `verification` object is recommendation metadata only. The
 selected executor receives recommended IDs and reasons, selects applicable
 existing repository checks, and reports results or why a check was not run.

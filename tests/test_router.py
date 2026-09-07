@@ -23,7 +23,7 @@ NO_FLAGS = {flag: False for flag in router.RISK_FLAGS}
 BASE_FACTORS = {"scope": 1, "ambiguity": 0, "diagnosis": 0, "design": 1, "risk": 0, "verification": 1}
 
 
-def classifier_output(task_type="implementation", level="L2", factors=None, flags=None, confidence=0.9, reason="Clear scoped change.", context_required=False, raw=True):
+def classifier_output(task_type="implementation", level="L2", factors=None, flags=None, confidence=0.9, reason="Clear scoped change.", context_required=False, delegability=0, raw=True):
     payload = {
         "task_type": task_type,
         "level": level,
@@ -31,12 +31,13 @@ def classifier_output(task_type="implementation", level="L2", factors=None, flag
         "risk_flags": {**NO_FLAGS, **(flags or {})},
         "confidence": confidence,
         "context_required": context_required,
+        "delegability": delegability,
         "reason": reason,
     }
     return json.dumps(payload) if raw else payload
 
 
-def classification(task_type="implementation", level="L2", factors=None, flags=None, confidence=0.9, source="terra"):
+def classification(task_type="implementation", level="L2", factors=None, flags=None, confidence=0.9, source="terra", delegability=0):
     return router.Classification(
         task_type=task_type,
         level=level,
@@ -46,6 +47,7 @@ def classification(task_type="implementation", level="L2", factors=None, flags=N
         reason="classified",
         source=source,
         context_required=False,
+        delegability=delegability,
     )
 
 
@@ -208,6 +210,7 @@ class PlatformClassifierTests(unittest.TestCase):
             lambda p: p.update(risk_flags={flag: False for flag in router.RISK_FLAGS[:-1]}),
             lambda p: p.update(confidence=1.5),
             lambda p: p.update(confidence=True),
+            lambda p: p.update(delegability=3),
             lambda p: p.update(reason=""),
         ):
             payload = json.loads(json.dumps(valid))
@@ -216,6 +219,11 @@ class PlatformClassifierTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     router.validate_classifier_output(payload)
         self.assertEqual(router.validate_classifier_output(valid).task_type, "implementation")
+
+    def test_classifier_preserves_delegability_outside_difficulty_factors(self):
+        result = router.validate_classifier_output(classifier_output(delegability=2, raw=False))
+        self.assertEqual(result.delegability, 2)
+        self.assertEqual(result.factors, BASE_FACTORS)
 
     def test_timeouts_must_be_finite_and_positive(self):
         for option in ("--classifier-timeout", "--detect-timeout"):
@@ -363,6 +371,46 @@ class MatrixTests(unittest.TestCase):
 
 
 class RoutingTests(unittest.TestCase):
+    def test_single_l5_to_l7_codex_routes_record_safe_orchestration_eligibility(self):
+        for level in ("L5", "L6", "L7"):
+            with self.subTest(level=level):
+                result = routed(classifier=lambda _, level=level: classification("implementation", level, delegability=2))
+                self.assertEqual(result.execution_strategy, "direct")
+                self.assertTrue(result.orchestration_eligible)
+
+    def test_orchestration_eligibility_fails_closed_for_non_codex_two_stage_or_risk(self):
+        cases = (
+            routed(platform="claude-code", classifier=lambda _: classification("implementation", "L6", delegability=2)),
+            routed(classifier=lambda _: classification("architectural_refactoring", "L6", delegability=2)),
+            routed(classifier=lambda _: classification("implementation", "L6", delegability=1)),
+            routed(classifier=lambda _: classification("implementation", "L6", delegability=2, flags={"public_api_change": True})),
+            routed(critical=True, classifier=lambda _: classification("implementation", "L7", delegability=2)),
+        )
+        for result in cases:
+            with self.subTest(result=result):
+                self.assertEqual(result.execution_strategy, "direct")
+                self.assertFalse(result.orchestration_eligible)
+
+    def test_orchestration_eligibility_fails_closed_for_invalid_policy(self):
+        config = json.loads(json.dumps(CONFIG))
+        config["orchestration"]["codex"].pop("minimum_delegability")
+        result = router.route(
+            "task", "codex", config,
+            classifier=lambda _: classification("implementation", "L6", delegability=2),
+        )
+        self.assertFalse(result.orchestration_eligible)
+
+    def test_orchestration_policy_cannot_broaden_the_fixed_safe_floor(self):
+        config = json.loads(json.dumps(CONFIG))
+        config["orchestration"]["codex"].update(
+            eligible_levels=["L1", "L5", "L6", "L7"], minimum_delegability=0,
+        )
+        result = router.route(
+            "task", "codex", config,
+            classifier=lambda _: classification("implementation", "L1", delegability=0),
+        )
+        self.assertFalse(result.orchestration_eligible)
+
     def test_security_flag_promotes_an_l1_implementation_to_terra(self):
         result = routed(classifier=lambda _: classification("implementation", "L1", flags={"authentication": True}))
         self.assertEqual((result.base_level, result.level), ("L1", "L6"))
@@ -637,6 +685,25 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertIn("codex exec", output.getvalue())
         self.assertIn("gpt-5.6-sol", output.getvalue())
 
+    def test_route_file_replays_v2_without_orchestration_fields(self):
+        result = routed(classifier=lambda _: classification("review", "L3"))
+        payload = router.result_payload(result, router.stage_commands(result, "task"))
+        payload["schema_version"] = 2
+        payload.pop("execution_strategy")
+        payload.pop("orchestration_eligible")
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route-v2.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            with mock.patch.object(router, "classify_task", side_effect=AssertionError("must not reclassify")):
+                self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
+
+    def test_route_file_rejects_v3_missing_orchestration_contract(self):
+        result = routed(classifier=lambda _: classification("review", "L3"))
+        payload = router.result_payload(result, router.stage_commands(result, "task"))
+        payload.pop("orchestration_eligible")
+        with self.assertRaisesRegex(ValueError, "v3 route file"):
+            router.command_chain_from_payload(payload)
+
     def test_route_file_rejects_non_codex_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
             route_file = Path(tmp) / "route.json"
@@ -841,6 +908,30 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("matrix `--model` and `--effort`", primary)
         self.assertIn("two_stage", primary)
         self.assertIn("runs the executor only if the plan step succeeds", primary)
+
+    def test_root_and_plugin_docs_describe_v2_v3_replay_contract(self):
+        paths = [ROOT / "README.md", ROOT / "references" / "routing-policy.md"]
+        for plugin in ("codex", "claude", "antigravity"):
+            base = ROOT / "plugins" / f"{plugin}-model-effort-router"
+            paths.extend([base / "README.md", base / "skills" / "route" / "SKILL.md"])
+        for path in paths:
+            with self.subTest(path=path):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("orchestration_eligible", text)
+                self.assertIn("execution_strategy", text)
+                self.assertIn("v2", text)
+
+    def test_plugin_readmes_do_not_advertise_stale_preflight_profiles(self):
+        codex = (ROOT / "plugins" / "codex-model-effort-router" / "README.md").read_text(encoding="utf-8")
+        claude = (ROOT / "plugins" / "claude-model-effort-router" / "README.md").read_text(encoding="utf-8")
+        antigravity = (ROOT / "plugins" / "antigravity-model-effort-router" / "README.md").read_text(encoding="utf-8")
+        self.assertIn("L1-L7", codex)
+        self.assertIn("gpt-5.6-luna` / medium", codex)
+        self.assertIn("L6 floor", codex)
+        self.assertIn("claude-haiku-4-5", claude)
+        self.assertIn("claude-sonnet-5` / medium", claude)
+        self.assertIn("Gemini 3.8 Flash (Medium)", antigravity)
+        self.assertNotIn("gemini-3.6-flash-low", antigravity)
 
 
 class ModelDetectionTests(unittest.TestCase):

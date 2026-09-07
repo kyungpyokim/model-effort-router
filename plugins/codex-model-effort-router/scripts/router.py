@@ -39,7 +39,10 @@ RISK_FLAGS = (
 )
 SECURITY_FLOOR_FLAGS = ("security_sensitive", "authentication", "authorization", "payment")
 FALLBACK_TASK_TYPE = "implementation"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, SCHEMA_VERSION)
+SAFE_ORCHESTRATION_LEVELS = ("L5", "L6", "L7")
+SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY = 2
 
 PRIMARY_CLASSIFIER_CONFIG = {
     "codex": {"model": "gpt-5.6-luna", "effort": "medium"},
@@ -79,7 +82,7 @@ CONFIDENCE_THRESHOLD_BUMP = 0.60
 CLASSIFIER_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["task_type", "level", "factors", "risk_flags", "confidence", "context_required", "reason"],
+    "required": ["task_type", "level", "factors", "risk_flags", "confidence", "context_required", "delegability", "reason"],
     "properties": {
         "task_type": {"type": "string", "enum": list(TASK_TYPES)},
         "level": {"type": "string", "enum": list(LEVELS)},
@@ -97,6 +100,7 @@ CLASSIFIER_SCHEMA = {
         },
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "context_required": {"type": "boolean"},
+        "delegability": {"type": "integer", "minimum": 0, "maximum": 2},
         "reason": {"type": "string", "minLength": 1},
     },
 }
@@ -112,6 +116,7 @@ Choose exactly one task_type:
 Score scope, ambiguity, diagnosis, design, risk, and verification from 0 to 2.
 Map totals 0-1 to L1, 2-3 to L2, 4-5 to L3, 6-7 to L4, 8-9 to L5, 10-11 to L6, and 12 to L7.
 Set each risk_flag true only when the task genuinely involves modifying, designing, reviewing, or executing security/authentication/authorization/payment logic or infrastructure. Do NOT set security/auth risk flags for non-security changes such as fixing typos, formatting, documentation, or comments mentioning auth/security (e.g. 'fix typo in auth README'). The router applies a hard L6 floor for security_sensitive/authentication/authorization/payment and one escalation level per data_migration/public_api_change.
+Set delegability independently from difficulty: 0 for shared mutable state, order-dependent work, security/auth/payment/data migration/risky operations, or one tightly coupled deep problem; 1 only when analysis can be split but dependencies or artifact ownership remain coupled; 2 only when subtasks can run independently with explicit file/artifact ownership and independently verifiable results. Never use delegability to change factor scores or level.
 Set confidence between 0 and 1. Set context_required true if the task cannot be accurately classified without exploring the codebase files. Keep reason to one short sentence. Return the requested JSON only. Task:\n"""
 
 PLANNER_INSTRUCTIONS_TEMPLATE = """You are the planning stage of a two-stage architectural refactoring pipeline.
@@ -151,6 +156,7 @@ class Classification:
     reason: str
     source: str
     context_required: bool = False
+    delegability: int = 0
 
 
 @dataclass(frozen=True)
@@ -171,6 +177,8 @@ class RouteResult:
     plan_dir: str | None
     rationale: list[str]
     source: str
+    execution_strategy: str
+    orchestration_eligible: bool
 
 
 def agent_name(level: str) -> str:
@@ -273,12 +281,13 @@ def fallback_classification(reason: str) -> Classification:
         reason=f"Semantic preflight unavailable ({reason}); safe fallback applied",
         source="fallback",
         context_required=False,
+        delegability=0,
     )
 
 
 def validate_classifier_output(payload: object, source: str = "classifier") -> Classification:
-    required = {"task_type", "level", "factors", "risk_flags", "confidence", "reason"}
-    allowed = required | {"context_required"}
+    required = {"task_type", "level", "factors", "risk_flags", "confidence", "context_required", "delegability", "reason"}
+    allowed = required
     if not isinstance(payload, dict) or not required.issubset(set(payload)) or not set(payload).issubset(allowed):
         raise ValueError("response must contain exactly task_type, level, factors, risk_flags, confidence, and reason")
     task_type = normalise_task_type(payload["task_type"])
@@ -287,7 +296,8 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
     risk_flags = payload["risk_flags"]
     confidence = payload["confidence"]
     reason = payload["reason"]
-    context_required = bool(payload.get("context_required", False))
+    context_required = payload["context_required"]
+    delegability = payload["delegability"]
     if not isinstance(factors, dict) or set(factors) != set(FACTORS):
         raise ValueError("factors must contain exactly the six routing factors")
     validated_factors = {factor: clamp_score(factors[factor]) for factor in FACTORS}
@@ -301,9 +311,13 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
             raise ValueError(f"risk flag {flag} must be a boolean")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
         raise ValueError("confidence must be a number between 0 and 1")
+    if isinstance(delegability, bool) or not isinstance(delegability, int) or delegability not in (0, 1, 2):
+        raise ValueError("delegability must be 0, 1, or 2")
+    if not isinstance(context_required, bool):
+        raise ValueError("context_required must be a boolean")
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("reason must be a non-empty string")
-    return Classification(task_type, level, validated_factors, dict(risk_flags), float(confidence), reason, source, context_required)
+    return Classification(task_type, level, validated_factors, dict(risk_flags), float(confidence), reason, source, context_required, delegability)
 
 
 def classify_task_single(
@@ -503,6 +517,7 @@ def apply_factor_overrides(classification: Classification, explicit_factors: dic
         classification.reason + "; explicit factor scores applied",
         classification.source,
         classification.context_required,
+        classification.delegability,
     )
 
 
@@ -638,6 +653,38 @@ def materialise_stages(platform: str, raw_stages: list[dict], mode: str, availab
     return stages
 
 
+def is_orchestration_eligible(
+    config: dict,
+    platform: str,
+    level: str,
+    mode: str,
+    risk_flags: dict[str, bool],
+    critical: bool,
+    delegability: int,
+) -> bool:
+    """Return whether a route is a future Astra handoff candidate, never an execution decision."""
+    policy = config.get("orchestration", {}).get(platform)
+    if not isinstance(policy, dict):
+        return False
+    eligible_levels = policy.get("eligible_levels")
+    minimum_delegability = policy.get("minimum_delegability")
+    if (
+        not isinstance(policy.get("enabled"), bool)
+        or not isinstance(eligible_levels, list)
+        or not all(level_name in SAFE_ORCHESTRATION_LEVELS for level_name in eligible_levels)
+        or minimum_delegability != SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY
+    ):
+        return False
+    return (
+        platform == "codex"
+        and not critical
+        and mode == "single"
+        and level in eligible_levels
+        and delegability >= minimum_delegability
+        and not any(risk_flags.values())
+    )
+
+
 def route(
     task: str,
     platform: str,
@@ -742,6 +789,9 @@ def route(
             stages, mode = [{"role": "executor", "model": profile["model"], "effort": profile["effort"]}], "single"
             model, effort = profile["model"], profile["effort"]
 
+    orchestration_eligible = is_orchestration_eligible(
+        config, platform, level, mode, classification.risk_flags, critical, classification.delegability
+    )
     return RouteResult(
         platform=platform,
         task_type=task_type,
@@ -759,6 +809,8 @@ def route(
         plan_dir=plan_dir,
         rationale=rationale,
         source=classification.source,
+        execution_strategy="direct",
+        orchestration_eligible=orchestration_eligible,
     )
 
 
@@ -850,8 +902,11 @@ def command_chain(result: RouteResult, task: str, keep_plan: bool = False, inter
 
 def command_chain_from_payload(payload: object) -> str:
     """Return the already-classified platform command chain from a route JSON payload."""
-    if not isinstance(payload, dict) or payload.get("schema_version") != SCHEMA_VERSION:
-        raise ValueError("route file must be a current route JSON payload")
+    if not isinstance(payload, dict) or payload.get("schema_version") not in SUPPORTED_ROUTE_SCHEMA_VERSIONS:
+        raise ValueError("route file must be a supported route JSON payload")
+    if payload["schema_version"] == SCHEMA_VERSION:
+        if payload.get("execution_strategy") != "direct" or not isinstance(payload.get("orchestration_eligible"), bool):
+            raise ValueError("v3 route file must declare direct strategy and orchestration eligibility")
     platform = payload.get("platform")
     executable = {"codex": "codex", "claude-code": "claude", "antigravity": "agy"}.get(platform)
     if executable is None:
@@ -974,6 +1029,8 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None)
         "rationale": result.rationale,
         "steps": steps,
         "verification": verification_recommendations(result.task_type, result.level, result.risk_flags, result.mode),
+        "execution_strategy": result.execution_strategy,
+        "orchestration_eligible": result.orchestration_eligible,
     }
     if any(flag in SECURITY_FLOOR_FLAGS for flag in active_risk_flags):
         payload["scope_guard"] = {

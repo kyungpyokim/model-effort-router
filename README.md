@@ -19,7 +19,7 @@ a mid-tier fallback model when confidence is low (< 0.80):
 - **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
-(task_type, six factor scores, six risk flags, confidence, context_required, reason) before selecting
+(task_type, six factor scores, six risk flags, confidence, context_required, delegability, reason) before selecting
 a profile.
 
 If the selected classifier times out, cannot start, fails, or returns invalid
@@ -49,6 +49,17 @@ commands or execution results. The selected executor receives recommended
 checks, selects applicable existing repository checks, and reports each result
 or why it was not run. Route-file replay ignores this JSON guidance and
 reuses only the stored execution steps.
+
+Route JSON now emits schema v3. It records `execution_strategy: "direct"` and
+`orchestration_eligible` separately: eligibility is only a future Codex Astra
+handoff candidate, never an execution request. Existing v2 single and two-stage
+route files remain replayable without either v3 field. Until the adapter and
+isolated-worktree contract land, every route executes directly.
+
+`delegability` is independent of the six-factor difficulty score: `0` is shared
+state, sequence-dependent, risky, or tightly coupled work; `1` remains coupled;
+`2` requires independent subtasks with explicit ownership and verification. Only
+safe Codex single routes at L5–L7 with `delegability: 2` can be eligible.
 
 Risk policy lives in code, not in prompts: security, authentication,
 authorization, or payment flags force an L6 floor with Autobahn scope guards;
@@ -109,6 +120,10 @@ two-stage rows define a `stages` list. The Antigravity map uses ordered regular
 expressions because `agy models` output varies by account and release channel.
 Agent TOML files carry no model pins: normal route execution always decides
 model and effort at runtime from this map.
+
+The optional `orchestration.codex` policy is fail-closed. `enabled: false` is
+the shipped default and does not change `execution_strategy`; it only preserves
+candidate metadata for a later adapter release.
 
 ## Validate
 

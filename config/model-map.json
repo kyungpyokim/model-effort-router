@@ -110,6 +110,17 @@
       }
     }
   },
+  "orchestration": {
+    "codex": {
+      "enabled": false,
+      "eligible_levels": [
+        "L5",
+        "L6",
+        "L7"
+      ],
+      "minimum_delegability": 2
+    }
+  },
   "platforms": {
     "codex": {
       "routing": "task_matrix",
