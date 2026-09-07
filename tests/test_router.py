@@ -64,6 +64,12 @@ def routed(task="task", platform="codex", explicit_level=None, explicit_task_typ
 
 
 class PlatformClassifierTests(unittest.TestCase):
+    def test_codex_output_schema_requires_every_top_level_property(self):
+        self.assertEqual(
+            set(router.CLASSIFIER_SCHEMA["required"]),
+            set(router.CLASSIFIER_SCHEMA["properties"]),
+        )
+
     def test_uses_fixed_low_effort_terra_with_v2_schema(self):
         completed = subprocess.CompletedProcess([], 0, classifier_output(), "")
         captured = {}

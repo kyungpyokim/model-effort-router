@@ -79,7 +79,7 @@ CONFIDENCE_THRESHOLD_BUMP = 0.60
 CLASSIFIER_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["task_type", "level", "factors", "risk_flags", "confidence", "reason"],
+    "required": ["task_type", "level", "factors", "risk_flags", "confidence", "context_required", "reason"],
     "properties": {
         "task_type": {"type": "string", "enum": list(TASK_TYPES)},
         "level": {"type": "string", "enum": list(LEVELS)},
