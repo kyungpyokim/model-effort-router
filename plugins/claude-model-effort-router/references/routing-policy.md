@@ -35,7 +35,7 @@ The classifier returns structured JSON with `task_type`, six factor scores, `lev
 | Platform | Primary Classifier | Fallback Classifier |
 |---|---|---|
 | **Codex** | `gpt-5.6-luna` (medium) | `gpt-5.6-terra` (medium) |
-| **Claude Code** | `claude-haiku-4.5` (no effort) | `claude-sonnet-5` (medium) |
+| **Claude Code** | `claude-haiku-4-5` (no effort) | `claude-sonnet-5` (medium) |
 | **Antigravity** | `Gemini 3.8 Flash (Medium)` | `Gemini 3.1 Pro (High)` (availability-driven) |
 
 ### Prompt-only vs Repository-aware

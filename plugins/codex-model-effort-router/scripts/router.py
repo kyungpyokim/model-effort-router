@@ -43,7 +43,7 @@ SCHEMA_VERSION = 2
 
 PRIMARY_CLASSIFIER_CONFIG = {
     "codex": {"model": "gpt-5.6-luna", "effort": "medium"},
-    "claude-code": {"model": "claude-haiku-4.5", "effort": None},
+    "claude-code": {"model": "claude-haiku-4-5", "effort": None},
     "antigravity": {
         "patterns": [
             r"Gemini 3\.8 Flash \(Medium\)",
@@ -382,7 +382,6 @@ def classify_task_single(
             else:
                 launch = [
                     executable,
-                    "--print",
                     "--model",
                     model,
                 ]
@@ -397,6 +396,7 @@ def classify_task_single(
                     "json",
                     "--json-schema",
                     json.dumps(CLASSIFIER_SCHEMA),
+                    "--print",
                     CLASSIFIER_PROMPT + task,
                 ])
                 unwrap = lambda raw: json.loads(raw)["structured_output"]

@@ -127,10 +127,10 @@ class PlatformClassifierTests(unittest.TestCase):
             result = router.classify_task("add a settings page", platform="claude-code", timeout=7)
         command = run.call_args.args[0]
         self.assertEqual(command[:2], ["claude", "-p"])
-        self.assertEqual(command[command.index("--model") + 1], "claude-haiku-4.5")
+        self.assertEqual(command[command.index("--model") + 1], "claude-haiku-4-5")
         self.assertNotIn("--effort", command)
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
-        self.assertEqual(result.source, "claude-haiku-4.5")
+        self.assertEqual(result.source, "claude-haiku-4-5")
         self.assertTrue(Path(run.call_args.kwargs["cwd"]).name.startswith("model-effort-router-"))
 
     def test_antigravity_uses_isolated_structured_json_classifier(self):
@@ -138,7 +138,9 @@ class PlatformClassifierTests(unittest.TestCase):
         with mock.patch.object(router.subprocess, "run", return_value=completed) as run:
             result = router.classify_task("task", platform="antigravity", timeout=7)
         command = run.call_args.args[0]
-        self.assertEqual(command[:2], ["agy", "--print"])
+        self.assertEqual(command[:2], ["agy", "--model"])
+        self.assertLess(command.index("--model"), command.index("--print"))
+        self.assertEqual(command.index("--print"), len(command) - 2)
         self.assertEqual(command[command.index("--model") + 1], "Gemini 3.8 Flash (Medium)")
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
         self.assertEqual(result.source, "Gemini 3.8 Flash (Medium)")
@@ -157,7 +159,7 @@ class PlatformClassifierTests(unittest.TestCase):
 
         with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
             result = router.classify_task("ambiguous task", platform="claude-code")
-        self.assertEqual(calls, [("claude-haiku-4.5", None), ("claude-sonnet-5", "medium")])
+        self.assertEqual(calls, [("claude-haiku-4-5", None), ("claude-sonnet-5", "medium")])
         self.assertEqual(result.source, "claude-sonnet-5")
         self.assertEqual(result.level, "L3")
 
@@ -806,6 +808,12 @@ class CommandAndLauncherTests(unittest.TestCase):
 
 
 class RouteSkillContractTests(unittest.TestCase):
+    def test_readme_documents_the_current_preflight_contract(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("claude-haiku-4-5", readme)
+        self.assertNotIn("claude-haiku-4.5", readme)
+        self.assertIn("context_required", readme)
+
     FALLBACK_SENTINELS = (
         "When named-agent delegation is unavailable",
         "When the launcher script cannot start a subprocess",

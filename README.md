@@ -15,11 +15,11 @@ The CLI router evaluates tasks with a lightweight primary classifier and escalat
 a mid-tier fallback model when confidence is low (< 0.80):
 
 - **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
-- **Claude Code**: `claude-haiku-4.5` (N/A) → `claude-sonnet-5` (medium)
+- **Claude Code**: `claude-haiku-4-5` (N/A) → `claude-sonnet-5` (medium)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
-(task_type, six factor scores, six risk flags, confidence, reason) before selecting
+(task_type, six factor scores, six risk flags, confidence, context_required, reason) before selecting
 a profile.
 
 If the selected classifier times out, cannot start, fails, or returns invalid
