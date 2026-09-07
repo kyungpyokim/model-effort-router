@@ -54,7 +54,8 @@ Route JSON now emits schema v3. It records `execution_strategy: "direct"` and
 `orchestration_eligible` separately: eligibility is only a Codex Astra handoff
 candidate, never an execution request. `scripts/astra_adapter.py` is a local,
 caller-invoked isolated-worker boundary that requires supplied route and manifest
-digests. Direct v2 and v3 route-file replay never invokes it.
+digests, revalidates worker input copies, and preserves the original verified
+artifacts after each attempt. Direct v2 and v3 route-file replay never invokes it.
 
 `delegability` is independent of the six-factor difficulty score: `0` is shared
 state, sequence-dependent, risky, or tightly coupled work; `1` remains coupled;

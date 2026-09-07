@@ -123,6 +123,28 @@ class AstraAdapterTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertEqual((artifacts / "route.json").read_text(encoding="utf-8"), '{"route":"original"}')
 
+    def test_rejects_worker_input_tampering_and_preserves_verified_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo, route, manifest, artifacts = root / "repo", root / "route.json", root / "manifest.json", root / "artifacts"
+            repo.mkdir()
+            base_sha = self.init_repo(repo)
+            route_bytes = b'{"route":"original"}'
+            manifest_bytes = b'{"owned_files":["owned.txt"]}'
+            route.write_bytes(route_bytes)
+            manifest.write_bytes(manifest_bytes)
+            worker = (
+                "import os, pathlib; "
+                "pathlib.Path(os.environ['ASTRA_ROUTE_FILE']).write_text('{\\\"route\\\":\\\"changed\\\"}'); "
+                "pathlib.Path(os.environ['ASTRA_MANIFEST_FILE']).write_text('{\\\"owned_files\\\":[\\\"other.txt\\\"]}'); "
+                "pathlib.Path('owned.txt').write_text('changed\\n')"
+            )
+            proc = self.invoke(repo, route, manifest, base_sha, artifacts, worker)
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("worker input digest changed", proc.stderr)
+            self.assertEqual((artifacts / "route.json").read_bytes(), route_bytes)
+            self.assertEqual((artifacts / "manifest.json").read_bytes(), manifest_bytes)
+
     def test_retries_one_failed_worker_in_a_fresh_worktree_and_preserves_failure_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

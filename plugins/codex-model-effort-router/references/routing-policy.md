@@ -43,8 +43,9 @@ release. `orchestration_eligible: true` is only recorded for safe Codex
 single-stage L5–L7 routes with `delegability: 2` and no risk flags. Critical,
 two-stage, non-Codex, and any risky routes are ineligible. The local,
 caller-invoked `scripts/astra_adapter.py` accepts only digest-verified route and
-manifest snapshots; it does not change direct execution. Direct v2 and v3
-route-file replay never invokes it.
+manifest bytes, revalidates per-attempt worker inputs, and preserves the
+original verified artifacts after each attempt. It does not change direct
+execution. Direct v2 and v3 route-file replay never invokes it.
 
 Replay accepts existing v2 route files unchanged. Only v3 requires the two
 orchestration fields; malformed v3 files are rejected before execution.
