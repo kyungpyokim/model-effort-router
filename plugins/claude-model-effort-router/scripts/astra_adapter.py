@@ -18,8 +18,8 @@ class ContractError(ValueError):
 WORKER_INPUT_FILES = {".astra-route.json", ".astra-manifest.json"}
 
 
-def git(repo: Path, *args: str, capture_output: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", "-C", str(repo), *args], check=True, text=True, capture_output=capture_output)
+def git(repo: Path, *args: str, capture_output: bool = False, text: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, text=text, capture_output=capture_output)
 
 
 def owned_files(manifest_bytes: bytes) -> set[str]:
@@ -45,9 +45,9 @@ def owned_files(manifest_bytes: bytes) -> set[str]:
 
 
 def changed_files(worktree: Path, base_sha: str) -> set[str]:
-    tracked = git(worktree, "diff", "--name-only", base_sha, capture_output=True).stdout.splitlines()
-    untracked = git(worktree, "ls-files", "--others", "--exclude-standard", capture_output=True).stdout.splitlines()
-    return {path for path in [*tracked, *untracked] if path and path not in WORKER_INPUT_FILES}
+    tracked = git(worktree, "diff", "--name-only", "-z", base_sha, capture_output=True, text=False).stdout
+    untracked = git(worktree, "ls-files", "--others", "--exclude-standard", "-z", capture_output=True, text=False).stdout
+    return {os.fsdecode(path) for path in (tracked + untracked).split(b"\0") if path} - WORKER_INPUT_FILES
 
 
 def validate_changes(worktree: Path, base_sha: str, ownership: set[str]) -> None:

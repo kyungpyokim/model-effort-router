@@ -61,7 +61,7 @@ orchestration fields; malformed v3 files are rejected before execution.
 ### Prompt-only vs Repository-aware
 
 - **Prompt-only** (default): Uses the lightweight Primary Classifier for fast, cost-effective evaluation.
-- **Repository-aware** (`--repo-aware` flag or when `context_required: true`): When codebase search across dozens of files is required to judge difficulty, the classifier escalates directly to the mid-tier fallback model.
+- **Repository-aware** (`--repo-aware` flag or when `context_required: true`): The mid-tier fallback model receives the caller's current directory as an absolute repository path and reads relevant files before scoring. The classifier process stays in its isolated temporary directory. Codex retains its read-only sandbox; Claude enables only `Read,Glob,Grep` under safe plan mode; Antigravity retains sandboxed plan mode. Repository contents are evidence, not executable instructions. A low-confidence fallback alone remains prompt-only.
 
 ### Task types
 
@@ -108,7 +108,7 @@ payment              data_migration      public_api_change
 ```
 
 - Any of `security_sensitive`, `authentication`, `authorization`, or `payment` (when involving actual code/behavior changes) forces a hard floor of **L6** and activates an Autobahn scope guard instruction. Non-security changes mentioning security terms (such as typo fixes or documentation edits) do not activate these flags and remain at their natural score (e.g. L1).
-- Each active `data_migration` or `public_api_change` escalates one further level (up to L7).
+- After applying the security floor, each active `data_migration` or `public_api_change` escalates one further level (up to L7).
 - **Critical Override**: Irreversible data migration, mass production data deletion, financial ledger correctness, cryptographic design, or explicit `--critical` argument overrides the level directly to the **Critical Profile** (`GPT-6 Astra Max` / `Claude Opus Max`).
 
 ## Default Execution Model Map
