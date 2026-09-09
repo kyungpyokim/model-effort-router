@@ -171,6 +171,54 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(calls, ["gpt-5.6-terra"])
         self.assertEqual(result.source, "gpt-5.6-terra")
 
+    def test_repository_context_reaches_native_classifier_read_only(self):
+        for platform in ("codex", "claude-code", "antigravity"):
+            for explicit in (False, True):
+                with self.subTest(platform=platform, explicit=explicit), tempfile.TemporaryDirectory() as tmp:
+                    directory = Path(tmp).resolve()
+                    repo = directory / "repo with spaces"
+                    repo.mkdir()
+                    (repo / "module.txt").write_text("fixture repository evidence", encoding="utf-8")
+                    calls = directory / "calls.jsonl"
+                    executable = directory / "classifier"
+                    executable.write_text(
+                        f"#!{sys.executable}\n"
+                        "import json, pathlib, sys\n"
+                        f"payload = json.loads({classifier_output(context_required=True)!r})\n"
+                        "args = sys.argv[1:]\n"
+                        "prefix = 'Repository to inspect read-only: '\n"
+                        "line = next((line for line in args[-1].splitlines() if line.startswith(prefix)), None)\n"
+                        "repo = pathlib.Path(json.loads(line[len(prefix):])) if line else None\n"
+                        "if repo:\n"
+                        "    payload['reason'] = (repo / 'module.txt').read_text(encoding='utf-8')\n"
+                        "    payload['context_required'] = False\n"
+                        f"with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
+                        "    stream.write(json.dumps({'args': args, 'cwd': str(pathlib.Path.cwd()), 'read': bool(repo)}) + '\\n')\n"
+                        f"print(json.dumps(payload if {platform!r} == 'codex' else {{'structured_output': payload}}))\n",
+                        encoding="utf-8",
+                    )
+                    executable.chmod(0o755)
+                    with contextlib.chdir(repo):
+                        result = router.classify_task("inspect module.txt", platform=platform, command=str(executable), repo_aware=explicit)
+                    self.assertEqual(result.reason, "fixture repository evidence")
+                    records = [json.loads(line) for line in calls.read_text().splitlines()]
+                    self.assertEqual([record["read"] for record in records], [True] if explicit else [False, True])
+                    self.assertTrue(all(Path(record["cwd"]) != repo for record in records))
+                    args = records[-1]["args"]
+                    if platform == "codex":
+                        self.assertEqual(args[args.index("--sandbox") + 1], "read-only")
+                        self.assertIn("--ignore-user-config", args)
+                        self.assertIn("--ignore-rules", args)
+                    else:
+                        self.assertEqual(args[args.index("--add-dir") + 1], str(repo))
+                        if platform == "claude-code":
+                            self.assertEqual(args[args.index("--tools") + 1], "Read,Glob,Grep")
+                            self.assertEqual(args[args.index("--permission-mode") + 1], "plan")
+                            self.assertIn("--safe-mode", args)
+                        else:
+                            self.assertEqual(args[args.index("--mode") + 1], "plan")
+                            self.assertIn("--sandbox", args)
+
     def test_claude_uses_native_structured_output_without_tools_or_session(self):
         completed = subprocess.CompletedProcess([], 0, json.dumps({"structured_output": json.loads(classifier_output())}), "")
         with mock.patch.object(router.subprocess, "run", return_value=completed) as run:
@@ -282,6 +330,13 @@ class PlatformClassifierTests(unittest.TestCase):
 
 
 class EscalationTests(unittest.TestCase):
+    def test_additional_risks_escalate_after_the_security_floor(self):
+        for security_flag in router.SECURITY_FLOOR_FLAGS:
+            for additional in ("data_migration", "public_api_change"):
+                with self.subTest(security=security_flag, additional=additional):
+                    flags = {**NO_FLAGS, security_flag: True, additional: True}
+                    self.assertEqual(router.apply_risk_escalation("L2", flags), "L7")
+
     def test_security_flags_force_an_l4_floor(self):
         cases = (
             ("L1", {"authentication": True}, "L6"),
@@ -581,6 +636,77 @@ class CommandAndLauncherTests(unittest.TestCase):
         "claude-route": "plugins/claude-model-effort-router/bin/claude-route",
         "agy-route": "plugins/antigravity-model-effort-router/bin/agy-route",
     }
+
+    def test_interactive_commands_survive_json_and_command_output(self):
+        for platform in ("codex", "claude-code", "antigravity"):
+            for output_format in ("json", "command"):
+                with self.subTest(platform=platform, output=output_format):
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        self.assertEqual(router.main([
+                            "task", "--platform", platform, "--task-type", "implementation",
+                            "--level", "L7", "--interactive", "--format", output_format,
+                        ]), 0)
+                    command = json.loads(output.getvalue())["steps"][0]["command"] if output_format == "json" else router.shlex.split(output.getvalue())
+                    self.assertNotIn({"codex": "exec", "claude-code": "-p", "antigravity": "--prompt"}[platform], command)
+                    if platform == "antigravity":
+                        self.assertIn("--prompt-interactive", command)
+
+    def test_antigravity_launcher_executes_stored_route_without_reclassification(self):
+        result = routed(platform="antigravity", classifier=lambda _: classification("review", "L3"))
+        for interactive in (False, True):
+            with self.subTest(interactive=interactive), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                command = router.stage_commands(result, "original task; preserve $literal", interactive)[0]
+                payload = router.result_payload(result, [command])
+                route_file = directory / "route.json"
+                route_file.write_text(json.dumps(payload), encoding="utf-8")
+                original = route_file.read_bytes()
+                calls = directory / "calls.jsonl"
+                fake_agy = directory / "agy"
+                fake_agy.write_text(
+                    f"#!{sys.executable}\nimport json, pathlib, sys\n"
+                    f"with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
+                    "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n",
+                    encoding="utf-8",
+                )
+                fake_agy.chmod(0o755)
+                env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+                env.pop("MODEL_EFFORT_ROUTER_PRINT_ONLY", None)
+                env.pop("MODEL_EFFORT_ROUTER_ROOT", None)
+                proc = subprocess.run([str(ROOT / self.LAUNCHERS["agy-route"]), "--route-file", str(route_file)], capture_output=True, text=True, timeout=10, env=env)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertEqual([json.loads(line) for line in calls.read_text().splitlines()], [command[1:]])
+                self.assertEqual(route_file.read_bytes(), original)
+
+    def test_antigravity_route_replay_gates_executor_on_planner_success(self):
+        for planner_status in (0, 7):
+            with self.subTest(planner_status=planner_status), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                result = routed(platform="antigravity", classifier=lambda _: classification("architectural_refactoring", "L3"))
+                result = router.replace(result, plan_dir=str(directory / "plan"))
+                commands = router.stage_commands(result, "restructure modules")
+                route_file = directory / "route.json"
+                route_file.write_text(json.dumps(router.result_payload(result, commands)), encoding="utf-8")
+                calls = directory / "calls.jsonl"
+                fake_agy = directory / "agy"
+                fake_agy.write_text(
+                    f"#!{sys.executable}\nimport json, pathlib, sys\n"
+                    f"with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
+                    "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                    "if 'You are the planning stage' in sys.argv[-1]:\n"
+                    f"    raise SystemExit({planner_status})\n",
+                    encoding="utf-8",
+                )
+                fake_agy.chmod(0o755)
+                env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+                env.pop("MODEL_EFFORT_ROUTER_PRINT_ONLY", None)
+                env.pop("MODEL_EFFORT_ROUTER_ROOT", None)
+                proc = subprocess.run([str(ROOT / self.LAUNCHERS["agy-route"]), "--route-file", str(route_file)], capture_output=True, text=True, timeout=10, env=env)
+                self.assertEqual(proc.returncode, planner_status, proc.stderr)
+                expected = commands if planner_status == 0 else commands[:1]
+                self.assertEqual([json.loads(line) for line in calls.read_text().splitlines()], [command[1:] for command in expected])
+                self.assertTrue(Path(result.plan_dir).is_dir())
 
     def test_single_stage_codex_command_pins_model_and_effort(self):
         result = routed(classifier=lambda _: classification("implementation", "L3"))
@@ -939,6 +1065,17 @@ class CommandAndLauncherTests(unittest.TestCase):
 
 
 class RouteSkillContractTests(unittest.TestCase):
+    def test_antigravity_entrypoints_preserve_the_first_route(self):
+        plugin = ROOT / "plugins" / "antigravity-model-effort-router"
+        for relative in ("skills/route/SKILL.md", "GEMINI.md", "commands/route.toml"):
+            with self.subTest(path=relative):
+                text = (plugin / relative).read_text(encoding="utf-8")
+                self.assertIn("--route-file", text)
+                self.assertIn("steps[].command", text)
+                self.assertNotIn('agy-route --interactive --', text)
+                self.assertNotIn('agy-route -- "<task>"', text)
+                self.assertNotIn("gemini-3.6-flash-low", text)
+
     def test_readme_documents_the_current_preflight_contract(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("claude-haiku-4-5", readme)
@@ -970,6 +1107,13 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("bin/claude-route --route-file", primary)
         self.assertIn("steps[].command", primary)
         self.assertIn("matrix `--model` and `--effort`", primary)
+        self.assertIn("two_stage", primary)
+        self.assertIn("runs the executor only if the plan step succeeds", primary)
+
+    def test_antigravity_skill_replays_stored_steps_for_both_modes(self):
+        primary = self._primary_section("antigravity")
+        self.assertIn("bin/agy-route --route-file", primary)
+        self.assertIn("steps[].command", primary)
         self.assertIn("two_stage", primary)
         self.assertIn("runs the executor only if the plan step succeeds", primary)
 

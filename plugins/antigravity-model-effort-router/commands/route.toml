@@ -1,16 +1,16 @@
 description = "Classify a task by difficulty and show the Antigravity model profile and launch command"
 prompt = """
-Do not score the task yourself. Run `python3 <extension-root>/scripts/router.py "{{args}}" --platform antigravity --detect-antigravity-models --format json`
-and use its fixed native `gemini-3.6-flash-low` preflight result as the source of truth.
+Do not score the task yourself. Run `python3 <extension-root>/scripts/router.py "{{args}}" --platform antigravity --detect-antigravity-models --format json --interactive`
+once and save stdout unchanged to a fresh temporary `<route.json>` file. Use its generated route as the source of truth; the native primary classifier is `Gemini 3.8 Flash (Medium)` with a `Gemini 3.1 Pro (High)` fallback when needed.
 
 Task:
 {{args}}
 
 Return exactly:
 1. Six factor scores
-2. Total score and L1-L5 level
+2. Total score and L1-L7 or Critical level
 3. Preferred model class
-4. The matching `level-N-*` plugin agent and the instruction to run `agy-route --interactive -- {{args}}` for a new routed session
+4. The saved route file and the instruction to run `<extension-root>/bin/agy-route --route-file "<route.json>"` to execute its `steps[].command` in a new session without reclassification or model detection; two_stage routes run the executor only after the planner succeeds
 
 Do not claim the current session model has changed. Delegate the work to the selected agent instead of continuing it in this session.
 """

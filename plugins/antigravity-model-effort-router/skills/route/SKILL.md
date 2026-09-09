@@ -6,14 +6,19 @@ description: Classify a coding task by difficulty from L1 to L7 (or Critical Ove
 # Model Effort Router
 
 Do not score the task in the current session. Resolve the included router
-relative to this file and run `python3 ../../scripts/router.py "<task>" --platform antigravity --detect-antigravity-models --format json`. Antigravity effort is
-embedded in model names, so immediately delegate the complete task to the
-matching L1-L7 or Critical plugin agent. Pass the complete generated route JSON along with
-the original task. The delegated executor must use every
+relative to this file and run `python3 ../../scripts/router.py "<task>" --platform antigravity --detect-antigravity-models --format json`. Save stdout unchanged to a fresh temporary `<route.json>` file. If an interactive session is requested, add `--interactive` when generating this JSON.
+
+Execute the saved route with `../../bin/agy-route --route-file "<route.json>"`.
+Pass the complete generated route JSON as the replay input and keep the original
+task with it. The launcher executes `steps[].command` without reclassification
+or model detection, preserving the selected matrix models and embedded effort.
+A single route launches its L1-L7 or Critical agent; a two_stage route runs the
+planner, then runs the executor only if the plan step succeeds. The executor must use every
 `verification.recommended` ID and reason to select applicable existing
 repository checks and report each result or why it was not run.
 
-Do not describe the current session's model or attempt to change it. When named-agent delegation is unavailable, use `../../bin/agy-route -- "<task>"` to run the selected profile in a new session, then do not continue the task in the parent session.
+Do not describe the current session's model or attempt to change it. Do not
+continue the task in the parent session or invoke the router again from replayed steps.
 
 Schema v3 `orchestration_eligible` is future metadata only.
 `scripts/astra_adapter.py` is caller-invoked, revalidates worker inputs, and

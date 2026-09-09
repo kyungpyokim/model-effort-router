@@ -14,6 +14,30 @@ ADAPTER = ROOT / "scripts" / "astra_adapter.py"
 
 
 class AstraAdapterTests(unittest.TestCase):
+    def test_preserves_exact_tracked_and_untracked_owned_filenames(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo, route, manifest, artifacts = root / "repo", root / "route.json", root / "manifest.json", root / "artifacts"
+            repo.mkdir()
+            self.init_repo(repo)
+            names = ['한글.txt', 'quote".txt', 'line\nbreak.txt', 'carriage\rreturn.txt']
+            tracked = ["tracked-" + name for name in names]
+            untracked = ["untracked-" + name for name in names]
+            for name in tracked:
+                (repo / name).write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "--", *tracked], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "special filenames"], cwd=repo, check=True)
+            base_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            route.write_text('{"schema_version": 3}', encoding="utf-8")
+            manifest.write_text(json.dumps({"owned_files": tracked + untracked}), encoding="utf-8")
+            worker = f"import pathlib; [pathlib.Path(name).write_text('changed\\n') for name in {tracked + untracked!r}]"
+            proc = self.invoke(repo, route, manifest, base_sha, artifacts, worker)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            metadata = json.loads((artifacts / "metadata.json").read_text())
+            self.assertEqual(metadata["attempts"], 1)
+            for name in tracked + untracked:
+                self.assertEqual((artifacts / "attempt-1" / name).read_text(), "changed\n")
+
     def init_repo(self, directory: Path) -> str:
         for command in (
             ("git", "init", "-q"),
