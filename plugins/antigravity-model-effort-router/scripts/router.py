@@ -1082,7 +1082,11 @@ def read_available_models(command: str = "agy", timeout: float = DETECT_TIMEOUT_
         raise RuntimeError(f"`{command}` could not be executed: {exc}") from exc
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or f"{command} models failed")
-    return [line for raw in proc.stdout.splitlines() if (line := raw.strip().lstrip("-*• ").strip()) and not line.lower().startswith(("available", "models"))]
+    return [
+        (line.split("\t")[-1].strip() if "\t" in line else line)
+        for raw in proc.stdout.splitlines()
+        if (line := raw.strip().lstrip("-*• ").strip()) and not line.lower().startswith(("available", "models", "fetching"))
+    ]
 
 
 def choose_antigravity_model(profile: dict, available: list[str] | None) -> str:
