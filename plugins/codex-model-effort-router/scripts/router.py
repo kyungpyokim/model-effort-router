@@ -516,10 +516,9 @@ def classify_task(
         return primary
 
     if (primary.confidence is not None and primary.confidence < CONFIDENCE_THRESHOLD_BUMP) or primary.context_required:
-        fallback_res = classify_task_single(
-            task, platform, FALLBACK_CLASSIFIER_CONFIG[platform],
-            timeout=timeout, command=command, available_models=available_models,
-            repo_path=repo_path if primary.context_required else None,
+        fallback_res = run_single(
+            FALLBACK_CLASSIFIER_CONFIG[platform],
+            repo_path if primary.context_required else None,
         )
         if fallback_res.source == "fallback":
             return replace(fallback_res, risk_flags=dict(primary.risk_flags))
@@ -1139,14 +1138,18 @@ def _prompt_axis(label: str, choices: tuple[str, ...], default: str | None = Non
         sys.stderr.write(f"    '{raw}' is not a valid {label}\n")
 
 
-def prompt_manual_classification(reason: str) -> tuple[Classification, bool]:
+def prompt_manual_classification(fallback: Classification) -> tuple[Classification, bool]:
     """Ask a human at the terminal for the two routing axes after the preflight
     failed. The deterministic ``task_type x level`` mapping still runs on the
     answer, so this yields a real route instead of the L3 guess.
 
+    Risk flags carried on ``fallback`` (a primary classifier may have flagged
+    payment/auth risk before a later stage failed) are preserved, so the L6 floor
+    and scope guard still apply to a manually chosen level.
+
     Returns the manual classification and whether the operator chose ``critical``.
     """
-    sys.stderr.write(f"Semantic preflight failed ({reason}); choose routing axes manually.\n")
+    sys.stderr.write(f"Semantic preflight failed ({fallback.reason}); choose routing axes manually.\n")
     task_type = _prompt_axis("task_type", TASK_TYPES, FALLBACK_TASK_TYPE)
     level = _prompt_axis("level", (*LEVELS, "critical"))
     is_critical = level == "critical"
@@ -1154,9 +1157,9 @@ def prompt_manual_classification(reason: str) -> tuple[Classification, bool]:
         task_type=task_type,
         level="L7" if is_critical else level,
         factors={factor: 1 for factor in FACTORS},
-        risk_flags={flag: False for flag in RISK_FLAGS},
+        risk_flags=dict(fallback.risk_flags),
         confidence=None,
-        reason=f"Manual classification after preflight failure ({reason})",
+        reason=f"Manual classification after preflight failure ({fallback.reason})",
         source="manual",
         context_required=False,
         delegability=0,
@@ -1253,7 +1256,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if classification.source == "fallback" and not args.no_prompt and sys.stdin.isatty():
             try:
-                classification, prompted_critical = prompt_manual_classification(classification.reason)
+                classification, prompted_critical = prompt_manual_classification(classification)
             except (EOFError, KeyboardInterrupt):
                 sys.stderr.write("\nmanual classification aborted; using safe fallback\n")
 

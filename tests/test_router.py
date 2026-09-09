@@ -146,7 +146,8 @@ class PlatformClassifierTests(unittest.TestCase):
 
                 with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
                     result = router.classify_task("ambiguous task")
-                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra"])
+                # secondary transient failure is retried once before the safe fallback
+                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-terra"])
                 self.assertEqual(result.source, "fallback")
                 self.assertEqual(result.level, "L3")
 
@@ -169,7 +170,7 @@ class PlatformClassifierTests(unittest.TestCase):
                 with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
                     result = router.route("fix sensitive boundary", "codex", CONFIG)
 
-                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra"])
+                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-terra"])
                 self.assertEqual((result.source, result.base_level, result.level), ("fallback", "L3", "L6"))
                 self.assertTrue(result.risk_flags[risk_flag])
                 command = router.stage_commands(result, "fix sensitive boundary")[0]
@@ -333,6 +334,19 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertEqual(result.source, "fallback")
         self.assertEqual(result.failure_kind, "invalid_json")
+
+    def test_secondary_classifier_transient_failure_is_also_retried(self):
+        primary_output = classifier_output(level="L3", confidence=0.50)
+        secondary_output = classifier_output(level="L4", confidence=0.85)
+        outcomes = [
+            subprocess.CompletedProcess([], 0, primary_output, ""),          # primary
+            subprocess.CompletedProcess([], 1, "", "cold start"),            # secondary, transient
+            subprocess.CompletedProcess([], 0, secondary_output, ""),        # secondary retry
+        ]
+        with mock.patch.object(router.subprocess, "run", side_effect=outcomes) as run:
+            result = router.classify_task("complex ambiguous task")
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(result.level, "L4")
 
     def test_schema_validation_rejects_bad_values(self):
         valid = classifier_output(raw=False)
@@ -703,6 +717,31 @@ class RoutingTests(unittest.TestCase):
                             router.main(["--platform", "codex", "--format", "text", "task"])
         self.assertEqual(captured["result"].level, "L1")
         self.assertEqual(captured["result"].source, "manual")
+
+    def test_manual_recovery_keeps_risk_flags_from_the_failed_classification(self):
+        # Primary flagged payment risk, then a later stage failed: classify_task
+        # preserves the flag on the fallback. A manually chosen L1 must still hit
+        # the L6 floor and keep payment active.
+        fallback = router.replace(
+            router.fallback_classification("timed out", "timeout"),
+            risk_flags={**NO_FLAGS, "payment": True},
+        )
+        captured = {}
+        real_route = router.route
+
+        def spy(*args, **kwargs):
+            result = real_route(*args, **kwargs)
+            captured["result"] = result
+            return result
+
+        with mock.patch.object(router, "classify_task", return_value=fallback):
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
+                with mock.patch("builtins.input", side_effect=["implementation", "L1"]):
+                    with mock.patch.object(router, "route", side_effect=spy):
+                        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                            router.main(["--platform", "codex", "--format", "text", "task"])
+        self.assertTrue(captured["result"].risk_flags["payment"])
+        self.assertEqual(captured["result"].level, "L6")
 
     def test_invalid_task_type_is_rejected_by_argparse(self):
         with contextlib.redirect_stderr(io.StringIO()):
