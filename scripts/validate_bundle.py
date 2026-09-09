@@ -43,13 +43,13 @@ def main() -> int:
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
     assert a_manifest["name"] == "model-effort"
-    assert a_manifest["version"] == "2.1.1"
+    assert a_manifest["version"] == "2.1.2"
     require(claude / "skills" / "route" / "SKILL.md")
     assert len(list((claude / "agents").glob("*.md"))) >= 7
 
     g_manifest = read_json(agy / "gemini-extension.json")
     assert g_manifest["name"] == "model-effort"
-    assert g_manifest["version"] == "2.1.1"
+    assert g_manifest["version"] == "2.1.2"
     require(agy / "skills" / "route" / "SKILL.md")
     require(agy / "GEMINI.md")
     require(agy / "commands" / "route.toml")
