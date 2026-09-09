@@ -146,7 +146,8 @@ class PlatformClassifierTests(unittest.TestCase):
 
                 with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
                     result = router.classify_task("ambiguous task")
-                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra"])
+                # secondary transient failure is retried once before the safe fallback
+                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-terra"])
                 self.assertEqual(result.source, "fallback")
                 self.assertEqual(result.level, "L3")
 
@@ -169,7 +170,7 @@ class PlatformClassifierTests(unittest.TestCase):
                 with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
                     result = router.route("fix sensitive boundary", "codex", CONFIG)
 
-                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra"])
+                self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-terra"])
                 self.assertEqual((result.source, result.base_level, result.level), ("fallback", "L3", "L6"))
                 self.assertTrue(result.risk_flags[risk_flag])
                 command = router.stage_commands(result, "fix sensitive boundary")[0]
@@ -312,6 +313,40 @@ class PlatformClassifierTests(unittest.TestCase):
                 self.assertEqual(result.source, "fallback")
                 self.assertEqual(result.factors, {factor: 1 for factor in router.FACTORS})
                 self.assertEqual(result.risk_flags, NO_FLAGS)
+
+    def test_transient_failure_is_retried_once_then_succeeds(self):
+        outcomes = [
+            subprocess.CompletedProcess([], 1, "", "cold start"),
+            subprocess.CompletedProcess([], 0, classifier_output(level="L2"), ""),
+        ]
+        with mock.patch.object(router.subprocess, "run", side_effect=outcomes) as run:
+            result = router.classify_task("task")
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertEqual(result.level, "L2")
+
+    def test_invalid_json_is_not_retried(self):
+        with mock.patch.object(
+            router.subprocess, "run",
+            return_value=subprocess.CompletedProcess([], 0, "not json", ""),
+        ) as run:
+            result = router.classify_task("task")
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(result.source, "fallback")
+        self.assertEqual(result.failure_kind, "invalid_json")
+
+    def test_secondary_classifier_transient_failure_is_also_retried(self):
+        primary_output = classifier_output(level="L3", confidence=0.50)
+        secondary_output = classifier_output(level="L4", confidence=0.85)
+        outcomes = [
+            subprocess.CompletedProcess([], 0, primary_output, ""),          # primary
+            subprocess.CompletedProcess([], 1, "", "cold start"),            # secondary, transient
+            subprocess.CompletedProcess([], 0, secondary_output, ""),        # secondary retry
+        ]
+        with mock.patch.object(router.subprocess, "run", side_effect=outcomes) as run:
+            result = router.classify_task("complex ambiguous task")
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(result.level, "L4")
 
     def test_schema_validation_rejects_bad_values(self):
         valid = classifier_output(raw=False)
@@ -635,13 +670,89 @@ class RoutingTests(unittest.TestCase):
         self.assertFalse(any(result.risk_flags.values()))
 
 
-    def test_main_reports_a_safe_fallback_on_stderr(self):
-        stderr = io.StringIO()
+    def test_main_reports_a_safe_fallback_on_stderr_and_exits_nonzero(self):
+        stderr, stdout = io.StringIO(), io.StringIO()
         with mock.patch.object(router, "classify_task", return_value=router.fallback_classification("process failed")):
-            with contextlib.redirect_stderr(stderr):
-                self.assertEqual(router.main(["--platform", "codex", "--format", "command", "task"]), 0)
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
+                with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout):
+                    self.assertEqual(router.main(["--platform", "codex", "--format", "command", "task"]), 1)
         self.assertIn("safe fallback applied", stderr.getvalue())
         self.assertIn("implementation / L3", stderr.getvalue())
+        # The fallback route is still emitted so a human can use it deliberately.
+        self.assertIn("codex", stdout.getvalue())
+
+    def test_main_never_prompts_when_no_prompt_is_set(self):
+        fallback = router.fallback_classification("timed out", "timeout")
+        with mock.patch.object(router, "classify_task", return_value=fallback):
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
+                with mock.patch("builtins.input", side_effect=AssertionError("must not prompt")):
+                    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                        code = router.main(["--platform", "codex", "--format", "command", "--no-prompt", "task"])
+        self.assertEqual(code, 1)
+
+    def test_main_prompts_for_axes_on_a_terminal_and_routes_the_answer(self):
+        fallback = router.fallback_classification("timed out", "timeout")
+        with mock.patch.object(router, "classify_task", return_value=fallback):
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
+                with mock.patch("builtins.input", side_effect=["design", "L5"]):
+                    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                        code = router.main(["--platform", "codex", "--format", "text", "task"])
+        self.assertEqual(code, 0)
+
+    def test_manual_answer_is_the_real_level_not_a_minimum_over_l3(self):
+        fallback = router.fallback_classification("timed out", "timeout")
+        captured = {}
+        real_route = router.route
+
+        def spy(*args, **kwargs):
+            result = real_route(*args, **kwargs)
+            captured["result"] = result
+            return result
+
+        with mock.patch.object(router, "classify_task", return_value=fallback):
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
+                with mock.patch("builtins.input", side_effect=["implementation", "L1"]):
+                    with mock.patch.object(router, "route", side_effect=spy):
+                        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                            router.main(["--platform", "codex", "--format", "text", "task"])
+        self.assertEqual(captured["result"].level, "L1")
+        self.assertEqual(captured["result"].source, "manual")
+        # factor scores agree with the chosen level (L1 => score band <= 1)
+        self.assertEqual(captured["result"].score, 1)
+
+    def test_manual_factor_scores_match_the_selected_level(self):
+        for picked, expected_score in (("L1", 1), ("L4", 7), ("L6", 11), ("critical", 12)):
+            with self.subTest(level=picked):
+                factors = router._factors_for_level("L7" if picked == "critical" else picked)
+                self.assertEqual(sum(factors.values()), expected_score)
+                self.assertTrue(all(0 <= v <= 2 for v in factors.values()))
+                if picked != "critical":
+                    self.assertEqual(router.level_for_score(sum(factors.values())), picked)
+
+    def test_manual_recovery_keeps_risk_flags_from_the_failed_classification(self):
+        # Primary flagged payment risk, then a later stage failed: classify_task
+        # preserves the flag on the fallback. A manually chosen L1 must still hit
+        # the L6 floor and keep payment active.
+        fallback = router.replace(
+            router.fallback_classification("timed out", "timeout"),
+            risk_flags={**NO_FLAGS, "payment": True},
+        )
+        captured = {}
+        real_route = router.route
+
+        def spy(*args, **kwargs):
+            result = real_route(*args, **kwargs)
+            captured["result"] = result
+            return result
+
+        with mock.patch.object(router, "classify_task", return_value=fallback):
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
+                with mock.patch("builtins.input", side_effect=["implementation", "L1"]):
+                    with mock.patch.object(router, "route", side_effect=spy):
+                        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                            router.main(["--platform", "codex", "--format", "text", "task"])
+        self.assertTrue(captured["result"].risk_flags["payment"])
+        self.assertEqual(captured["result"].level, "L6")
 
     def test_invalid_task_type_is_rejected_by_argparse(self):
         with contextlib.redirect_stderr(io.StringIO()):

@@ -27,7 +27,7 @@ def main() -> int:
 
     c_manifest = read_json(codex / ".codex-plugin" / "plugin.json")
     assert c_manifest["name"] == "model-effort"
-    assert c_manifest["version"] == "2.1.2"
+    assert c_manifest["version"] == "2.1.3"
     require(codex / "skills" / "route" / "SKILL.md")
     require(codex / "hooks" / "hooks.json")
     require(codex / "scripts" / "routing_policy_hook.py")
@@ -43,13 +43,13 @@ def main() -> int:
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
     assert a_manifest["name"] == "model-effort"
-    assert a_manifest["version"] == "2.1.2"
+    assert a_manifest["version"] == "2.1.3"
     require(claude / "skills" / "route" / "SKILL.md")
     assert len(list((claude / "agents").glob("*.md"))) >= 7
 
     g_manifest = read_json(agy / "gemini-extension.json")
     assert g_manifest["name"] == "model-effort"
-    assert g_manifest["version"] == "2.1.2"
+    assert g_manifest["version"] == "2.1.3"
     require(agy / "skills" / "route" / "SKILL.md")
     require(agy / "GEMINI.md")
     require(agy / "commands" / "route.toml")

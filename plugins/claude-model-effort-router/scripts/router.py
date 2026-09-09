@@ -158,6 +158,7 @@ class Classification:
     source: str
     context_required: bool = False
     delegability: int = 0
+    failure_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -271,8 +272,13 @@ def bump_level(level: str) -> str:
     return LEVELS[min(idx + 1, len(LEVELS) - 1)]
 
 
-def fallback_classification(reason: str) -> Classification:
-    """Safe landing used whenever the semantic preflight cannot produce valid output."""
+def fallback_classification(reason: str, kind: str | None = None) -> Classification:
+    """Safe landing used whenever the semantic preflight cannot produce valid output.
+
+    ``kind`` records why the preflight failed so callers can decide whether a
+    single retry is worthwhile: ``"timeout"`` and ``"process_failed"`` are
+    transient; ``"invalid_json"`` and ``"oserror"`` are not.
+    """
     return Classification(
         task_type=FALLBACK_TASK_TYPE,
         level="L3",
@@ -283,7 +289,11 @@ def fallback_classification(reason: str) -> Classification:
         source="fallback",
         context_required=False,
         delegability=0,
+        failure_kind=kind,
     )
+
+
+RETRYABLE_FAILURE_KINDS = ("timeout", "process_failed")
 
 
 def validate_classifier_output(payload: object, source: str = "classifier") -> Classification:
@@ -345,8 +355,11 @@ def classify_task_single(
     commands = {"codex": "codex", "claude-code": "claude", "antigravity": "agy"}
 
     def fallback(exc: Exception) -> Classification:
-        detail = "timed out" if isinstance(exc, subprocess.TimeoutExpired) else "process could not start" if isinstance(exc, OSError) else "invalid structured output"
-        return fallback_classification(detail)
+        if isinstance(exc, subprocess.TimeoutExpired):
+            return fallback_classification("timed out", "timeout")
+        if isinstance(exc, OSError):
+            return fallback_classification("process could not start", "oserror")
+        return fallback_classification("invalid structured output", "invalid_json")
 
     if platform not in commands:
         raise ValueError(f"unknown platform: {platform}")
@@ -457,14 +470,14 @@ def classify_task_single(
             except OSError as exc:
                 return fallback(exc)
             if proc.returncode != 0:
-                return fallback_classification("process failed")
+                return fallback_classification("process failed", "process_failed")
             try:
                 payload = unwrap(proc.stdout)
                 return validate_classifier_output(payload, model)
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-                return fallback_classification("invalid structured output")
+                return fallback_classification("invalid structured output", "invalid_json")
     except OSError:
-        return fallback_classification("bundled classifier schema could not be read")
+        return fallback_classification("bundled classifier schema could not be read", "oserror")
 
 
 def classify_task(
@@ -477,25 +490,35 @@ def classify_task(
 ) -> Classification:
     """Run the platform-native cascading semantic preflight, falling back to safe defaults."""
     repo_path = Path.cwd()
-    if repo_aware:
-        return classify_task_single(
-            task, platform, FALLBACK_CLASSIFIER_CONFIG[platform],
-            timeout=timeout, command=command, available_models=available_models,
-            repo_path=repo_path,
-        )
 
-    primary = classify_task_single(
-        task, platform, PRIMARY_CLASSIFIER_CONFIG[platform],
-        timeout=timeout, command=command, available_models=available_models,
-    )
+    def run_single(cfg: dict, repo: Path | None = None) -> Classification:
+        result = classify_task_single(
+            task, platform, cfg,
+            timeout=timeout, command=command, available_models=available_models,
+            repo_path=repo,
+        )
+        if result.source == "fallback" and result.failure_kind in RETRYABLE_FAILURE_KINDS:
+            # One retry only, and only for transient failures. A timeout or a
+            # non-zero exit can be a cold start or a rate limit; invalid JSON or
+            # a missing executable will not fix itself on a second attempt.
+            result = classify_task_single(
+                task, platform, cfg,
+                timeout=timeout, command=command, available_models=available_models,
+                repo_path=repo,
+            )
+        return result
+
+    if repo_aware:
+        return run_single(FALLBACK_CLASSIFIER_CONFIG[platform], repo_path)
+
+    primary = run_single(PRIMARY_CLASSIFIER_CONFIG[platform])
     if primary.source == "fallback":
         return primary
 
     if (primary.confidence is not None and primary.confidence < CONFIDENCE_THRESHOLD_BUMP) or primary.context_required:
-        fallback_res = classify_task_single(
-            task, platform, FALLBACK_CLASSIFIER_CONFIG[platform],
-            timeout=timeout, command=command, available_models=available_models,
-            repo_path=repo_path if primary.context_required else None,
+        fallback_res = run_single(
+            FALLBACK_CLASSIFIER_CONFIG[platform],
+            repo_path if primary.context_required else None,
         )
         if fallback_res.source == "fallback":
             return replace(fallback_res, risk_flags=dict(primary.risk_flags))
@@ -1098,6 +1121,63 @@ def choose_antigravity_model(profile: dict, available: list[str] | None) -> str:
     return profile["fallback"]
 
 
+def _prompt_axis(label: str, choices: tuple[str, ...], default: str | None = None) -> str:
+    """Read one routing axis from the operator; the prompt goes to stderr so a
+    piped stdout (``--format json`` / ``command``) stays clean."""
+    menu = "/".join(choices)
+    hint = f" [{default}]" if default else ""
+    while True:
+        sys.stderr.write(f"  {label} ({menu}){hint}: ")
+        sys.stderr.flush()
+        raw = input().strip()
+        if not raw and default:
+            return default
+        for choice in choices:
+            if raw.lower() == choice.lower():
+                return choice
+        sys.stderr.write(f"    '{raw}' is not a valid {label}\n")
+
+
+def _factors_for_level(level: str) -> dict[str, int]:
+    """Spread the highest score that still maps to ``level`` across the six
+    factors (each clamped to 0-2), so a manually chosen level and its factor
+    scores agree."""
+    target = next((s for s in range(12, -1, -1) if level_for_score(s) == level), 6)
+    base, extra = divmod(target, len(FACTORS))
+    values = [base + 1] * extra + [base] * (len(FACTORS) - extra)
+    return dict(zip(FACTORS, values))
+
+
+def prompt_manual_classification(fallback: Classification) -> tuple[Classification, bool]:
+    """Ask a human at the terminal for the two routing axes after the preflight
+    failed. The deterministic ``task_type x level`` mapping still runs on the
+    answer, so this yields a real route instead of the L3 guess.
+
+    Risk flags carried on ``fallback`` (a primary classifier may have flagged
+    payment/auth risk before a later stage failed) are preserved, so the L6 floor
+    and scope guard still apply to a manually chosen level.
+
+    Returns the manual classification and whether the operator chose ``critical``.
+    """
+    sys.stderr.write(f"Semantic preflight failed ({fallback.reason}); choose routing axes manually.\n")
+    task_type = _prompt_axis("task_type", TASK_TYPES, FALLBACK_TASK_TYPE)
+    level = _prompt_axis("level", (*LEVELS, "critical"))
+    is_critical = level == "critical"
+    resolved_level = "L7" if is_critical else level
+    classification = Classification(
+        task_type=task_type,
+        level=resolved_level,
+        factors=_factors_for_level(resolved_level),
+        risk_flags=dict(fallback.risk_flags),
+        confidence=None,
+        reason=f"Manual classification after preflight failure ({fallback.reason})",
+        source="manual",
+        context_required=False,
+        delegability=0,
+    )
+    return classification, is_critical
+
+
 def default_config_path() -> Path:
     here = Path(__file__).resolve()
     for candidate in (here.parent.parent / "config" / "model-map.json", here.parent / "config" / "model-map.json", here.parent.parent.parent / "config" / "model-map.json"):
@@ -1130,12 +1210,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--available-models-file", type=Path)
     parser.add_argument("--format", choices=("json", "text", "command"), default="text")
     parser.add_argument("--interactive", action="store_true", help="Build an interactive-session command (single-stage only)")
+    parser.add_argument(
+        "--no-prompt",
+        action="store_true",
+        help="Never prompt for manual axes when the preflight fails; emit the safe fallback route and exit non-zero",
+    )
     args = parser.parse_args(argv)
     if args.route_file:
         task_options = {
             "--platform", "--config", "--level", "--task-type", "--keep-plan",
             "--classifier-timeout", "--detect-antigravity-models", "--detect-timeout",
-            "--available-models-file", "--format", "--interactive", "--repo-aware", "--critical",
+            "--available-models-file", "--format", "--interactive", "--no-prompt", "--repo-aware", "--critical",
             *(f"--{factor}" for factor in FACTORS),
         }
         if args.task or any(option in argv for option in task_options):
@@ -1166,24 +1251,42 @@ def main(argv: list[str] | None = None) -> int:
             available = read_available_models(timeout=args.detect_timeout)
         except RuntimeError as exc:
             print(f"model detection failed ({exc}); using configured fallbacks", file=sys.stderr)
+    # Both axes pinned to their maximum? route() never calls the classifier then,
+    # so don't spawn one here either.
+    pinned_max = args.critical or (
+        args.level is not None and (args.level.lower() == "critical" or normalise_level(args.level) == "L7")
+    )
+    manual_bypass = explicit_task_type is not None and pinned_max
+
+    classification = None
+    prompted_critical = False
+    if not manual_bypass:
+        classification = classify_task(
+            args.task, args.platform, args.classifier_timeout,
+            repo_aware=args.repo_aware, available_models=available,
+        )
+        if classification.source == "fallback" and not args.no_prompt and sys.stdin.isatty():
+            try:
+                classification, prompted_critical = prompt_manual_classification(classification)
+            except (EOFError, KeyboardInterrupt):
+                sys.stderr.write("\nmanual classification aborted; using safe fallback\n")
+
     result = route(
         args.task,
         args.platform,
         config,
         explicit_factors,
-        args.level,
+        "critical" if prompted_critical else args.level,
         explicit_task_type,
         available,
-        classifier=lambda task: classify_task(
-            task, args.platform, args.classifier_timeout, repo_aware=args.repo_aware, available_models=available
-        ),
+        classifier=(lambda _task: classification) if classification is not None else None,
         repo_aware=args.repo_aware,
-        critical=args.critical,
+        critical=args.critical or prompted_critical,
     )
     if result.source == "fallback":
         print(
             "Semantic preflight failed; safe fallback applied "
-            f"({result.task_type} / {result.level})",
+            f"({result.task_type} / {result.level}); pin --task-type/--level or rerun on a terminal to choose",
             file=sys.stderr,
         )
     if args.format == "json":
@@ -1204,7 +1307,10 @@ def main(argv: list[str] | None = None) -> int:
         print("reason: " + "; ".join(result.rationale))
         if result.plan_dir:
             print(f"plan dir: {result.plan_dir}")
-    return 0
+    # An unrecovered safe fallback still prints its route on stdout, but exits
+    # non-zero so a `set -e` launcher stops before running a guessed route and
+    # automation can tell a real classification from the L3 baseline.
+    return 1 if result.source == "fallback" else 0
 
 
 if __name__ == "__main__":
