@@ -1138,6 +1138,16 @@ def _prompt_axis(label: str, choices: tuple[str, ...], default: str | None = Non
         sys.stderr.write(f"    '{raw}' is not a valid {label}\n")
 
 
+def _factors_for_level(level: str) -> dict[str, int]:
+    """Spread the highest score that still maps to ``level`` across the six
+    factors (each clamped to 0-2), so a manually chosen level and its factor
+    scores agree."""
+    target = next((s for s in range(12, -1, -1) if level_for_score(s) == level), 6)
+    base, extra = divmod(target, len(FACTORS))
+    values = [base + 1] * extra + [base] * (len(FACTORS) - extra)
+    return dict(zip(FACTORS, values))
+
+
 def prompt_manual_classification(fallback: Classification) -> tuple[Classification, bool]:
     """Ask a human at the terminal for the two routing axes after the preflight
     failed. The deterministic ``task_type x level`` mapping still runs on the
@@ -1153,10 +1163,11 @@ def prompt_manual_classification(fallback: Classification) -> tuple[Classificati
     task_type = _prompt_axis("task_type", TASK_TYPES, FALLBACK_TASK_TYPE)
     level = _prompt_axis("level", (*LEVELS, "critical"))
     is_critical = level == "critical"
+    resolved_level = "L7" if is_critical else level
     classification = Classification(
         task_type=task_type,
-        level="L7" if is_critical else level,
-        factors={factor: 1 for factor in FACTORS},
+        level=resolved_level,
+        factors=_factors_for_level(resolved_level),
         risk_flags=dict(fallback.risk_flags),
         confidence=None,
         reason=f"Manual classification after preflight failure ({fallback.reason})",

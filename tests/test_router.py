@@ -717,6 +717,17 @@ class RoutingTests(unittest.TestCase):
                             router.main(["--platform", "codex", "--format", "text", "task"])
         self.assertEqual(captured["result"].level, "L1")
         self.assertEqual(captured["result"].source, "manual")
+        # factor scores agree with the chosen level (L1 => score band <= 1)
+        self.assertEqual(captured["result"].score, 1)
+
+    def test_manual_factor_scores_match_the_selected_level(self):
+        for picked, expected_score in (("L1", 1), ("L4", 7), ("L6", 11), ("critical", 12)):
+            with self.subTest(level=picked):
+                factors = router._factors_for_level("L7" if picked == "critical" else picked)
+                self.assertEqual(sum(factors.values()), expected_score)
+                self.assertTrue(all(0 <= v <= 2 for v in factors.values()))
+                if picked != "critical":
+                    self.assertEqual(router.level_for_score(sum(factors.values())), picked)
 
     def test_manual_recovery_keeps_risk_flags_from_the_failed_classification(self):
         # Primary flagged payment risk, then a later stage failed: classify_task
