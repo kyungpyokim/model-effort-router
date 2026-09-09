@@ -1,7 +1,7 @@
 {
   "name": "model-effort",
   "description": "Routes coding tasks by difficulty to Claude Code agents with matching models and effort levels.",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "author": {
     "name": "Model Effort Router contributors"
   },
