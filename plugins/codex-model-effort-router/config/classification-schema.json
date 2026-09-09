@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_type", "level", "factors", "risk_flags", "confidence", "context_required", "delegability", "reason"],
+  "properties": {
+    "task_type": {"type": "string", "enum": ["implementation", "design", "review", "local_refactoring", "architectural_refactoring"]},
+    "level": {"type": "string", "enum": ["L1", "L2", "L3", "L4", "L5", "L6", "L7"]},
+    "factors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "ambiguity", "diagnosis", "design", "risk", "verification"],
+      "properties": {
+        "scope": {"type": "integer", "minimum": 0, "maximum": 2},
+        "ambiguity": {"type": "integer", "minimum": 0, "maximum": 2},
+        "diagnosis": {"type": "integer", "minimum": 0, "maximum": 2},
+        "design": {"type": "integer", "minimum": 0, "maximum": 2},
+        "risk": {"type": "integer", "minimum": 0, "maximum": 2},
+        "verification": {"type": "integer", "minimum": 0, "maximum": 2}
+      }
+    },
+    "risk_flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["security_sensitive", "authentication", "authorization", "payment", "data_migration", "public_api_change"],
+      "properties": {
+        "security_sensitive": {"type": "boolean"},
+        "authentication": {"type": "boolean"},
+        "authorization": {"type": "boolean"},
+        "payment": {"type": "boolean"},
+        "data_migration": {"type": "boolean"},
+        "public_api_change": {"type": "boolean"}
+      }
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "context_required": {"type": "boolean"},
+    "delegability": {"type": "integer", "minimum": 0, "maximum": 2},
+    "reason": {"type": "string", "minLength": 1}
+  }
+}

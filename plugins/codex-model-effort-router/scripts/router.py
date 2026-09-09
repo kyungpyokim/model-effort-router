@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
 import re
@@ -74,7 +75,7 @@ FALLBACK_CLASSIFIER_CONFIG = {
     },
 }
 
-CLASSIFIER_TIMEOUT_SECONDS = 20.0
+CLASSIFIER_TIMEOUT_SECONDS = 60.0
 DETECT_TIMEOUT_SECONDS = 20.0
 CONFIDENCE_THRESHOLD_DIRECT = 0.80
 CONFIDENCE_THRESHOLD_BUMP = 0.60
@@ -320,6 +321,18 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
     return Classification(task_type, level, validated_factors, dict(risk_flags), float(confidence), reason, source, context_required, delegability)
 
 
+def classifier_schema_path() -> Path:
+    here = Path(__file__).resolve()
+    for candidate in (
+        here.parent.parent / "config" / "classification-schema.json",
+        here.parent / "config" / "classification-schema.json",
+        here.parent.parent.parent / "config" / "classification-schema.json",
+    ):
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError("config/classification-schema.json not found")
+
+
 def classify_task_single(
     task: str,
     platform: str,
@@ -357,9 +370,9 @@ def classify_task_single(
         effort = cfg.get("effort")
 
     try:
-        with tempfile.TemporaryDirectory(prefix="model-effort-router-") as directory:
-            schema_path = Path(directory) / "classification-schema.json"
-            schema_path.write_text(json.dumps(CLASSIFIER_SCHEMA), encoding="utf-8")
+        schema_path = classifier_schema_path()
+        directory = str(schema_path.parent)
+        with contextlib.nullcontext(directory):
             if platform == "codex":
                 launch = [
                     executable,
@@ -451,7 +464,7 @@ def classify_task_single(
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 return fallback_classification("invalid structured output")
     except OSError:
-        return fallback_classification("temporary directory could not be created")
+        return fallback_classification("bundled classifier schema could not be read")
 
 
 def classify_task(
