@@ -22,8 +22,15 @@ Each preflight runs in an isolated temporary directory and validates structured 
 (task_type, six factor scores, six risk flags, confidence, context_required, delegability, reason) before selecting
 a profile.
 
-If the selected classifier times out, cannot start, fails, or returns invalid
-JSON, routing uses the safe fallback: implementation / L3 / safe baseline.
+A transient preflight failure (timeout or non-zero exit) is retried once. If it
+still fails, cannot start, or returns invalid JSON:
+
+- On a terminal, the router asks for `task_type` and `level` (or `critical`) on
+  stderr and routes that answer through the deterministic matrix, so you get a
+  real route instead of a guess. `--no-prompt` skips this.
+- Otherwise it prints the safe fallback route (implementation / L3 / safe
+  baseline) on stdout, reports the failure on stderr, and exits non-zero — so a
+  `set -e` launcher stops before running the guessed route.
 
 ```bash
 python3 scripts/router.py --platform codex --format json "여러 서비스의 OAuth 인증 장애를 분석하고 수정"
