@@ -1186,6 +1186,22 @@ class ModelDetectionTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             router.read_available_models(command="model-effort-router-no-such-binary")
 
+    def test_read_available_models_strips_tab_separated_display_names(self):
+        stdout = (
+            "Fetching available models...\n"
+            "gemini-3.8-flash-high\tGemini 3.8 Flash (High)\n"
+            "gemini-3.1-pro-high\tGemini 3.1 Pro (High)\n"
+            "- Claude Sonnet 4.6 (Thinking)\n"
+        )
+        completed = subprocess.CompletedProcess(["agy", "models"], 0, stdout, "")
+        with mock.patch.object(router.subprocess, "run", return_value=completed):
+            models = router.read_available_models()
+        self.assertEqual(models, [
+            "Gemini 3.8 Flash (High)",
+            "Gemini 3.1 Pro (High)",
+            "Claude Sonnet 4.6 (Thinking)",
+        ])
+
 
 class BundleParityTests(unittest.TestCase):
     SHARED = ("scripts/router.py", "config/model-map.json", "config/classification-schema.json", "references/routing-policy.md")
