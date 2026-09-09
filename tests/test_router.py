@@ -66,6 +66,25 @@ def routed(task="task", platform="codex", explicit_level=None, explicit_task_typ
 
 
 class PlatformClassifierTests(unittest.TestCase):
+    def test_default_classifier_timeout_allows_cold_native_startup(self):
+        completed = subprocess.CompletedProcess([], 0, classifier_output(), "")
+        with mock.patch.object(router.subprocess, "run", return_value=completed) as run:
+            router.classify_task("add a settings page")
+        self.assertEqual(run.call_args.kwargs["timeout"], 60)
+
+    def test_classifier_uses_bundled_schema_without_a_writable_temp_directory(self):
+        completed = subprocess.CompletedProcess([], 0, classifier_output(), "")
+        with (
+            mock.patch.object(router.tempfile, "TemporaryDirectory", side_effect=OSError("read-only")),
+            mock.patch.object(router.subprocess, "run", return_value=completed) as run,
+        ):
+            result = router.classify_task("add a settings page")
+        command = run.call_args.args[0]
+        schema_path = Path(command[command.index("--output-schema") + 1])
+        self.assertEqual(schema_path.name, "classification-schema.json")
+        self.assertEqual(json.loads(schema_path.read_text(encoding="utf-8")), router.CLASSIFIER_SCHEMA)
+        self.assertEqual(result.source, "gpt-5.6-luna")
+
     def test_codex_output_schema_requires_every_top_level_property(self):
         self.assertEqual(
             set(router.CLASSIFIER_SCHEMA["required"]),
@@ -229,7 +248,7 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertNotIn("--effort", command)
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
         self.assertEqual(result.source, "claude-haiku-4-5")
-        self.assertTrue(Path(run.call_args.kwargs["cwd"]).name.startswith("model-effort-router-"))
+        self.assertEqual(Path(run.call_args.kwargs["cwd"]), ROOT / "config")
 
     def test_antigravity_uses_isolated_structured_json_classifier(self):
         completed = subprocess.CompletedProcess([], 0, json.dumps({"structured_output": json.loads(classifier_output())}), "")
@@ -1169,7 +1188,7 @@ class ModelDetectionTests(unittest.TestCase):
 
 
 class BundleParityTests(unittest.TestCase):
-    SHARED = ("scripts/router.py", "config/model-map.json", "references/routing-policy.md")
+    SHARED = ("scripts/router.py", "config/model-map.json", "config/classification-schema.json", "references/routing-policy.md")
     PLUGINS = ("plugins/codex-model-effort-router", "plugins/claude-model-effort-router", "plugins/antigravity-model-effort-router")
 
     def test_plugin_copies_match_the_bundle_root(self):

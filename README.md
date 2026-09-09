@@ -112,6 +112,14 @@ python3 scripts/install_plugins.py all --scope user
 Use `--scope project` for a project-local Claude Code installation and
 `--dry-run` to preview installation commands.
 
+### Codex route-first hook
+
+The Codex plugin includes a small SessionStart policy hook. It reminds Codex to
+route a new substantive coding task before repository work, but does not run a
+classifier or worker and does not reject a prompt. Codex requires a separate trust
+approval for the installed hook definition. For a guaranteed routed new process,
+use `plugins/codex-model-effort-router/bin/codex-route -- "<task>"`.
+
 ## Customize model names
 
 Edit `config/model-map.json`, then run `python3 scripts/sync_bundle.py` to

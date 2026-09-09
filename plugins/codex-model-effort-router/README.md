@@ -27,6 +27,21 @@ codex plugin add model-effort@model-effort-router-bundle
 
 The plugin manifest is `.codex-plugin/plugin.json`.
 
+## Route-first policy hook
+
+Codex loads the plugin's `hooks/hooks.json` automatically. Its SessionStart
+handler injects a short route-first policy; it does not classify a task, start a
+worker, or reject a prompt. Codex waits briefly for the handler at session start,
+but later prompts do not run a routing hook. Review and trust the current hook
+definition when Codex asks. The hook improves compliance but cannot replace the
+model of an already-running parent turn.
+
+For a guaranteed new-session entry, use the launcher:
+
+```bash
+plugins/codex-model-effort-router/bin/codex-route -- "<task>"
+```
+
 The seven profiles under `agents/` are execution targets carrying per-level
 developer instructions only. Model and effort always come from the router and
 model map at runtime; direct agent calls fall back to the Codex default model.

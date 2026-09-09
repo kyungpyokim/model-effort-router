@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/scripts/routing_policy_hook.py\" SessionStart",
+            "timeout": 2,
+            "additionalContextLimit": 1000
+          }
+        ]
+      }
+    ]
+  }
+}

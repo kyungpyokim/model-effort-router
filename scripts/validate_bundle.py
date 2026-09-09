@@ -27,8 +27,18 @@ def main() -> int:
 
     c_manifest = read_json(codex / ".codex-plugin" / "plugin.json")
     assert c_manifest["name"] == "model-effort"
-    assert c_manifest["version"] == "2.1.1"
+    assert c_manifest["version"] == "2.1.2"
     require(codex / "skills" / "route" / "SKILL.md")
+    require(codex / "hooks" / "hooks.json")
+    require(codex / "scripts" / "routing_policy_hook.py")
+    codex_hooks = read_json(codex / "hooks" / "hooks.json")["hooks"]
+    assert set(codex_hooks) == {"SessionStart"}
+    handler = codex_hooks["SessionStart"][0]["hooks"][0]
+    assert handler["timeout"] == 2
+    assert handler["additionalContextLimit"] == 1000
+    assert "routing_policy_hook.py" in handler["command"]
+    assert not handler.get("async", False)
+    assert "hooks" not in c_manifest
     assert len(list((codex / "agents").glob("*.toml"))) >= 7
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
