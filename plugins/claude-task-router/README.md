@@ -1,13 +1,14 @@
 # claude-task-router
 
-Four native Claude Code subagents — `research` (haiku), `coding` (sonnet),
-`review` (opus), `complex` (fable, falls back to opus) — replacing the old
+Four native Claude Code subagents — `research` (haiku, low), `coding` (sonnet,
+medium), `review` (opus, high), `complex` (fable, xhigh) — replacing the old
 `model-effort-router` bundle's subprocess launcher for Claude.
 
-No per-agent reasoning-effort field exists in Claude Code subagent frontmatter
-(only `name`/`description`/`tools`/`model`) — effort/extended-thinking is a
-session-wide setting, not something a subagent definition can override. Model
-tier is the only differentiation axis available here.
+Claude Code supports an `effort` field in subagent frontmatter. It applies while
+that agent is active, subject to an environment override or configured effort cap.
+The frontmatter-effort guarantee for Fable and affected Opus models requires
+Claude Code 2.1.267+; on older versions, a saved effort hold can override the
+agent's configured effort.
 
 ## Install
 
@@ -27,10 +28,12 @@ This directory also carries a `.claude-plugin/plugin.json` manifest so
 loaded ad hoc for one call without installing, via `--plugin-dir`:
 
 ```bash
-claude -p --plugin-dir plugins/claude-task-router --agent coding "재고 API에 페이지네이션 추가"
+claude -p --plugin-dir plugins/claude-task-router --agent task-router:coding "재고 API에 페이지네이션 추가"
 ```
 
-`--agent <name>` is a real flag (confirmed against `claude --help`) and,
-combined with `--plugin-dir`, actually exercises agent selection — this is
-what `scripts/eval_task_router.py` uses to verify the intended model is what
-gets billed, not just a raw `--model` call.
+Plugin agents are named `task-router:<agent>` (for example,
+`task-router:coding`). `--agent` with `--plugin-dir` selects that concrete
+plugin agent. `scripts/eval_task_router.py` verifies only the selected model
+and successful CLI result; its displayed effort is static configuration from
+agent frontmatter, validated by `scripts/validate_bundle.py`. It cannot verify
+effective runtime effort because environment and policy settings can override it.

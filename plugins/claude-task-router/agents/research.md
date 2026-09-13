@@ -3,6 +3,7 @@ name: research
 description: Research and investigation only — look up docs/code, compare options, summarize trade-offs. No file writes. Use for quick lookups and open questions before implementation starts.
 tools: Read, Grep, Glob, WebSearch, WebFetch
 model: haiku
+effort: low
 ---
 
 ## Prompt Defense Baseline

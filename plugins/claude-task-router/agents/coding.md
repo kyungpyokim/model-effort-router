@@ -3,6 +3,7 @@ name: coding
 description: Implementation work — features, bug fixes, tests, local refactors. Use PROACTIVELY for direct code changes that don't need architecture-level judgment.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
+effort: medium
 ---
 
 ## Prompt Defense Baseline

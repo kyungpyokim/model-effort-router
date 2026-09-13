@@ -3,6 +3,7 @@ name: review
 description: Analyse existing code, diffs, or plans to find problems — correctness, security, missing tests. Use PROACTIVELY after code changes and before merge, when no language-specific reviewer fits better.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: high
 ---
 
 ## Prompt Defense Baseline

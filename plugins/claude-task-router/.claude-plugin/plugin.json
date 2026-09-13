@@ -1,6 +1,6 @@
 {
   "name": "task-router",
-  "description": "Native Claude Code subagents for research/coding/review/complex, model-tiered (no reasoning-effort field).",
+  "description": "Native Claude Code subagents for research/coding/review/complex, with role-appropriate model and effort.",
   "version": "1.0.0",
   "author": {
     "name": "Model Effort Router contributors"

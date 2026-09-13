@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tomllib
 from pathlib import Path
 
 
@@ -15,6 +16,13 @@ def require(path: Path) -> None:
 def read_json(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def read_frontmatter(path: Path) -> dict[str, str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "---", f"missing frontmatter: {path}"
+    end = lines.index("---", 1)
+    return dict(line.split(": ", 1) for line in lines[1:end])
 
 
 def main() -> int:
@@ -46,6 +54,36 @@ def main() -> int:
     assert a_manifest["version"] == "2.1.3"
     require(claude / "skills" / "route" / "SKILL.md")
     assert len(list((claude / "agents").glob("*.md"))) >= 7
+
+    task_router = root / "plugins" / "claude-task-router"
+    task_manifest = read_json(task_router / ".claude-plugin" / "plugin.json")
+    assert task_manifest["name"] == "task-router"
+    assert task_manifest["version"] == "1.0.0"
+    required_agent_fields = {"name", "description", "tools", "model", "effort"}
+    valid_efforts = {"low", "medium", "high", "xhigh", "max"}
+    task_agents = list((task_router / "agents").glob("*.md"))
+    assert len(task_agents) == 4
+    for path in task_agents:
+        agent = read_frontmatter(path)
+        assert required_agent_fields <= agent.keys(), f"missing agent field: {path}"
+        assert agent["name"] == path.stem, f"agent name does not match file: {path}"
+        assert agent["effort"] in valid_efforts, f"invalid effort: {path}"
+
+    codex_task_router = root / "plugins" / "codex-task-router"
+    expected_sandbox_modes = {
+        "coding": "workspace-write",
+        "complex": "workspace-write",
+        "research": "read-only",
+    }
+    valid_models = {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-6-astra"}
+    codex_agents = {path.stem: path for path in (codex_task_router / "agents").glob("*.toml")}
+    assert set(codex_agents) == set(expected_sandbox_modes)
+    for name, path in codex_agents.items():
+        agent = tomllib.loads(path.read_text(encoding="utf-8"))
+        assert {"model", "model_reasoning_effort", "sandbox_mode"} <= agent.keys(), f"missing agent field: {path}"
+        assert agent["model"] in valid_models, f"invalid model: {path}"
+        assert agent["model_reasoning_effort"] in valid_efforts, f"invalid effort: {path}"
+        assert agent["sandbox_mode"] == expected_sandbox_modes[name], f"invalid sandbox: {path}"
 
     g_manifest = read_json(agy / "gemini-extension.json")
     assert g_manifest["name"] == "model-effort"

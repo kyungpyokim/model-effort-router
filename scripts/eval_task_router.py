@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Measure real token usage per task-router agent (codex-task-router + claude-task-router).
 
-Runs one minimal real call per agent and reports the token usage the CLI itself
-reports, so you can confirm the intended model/effort is actually what gets
-billed. Dry-run by default; costs real API usage with --live.
+Runs one minimal real call per agent and reports the model usage the CLI itself
+reports. The displayed effort is static frontmatter configuration only; this
+script does not verify effective Claude effort because it can be overridden at
+runtime. Dry-run by default; costs real API usage with --live.
 
 Codex caveat: the installed `codex` CLI has no flag to force-invoke a named
 `[agents.*]` profile directly (`--agent` does not exist; agents are only
@@ -12,10 +13,10 @@ So the codex rows below verify "this model+effort combo is a real, billable
 combination", not "config.toml agent registration actually routes to it" --
 that half is not independently testable from outside a live session.
 
-Claude does support real agent selection from the CLI (`--agent <name>` with
-`--plugin-dir <dir>` to load an uninstalled plugin for one call), so the
-claude rows here genuinely exercise agent registration + selection, not just
-a raw --model call.
+Claude does support real agent selection from the CLI (`--agent task-router:<name>`
+with `--plugin-dir <dir>` to load an uninstalled plugin for one call), so the
+claude rows here genuinely exercise agent registration + model selection, not
+just a raw --model call.
 """
 
 from __future__ import annotations
@@ -59,10 +60,11 @@ def load_claude_agents() -> list[AgentCase]:
     cases = []
     for path in sorted(CLAUDE_AGENTS_DIR.glob("*.md")):
         text = path.read_text(encoding="utf-8")
-        match = re.search(r"^model:\s*(\S+)\s*$", text, re.MULTILINE)
-        if not match:
+        model = re.search(r"^model:\s*(\S+)\s*$", text, re.MULTILINE)
+        effort = re.search(r"^effort:\s*(\S+)\s*$", text, re.MULTILINE)
+        if not model or not effort:
             continue
-        cases.append(AgentCase("claude", path.stem, match.group(1), None))
+        cases.append(AgentCase("claude", path.stem, model.group(1), effort.group(1)))
     return cases
 
 
@@ -123,7 +125,7 @@ def run_claude(case: AgentCase) -> dict:
     cmd = [
         "claude", "-p",
         "--plugin-dir", str(CLAUDE_PLUGIN_DIR),
-        "--agent", case.name,
+        "--agent", f"task-router:{case.name}",
         "--output-format", "json",
         "--max-budget-usd", CLAUDE_BUDGET_USD,
         PROMPT,
@@ -148,8 +150,9 @@ def run_claude(case: AgentCase) -> dict:
         "reasoning_tokens": None,
         "cost_usd": result.get("total_cost_usd"),
         "elapsed_ms": elapsed_ms,
-        "ok": proc.returncode == 0 and bool(model_usage) and matches_expected,
+        "ok": proc.returncode == 0 and not result.get("is_error", False) and bool(model_usage) and matches_expected,
         "stderr_tail": (proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else "")
+        or ("is_error=true" if result.get("is_error", False) else "")
         or (f"used model {used_model!r}, expected {case.model!r}" if not matches_expected else ""),
     }
 
@@ -171,6 +174,9 @@ def main(argv: list[str] | None = None) -> int:
         if not cases:
             print(f"no agent named {args.agent!r} found under --only={args.only or 'codex,claude'}", file=sys.stderr)
             return 2
+    if not cases:
+        print(f"no agents found under --only={args.only or 'codex,claude'}", file=sys.stderr)
+        return 2
 
     if not args.live:
         print("DRY RUN (pass --live to actually call the CLIs; each call spends real API usage)\n")
