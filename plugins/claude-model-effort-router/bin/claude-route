@@ -19,8 +19,12 @@ if [[ ! -f "${ROUTER}" ]]; then
   exit 1
 fi
 
+# On a terminal, default to an interactive executor: `claude -p` cannot edit files
+# under default permissions. `--print` forces the non-interactive form.
 INTERACTIVE=0
+if [[ -t 0 && -t 1 ]]; then INTERACTIVE=1; fi
 if [[ "${1:-}" == "--interactive" ]]; then INTERACTIVE=1; shift; fi
+if [[ "${1:-}" == "--print" ]]; then INTERACTIVE=0; shift; fi
 if [[ "${1:-}" == "--route-file" ]]; then
   [[ "$#" -eq 2 ]] || { echo "usage: claude-route --route-file <route.json>" >&2; exit 2; }
   COMMAND="$(python3 "${ROUTER}" --route-file "$2")"

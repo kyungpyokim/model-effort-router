@@ -20,6 +20,7 @@ Confidence Check
   ├─ >= 0.80 ──────> Adopt score directly
   ├─ 0.60 - 0.79 ──> Conservative bump (+1 level)
   └─ < 0.60 ───────> Fallback Classifier (Terra Med / Sonnet 5 Med / Gemini 3.1 Pro High)
+                     (final result still < 0.80, or fallback failed -> +1 level on the kept result)
      │
 Python Deterministic Mapping
   ├─ Score -> L1~L7 Level

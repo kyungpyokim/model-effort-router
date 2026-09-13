@@ -23,7 +23,8 @@ agy plugin install https://github.com/<owner>/<repo>
 This classifies and explains the route, but it does not pretend to replace the model of the already-running session.
 
 The plugin includes L1-L7 and Critical agents under `agents/`. `agy-route` starts a new
-session with the matching `--agent` and account-available model.
+session with the account-available model and embeds the matching agent's
+instructions in the prompt, so it works without the extension installed.
 
 ## Execute with automatic model selection
 

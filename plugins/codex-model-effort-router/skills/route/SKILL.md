@@ -12,12 +12,19 @@ or risk. If the stored route is unavailable after a resume or compaction, route 
 instead of pretending it was reused.
 
 Do not score `$ARGUMENTS` in the current session. Resolve the included router
-relative to this file and run `python3 ../../scripts/router.py "$ARGUMENTS" --platform codex --format json`. Its cascading preflight result is the source
-of truth.
+relative to this file and run `python3 <skill-dir>/../../scripts/router.py "$ARGUMENTS" --platform codex --format json`
+from the user's current working directory. Its cascading preflight result is the source
+of truth. The router starts a nested `codex exec` classifier, which cannot start inside
+the workspace sandbox, so run this one command with escalated sandbox permissions.
+
+If the router exits non-zero, its `source` is `fallback`: the preflight failed and the
+L3 route is a guess. Do not delegate it. Report the failure, ask the user for
+`task_type` and `level`, and rerun the router with `--task-type` and `--level`.
 
 1. Read the JSON result's `mode`.
-2. For `single`, immediately delegate the complete task to the matching level
-   agent with the model and effort from the selected matrix row. Pass the
+2. For `single`, immediately delegate the complete task to a spawned worker whose
+   `model` and `reasoning_effort` are set to `steps[0].model` and `steps[0].effort`
+   from the selected matrix row; never inherit the parent session model. Pass the
    complete generated route JSON along with the original task. The delegated
    executor must use every `verification.recommended` ID and reason to select
    applicable existing repository checks and report each result or why it was
@@ -31,7 +38,7 @@ of truth.
    complete route JSON executes its assigned work and does not invoke this router again.
 6. Re-route only if new evidence materially raises scope or risk.
 
-When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `../../bin/codex-route --route-file <route.json>`. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
+When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the same working directory. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
 
 Schema v3 `orchestration_eligible` is handoff metadata only. The local
 `scripts/astra_adapter.py` is caller-invoked, revalidates worker inputs, and
