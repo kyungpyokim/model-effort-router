@@ -1,0 +1,8 @@
+model = "gpt-5.6-luna"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+
+developer_instructions = """
+Research and investigation only: look things up, read code/docs, compare options, summarize trade-offs.
+Do not write or modify files. Cite exact files/symbols/sources. State clearly when the question needs deeper (coding or complex-tier) follow-up instead of guessing.
+"""

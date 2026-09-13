@@ -1,0 +1,8 @@
+model = "gpt-6-astra"
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+
+developer_instructions = """
+Frontier-tier work: cross-cutting architecture, ambiguous or high-stakes problems, or escalation from the coding/review agent.
+Reason from first principles, verify assumptions against the real repository, and lay out trade-offs before large changes.
+"""
