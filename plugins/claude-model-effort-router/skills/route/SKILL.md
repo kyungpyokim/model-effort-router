@@ -10,24 +10,30 @@ effort: low
 Do not classify `$ARGUMENTS` in the current session. Do not change directory: the
 router, the assessor, and the executor must run in the user's current working directory,
 which is the repository the task refers to. `<router>` below is
-`python3 "${CLAUDE_SKILL_DIR}/../../scripts/router.py"`, and every JSON file is a fresh
-file under the system temp directory, never inside the repository.
+`python3 "${CLAUDE_SKILL_DIR}/../../scripts/router.py"`. Do not write the assessor reply to a temp file.
 
 Classify with the in-session assessor, not a nested CLI:
 
 1. Run `<router> --print-classifier-prompt --repo-aware "$ARGUMENTS"` and call the Agent tool
    with `subagent_type` `model-effort:difficulty-assessor` and that output unchanged as the
-   prompt. Save its JSON reply unchanged to `<facts.json>`. The assessor answers facts only;
-   the router's difficulty rules pick the level.
-2. Run `<router> "$ARGUMENTS" --platform claude-code --classification-file <facts.json> --format json > <route.json>`.
+   prompt. The assessor answers facts only; the router's difficulty rules pick the level.
+2. Pass the assessor's JSON reply unchanged on stdin and read the route JSON from stdout:
+
+   ```bash
+   <router> "$ARGUMENTS" --platform claude-code --format json --classification-file - <<'FACTS_JSON'
+   <assessor reply>
+   FACTS_JSON
+   ```
 3. If the route JSON has `needs_context: true`, call the assessor once more with the same
-   prompt and `model` `sonnet`, save the reply to `<facts-escalated.json>`, and rerun step 2
-   with `--classification-file <facts.json> --classification-file <facts-escalated.json>`.
-   If that call fails, keep the first route.
+   prompt and `model` `sonnet`, and rerun step 2 with that reply alone; its facts replace the
+   first reply's. Escalate at most once. If that call fails, keep the first route.
 4. If the router exits non-zero, the assessor reply was not valid JSON. Call the assessor
    once more; if the router still exits non-zero, do not guess a route and do not delegate.
    Report the failure, ask the user for `task_type` and `level`, and rerun the router with
    `--task-type` and `--level`.
+5. Outside that manual step, never run the router in this flow without `--classification-file`:
+   that spawns a nested classifier CLI. Never delegate a route whose `source` is `fallback`;
+   classification did not happen, so stop and report it.
 
 The model comes from the selected `task_type × level` matrix row, never from an agent default. The `review` and `design` rows resolve to `opus` at every level and `implementation` at L1 resolves to `haiku`, so a level-only delegation that keeps the agent's own model is wrong.
 

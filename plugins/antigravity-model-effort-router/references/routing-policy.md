@@ -78,7 +78,7 @@ Mixed tasks classify by their primary purpose. Design with sample code is `desig
 | Fact | Values | Meaning |
 |---|---|---|
 | `mechanical_only` | yes / no | Typos, renames, formatting, imports, comments, or docs with no behaviour change |
-| `files_touched` | 1 / 2-5 / 6+ / unknown | Files the work edits or must examine closely |
+| `files_touched` | 1 / 2-5 / 6+ / unknown | Files the work changes, including new and test files (not files only read) |
 | `crosses_module_boundary` | yes / no / unknown | Spans modules or packages, or moves responsibilities between them |
 | `crosses_service_boundary` | yes / no / unknown | Work or diagnosis spans services, processes, or repositories |
 | `fix_or_result_known` | yes / no | The expected result or place to change is stated or evident |

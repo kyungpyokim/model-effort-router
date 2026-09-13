@@ -74,7 +74,7 @@ FALLBACK_CLASSIFIER_CONFIG = {
     },
 }
 
-CLASSIFIER_TIMEOUT_SECONDS = 60.0
+CLASSIFIER_TIMEOUT_SECONDS = 90.0
 DETECT_TIMEOUT_SECONDS = 20.0
 
 YES_NO = ("yes", "no")
@@ -146,13 +146,13 @@ Choose exactly one task_type:
 - architectural_refactoring: change module boundaries or system structure AND carry out the resulting edits (module splits, dependency inversion, state-management changes, data-layer redesign, moving responsibilities between services). If only a design is wanted, choose design instead.
 Answer each fact about the work the task requires. Do not assign a level or score; the router derives difficulty from these facts with fixed rules.
 - mechanical_only: yes only for typos, renames, formatting, imports, comments, or documentation with no behaviour change.
-- files_touched: how many files the work edits or must examine closely: 1, 2-5, 6+, or unknown.
+- files_touched: how many files the work changes, including new and test files; files only read for context do not count: 1, 2-5, 6+, or unknown.
 - crosses_module_boundary: the work spans more than one module or package, or moves responsibilities between them.
 - crosses_service_boundary: the work or its diagnosis spans more than one service, process, or repository.
 - fix_or_result_known: yes when the expected result or the place to change is stated or evident; no when it must be investigated or decided.
 - intermittent_or_concurrency: the problem is intermittent, timing-dependent, or involves concurrency.
 - needs_new_structure: a new architecture, protocol, module boundary, or migration strategy must be designed.
-- changes_security_or_payment_logic: authentication, authorization, secrets, cryptography, or payment behaviour changes. Moving, renaming, reviewing wording, or documenting such code without changing its behaviour is no.
+- changes_security_or_payment_logic: authentication, authorization, secrets, cryptography, or payment behaviour changes. Moving, splitting, renaming, reviewing wording, or documenting such code without changing its behaviour is no; extracting an auth module into its own service with the same behaviour is no.
 - changes_public_api_contract: an externally consumed API, CLI, schema, or response format changes.
 - changes_persisted_data: stored data, a database schema, or a data migration changes.
 - irreversible_or_ledger_or_crypto: irreversible production data changes, financial ledger correctness, or cryptographic design.
@@ -419,9 +419,11 @@ def classifier_prompt(task: str, repo_path: Path | None = None) -> str:
     return prompt + f"<task>\n{escaped_task}\n</task>"
 
 
-def read_classification_file(path: Path) -> Classification:
-    """Validate a classification produced outside the router (e.g. a spawned Codex worker)."""
-    raw = path.read_text(encoding="utf-8").strip()
+def read_classification_file(path: str) -> Classification:
+    """Validate a classification produced outside the router (e.g. a spawned Codex worker).
+
+    ``-`` reads stdin, so session skills can pass the reply with a heredoc instead of a temp file."""
+    raw = (sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")).strip()
     # Model replies often wrap the JSON in a markdown fence.
     raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
     return validate_classifier_output(json.loads(raw), source="classification-file")
@@ -611,13 +613,13 @@ def apply_risk_escalation(level: str, risk_flags: dict[str, bool]) -> str:
     return higher_level(level, floor)
 
 
-def maximum_classification(task_type: str | None) -> Classification:
-    """Build the bypass result for an explicit maximum-level request."""
+def pinned_classification(task_type: str, level: str) -> Classification:
+    """Build the bypass result when both task_type and level are pinned explicitly."""
     return Classification(
-        task_type=task_type or FALLBACK_TASK_TYPE,
-        level="L7",
+        task_type=task_type,
+        level=level,
         risk_flags={flag: False for flag in RISK_FLAGS},
-        reason="Semantic preflight skipped because both task_type and maximal level were pinned explicitly",
+        reason="Semantic preflight skipped because both task_type and level were pinned explicitly",
         source="manual",
     )
 
@@ -806,9 +808,11 @@ def route(
         elif normalise_level(explicit_level) == "L7":
             pinned_max = True
 
-    manual_bypass = explicit_task_type is not None and pinned_max
+    manual_bypass = explicit_task_type is not None and (pinned_max or explicit_level is not None)
     if manual_bypass:
-        classification = maximum_classification(normalise_task_type(explicit_task_type))
+        classification = pinned_classification(
+            normalise_task_type(explicit_task_type), "L7" if pinned_max else normalise_level(explicit_level)
+        )
     else:
         classification = classifier(task) if classifier else classify_task(
             task, platform=platform, repo_aware=repo_aware, available_models=available_models
@@ -1252,10 +1256,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--classification-file",
-        type=Path,
-        action="append",
-        help="Route from externally produced classifier JSON instead of spawning a classifier; "
-        "pass it twice (primary, then escalated) when the first route reports needs_context",
+        metavar="PATH",
+        help="Route from externally produced classifier JSON (a path, or - for stdin) instead of "
+        "spawning a classifier; when the route reports needs_context, pass the repository-aware reply alone",
     )
     parser.add_argument("--critical", action="store_true", help="Force critical override profile")
     parser.add_argument("--classifier-timeout", type=positive_finite_float, default=CLASSIFIER_TIMEOUT_SECONDS)
@@ -1303,15 +1306,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     external = None
     if args.classification_file:
-        if len(args.classification_file) > 2:
-            print("invalid classification file: pass at most a primary and an escalated file", file=sys.stderr)
-            return 2
         try:
-            classifications = [read_classification_file(path) for path in args.classification_file]
+            external = read_classification_file(args.classification_file)
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             print(f"invalid classification file: {exc}", file=sys.stderr)
             return 2
-        external = classifications[0] if len(classifications) == 1 else combine_cascade(*classifications)
     config = load_config(args.config or default_config_path())
     explicit_task_type = None if args.task_type == "auto" else args.task_type
     available = None
@@ -1322,12 +1321,8 @@ def main(argv: list[str] | None = None) -> int:
             available = read_available_models(timeout=args.detect_timeout)
         except RuntimeError as exc:
             print(f"model detection failed ({exc}); using configured fallbacks", file=sys.stderr)
-    # Both axes pinned to their maximum? route() never calls the classifier then,
-    # so don't spawn one here either.
-    pinned_max = args.critical or (
-        args.level is not None and (args.level.lower() == "critical" or normalise_level(args.level) == "L7")
-    )
-    manual_bypass = explicit_task_type is not None and pinned_max
+    # Both axes pinned? route() never calls the classifier then, so don't spawn one here either.
+    manual_bypass = explicit_task_type is not None and (args.critical or args.level is not None)
 
     classification = external
     prompted_critical = False

@@ -64,8 +64,8 @@ This prints a command such as:
 claude --model claude-sonnet-5 --effort high -p '<level-4-complex instructions> <task>'
 ```
 
-`--level` is a minimum; only `--level L7` with an explicit `--task-type`
-bypasses preflight.
+`--level` alone is a minimum; `--level` with an explicit `--task-type`
+pins both axes and bypasses the preflight.
 
 ## Customize
 

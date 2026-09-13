@@ -82,8 +82,8 @@ The CLI launcher starts a new process because a plugin cannot reliably replace t
 Before selecting that process, the router runs the native Codex CLI with fixed
 `gpt-5.6-luna` / medium effort in a temporary read-only session and validates its JSON response.
 Timeouts, process failures, and invalid output safely route to implementation /
-L3. `--level` is a minimum; only `--level L7` plus an explicit `--task-type`
-bypasses the preflight entirely.
+L3. `--level` alone is a minimum; `--level` with an explicit `--task-type`
+pins both axes and bypasses the preflight.
 
 For a skill-selected route, save its JSON once and replay it with
 `bin/codex-route --route-file <route.json>`; this executes the selected command

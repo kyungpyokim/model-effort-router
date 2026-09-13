@@ -102,7 +102,7 @@ class PlatformClassifierTests(unittest.TestCase):
         completed = subprocess.CompletedProcess([], 0, classifier_output(), "")
         with mock.patch.object(router.subprocess, "run", return_value=completed) as run:
             router.classify_task("add a settings page")
-        self.assertEqual(run.call_args.kwargs["timeout"], 60)
+        self.assertEqual(run.call_args.kwargs["timeout"], 90)
 
     def test_classifier_uses_bundled_schema_without_a_writable_temp_directory(self):
         completed = subprocess.CompletedProcess([], 0, classifier_output(), "")
@@ -510,19 +510,21 @@ class ExternalClassificationTests(unittest.TestCase):
                     self.assertEqual(code, 0)
                     self.assertEqual((payload["effective_level"], payload["source"]), ("L3", "classification-file"))
 
-    def test_two_classification_files_combine_like_the_cascade(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            primary, fallback = Path(tmp) / "primary.json", Path(tmp) / "fallback.json"
-            primary.write_text(classifier_output(crosses_module_boundary="unknown"), encoding="utf-8")
-            fallback.write_text(classifier_output(level="L2"), encoding="utf-8")
-            code, out, _ = self.run_main([
-                "fix", "--platform", "codex", "--format", "json",
-                "--classification-file", str(primary), "--classification-file", str(fallback),
-            ])
+    def test_classification_file_dash_reads_stdin(self):
+        # Live run: a Codex session failed to create the temp file and skipped classification.
+        with mock.patch.object(router.sys, "stdin", io.StringIO(classifier_output(level="L4"))):
+            code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
         payload = json.loads(out)
-        self.assertEqual(code, 0)
-        # the escalated, repository-aware facts replace the primary unknown
-        self.assertEqual((payload["effective_level"], payload["needs_context"]), ("L2", False))
+        self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L4", "classification-file"))
+
+    def test_pinned_task_type_and_level_route_without_spawning(self):
+        code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--task-type", "implementation", "--level", "L3"])
+        payload = json.loads(out)
+        self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L3", "manual"))
+
+    def test_classification_file_accepts_one_reply_only(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            router.parse_args(["fix", "--platform", "codex", "--classification-file", "a", "--classification-file", "b", "x"])
 
     def test_single_classification_file_reports_needs_context(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -758,6 +760,13 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(result.task_type, "design")
         self.assertEqual((result.model, result.effort), ("gpt-6-astra", "xhigh"))
         self.assertEqual(result.source, "manual")
+
+    def test_explicit_level_with_explicit_type_bypasses_the_classifier(self):
+        # Codex manual recovery: a nested classifier cannot start inside the sandbox.
+        classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
+        result = routed(explicit_level="L3", explicit_task_type="implementation", classifier=classifier)
+        classifier.assert_not_called()
+        self.assertEqual((result.level, result.task_type, result.source), ("L3", "implementation", "manual"))
 
     def test_critical_with_explicit_type_bypasses_the_classifier(self):
         classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
@@ -1447,6 +1456,10 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertIn("needs_context: true", primary)
                 self.assertIn("--classification-file", primary)
                 self.assertIn("answers facts only", primary)
+                self.assertIn("--classification-file - <<'FACTS_JSON'", primary)
+                self.assertIn("Escalate at most once", primary)
+                self.assertIn("Never delegate a route whose", primary)
+                self.assertNotIn("--classification-file <", primary)
 
     def test_antigravity_skill_replays_stored_steps_for_both_modes(self):
         primary = self._primary_section("antigravity")

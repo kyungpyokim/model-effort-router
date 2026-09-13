@@ -19,17 +19,24 @@ worker classifies instead.
 
 1. Run `python3 <router> --print-classifier-prompt --repo-aware "$ARGUMENTS"` and spawn a
    read-only worker with `model` and `reasoning_effort` set to `gpt-5.6-luna` and `medium`,
-   passing that output unchanged as its only message. Save the worker's JSON reply unchanged
-   to a fresh `<classification.json>` under the system temp directory, never inside the
-   repository. The worker answers facts only; the router's difficulty rules pick the level.
-2. Run `python3 <router> "$ARGUMENTS" --platform codex --classification-file <classification.json> --format json`.
+   passing that output unchanged as its only message. The worker answers facts only; the
+   router's difficulty rules pick the level. Do not write the reply to a temp file.
+2. Pass the worker's JSON reply unchanged on stdin and read the route JSON from stdout:
+
+   ```bash
+   python3 <router> "$ARGUMENTS" --platform codex --format json --classification-file - <<'FACTS_JSON'
+   <worker reply>
+   FACTS_JSON
+   ```
 3. If the route JSON has `needs_context: true`, classify once more with `gpt-5.6-terra` /
-   `medium` and the same prompt, save that reply to a second fresh `<escalated.json>` in the
-   same temp directory, and rerun step 2 with `--classification-file <classification.json>
-   --classification-file <escalated.json>`. If the second worker fails, keep the first route.
+   `medium` and the same prompt, and rerun step 2 with that reply alone; its facts replace the
+   first reply's. Escalate at most once. If the second worker fails, keep the first route.
    If the router exits non-zero, the classification JSON was invalid. Classify once more; if it
    still fails, do not guess a route and do not delegate. Report the failure, ask the user for
    `task_type` and `level`, and rerun step 2 with `--task-type` and `--level`.
+   Outside that manual step, never run the router in this flow without `--classification-file`:
+   that spawns a nested `codex exec` that fails in the sandbox. Never delegate a route whose
+   `source` is `fallback`; classification did not happen, so stop and report it.
 4. Delegate each entry in `steps` in order to a spawned worker whose `model` and
    `reasoning_effort` are set to that step's `model` and `effort`; never inherit the parent
    session model. The worker message is the `developer_instructions` value from that

@@ -86,9 +86,9 @@ For Antigravity, detect account-local models before printing its command:
 python3 scripts/router.py --platform antigravity --detect-antigravity-models --format command "간헐적인 멀티서비스 장애의 근본 원인 분석"
 ```
 
-`--level` is a minimum. An explicit `--level L7` or `--critical` together with an
-explicit `--task-type` skips the preflight because both axes are pinned. Fallbacks
-are always reported on stderr.
+`--level` alone is a minimum over the classified level. `--level` or `--critical`
+together with an explicit `--task-type` skips the preflight because both axes are
+pinned; the pinned level is used as is. Fallbacks are always reported on stderr.
 
 ## Two-stage architectural refactoring
 
