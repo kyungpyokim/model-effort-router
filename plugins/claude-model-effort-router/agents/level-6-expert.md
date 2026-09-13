@@ -1,6 +1,6 @@
 ---
 name: level-6-expert
-description: Use for distributed concurrency, race conditions, authentication, authorization, or a score of 10-11.
+description: Use for distributed concurrency, race conditions, authentication, or authorization.
 model: claude-fable-5-1
 effort: high
 maxTurns: 50

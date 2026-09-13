@@ -1,6 +1,6 @@
 ---
 name: level-5-advanced
-description: Execute an L5 analysis, optimization, or architecture task (score 8-9).
+description: Execute an L5 analysis, optimization, or architecture task.
 mainAgent: true
 subagent: true
 model: pro

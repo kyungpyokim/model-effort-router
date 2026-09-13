@@ -54,6 +54,9 @@ def main() -> int:
     assert a_manifest["version"] == "2.1.3"
     require(claude / "skills" / "route" / "SKILL.md")
     assert len(list((claude / "agents").glob("*.md"))) >= 7
+    assessor = read_frontmatter(claude / "agents" / "difficulty-assessor.md")
+    assert assessor["name"] == "difficulty-assessor", "invalid assessor agent name"
+    assert assessor["tools"] == "Read, Grep, Glob", "the difficulty assessor must stay read-only"
     # The route skill delegates through the Agent tool, which cannot set effort,
     # so each matrix effort needs an agent that pins it.
     for effort in ("none", "low", "medium", "high", "xhigh", "max"):

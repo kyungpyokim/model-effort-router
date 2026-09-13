@@ -1,11 +1,11 @@
 ---
 name: route
-description: Classify a coding task by difficulty from L1 to L7 (or Critical Override) and choose the closest available Antigravity model/effort variant. Use when the task should be routed by scope, ambiguity, diagnosis, design, risk, and verification complexity before execution.
+description: Classify a coding task by difficulty from L1 to L7 (or Critical Override) and choose the closest available Antigravity model/effort variant. Use when the task should be routed by extracted task facts and fixed difficulty rules before execution.
 ---
 
 # Model Effort Router
 
-Do not score the task in the current session. Resolve the included router
+Do not classify the task in the current session. Resolve the included router
 relative to this file and run `python3 ../../scripts/router.py "<task>" --platform antigravity --detect-antigravity-models --format json`. Save stdout unchanged to a fresh temporary `<route.json>` file. If an interactive session is requested, add `--interactive` when generating this JSON.
 
 Execute the saved route with `../../bin/agy-route --route-file "<route.json>"`.

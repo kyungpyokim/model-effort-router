@@ -11,18 +11,24 @@ Antigravity: Flash/Pro/Sonnet Thinking/Opus Thinking).
 
 ## Cascading preflight classifier
 
-The CLI router evaluates tasks with a lightweight primary classifier and escalates to
-a mid-tier fallback model when confidence is low (< 0.80):
+The classifier never scores difficulty. It answers eleven yes/no/unknown facts about
+the work (files touched, module or service boundaries, whether the result is known,
+new structure, security/payment logic, public API, persisted data, irreversible
+changes), and `DIFFICULTY_RULES` in `scripts/router.py` turn those facts into the
+level. The highest matching rule wins; `matched_rules` in the route JSON names it.
+When a fact that decides L4 or above is `unknown`, the router escalates once to a
+repository-aware classifier:
 
 - **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
 - **Claude Code**: `claude-haiku-4-5` (N/A) → `claude-sonnet-5` (medium)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
-(task_type, six factor scores, six risk flags, confidence, context_required, delegability, reason) before selecting
-a profile.
+(task_type, facts, delegability, evidence, reason) before selecting a profile. In a Claude Code
+or Codex session the route skill runs the same prompt through an in-session
+`difficulty-assessor` agent instead and passes its JSON with `--classification-file`.
 
-A transient preflight failure (timeout or non-zero exit) is retried once. If it
+A non-zero preflight exit is retried once; a timeout is not. If it
 still fails, cannot start, or returns invalid JSON:
 
 - On a terminal, the router asks for `task_type` and `level` (or `critical`) on
@@ -57,21 +63,22 @@ checks, selects applicable existing repository checks, and reports each result
 or why it was not run. Route-file replay ignores this JSON guidance and
 reuses only the stored execution steps.
 
-Route JSON now emits schema v3. It records `execution_strategy: "direct"` and
+Route JSON now emits schema v4: `facts`, `matched_rules`, `needs_context`, and
+`evidence` replace the old score fields. It records `execution_strategy: "direct"` and
 `orchestration_eligible` separately: eligibility is only a Codex Astra handoff
 candidate, never an execution request. `scripts/astra_adapter.py` is a local,
 caller-invoked isolated-worker boundary that requires supplied route and manifest
 digests, revalidates worker input copies, and preserves the original verified
 artifacts after each attempt. Direct v2 and v3 route-file replay never invokes it.
 
-`delegability` is independent of the six-factor difficulty score: `0` is shared
+`delegability` is independent of the difficulty rules: `0` is shared
 state, sequence-dependent, risky, or tightly coupled work; `1` remains coupled;
 `2` requires independent subtasks with explicit ownership and verification. Only
 safe Codex single routes at L5–L7 with `delegability: 2` can be eligible.
 
 Risk policy lives in code, not in prompts: security, authentication,
 authorization, or payment flags force an L6 floor with Autobahn scope guards;
-data migration and public API changes escalate one level each.
+data migration and public API changes force an L4 floor.
 
 For Antigravity, detect account-local models before printing its command:
 
@@ -80,8 +87,8 @@ python3 scripts/router.py --platform antigravity --detect-antigravity-models --f
 ```
 
 `--level` is a minimum. An explicit `--level L7` or `--critical` together with an
-explicit `--task-type` skips the preflight because both axes are pinned; explicit
-factors override only those classifier scores. Fallbacks are always reported on stderr.
+explicit `--task-type` skips the preflight because both axes are pinned. Fallbacks
+are always reported on stderr.
 
 ## Two-stage architectural refactoring
 

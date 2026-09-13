@@ -1,6 +1,6 @@
 ---
 name: level-5-critical
-description: Use for irreversible data changes, cryptographic design, compliance, financial correctness, severe incidents, or a total difficulty score of 11-12.
+description: Use for irreversible data changes, cryptographic design, compliance, financial correctness, or severe incidents.
 model: opus
 effort: max
 maxTurns: 80

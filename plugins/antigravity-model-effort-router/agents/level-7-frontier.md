@@ -1,6 +1,6 @@
 ---
 name: level-7-frontier
-description: Execute an L7 multi-system or frontier difficulty task (score 12).
+description: Execute an L7 multi-system or frontier difficulty task.
 mainAgent: true
 subagent: true
 model: inherit

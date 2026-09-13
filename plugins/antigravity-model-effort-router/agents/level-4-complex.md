@@ -1,6 +1,6 @@
 ---
 name: level-4-complex
-description: Execute a multi-file or non-trivial complex L4 task (score 6-7).
+description: Execute a multi-file or non-trivial complex L4 task.
 mainAgent: true
 subagent: true
 model: inherit

@@ -1,5 +1,5 @@
 name = "L3 Complex"
-description = "Use for multi-file implementation, non-trivial debugging, or broad refactoring with a total difficulty score of 6-8."
+description = "Use for multi-file implementation, non-trivial debugging, or broad refactoring."
 
 developer_instructions = """
 Investigate dependencies and failure paths before editing. Create a concise plan, implement in coherent steps, and run focused integration or regression checks.

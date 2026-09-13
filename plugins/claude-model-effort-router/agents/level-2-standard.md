@@ -1,6 +1,6 @@
 ---
 name: level-2-standard
-description: Use for a clear feature, focused bug fix, or module-level task with a total difficulty score of 3-5.
+description: Use for a clear feature, focused bug fix, or module-level task.
 model: sonnet
 effort: medium
 maxTurns: 24

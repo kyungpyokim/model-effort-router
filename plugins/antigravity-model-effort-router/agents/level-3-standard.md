@@ -1,6 +1,6 @@
 ---
 name: level-3-standard
-description: Execute a clear L3 feature, endpoint, or focused bug fix (score 4-5).
+description: Execute a clear L3 feature, endpoint, or focused bug fix.
 mainAgent: true
 subagent: true
 model: flash

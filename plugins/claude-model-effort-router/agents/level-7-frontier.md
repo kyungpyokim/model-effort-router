@@ -1,6 +1,6 @@
 ---
 name: level-7-frontier
-description: Use for multi-system architecture redesign, high-ambiguity exploration, or maximum difficulty score of 12.
+description: Use for multi-system architecture redesign or high-ambiguity exploration.
 model: claude-fable-5-1
 effort: xhigh
 maxTurns: 60

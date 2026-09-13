@@ -2,39 +2,25 @@
   "version": 2,
   "levels": {
     "L1": {
-      "name": "trivial",
-      "score_min": 0,
-      "score_max": 1
+      "name": "trivial"
     },
     "L2": {
-      "name": "simple",
-      "score_min": 2,
-      "score_max": 3
+      "name": "simple"
     },
     "L3": {
-      "name": "standard",
-      "score_min": 4,
-      "score_max": 5
+      "name": "standard"
     },
     "L4": {
-      "name": "complex",
-      "score_min": 6,
-      "score_max": 7
+      "name": "complex"
     },
     "L5": {
-      "name": "advanced",
-      "score_min": 8,
-      "score_max": 9
+      "name": "advanced"
     },
     "L6": {
-      "name": "expert",
-      "score_min": 10,
-      "score_max": 11
+      "name": "expert"
     },
     "L7": {
-      "name": "frontier",
-      "score_min": 12,
-      "score_max": 12
+      "name": "frontier"
     }
   },
   "critical": {

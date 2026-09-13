@@ -1,6 +1,6 @@
 ---
 name: level-1-trivial
-description: Execute a narrow, mechanical, reversible L1 task (score 0-1).
+description: Execute a narrow, mechanical, reversible L1 task.
 mainAgent: true
 subagent: true
 model: flash

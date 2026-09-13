@@ -1,6 +1,6 @@
 ---
 name: route
-description: Classify a substantive coding task by task_type and difficulty (L1-L7 / Critical), then delegate it to the Codex agent profile whose model and reasoning effort match. Use before implementation, design, review, refactoring, or debugging work when model and effort should be selected from scope, ambiguity, diagnosis, design, risk, and verification complexity.
+description: Classify a substantive coding task by task_type and difficulty (L1-L7 / Critical), then delegate it to the Codex agent profile whose model and reasoning effort match. Use before implementation, design, review, refactoring, or debugging work when model and effort should be selected from extracted task facts and fixed difficulty rules.
 ---
 
 # Task-Type and Difficulty Router
@@ -17,19 +17,19 @@ from the user's current working directory. The router never spawns a nested `cod
 in this flow, because that classifier cannot start inside the workspace sandbox; a spawned
 worker classifies instead.
 
-1. Run `python3 <router> --print-classifier-prompt "$ARGUMENTS"` and spawn a read-only worker
-   with `model` and `reasoning_effort` set to `gpt-5.6-luna` and `medium`, passing that
-   output unchanged as its only message. Save the worker's JSON reply unchanged to a fresh
-   `<classification.json>` under the system temp directory, never inside the repository.
-2. If that JSON has `confidence` below 0.60 or `context_required: true`, classify once more
-   with `gpt-5.6-terra` / `medium`. When `context_required` is true, build that prompt with
-   `--print-classifier-prompt --repo-aware` so the worker reads the repository read-only.
-   Overwrite `<classification.json>` with the reply. If the second worker fails, keep the
-   first JSON.
-3. Run `python3 <router> "$ARGUMENTS" --platform codex --classification-file <classification.json> --format json`.
-   If the router exits non-zero, the classification JSON was invalid. Do not guess a route
-   and do not delegate. Report the failure, ask the user for `task_type` and `level`, and
-   rerun step 3 with `--task-type` and `--level`.
+1. Run `python3 <router> --print-classifier-prompt --repo-aware "$ARGUMENTS"` and spawn a
+   read-only worker with `model` and `reasoning_effort` set to `gpt-5.6-luna` and `medium`,
+   passing that output unchanged as its only message. Save the worker's JSON reply unchanged
+   to a fresh `<classification.json>` under the system temp directory, never inside the
+   repository. The worker answers facts only; the router's difficulty rules pick the level.
+2. Run `python3 <router> "$ARGUMENTS" --platform codex --classification-file <classification.json> --format json`.
+3. If the route JSON has `needs_context: true`, classify once more with `gpt-5.6-terra` /
+   `medium` and the same prompt, save that reply to a second fresh `<escalated.json>` in the
+   same temp directory, and rerun step 2 with `--classification-file <classification.json>
+   --classification-file <escalated.json>`. If the second worker fails, keep the first route.
+   If the router exits non-zero, the classification JSON was invalid. Classify once more; if it
+   still fails, do not guess a route and do not delegate. Report the failure, ask the user for
+   `task_type` and `level`, and rerun step 2 with `--task-type` and `--level`.
 4. Delegate each entry in `steps` in order to a spawned worker whose `model` and
    `reasoning_effort` are set to that step's `model` and `effort`; never inherit the parent
    session model. The worker message is the `developer_instructions` value from that

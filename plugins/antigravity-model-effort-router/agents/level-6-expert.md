@@ -1,6 +1,6 @@
 ---
 name: level-6-expert
-description: Execute an L6 concurrency, security, or production issue (score 10-11).
+description: Execute an L6 concurrency, security, or production issue.
 mainAgent: true
 subagent: true
 model: inherit

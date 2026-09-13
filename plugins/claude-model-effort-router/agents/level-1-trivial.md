@@ -1,6 +1,6 @@
 ---
 name: level-1-trivial
-description: Use for narrow, mechanical, reversible tasks (rename, formatting, typos, imports) with a score of 0-1.
+description: Use for narrow, mechanical, reversible tasks (rename, formatting, typos, imports).
 model: claude-haiku-4-5
 maxTurns: 8
 ---
