@@ -58,11 +58,22 @@ description = "Frontier-tier: architecture, ambiguous or high-stakes work, escal
 
 ## Use
 
+There is no `codex --agent <name>` flag — checked against the installed CLI's
+`codex --help` / `codex exec --help`, it does not exist. A registered
+`[agents.*]` profile is only ever picked by Codex's own internal multi-agent
+delegator during a live session (`features.multi_agent = true`, already on),
+which matches the task against each agent's `description`. There is no way to
+force one from outside a running session.
+
+For a scripted or one-off call that must pin a specific profile, bypass the
+agent mechanism entirely and pass the same model/effort directly:
+
 ```bash
-codex --agent research "이 라이브러리 최신 버전 API 변경점 조사"
-codex --agent coding "재고 API에 페이지네이션 추가"
-codex --agent complex "결제 시스템 아키텍처 재설계"
+codex exec -m gpt-5.6-luna -c model_reasoning_effort="high" "이 라이브러리 최신 버전 API 변경점 조사"
+codex exec -m gpt-5.6-terra -c model_reasoning_effort="medium" "재고 API에 페이지네이션 추가"
+codex exec -m gpt-6-astra -c model_reasoning_effort="high" "결제 시스템 아키텍처 재설계"
 ```
 
-Or let Codex's own multi-agent delegation (`features.multi_agent = true`,
-already on) pick the agent by matching the task against each `description`.
+`scripts/eval_task_router.py` in this bundle's repo root does exactly this,
+and its module docstring spells out that this verifies the model/effort combo
+is real and billable — not that `config.toml` registration is what selected it.

@@ -1,0 +1,15 @@
+{
+  "name": "task-router",
+  "description": "Native Claude Code subagents for research/coding/review/complex, model-tiered (no reasoning-effort field).",
+  "version": "1.0.0",
+  "author": {
+    "name": "Model Effort Router contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "routing",
+    "model",
+    "agents"
+  ]
+}
