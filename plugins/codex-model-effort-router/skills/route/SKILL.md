@@ -12,31 +12,38 @@ or risk. If the stored route is unavailable after a resume or compaction, route 
 instead of pretending it was reused.
 
 Do not score `$ARGUMENTS` in the current session. Resolve the included router
-relative to this file and run `python3 <skill-dir>/../../scripts/router.py "$ARGUMENTS" --platform codex --format json`
-from the user's current working directory. Its cascading preflight result is the source
-of truth. The router starts a nested `codex exec` classifier, which cannot start inside
-the workspace sandbox, so run this one command with escalated sandbox permissions.
+relative to this file as `<router>` = `<skill-dir>/../../scripts/router.py` and run it
+from the user's current working directory. The router never spawns a nested `codex exec`
+in this flow, because that classifier cannot start inside the workspace sandbox; a spawned
+worker classifies instead.
 
-If the router exits non-zero, its `source` is `fallback`: the preflight failed and the
-L3 route is a guess. Do not delegate it. Report the failure, ask the user for
-`task_type` and `level`, and rerun the router with `--task-type` and `--level`.
-
-1. Read the JSON result's `mode`.
-2. For `single`, immediately delegate the complete task to a spawned worker whose
-   `model` and `reasoning_effort` are set to `steps[0].model` and `steps[0].effort`
-   from the selected matrix row; never inherit the parent session model. Pass the
-   complete generated route JSON along with the original task. The delegated
-   executor must use every `verification.recommended` ID and reason to select
-   applicable existing repository checks and report each result or why it was
-   not run.
-3. For `two_stage` (`architectural_refactoring` L3+), run the printed stage
-   commands in order: the planner writes the plan file, then the executor
-   reads it together with the repository and implements it. Never run the
-   executor after a failed plan stage.
-4. Do not describe the parent session's model, effort, or inability to change models.
-5. The classification-only process classifies only. An executor that received the
+1. Run `python3 <router> --print-classifier-prompt "$ARGUMENTS"` and spawn a read-only worker
+   with `model` and `reasoning_effort` set to `gpt-5.6-luna` and `medium`, passing that
+   output unchanged as its only message. Save the worker's JSON reply unchanged to a fresh
+   `<classification.json>` under the system temp directory, never inside the repository.
+2. If that JSON has `confidence` below 0.60 or `context_required: true`, classify once more
+   with `gpt-5.6-terra` / `medium`. When `context_required` is true, build that prompt with
+   `--print-classifier-prompt --repo-aware` so the worker reads the repository read-only.
+   Overwrite `<classification.json>` with the reply. If the second worker fails, keep the
+   first JSON.
+3. Run `python3 <router> "$ARGUMENTS" --platform codex --classification-file <classification.json> --format json`.
+   If the router exits non-zero, the classification JSON was invalid. Do not guess a route
+   and do not delegate. Report the failure, ask the user for `task_type` and `level`, and
+   rerun step 3 with `--task-type` and `--level`.
+4. Delegate each entry in `steps` in order to a spawned worker whose `model` and
+   `reasoning_effort` are set to that step's `model` and `effort`; never inherit the parent
+   session model. The worker message is the `developer_instructions` value from that
+   step's `command`, followed by the last element of `command`. Pass the complete generated
+   route JSON along with the original task. The delegated executor must use every
+   `verification.recommended` ID and reason to select applicable existing repository
+   checks and report each result or why it was not run.
+5. For `two_stage` (`architectural_refactoring` L3+), the planner step writes the plan
+   file, then the executor step reads it together with the repository and implements it.
+   Never run the executor after a failed plan stage.
+6. Do not describe the parent session's model, effort, or inability to change models.
+7. The classification-only worker classifies only. An executor that received the
    complete route JSON executes its assigned work and does not invoke this router again.
-6. Re-route only if new evidence materially raises scope or risk.
+8. Re-route only if new evidence materially raises scope or risk.
 
 When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the same working directory. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
 

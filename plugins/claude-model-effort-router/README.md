@@ -31,11 +31,12 @@ directory isolate the classifier. Failure safely selects L3. Each agent pins
 
 Inside a session, the route skill delegates each stored step with the Agent tool
 (`steps[].agent.subagent_type` + `steps[].agent.model`), so the executor keeps the
-session's working directory and edit permissions. The Agent tool cannot set effort;
-the level agent's frontmatter effort applies.
+session's working directory and edit permissions. The Agent tool cannot set effort, so
+the subagent is an `effort-*` agent whose frontmatter pins the matrix effort; the level
+instructions travel at the top of the prompt.
 
 From a terminal, `bin/claude-route` starts an interactive session with the selected
-model/effort and appends the matching agent's instructions via `--append-system-prompt`,
+model/effort and puts the matching level agent's instructions at the top of the prompt,
 so it works without the plugin installed. `--print` forces `claude -p`, which runs with
 default permissions and cannot edit files unless your settings allow it.
 
@@ -60,7 +61,7 @@ python3 scripts/router.py --platform claude-code --format command "<task>"
 This prints a command such as:
 
 ```bash
-claude --model claude-sonnet-5 --effort high --append-system-prompt '<level-4-complex instructions>' -p '<task>'
+claude --model claude-sonnet-5 --effort high -p '<level-4-complex instructions> <task>'
 ```
 
 `--level` is a minimum; only `--level L7` with an explicit `--task-type`

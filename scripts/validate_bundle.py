@@ -54,6 +54,12 @@ def main() -> int:
     assert a_manifest["version"] == "2.1.3"
     require(claude / "skills" / "route" / "SKILL.md")
     assert len(list((claude / "agents").glob("*.md"))) >= 7
+    # The route skill delegates through the Agent tool, which cannot set effort,
+    # so each matrix effort needs an agent that pins it.
+    for effort in ("none", "low", "medium", "high", "xhigh", "max"):
+        agent = read_frontmatter(claude / "agents" / f"effort-{effort}.md")
+        assert agent["name"] == f"effort-{effort}", f"invalid effort agent name: {effort}"
+        assert agent.get("effort") == (None if effort == "none" else effort), f"invalid effort agent effort: {effort}"
 
     task_router = root / "plugins" / "claude-task-router"
     task_manifest = read_json(task_router / ".claude-plugin" / "plugin.json")

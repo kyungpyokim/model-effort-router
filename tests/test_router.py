@@ -397,6 +397,52 @@ class PlatformClassifierTests(unittest.TestCase):
                         router.parse_args(["--platform", "codex", option, value, "task"])
 
 
+class ExternalClassificationTests(unittest.TestCase):
+    """A sandboxed Codex session cannot spawn `codex exec`, so it classifies with a
+    spawned worker and hands the JSON back to the router."""
+
+    def run_main(self, argv):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.object(router.subprocess, "run") as run,
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            code = router.main(argv)
+        self.assertEqual(run.call_count, 0)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_print_classifier_prompt_includes_task_and_schema_without_spawning(self):
+        code, out, _ = self.run_main(["--print-classifier-prompt", "fix the add bug"])
+        self.assertEqual(code, 0)
+        self.assertIn("<task>\nfix the add bug\n</task>", out)
+        self.assertIn('"delegability"', out)
+        self.assertNotIn("Repository to inspect", out)
+        _, repo_out, _ = self.run_main(["--print-classifier-prompt", "--repo-aware", "fix the add bug"])
+        self.assertIn("Repository to inspect read-only", repo_out)
+
+    def test_classification_file_routes_without_spawning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "classification.json"
+            for raw in (classifier_output(level="L3"), f"```json\n{classifier_output(level='L3')}\n```"):
+                with self.subTest(raw=raw[:8]):
+                    path.write_text(raw, encoding="utf-8")
+                    code, out, _ = self.run_main(
+                        ["fix", "--platform", "codex", "--classification-file", str(path), "--format", "json"]
+                    )
+                    payload = json.loads(out)
+                    self.assertEqual(code, 0)
+                    self.assertEqual((payload["effective_level"], payload["source"]), ("L3", "classification-file"))
+
+    def test_invalid_classification_file_exits_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "classification.json"
+            path.write_text('{"task_type": "implementation"}', encoding="utf-8")
+            code, out, err = self.run_main(["fix", "--platform", "codex", "--classification-file", str(path)])
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("invalid classification file", err)
+
+
 class EscalationTests(unittest.TestCase):
     def test_additional_risks_escalate_after_the_security_floor(self):
         for security_flag in router.SECURITY_FLOOR_FLAGS:
@@ -967,14 +1013,32 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertEqual(first["output"]["path"], second["input"]["path"])
 
     def test_claude_payload_names_the_agent_tool_delegation_per_step(self):
+        # The Agent tool cannot set effort, so the subagent is chosen by the matrix effort.
         single = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L3"))
         step = router.result_payload(single, router.stage_commands(single, "task"))["steps"][0]
-        self.assertEqual(step["agent"], {"subagent_type": "model-effort:level-3-standard", "model": "sonnet"})
+        self.assertEqual(step["agent"], {"subagent_type": "model-effort:effort-medium", "model": "sonnet"})
+
+        haiku = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L1"))
+        step = router.result_payload(haiku, router.stage_commands(haiku, "task"))["steps"][0]
+        self.assertEqual(step["agent"], {"subagent_type": "model-effort:effort-none", "model": "haiku"})
+
+        review = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
+        step = router.result_payload(review, router.stage_commands(review, "task"))["steps"][0]
+        self.assertEqual(step["agent"], {"subagent_type": "model-effort:effort-low", "model": "opus"})
 
         two = routed(platform="claude-code", classifier=lambda _: classification("architectural_refactoring", "L4"))
         steps = router.result_payload(two, router.stage_commands(two, "task"))["steps"]
         self.assertEqual([step["agent"]["model"] for step in steps], ["fable", "sonnet"])
-        self.assertTrue(all(step["agent"]["subagent_type"] == "model-effort:level-4-complex" for step in steps))
+        for step in steps:
+            self.assertEqual(step["agent"]["subagent_type"], f"model-effort:effort-{step['effort']}")
+
+    def test_claude_agent_prompt_carries_level_instructions(self):
+        # The skill passes the last command element as the Agent prompt.
+        result = routed(platform="claude-code", classifier=lambda _: classification("design", "L4"))
+        prompt = router.stage_commands(result, "task")[0][-1]
+        self.assertIn("Analyse module boundaries", prompt)
+        self.assertIn("task", prompt)
+        self.assertIn("Verification handoff", prompt)
 
         codex = routed(classifier=lambda _: classification("implementation", "L3"))
         self.assertNotIn("agent", router.result_payload(codex, router.stage_commands(codex, "task"))["steps"][0])
@@ -1103,13 +1167,13 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env={**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1"},
             )
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("--append-system-prompt", proc.stderr)
+        self.assertIn("claude --model claude-opus-5", proc.stderr)
         self.assertNotIn("--agent", proc.stderr)
 
     def test_claude_and_antigravity_embed_level_instructions_without_installed_agents(self):
         # `--agent` needs the plugin installed: claude exits "not found", agy silently ignores it.
         for platform, instruction_flag, snippet in (
-            ("claude-code", "--append-system-prompt", "Analyse module boundaries"),
+            ("claude-code", "-p", "Analyse module boundaries"),
             ("antigravity", "--prompt", "Analyse dependencies"),
         ):
             with self.subTest(platform=platform):
@@ -1297,9 +1361,13 @@ class RouteSkillContractTests(unittest.TestCase):
     def test_codex_skill_runs_router_outside_sandbox_and_spawns_with_route_model(self):
         # Live run: nested `codex exec` fails inside the workspace-write sandbox.
         primary = self._primary_section("codex")
-        self.assertIn("escalated", primary)
+        self.assertIn("--print-classifier-prompt", primary)
+        self.assertIn("--classification-file", primary)
+        self.assertIn("gpt-5.6-luna", primary)
+        self.assertIn("gpt-5.6-terra", primary)
         self.assertIn("`model` and `reasoning_effort`", primary)
         self.assertIn("exits non-zero", primary)
+        self.assertNotIn("escalated", primary)
 
     def test_antigravity_skill_replays_stored_steps_for_both_modes(self):
         primary = self._primary_section("antigravity")

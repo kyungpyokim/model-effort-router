@@ -10,7 +10,7 @@ effort: low
 Do not score `$ARGUMENTS` in the current session. Do not change directory: the
 router and the executor must run in the user's current working directory, which is
 the repository the task refers to. Run
-`python3 "${CLAUDE_SKILL_DIR}/../../scripts/router.py" "$ARGUMENTS" --platform claude-code --format json > <route.json>`.
+`python3 "${CLAUDE_SKILL_DIR}/../../scripts/router.py" "$ARGUMENTS" --platform claude-code --format json > <route.json>`, where `<route.json>` is a fresh file under the system temp directory, never inside the repository.
 Its cascading native preflight (`claude-haiku-4-5`, escalating to `claude-sonnet-5`) is the source of truth. The saved JSON is the single classification for this request.
 
 If the router exits non-zero, its `source` is `fallback`: the preflight failed and
@@ -20,7 +20,7 @@ the L3 route is a guess. Do not delegate it. Report the failure, ask the user fo
 The model comes from the selected `task_type × level` matrix row, never from an agent default. The `review` and `design` rows resolve to `opus` at every level and `implementation` at L1 resolves to `haiku`, so a level-only delegation that keeps the agent's own model is wrong.
 
 1. Execute the route with the Agent tool, one call per stored step, in order. Pass the complete generated route JSON with the original task. For each step, set `subagent_type` to `steps[].agent.subagent_type`, `model` to `steps[].agent.model`, and use the last element of `steps[].command` as the prompt; it already carries the task, the stage instructions, and the verification handoff. A `single` route is one call; a `two_stage` route (`architectural_refactoring` L3+) runs the planner, then runs the executor only if the plan step succeeds. Never reclassify, and do not continue the task in the parent session.
-2. The Agent tool cannot set effort: the agent's frontmatter effort applies. When it differs from `steps[].effort`, state both values instead of claiming the matrix effort.
+2. The Agent tool cannot set effort, so `steps[].agent.subagent_type` is an `effort-*` agent whose frontmatter pins `steps[].effort`. Do not substitute a `level-N` agent.
 3. The delegated agent must use every `verification.recommended` ID and reason to select applicable existing repository checks and report each result or why it was not run.
 4. Do not invoke this router again from the delegated steps.
 5. Re-route only if new evidence materially raises scope or risk.
