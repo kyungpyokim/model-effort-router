@@ -634,6 +634,43 @@ class ExternalClassificationTests(unittest.TestCase):
         self.assertEqual((code, out), (2, ""))
         self.assertIn("invalid classification file", err)
 
+    def test_classification_file_prose_before_fenced_json(self):
+        # Live failure: haiku assessor replies with prose (sometimes containing inline
+        # `backticks` and **bold**) before the ```json block instead of bare/fenced JSON alone.
+        prose = (
+            "Let me check the repository first.\n\n"
+            "I'll call `read_classification_file()` and then answer with **the facts**.\n\n"
+            f"```json\n{classifier_output(level='L3')}\n```\n"
+        )
+        with mock.patch.object(router.sys, "stdin", io.StringIO(prose)):
+            code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
+        payload = json.loads(out)
+        self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L3", "classification-file"))
+
+    def test_classification_file_prose_before_fenced_envelope(self):
+        envelope = json.dumps({
+            "primary": classifier_output(level="L2", raw=False),
+            "escalated": classifier_output(level="L4", raw=False),
+        })
+        prose = f"Some analysis here.\n\n```json\n{envelope}\n```\n"
+        with mock.patch.object(router.sys, "stdin", io.StringIO(prose)):
+            code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
+        payload = json.loads(out)
+        self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L4", "classification-file"))
+
+    def test_classification_file_prose_only_exits_2(self):
+        with mock.patch.object(router.sys, "stdin", io.StringIO("Sorry, I could not finish the analysis in time.")):
+            code, out, err = self.run_main(["fix", "--platform", "codex", "--classification-file", "-"])
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("invalid classification file", err)
+
+    def test_classification_file_stray_brace_before_json(self):
+        stray = f"Note: config = {{ not json }} but the real reply is below.\n\n{classifier_output(level='L3')}\n"
+        with mock.patch.object(router.sys, "stdin", io.StringIO(stray)):
+            code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
+        payload = json.loads(out)
+        self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L3", "classification-file"))
+
 
 class EscalationTests(unittest.TestCase):
     def test_additional_risks_do_not_stack_on_the_security_floor(self):
