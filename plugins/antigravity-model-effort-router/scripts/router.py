@@ -429,14 +429,56 @@ def classifier_prompt(task: str, repo_path: Path | None = None) -> str:
     return prompt + f"<task>\n{escaped_task}\n</task>"
 
 
+_FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+
+
+def _extract_json_payload(raw: str) -> object:
+    """Best-effort JSON extraction from an assessor reply.
+
+    Tries, in order: the whole stripped reply; the last fenced ```json``` block; the
+    last top-level {...} object found by scanning for '{' and decoding from there.
+    Assessor replies sometimes lead with prose (occasionally containing stray '{' or
+    inline backticks) before the real fenced JSON, so the last candidate of each kind
+    wins over the first.
+    """
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        first_error = exc
+    fences = _FENCED_JSON_RE.findall(raw)
+    if fences:
+        try:
+            return json.loads(fences[-1])
+        except json.JSONDecodeError:
+            pass
+    decoder = json.JSONDecoder()
+    last_object = None
+    i = 0
+    while i < len(raw):
+        if raw[i] != "{":
+            i += 1
+            continue
+        try:
+            obj, end = decoder.raw_decode(raw, i)
+        except json.JSONDecodeError:
+            i += 1
+            continue
+        # Skip past this object instead of scanning inside it, so a nested dict
+        # (e.g. the "facts" object) never shadows the outer, real payload.
+        if isinstance(obj, dict):
+            last_object = obj
+        i = end
+    if last_object is not None:
+        return last_object
+    raise first_error
+
+
 def read_classification_file(path: str) -> Classification:
     """Validate a classification produced outside the router (e.g. a spawned Codex worker).
 
     ``-`` reads stdin, so session skills can pass the reply with a heredoc instead of a temp file."""
     raw = (sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")).strip()
-    # Model replies often wrap the JSON in a markdown fence.
-    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
-    payload = json.loads(raw)
+    payload = _extract_json_payload(raw)
     if isinstance(payload, dict) and set(payload) == {"primary", "escalated"}:
         primary = validate_classifier_output(payload["primary"], source="classification-file")
         escalated = validate_classifier_output(payload["escalated"], source="classification-file")
