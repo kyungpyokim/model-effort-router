@@ -1,6 +1,6 @@
 ---
 name: level-2-simple
-description: Use for straightforward small implementations (DTOs, single function, unit tests) with a score of 2-3.
+description: Use for straightforward small implementations (DTOs, single function, unit tests).
 model: claude-haiku-4-5
 maxTurns: 12
 ---

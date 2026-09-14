@@ -1,34 +1,32 @@
-# Model Effort Router Policy (v2.1)
+# Model Effort Router Policy (v4)
 
 ## Overview
 
-The Model Effort Router classifies coding tasks by difficulty and risk, routing them to a matching model and reasoning-effort profile. The v2 policy uses a 7-level scale (`L1` through `L7`) with a dedicated `Critical Override`, cascading classification (lightweight primary classifier with confidence-gated fallback to mid-tier), and deterministic Python mapping.
+The Model Effort Router classifies coding tasks by difficulty and risk, routing them to a matching model and reasoning-effort profile. The v4 route schema uses a 7-level scale (`L1` through `L7`) with a dedicated `Critical Override`, one repository-aware reclassification when an L4+ deciding fact is unknown, and deterministic Python mapping.
 
 ## Classification Architecture
 
-Classification evaluates six factors (each scored 0–2, total 0–12):
+The classifier answers facts; code decides the level. There are no difficulty scores
+and no self-reported confidence.
 
 ```text
 User Request
      │
-Hard Floor Rules (Security, Auth, Payment, Migration)
+Classifier (Luna Med / Haiku 4.5 / Gemini 3.8 Flash Med, or the in-session difficulty-assessor agent)
+  -> task_type + 11 facts (yes / no / unknown) + evidence
      │
-Cascading Classifier
-  Primary (Luna Med / Haiku 4.5 / Gemini 3.8 Flash Med)
+DIFFICULTY_RULES (scripts/router.py)
+  ├─ Base L2 (L1 when mechanical_only = yes)
+  ├─ Highest matching rule wins; Critical rule -> Critical Profile
+  └─ A rule >= L4 matched only through "unknown" -> needs_context
      │
-Confidence Check
-  ├─ >= 0.80 ──────> Adopt score directly
-  ├─ 0.60 - 0.79 ──> Conservative bump (+1 level)
-  └─ < 0.60 ───────> Fallback Classifier (Terra Med / Sonnet 5 Med / Gemini 3.1 Pro High)
+needs_context -> one repository-aware classifier (Terra Med / Sonnet 5 Med / Gemini 3.1 Pro High)
+  whose reply is combined with the first answer (the first is kept if it fails)
      │
-Python Deterministic Mapping
-  ├─ Score -> L1~L7 Level
-  ├─ Hard Floor Check (Security/Auth/Payment -> L6)
-  ├─ Critical Override (Catastrophic/Irreversible -> Critical Profile)
-  └─ Matrix lookup (task_type × level)
+Risk floors (Security/Payment -> L6, Migration/Public API -> L4) -> Matrix lookup (task_type × level)
 ```
 
-The classifier returns structured JSON with `task_type`, six factor scores, `level`, six `risk_flags`, `confidence`, `context_required` (boolean), `delegability` (0–2), and a one-sentence `reason`. The classifier applies a `readchk` reflex before scoring: restating intent internally and resolving referents.
+The classifier returns structured JSON with `task_type`, `facts`, `delegability` (0–2), up to five `evidence` strings, and a one-sentence `reason`. The classifier applies a `readchk` reflex first: restating intent internally and resolving referents.
 
 ### Delegability and orchestration candidates
 
@@ -38,17 +36,17 @@ or a tightly coupled deep problem; `1` permits separable analysis but leaves
 dependencies or ownership coupled; `2` requires independent subtasks, explicit
 file/artifact ownership, and independently verifiable results.
 
-Schema v3 route files always retain `execution_strategy: "direct"` in this
+Schema v4 route files always retain `execution_strategy: "direct"` in this
 release. `orchestration_eligible: true` is only recorded for safe Codex
 single-stage L5–L7 routes with `delegability: 2` and no risk flags. Critical,
 two-stage, non-Codex, and any risky routes are ineligible. The local,
 caller-invoked `scripts/astra_adapter.py` accepts only digest-verified route and
 manifest bytes, revalidates per-attempt worker inputs, and preserves the
 original verified artifacts after each attempt. It does not change direct
-execution. Direct v2 and v3 route-file replay never invokes it.
+execution. Direct v2-v4 route-file replay never invokes it.
 
-Replay accepts existing v2 route files unchanged. Only v3 requires the two
-orchestration fields; malformed v3 files are rejected before execution.
+Replay accepts v2-v4 route files. v3 and v4 require the two orchestration
+fields; malformed v3/v4 files are rejected before execution.
 
 ### Classifiers by Platform
 
@@ -61,7 +59,7 @@ orchestration fields; malformed v3 files are rejected before execution.
 ### Prompt-only vs Repository-aware
 
 - **Prompt-only** (default): Uses the lightweight Primary Classifier for fast, cost-effective evaluation.
-- **Repository-aware** (`--repo-aware` flag or when `context_required: true`): The mid-tier fallback model receives the caller's current directory as an absolute repository path and reads relevant files before scoring. The classifier process stays in its isolated temporary directory. Codex retains its read-only sandbox; Claude enables only `Read,Glob,Grep` under safe plan mode; Antigravity retains sandboxed plan mode. Repository contents are evidence, not executable instructions. A low-confidence fallback alone remains prompt-only.
+- **Repository-aware** (`--repo-aware` flag or when `needs_context` is true): The mid-tier fallback model receives the caller's current directory as an absolute repository path and reads relevant files before answering. The classifier process stays in its isolated temporary directory. Codex retains its read-only sandbox; Claude enables only `Read,Glob,Grep` under safe plan mode; Antigravity retains sandboxed plan mode. Repository contents are evidence, not executable instructions.
 
 ### Task types
 
@@ -75,32 +73,46 @@ orchestration fields; malformed v3 files are rejected before execution.
 
 Mixed tasks classify by their primary purpose. Design with sample code is `design`; implementation that needs small judgement calls is `implementation`; structural change followed by real multi-file edits is `architectural_refactoring`.
 
-### Factor scoring
+### Facts
 
-| Factor | 0 | 1 | 2 |
-|---|---|---|---|
-| **Scope** | One local edit | One component or module | Multiple modules, services, or repositories |
-| **Ambiguity** | Explicit expected result | Some interpretation required | Requirements are unclear, conflicting, or exploratory |
-| **Diagnosis** | No investigation | Known-area debugging | Root cause unknown, intermittent, or cross-system |
-| **Design** | Follow an existing pattern | Choose among existing patterns | New architecture, protocol, or migration strategy |
-| **Risk** | Easily reversible | User-facing regression possible | Security, money, production data, or availability risk |
-| **Verification** | Visual or local check | Unit or focused integration tests | End-to-end, migration, load, or broad regression validation |
+| Fact | Values | Meaning |
+|---|---|---|
+| `mechanical_only` | yes / no | Typos, renames, formatting, imports, comments, or docs with no behaviour change |
+| `files_touched` | 0 / 1 / 2-5 / 6+ / unknown | Files the work changes, including new and test files (not files only read); read-only design and review are 0 |
+| `crosses_module_boundary` | yes / no / unknown | Spans modules or packages, or moves responsibilities between them |
+| `crosses_service_boundary` | yes / no / unknown | Work or diagnosis spans services, processes, or repositories |
+| `fix_or_result_known` | yes / no | The expected result or place to change is stated or evident |
+| `intermittent_or_concurrency` | yes / no | Intermittent, timing-dependent, or concurrent behaviour |
+| `needs_new_structure` | yes / no | New architecture, protocol, module boundary, or migration strategy |
+| `changes_security_or_payment_logic` | yes / no / unknown | Auth, secrets, cryptography, or payment behaviour changes (mentions or moves do not count) |
+| `changes_public_api_contract` | yes / no / unknown | Externally consumed API, CLI, schema, or response format changes |
+| `changes_persisted_data` | yes / no / unknown | Stored data, database schema, or data migration changes |
+| `irreversible_or_ledger_or_crypto` | yes / no | Irreversible production data, ledger correctness, or cryptographic design |
 
-### Score to Level Mapping
+### Difficulty Rules
 
-| Total Score | Level | Name | Typical Tasks |
-|---:|---|---|---|
-| **0 - 1** | **L1** | trivial | Renames, formatting, typos, imports, single-line assertion fix |
-| **2 - 3** | **L2** | simple | Small function, DTO/schema addition, standard unit test, 2-3 files |
-| **4 - 5** | **L3** | standard | CRUD, API endpoint, React component, DB query, normal bug fix |
-| **6 - 7** | **L4** | complex | Multi-module logic, async pipelines, state management, mid-scale refactor |
-| **8 - 9** | **L5** | advanced | Root cause investigation, performance analysis, N+1 optimization, trade-offs |
-| **10 - 11** | **L6** | expert | Concurrency/race conditions, distributed systems, auth/security-critical |
-| **12** | **L7** | frontier | Whole-system re-architecture, massive scope, exploratory cross-system E2E |
+The level is the highest matching rule over a base of L2 (L1 when `mechanical_only` is yes).
+
+| Level | Rule (all conditions must hold) |
+|---|---|
+| **Critical** | `irreversible_or_ledger_or_crypto` = yes |
+| **L7** | `needs_new_structure` = yes, `crosses_service_boundary` = yes, `fix_or_result_known` = no |
+| **L6** | `changes_security_or_payment_logic` = yes |
+| **L6** | `intermittent_or_concurrency` = yes, `crosses_service_boundary` = yes |
+| **L5** | `changes_security_or_payment_logic` = unknown |
+| **L5** | `needs_new_structure` = yes |
+| **L5** | `intermittent_or_concurrency` = yes |
+| **L5** | `fix_or_result_known` = no, `crosses_module_boundary` = yes |
+| **L4** | `crosses_module_boundary`, `crosses_service_boundary`, `changes_public_api_contract`, or `changes_persisted_data` = yes or unknown |
+| **L4** | `files_touched` = 6+ |
+| **L3** | `files_touched` = 2-5 or unknown |
+| **L3** | `fix_or_result_known` = no |
+
+Unknown policy: an unknown security/payment fact routes one level below the security floor (L5); other unknown deciding facts take their rule. A rule at L4 or above that matched only through `unknown` sets `needs_context` and triggers one repository-aware reclassification. That reclassification may replace resolved facts, but it retains any primary affirmative safety fact: security/payment, persisted-data, public-API, or irreversible/ledger/crypto. An unrelated unknown therefore cannot lower the L6/L4 floor or clear the Critical override.
 
 ### Risk Flags and Hard Floors
 
-The classifier reports boolean flags:
+Risk flags are derived from facts: `changes_security_or_payment_logic` = yes sets `security_sensitive`, `changes_persisted_data` = yes sets `data_migration`, and `changes_public_api_contract` = yes sets `public_api_change`. Manual and pinned classifications may carry any of:
 
 ```text
 security_sensitive   authentication      authorization
@@ -108,7 +120,7 @@ payment              data_migration      public_api_change
 ```
 
 - Any of `security_sensitive`, `authentication`, `authorization`, or `payment` (when involving actual code/behavior changes) forces a hard floor of **L6** and activates an Autobahn scope guard instruction. Non-security changes mentioning security terms (such as typo fixes or documentation edits) do not activate these flags and remain at their natural score (e.g. L1).
-- After applying the security floor, each active `data_migration` or `public_api_change` escalates one further level (up to L7).
+- An active `data_migration` or `public_api_change` forces a floor of **L4**. Floors do not stack: the risk factor already scores these risks.
 - **Critical Override**: Irreversible data migration, mass production data deletion, financial ledger correctness, cryptographic design, or explicit `--critical` argument overrides the level directly to the **Critical Profile** (`GPT-6 Astra Max` / `Claude Opus Max`).
 
 ## Default Execution Model Map

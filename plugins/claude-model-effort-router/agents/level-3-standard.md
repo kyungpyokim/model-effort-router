@@ -1,6 +1,6 @@
 ---
 name: level-3-standard
-description: Use for standard feature development (CRUD, API endpoint, UI component, DB query) with a score of 4-5.
+description: Use for standard feature development (CRUD, API endpoint, UI component, DB query).
 model: claude-sonnet-5
 effort: medium
 maxTurns: 20

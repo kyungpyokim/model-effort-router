@@ -1,4 +1,4 @@
-# Model Effort Router (v2.1.3)
+# Model Effort Router (v2.2.1)
 
 A cross-platform bundle that routes a coding task to one model-and-effort
 profile for Codex, Claude Code, or Antigravity.
@@ -11,18 +11,27 @@ Antigravity: Flash/Pro/Sonnet Thinking/Opus Thinking).
 
 ## Cascading preflight classifier
 
-The CLI router evaluates tasks with a lightweight primary classifier and escalates to
-a mid-tier fallback model when confidence is low (< 0.80):
+The classifier never scores difficulty. It answers eleven bounded facts about
+the work (files touched, module or service boundaries, whether the result is known,
+new structure, security/payment logic, public API, persisted data, irreversible
+changes), and `DIFFICULTY_RULES` in `scripts/router.py` turn those facts into the
+level. The highest matching rule wins; `matched_rules` in the route JSON names it.
+When a fact that decides L4 or above is `unknown`, the router escalates once to a
+repository-aware classifier:
 
 - **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
 - **Claude Code**: `claude-haiku-4-5` (N/A) → `claude-sonnet-5` (medium)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
-(task_type, six factor scores, six risk flags, confidence, context_required, delegability, reason) before selecting
-a profile.
+(task_type, facts, delegability, evidence, reason) before selecting a profile. `files_touched`
+accepts `0` for read-only design and review work. In a Claude Code
+or Codex session the route skill runs the same prompt through an in-session
+`difficulty-assessor` agent instead and passes its JSON with `--classification-file`. When
+repository context is needed, it passes a `primary`/`escalated` JSON envelope so the router
+combines both replies before selecting the route.
 
-A transient preflight failure (timeout or non-zero exit) is retried once. If it
+A non-zero preflight exit is retried once; a timeout is not. If it
 still fails, cannot start, or returns invalid JSON:
 
 - On a terminal, the router asks for `task_type` and `level` (or `critical`) on
@@ -57,21 +66,22 @@ checks, selects applicable existing repository checks, and reports each result
 or why it was not run. Route-file replay ignores this JSON guidance and
 reuses only the stored execution steps.
 
-Route JSON now emits schema v3. It records `execution_strategy: "direct"` and
+Route JSON now emits schema v4: `facts`, `matched_rules`, `needs_context`, and
+`evidence` replace the old score fields. It records `execution_strategy: "direct"` and
 `orchestration_eligible` separately: eligibility is only a Codex Astra handoff
 candidate, never an execution request. `scripts/astra_adapter.py` is a local,
 caller-invoked isolated-worker boundary that requires supplied route and manifest
 digests, revalidates worker input copies, and preserves the original verified
-artifacts after each attempt. Direct v2 and v3 route-file replay never invokes it.
+artifacts after each attempt. Direct v2-v4 route-file replay never invokes it.
 
-`delegability` is independent of the six-factor difficulty score: `0` is shared
+`delegability` is independent of the difficulty rules: `0` is shared
 state, sequence-dependent, risky, or tightly coupled work; `1` remains coupled;
 `2` requires independent subtasks with explicit ownership and verification. Only
 safe Codex single routes at L5–L7 with `delegability: 2` can be eligible.
 
 Risk policy lives in code, not in prompts: security, authentication,
 authorization, or payment flags force an L6 floor with Autobahn scope guards;
-data migration and public API changes escalate one level each.
+data migration and public API changes force an L4 floor.
 
 For Antigravity, detect account-local models before printing its command:
 
@@ -79,9 +89,9 @@ For Antigravity, detect account-local models before printing its command:
 python3 scripts/router.py --platform antigravity --detect-antigravity-models --format command "간헐적인 멀티서비스 장애의 근본 원인 분석"
 ```
 
-`--level` is a minimum. An explicit `--level L7` or `--critical` together with an
-explicit `--task-type` skips the preflight because both axes are pinned; explicit
-factors override only those classifier scores. Fallbacks are always reported on stderr.
+`--level` alone is a minimum over the classified level. `--level` or `--critical`
+together with an explicit `--task-type` skips the preflight because both axes are
+pinned; the pinned level is used as is. Fallbacks are always reported on stderr.
 
 ## Two-stage architectural refactoring
 

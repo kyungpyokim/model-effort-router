@@ -1,6 +1,6 @@
 ---
 name: level-2-simple
-description: Execute a straightforward small implementation L2 task (score 2-3).
+description: Execute a straightforward small implementation L2 task.
 mainAgent: true
 subagent: true
 model: flash

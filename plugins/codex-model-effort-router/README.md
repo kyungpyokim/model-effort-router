@@ -4,14 +4,16 @@
 
 The skill classifies each task by `task_type` (implementation, design, review,
 local_refactoring, architectural_refactoring) and difficulty (L1-L7), then
-routes it through the `task_type × level` matrix in `config/model-map.json`:
+routes it through the v4 `task_type × level` matrix in `config/model-map.json`:
 
-- luna handles clearly defined coding work at lower levels
-- terra handles L3-L4 implementation and local refactoring
-- sol owns L5-L6 judgement and analysis
-- astra handles L7 and Critical profiles
-- architectural_refactoring at L3+ runs two stages: sol plans into a temporary
-  plan file, then luna/terra executes it with the plan's validation commands
+| task type | L1 | L2 | L3 | L4 | L5 | L6 | L7 | Critical |
+|---|---|---|---|---|---|---|---|---|
+| implementation / local_refactoring | luna low | luna med | terra med | terra high | sol high | sol xhigh | astra xhigh | astra max |
+| design / review | luna med | sol low | sol med | sol high | sol high | sol xhigh | astra xhigh | astra max |
+| architectural_refactoring | luna med | sol med | sol high -> terra med | sol xhigh -> terra high | sol xhigh -> terra high | sol xhigh -> sol xhigh | astra xhigh -> sol xhigh | astra max |
+
+`A -> B` is the success-dependent planner-to-implementer chain. Read-only
+design and review use `files_touched: 0`; files only read for context do not count.
 
 Security-related risk flags (security_sensitive, authentication,
 authorization, payment) force an L6 floor before the matrix lookup.
@@ -64,7 +66,7 @@ python3 scripts/router.py --platform codex --task-type design "<task>" --format 
 Example single-stage output:
 
 ```bash
-codex exec -m gpt-5.6-luna -c model_reasoning_effort=xhigh -c 'developer_instructions="..."' '<task>'
+codex exec -m gpt-5.6-luna -c model_reasoning_effort=medium -c 'developer_instructions="..."' '<task>'
 ```
 
 Example two-stage output (`architectural_refactoring` L3+):
@@ -82,8 +84,8 @@ The CLI launcher starts a new process because a plugin cannot reliably replace t
 Before selecting that process, the router runs the native Codex CLI with fixed
 `gpt-5.6-luna` / medium effort in a temporary read-only session and validates its JSON response.
 Timeouts, process failures, and invalid output safely route to implementation /
-L3. `--level` is a minimum; only `--level L7` plus an explicit `--task-type`
-bypasses the preflight entirely.
+L3. `--level` alone is a minimum; `--level` with an explicit `--task-type`
+pins both axes and bypasses the preflight.
 
 For a skill-selected route, save its JSON once and replay it with
 `bin/codex-route --route-file <route.json>`; this executes the selected command
@@ -93,10 +95,11 @@ reasons only; it does not execute checks. The selected executor receives its
 recommended checks and reports each result or why it was not run. Route-file
 replay ignores the JSON object and reuses only the stored execution steps.
 
-Schema v3 records `execution_strategy: "direct"` and
+Schema v4 records `facts`, `matched_rules`, `needs_context`, `evidence`, and
+`execution_strategy: "direct"` with
 `orchestration_eligible` separately. `scripts/astra_adapter.py` is available as
 a caller-invoked isolated-worker boundary that revalidates worker inputs and
-preserves original verified artifacts, not a launcher target. Direct v2 and v3
+preserves original verified artifacts, not a launcher target. Direct v2-v4
 route-file replay never invokes it.
 
 ## Customize

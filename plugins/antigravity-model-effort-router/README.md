@@ -23,7 +23,8 @@ agy plugin install https://github.com/<owner>/<repo>
 This classifies and explains the route, but it does not pretend to replace the model of the already-running session.
 
 The plugin includes L1-L7 and Critical agents under `agents/`. `agy-route` starts a new
-session with the matching `--agent` and account-available model.
+session with the account-available model and embeds the matching agent's
+instructions in the prompt, so it works without the extension installed.
 
 ## Execute with automatic model selection
 
@@ -55,11 +56,12 @@ before classification and starts the selected profile. Classifier failures
 safely select L3.
 In Antigravity, effort is represented in names such as `Gemini ... Flash (Low)` or `Claude ... (Thinking)` rather than a separate `--effort` flag.
 
-Route-file replay accepts existing v2 payloads. Schema v3 records direct-only
-`execution_strategy` and future Astra `orchestration_eligible` metadata; it
+Route-file replay accepts v2-v4 payloads. Schema v4 records `facts`,
+`matched_rules`, `needs_context`, `evidence`, direct-only `execution_strategy`,
+and future Astra `orchestration_eligible` metadata; it
 does not enable orchestration on Antigravity. `scripts/astra_adapter.py` is a
 caller-invoked boundary that revalidates worker inputs and preserves original
-verified artifacts; direct v2 and v3 route-file replay never invokes it.
+verified artifacts; direct v2-v4 route-file replay never invokes it.
 
 ## Customize
 

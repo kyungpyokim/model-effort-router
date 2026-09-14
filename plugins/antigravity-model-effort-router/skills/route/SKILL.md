@@ -1,11 +1,11 @@
 ---
 name: route
-description: Classify a coding task by difficulty from L1 to L7 (or Critical Override) and choose the closest available Antigravity model/effort variant. Use when the task should be routed by scope, ambiguity, diagnosis, design, risk, and verification complexity before execution.
+description: Classify a coding task by difficulty from L1 to L7 (or Critical Override) and choose the closest available Antigravity model/effort variant. Use when the task should be routed by extracted task facts and fixed difficulty rules before execution.
 ---
 
 # Model Effort Router
 
-Do not score the task in the current session. Resolve the included router
+Do not classify the task in the current session. Resolve the included router
 relative to this file and run `python3 ../../scripts/router.py "<task>" --platform antigravity --detect-antigravity-models --format json`. Save stdout unchanged to a fresh temporary `<route.json>` file. If an interactive session is requested, add `--interactive` when generating this JSON.
 
 Execute the saved route with `../../bin/agy-route --route-file "<route.json>"`.
@@ -20,10 +20,10 @@ repository checks and report each result or why it was not run.
 Do not describe the current session's model or attempt to change it. Do not
 continue the task in the parent session or invoke the router again from replayed steps.
 
-Schema v3 `orchestration_eligible` is future metadata only.
+Schema v4 records facts and `orchestration_eligible` as future metadata only.
 `scripts/astra_adapter.py` is caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
-`execution_strategy: direct` because direct v2 and v3 route-file replay never invokes it.
+`execution_strategy: direct` because direct v2-v4 route-file replay never invokes it.
 
 The result's `verification` object is recommendation metadata only. The
 selected executor receives recommended IDs and reasons, selects applicable

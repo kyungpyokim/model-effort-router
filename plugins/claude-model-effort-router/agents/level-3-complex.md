@@ -1,6 +1,6 @@
 ---
 name: level-3-complex
-description: Use for multi-file implementation, non-trivial debugging, or broad refactoring with a total difficulty score of 6-8.
+description: Use for multi-file implementation, non-trivial debugging, or broad refactoring.
 model: sonnet
 effort: high
 maxTurns: 40

@@ -1,6 +1,6 @@
 ---
 name: level-1-simple
-description: Use for a narrow, reversible, well-specified task with a total difficulty score of 0-2.
+description: Use for a narrow, reversible, well-specified task.
 model: sonnet
 effort: low
 maxTurns: 12

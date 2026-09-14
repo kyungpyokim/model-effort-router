@@ -1,6 +1,6 @@
 ---
 name: level-4-complex
-description: Use for multi-module implementation, async processing, state management, or complex logic with a score of 6-7.
+description: Use for multi-module implementation, async processing, state management, or complex logic.
 model: claude-sonnet-5
 effort: high
 maxTurns: 30

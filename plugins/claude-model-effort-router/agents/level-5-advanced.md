@@ -1,6 +1,6 @@
 ---
 name: level-5-advanced
-description: Use for root cause investigation, performance analysis, N+1 optimization, or complex refactoring with a score of 8-9.
+description: Use for root cause investigation, performance analysis, N+1 optimization, or complex refactoring.
 model: claude-fable-5-1
 effort: medium
 maxTurns: 40

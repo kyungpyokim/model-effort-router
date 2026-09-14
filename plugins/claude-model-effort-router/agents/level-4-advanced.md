@@ -1,6 +1,6 @@
 ---
 name: level-4-advanced
-description: Use for architecture, cross-service changes, security-sensitive work, production migrations, or a total difficulty score of 9-10.
+description: Use for architecture, cross-service changes, security-sensitive work, or production migrations.
 model: opus
 effort: xhigh
 maxTurns: 60
