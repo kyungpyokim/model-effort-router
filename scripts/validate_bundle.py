@@ -65,6 +65,9 @@ def main() -> int:
     assessor = read_frontmatter(claude / "agents" / "difficulty-assessor.md")
     assert assessor["name"] == "difficulty-assessor", "invalid assessor agent name"
     assert assessor["tools"] == "Read, Grep, Glob", "the difficulty assessor must stay read-only"
+    assert int(assessor["maxTurns"]) >= 16, "the difficulty assessor needs turns to finish its JSON"
+    assert "at most 6 tool calls" in (claude / "agents" / "difficulty-assessor.md").read_text(encoding="utf-8")
+    assert "`model` `haiku`" in (claude / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
     # The route skill delegates through the Agent tool, which cannot set effort,
     # so each matrix effort needs an agent that pins it.
     for effort in ("none", "low", "medium", "high", "xhigh", "max"):

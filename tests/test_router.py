@@ -557,6 +557,10 @@ class ExternalClassificationTests(unittest.TestCase):
         self.assertNotIn("Repository to inspect", out)
         _, repo_out, _ = self.run_main(["--print-classifier-prompt", "--repo-aware", "fix the add bug"])
         self.assertIn("Repository to inspect read-only", repo_out)
+        # Live run: an unbudgeted assessor kept reading until maxTurns and never returned JSON.
+        self.assertIn("budget at most 6 tool calls", repo_out)
+        self.assertIn("stop reading and answer", repo_out)
+        self.assertNotIn("budget at most", out)
 
     def test_classification_file_routes_without_spawning(self):
         with tempfile.TemporaryDirectory() as tmp:
