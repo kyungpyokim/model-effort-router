@@ -10,6 +10,15 @@ From Claude Code:
 /reload-plugins
 ```
 
+## Route-first policy hook
+
+Claude Code loads the plugin's `hooks/hooks.json` automatically. Its SessionStart
+handler injects a short route-first policy telling the session to invoke
+`model-effort:route` before substantive coding work; it does not classify a task,
+start a worker, or block a prompt. The hook improves compliance but cannot force a
+skill call, and stronger instructions from other plugins can still win. Invoke
+`/model-effort:route <task>` directly when routing must happen.
+
 ## Test without installation
 
 ```bash

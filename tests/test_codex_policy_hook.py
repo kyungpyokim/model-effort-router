@@ -100,11 +100,11 @@ class CodexPolicyHookTests(unittest.TestCase):
 
     def test_codex_manifest_and_validator_include_only_the_codex_hook_release(self):
         manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.2.1")
+        self.assertEqual(manifest["version"], "2.3.0")
         self.assertNotIn("hooks", manifest)
         validator = (ROOT / "scripts" / "validate_bundle.py").read_text(encoding="utf-8")
         self.assertIn('codex / "hooks" / "hooks.json"', validator)
-        self.assertNotIn('claude / "hooks"', validator)
+        self.assertIn('claude / "hooks" / "hooks.json"', validator)
         self.assertNotIn('agy / "hooks"', validator)
 
     def test_codex_manifest_describes_fact_based_l1_to_l7_routing(self):
