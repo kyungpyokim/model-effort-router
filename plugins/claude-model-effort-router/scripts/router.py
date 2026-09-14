@@ -14,7 +14,7 @@ import sys
 import tempfile
 import tomllib
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
@@ -82,7 +82,7 @@ YES_NO_UNKNOWN = ("yes", "no", "unknown")
 # Facts the classifier answers. It never scores or picks a level.
 FACTS = {
     "mechanical_only": YES_NO,
-    "files_touched": ("1", "2-5", "6+", "unknown"),
+    "files_touched": ("0", "1", "2-5", "6+", "unknown"),
     "crosses_module_boundary": YES_NO_UNKNOWN,
     "crosses_service_boundary": YES_NO_UNKNOWN,
     "fix_or_result_known": YES_NO,
@@ -93,6 +93,12 @@ FACTS = {
     "changes_persisted_data": YES_NO_UNKNOWN,
     "irreversible_or_ledger_or_crypto": YES_NO,
 }
+PRIMARY_AFFIRMATIVE_SAFETY_FACTS = (
+    "changes_security_or_payment_logic",
+    "changes_persisted_data",
+    "changes_public_api_contract",
+    "irreversible_or_ledger_or_crypto",
+)
 
 # (level, rule, conditions). A rule matches when every fact has one of its listed
 # values; the highest matching level wins over the L2 base (L1 for mechanical_only).
@@ -146,7 +152,7 @@ Choose exactly one task_type:
 - architectural_refactoring: change module boundaries or system structure AND carry out the resulting edits (module splits, dependency inversion, state-management changes, data-layer redesign, moving responsibilities between services). If only a design is wanted, choose design instead.
 Answer each fact about the work the task requires. Do not assign a level or score; the router derives difficulty from these facts with fixed rules.
 - mechanical_only: yes only for typos, renames, formatting, imports, comments, or documentation with no behaviour change.
-- files_touched: how many files the work changes, including new and test files; files only read for context do not count: 1, 2-5, 6+, or unknown.
+- files_touched: how many files the work changes, including new and test files; files only read for context do not count: 0, 1, 2-5, 6+, or unknown. Read-only design and review work is 0.
 - crosses_module_boundary: the work spans more than one module or package, or moves responsibilities between them.
 - crosses_service_boundary: the work or its diagnosis spans more than one service, process, or repository.
 - fix_or_result_known: yes when the expected result or the place to change is stated or evident; no when it must be investigated or decided.
@@ -371,6 +377,8 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
     for name, values in FACTS.items():
         if facts[name] not in values:
             raise ValueError(f"fact {name} must be one of {', '.join(values)}; got {facts[name]!r}")
+    if facts["files_touched"] == "0" and task_type not in {"design", "review"}:
+        raise ValueError("files_touched '0' is only valid for design or review")
     if isinstance(delegability, bool) or not isinstance(delegability, int) or delegability not in (0, 1, 2):
         raise ValueError("delegability must be 0, 1, or 2")
     if not isinstance(evidence, list) or len(evidence) > 5 or not all(isinstance(item, str) for item in evidence):
@@ -426,7 +434,12 @@ def read_classification_file(path: str) -> Classification:
     raw = (sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")).strip()
     # Model replies often wrap the JSON in a markdown fence.
     raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
-    return validate_classifier_output(json.loads(raw), source="classification-file")
+    payload = json.loads(raw)
+    if isinstance(payload, dict) and set(payload) == {"primary", "escalated"}:
+        primary = validate_classifier_output(payload["primary"], source="classification-file")
+        escalated = validate_classifier_output(payload["escalated"], source="classification-file")
+        return combine_cascade(primary, escalated)
+    return validate_classifier_output(payload, source="classification-file")
 
 
 def classify_task_single(
@@ -597,7 +610,29 @@ def classify_task(
 def combine_cascade(primary: Classification, escalated: Classification) -> Classification:
     """The escalated classifier read the repository, so its facts replace the primary's."""
     # A failed escalation must not discard a valid primary classification.
-    return primary if escalated.source == "fallback" else escalated
+    if escalated.source == "fallback":
+        return primary
+    safety_facts = {
+        fact: "yes"
+        for fact in PRIMARY_AFFIRMATIVE_SAFETY_FACTS
+        if primary.facts.get(fact) == "yes"
+    }
+    if not safety_facts:
+        return escalated
+
+    # Repository context can resolve the unrelated unknown that caused escalation,
+    # but must not erase a known affirmative safety fact from the first classification.
+    facts = {**escalated.facts, **safety_facts}
+    level, critical, matched, needs_context = evaluate_rules(facts)
+    return replace(
+        escalated,
+        facts=facts,
+        level=level,
+        risk_flags=risk_flags_from_facts(facts),
+        matched_rules=tuple(matched),
+        critical=critical,
+        needs_context=needs_context,
+    )
 
 
 def apply_risk_escalation(level: str, risk_flags: dict[str, bool]) -> str:
@@ -1258,7 +1293,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--classification-file",
         metavar="PATH",
         help="Route from externally produced classifier JSON (a path, or - for stdin) instead of "
-        "spawning a classifier; when the route reports needs_context, pass the repository-aware reply alone",
+        "spawning a classifier; a primary/escalated envelope combines one repository-aware retry",
     )
     parser.add_argument("--critical", action="store_true", help="Force critical override profile")
     parser.add_argument("--classifier-timeout", type=positive_finite_float, default=CLASSIFIER_TIMEOUT_SECONDS)

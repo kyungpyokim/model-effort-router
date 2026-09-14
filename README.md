@@ -11,7 +11,7 @@ Antigravity: Flash/Pro/Sonnet Thinking/Opus Thinking).
 
 ## Cascading preflight classifier
 
-The classifier never scores difficulty. It answers eleven yes/no/unknown facts about
+The classifier never scores difficulty. It answers eleven bounded facts about
 the work (files touched, module or service boundaries, whether the result is known,
 new structure, security/payment logic, public API, persisted data, irreversible
 changes), and `DIFFICULTY_RULES` in `scripts/router.py` turn those facts into the
@@ -24,9 +24,12 @@ repository-aware classifier:
 - **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
-(task_type, facts, delegability, evidence, reason) before selecting a profile. In a Claude Code
+(task_type, facts, delegability, evidence, reason) before selecting a profile. `files_touched`
+accepts `0` for read-only design and review work. In a Claude Code
 or Codex session the route skill runs the same prompt through an in-session
-`difficulty-assessor` agent instead and passes its JSON with `--classification-file`.
+`difficulty-assessor` agent instead and passes its JSON with `--classification-file`. When
+repository context is needed, it passes a `primary`/`escalated` JSON envelope so the router
+combines both replies before selecting the route.
 
 A non-zero preflight exit is retried once; a timeout is not. If it
 still fails, cannot start, or returns invalid JSON:
@@ -69,7 +72,7 @@ Route JSON now emits schema v4: `facts`, `matched_rules`, `needs_context`, and
 candidate, never an execution request. `scripts/astra_adapter.py` is a local,
 caller-invoked isolated-worker boundary that requires supplied route and manifest
 digests, revalidates worker input copies, and preserves the original verified
-artifacts after each attempt. Direct v2 and v3 route-file replay never invokes it.
+artifacts after each attempt. Direct v2-v4 route-file replay never invokes it.
 
 `delegability` is independent of the difficulty rules: `0` is shared
 state, sequence-dependent, risky, or tightly coupled work; `1` remains coupled;

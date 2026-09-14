@@ -1,8 +1,8 @@
-# Model Effort Router Policy (v2.1)
+# Model Effort Router Policy (v4)
 
 ## Overview
 
-The Model Effort Router classifies coding tasks by difficulty and risk, routing them to a matching model and reasoning-effort profile. The v2 policy uses a 7-level scale (`L1` through `L7`) with a dedicated `Critical Override`, cascading classification (lightweight primary classifier with confidence-gated fallback to mid-tier), and deterministic Python mapping.
+The Model Effort Router classifies coding tasks by difficulty and risk, routing them to a matching model and reasoning-effort profile. The v4 route schema uses a 7-level scale (`L1` through `L7`) with a dedicated `Critical Override`, one repository-aware reclassification when an L4+ deciding fact is unknown, and deterministic Python mapping.
 
 ## Classification Architecture
 
@@ -21,7 +21,7 @@ DIFFICULTY_RULES (scripts/router.py)
   └─ A rule >= L4 matched only through "unknown" -> needs_context
      │
 needs_context -> one repository-aware classifier (Terra Med / Sonnet 5 Med / Gemini 3.1 Pro High)
-  whose facts replace the first answer (the first is kept if it fails)
+  whose reply is combined with the first answer (the first is kept if it fails)
      │
 Risk floors (Security/Payment -> L6, Migration/Public API -> L4) -> Matrix lookup (task_type × level)
 ```
@@ -36,17 +36,17 @@ or a tightly coupled deep problem; `1` permits separable analysis but leaves
 dependencies or ownership coupled; `2` requires independent subtasks, explicit
 file/artifact ownership, and independently verifiable results.
 
-Schema v3 route files always retain `execution_strategy: "direct"` in this
+Schema v4 route files always retain `execution_strategy: "direct"` in this
 release. `orchestration_eligible: true` is only recorded for safe Codex
 single-stage L5–L7 routes with `delegability: 2` and no risk flags. Critical,
 two-stage, non-Codex, and any risky routes are ineligible. The local,
 caller-invoked `scripts/astra_adapter.py` accepts only digest-verified route and
 manifest bytes, revalidates per-attempt worker inputs, and preserves the
 original verified artifacts after each attempt. It does not change direct
-execution. Direct v2 and v3 route-file replay never invokes it.
+execution. Direct v2-v4 route-file replay never invokes it.
 
-Replay accepts existing v2 route files unchanged. Only v3 requires the two
-orchestration fields; malformed v3 files are rejected before execution.
+Replay accepts v2-v4 route files. v3 and v4 require the two orchestration
+fields; malformed v3/v4 files are rejected before execution.
 
 ### Classifiers by Platform
 
@@ -78,7 +78,7 @@ Mixed tasks classify by their primary purpose. Design with sample code is `desig
 | Fact | Values | Meaning |
 |---|---|---|
 | `mechanical_only` | yes / no | Typos, renames, formatting, imports, comments, or docs with no behaviour change |
-| `files_touched` | 1 / 2-5 / 6+ / unknown | Files the work changes, including new and test files (not files only read) |
+| `files_touched` | 0 / 1 / 2-5 / 6+ / unknown | Files the work changes, including new and test files (not files only read); read-only design and review are 0 |
 | `crosses_module_boundary` | yes / no / unknown | Spans modules or packages, or moves responsibilities between them |
 | `crosses_service_boundary` | yes / no / unknown | Work or diagnosis spans services, processes, or repositories |
 | `fix_or_result_known` | yes / no | The expected result or place to change is stated or evident |
@@ -108,7 +108,7 @@ The level is the highest matching rule over a base of L2 (L1 when `mechanical_on
 | **L3** | `files_touched` = 2-5 or unknown |
 | **L3** | `fix_or_result_known` = no |
 
-Unknown policy: an unknown security/payment fact routes one level below the security floor (L5); other unknown deciding facts take their rule. A rule at L4 or above that matched only through `unknown` sets `needs_context` and triggers one repository-aware reclassification.
+Unknown policy: an unknown security/payment fact routes one level below the security floor (L5); other unknown deciding facts take their rule. A rule at L4 or above that matched only through `unknown` sets `needs_context` and triggers one repository-aware reclassification. That reclassification may replace resolved facts, but it retains any primary affirmative safety fact: security/payment, persisted-data, public-API, or irreversible/ledger/crypto. An unrelated unknown therefore cannot lower the L6/L4 floor or clear the Critical override.
 
 ### Risk Flags and Hard Floors
 

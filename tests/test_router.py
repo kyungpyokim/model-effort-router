@@ -170,6 +170,51 @@ class PlatformClassifierTests(unittest.TestCase):
         # The repository-aware facts replace the primary guess, including a lower level.
         self.assertEqual((result.source, result.level, result.needs_context), ("gpt-5.6-terra", "L3", False))
 
+    def test_escalation_preserves_a_known_security_fact_while_resolving_another_unknown(self):
+        primary_output = classifier_output(
+            changes_security_or_payment_logic="yes",
+            crosses_module_boundary="unknown",
+        )
+        escalated_output = classifier_output(level="L2")
+
+        def fake_run(command, **kwargs):
+            model = command[command.index("--model") + 1]
+            output = escalated_output if model == "gpt-5.6-terra" else primary_output
+            return subprocess.CompletedProcess([], 0, output, "")
+
+        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+            result = router.classify_task("inspect an unclear module boundary around authentication")
+
+        self.assertEqual((result.source, result.level), ("gpt-5.6-terra", "L6"))
+        self.assertEqual(result.facts["changes_security_or_payment_logic"], "yes")
+        self.assertTrue(result.risk_flags["security_sensitive"])
+
+    def test_escalation_preserves_primary_migration_public_api_and_critical_facts(self):
+        cases = (
+            ("changes_persisted_data", "L4", "data_migration"),
+            ("changes_public_api_contract", "L4", "public_api_change"),
+            ("irreversible_or_ledger_or_crypto", "critical", None),
+        )
+        for fact, expected_level, risk_flag in cases:
+            with self.subTest(fact=fact):
+                primary_output = classifier_output(**{fact: "yes", "crosses_module_boundary": "unknown"})
+                escalated_output = classifier_output(level="L2")
+
+                def fake_run(command, **kwargs):
+                    model = command[command.index("--model") + 1]
+                    output = escalated_output if model == "gpt-5.6-terra" else primary_output
+                    return subprocess.CompletedProcess([], 0, output, "")
+
+                with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+                    classification_ = router.classify_task("inspect an unclear module boundary")
+                result = routed(classifier=lambda _: classification_)
+                self.assertEqual(result.level, expected_level)
+                self.assertEqual(classification_.facts[fact], "yes")
+                if risk_flag:
+                    self.assertTrue(classification_.risk_flags[risk_flag])
+                else:
+                    self.assertTrue(classification_.critical)
+
     def test_known_facts_do_not_escalate(self):
         output = classifier_output(level="L5", files_touched="unknown")
         with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, output, "")) as run:
@@ -448,6 +493,22 @@ class DifficultyRuleTests(unittest.TestCase):
                 self.assertEqual((level, needs_context), ("L4", True))
         self.assertEqual(self.level_of(files_touched="unknown")[2:], (["L3:files_touched_2_to_5 (unknown)"], False))
 
+    def test_read_only_design_and_review_accept_zero_files_touched(self):
+        for task_type in ("design", "review"):
+            with self.subTest(task_type=task_type):
+                result = router.validate_classifier_output(
+                    classifier_output(task_type=task_type, files_touched="0", raw=False)
+                )
+                self.assertEqual((result.task_type, result.level), (task_type, "L2"))
+
+    def test_zero_files_touched_is_rejected_for_code_changing_task_types(self):
+        for task_type in ("implementation", "local_refactoring", "architectural_refactoring"):
+            with self.subTest(task_type=task_type):
+                with self.assertRaisesRegex(ValueError, "only valid for design or review"):
+                    router.validate_classifier_output(
+                        classifier_output(task_type=task_type, files_touched="0", raw=False)
+                    )
+
     def test_risk_flags_follow_changed_behaviour_not_mentions(self):
         moved = router.validate_classifier_output(classifier_output(level="L5", raw=False))
         self.assertFalse(any(moved.risk_flags.values()))
@@ -516,6 +577,32 @@ class ExternalClassificationTests(unittest.TestCase):
             code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
         payload = json.loads(out)
         self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L4", "classification-file"))
+
+    def test_session_cascade_envelope_preserves_primary_safety_facts(self):
+        cases = (
+            ("changes_security_or_payment_logic", "L6"),
+            ("changes_persisted_data", "L4"),
+            ("changes_public_api_contract", "L4"),
+            ("irreversible_or_ledger_or_crypto", "critical"),
+        )
+        for fact, expected_level in cases:
+            with self.subTest(fact=fact):
+                envelope = json.dumps({
+                    "primary": classifier_output(
+                        crosses_module_boundary="unknown",
+                        raw=False,
+                        **{fact: "yes"},
+                    ),
+                    "escalated": classifier_output(level="L2", raw=False),
+                })
+                with mock.patch.object(router.sys, "stdin", io.StringIO(envelope)):
+                    code, out, _ = self.run_main(
+                        ["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"]
+                    )
+                payload = json.loads(out)
+                self.assertEqual((code, payload["effective_level"], payload["source"]), (0, expected_level, "classification-file"))
+                self.assertEqual(payload["facts"][fact], "yes")
+                self.assertFalse(payload["needs_context"])
 
     def test_pinned_task_type_and_level_route_without_spawning(self):
         code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--task-type", "implementation", "--level", "L3"])
@@ -1457,6 +1544,9 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertIn("--classification-file", primary)
                 self.assertIn("answers facts only", primary)
                 self.assertIn("--classification-file - <<'FACTS_JSON'", primary)
+                self.assertIn('"primary": <first classifier reply>', primary)
+                self.assertIn('"escalated": <repository-aware classifier reply>', primary)
+                self.assertIn("known safety fact cannot drop", primary)
                 self.assertIn("Escalate at most once", primary)
                 self.assertIn("Never delegate a route whose", primary)
                 self.assertNotIn("--classification-file <", primary)
@@ -1468,7 +1558,7 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("two_stage", primary)
         self.assertIn("runs the executor only if the plan step succeeds", primary)
 
-    def test_root_and_plugin_docs_describe_v2_v3_replay_contract(self):
+    def test_root_and_plugin_docs_describe_v2_to_v4_replay_contract(self):
         paths = [ROOT / "README.md", ROOT / "references" / "routing-policy.md"]
         for plugin in ("codex", "claude", "antigravity"):
             base = ROOT / "plugins" / f"{plugin}-model-effort-router"
@@ -1478,7 +1568,17 @@ class RouteSkillContractTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("orchestration_eligible", text)
                 self.assertIn("execution_strategy", text)
-                self.assertIn("v2", text)
+                self.assertIn("v2-v4", text)
+
+    def test_runtime_docs_match_the_current_matrix_and_classifier_contract(self):
+        claude_skill = (ROOT / "plugins" / "claude-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
+        claude_readme = (ROOT / "plugins" / "claude-model-effort-router" / "README.md").read_text(encoding="utf-8")
+        codex_readme = (ROOT / "plugins" / "codex-model-effort-router" / "README.md").read_text(encoding="utf-8")
+        self.assertIn("fable", claude_skill)
+        self.assertNotIn("opus` at every level", claude_skill)
+        self.assertNotIn("low confidence", claude_readme)
+        self.assertNotIn("five Markdown files", claude_readme)
+        self.assertNotIn("gpt-5.6-luna -c model_reasoning_effort=xhigh", codex_readme)
 
     def test_docs_describe_the_available_adapter_without_changing_direct_replay(self):
         paths = [ROOT / "README.md", ROOT / "references" / "routing-policy.md"]

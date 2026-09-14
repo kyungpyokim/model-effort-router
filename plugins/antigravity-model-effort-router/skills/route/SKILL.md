@@ -20,10 +20,10 @@ repository checks and report each result or why it was not run.
 Do not describe the current session's model or attempt to change it. Do not
 continue the task in the parent session or invoke the router again from replayed steps.
 
-Schema v3 `orchestration_eligible` is future metadata only.
+Schema v4 records facts and `orchestration_eligible` as future metadata only.
 `scripts/astra_adapter.py` is caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
-`execution_strategy: direct` because direct v2 and v3 route-file replay never invokes it.
+`execution_strategy: direct` because direct v2-v4 route-file replay never invokes it.
 
 The result's `verification` object is recommendation metadata only. The
 selected executor receives recommended IDs and reasons, selects applicable

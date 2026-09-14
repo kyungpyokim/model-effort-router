@@ -46,6 +46,7 @@
         "files_touched": {
           "type": "string",
           "enum": [
+            "0",
             "1",
             "2-5",
             "6+",
