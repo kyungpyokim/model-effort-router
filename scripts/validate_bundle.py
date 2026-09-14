@@ -35,7 +35,7 @@ def main() -> int:
 
     c_manifest = read_json(codex / ".codex-plugin" / "plugin.json")
     assert c_manifest["name"] == "model-effort"
-    assert c_manifest["version"] == "2.3.0"
+    assert c_manifest["version"] == "2.3.1"
     require(codex / "skills" / "route" / "SKILL.md")
     require(codex / "hooks" / "hooks.json")
     require(codex / "scripts" / "routing_policy_hook.py")
@@ -51,7 +51,7 @@ def main() -> int:
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
     assert a_manifest["name"] == "model-effort"
-    assert a_manifest["version"] == "2.3.0"
+    assert a_manifest["version"] == "2.3.1"
     require(claude / "skills" / "route" / "SKILL.md")
     require(claude / "scripts" / "routing_policy_hook.py")
     claude_hooks = read_json(claude / "hooks" / "hooks.json")["hooks"]
@@ -65,6 +65,9 @@ def main() -> int:
     assessor = read_frontmatter(claude / "agents" / "difficulty-assessor.md")
     assert assessor["name"] == "difficulty-assessor", "invalid assessor agent name"
     assert assessor["tools"] == "Read, Grep, Glob", "the difficulty assessor must stay read-only"
+    assert int(assessor["maxTurns"]) >= 16, "the difficulty assessor needs turns to finish its JSON"
+    assert "at most 6 tool calls" in (claude / "agents" / "difficulty-assessor.md").read_text(encoding="utf-8")
+    assert "`model` `haiku`" in (claude / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
     # The route skill delegates through the Agent tool, which cannot set effort,
     # so each matrix effort needs an agent that pins it.
     for effort in ("none", "low", "medium", "high", "xhigh", "max"):
@@ -104,7 +107,7 @@ def main() -> int:
 
     g_manifest = read_json(agy / "gemini-extension.json")
     assert g_manifest["name"] == "model-effort"
-    assert g_manifest["version"] == "2.3.0"
+    assert g_manifest["version"] == "2.3.1"
     require(agy / "skills" / "route" / "SKILL.md")
     require(agy / "GEMINI.md")
     require(agy / "commands" / "route.toml")

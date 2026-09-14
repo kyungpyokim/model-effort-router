@@ -15,8 +15,13 @@ which is the repository the task refers to. `<router>` below is
 Classify with the in-session assessor, not a nested CLI:
 
 1. Run `<router> --print-classifier-prompt --repo-aware "$ARGUMENTS"` and call the Agent tool
-   with `subagent_type` `model-effort:difficulty-assessor` and that output unchanged as the
-   prompt. The assessor answers facts only; the router's difficulty rules pick the level.
+   with `subagent_type` `model-effort:difficulty-assessor`, `model` `haiku`, and that output
+   unchanged as the prompt. The assessor answers facts only; the router's difficulty rules
+   pick the level.
+   If the assessor's reply is truncated (cut off before a complete JSON object — it ran out of
+   its tool-call budget), resume that same assessor call once via SendMessage asking it to
+   finish emitting the JSON now instead of restarting; only fall back to step 4's from-scratch
+   retry if the resumed reply is still not valid JSON.
 2. Pass the assessor's JSON reply unchanged on stdin and read the route JSON from stdout:
 
    ```bash
