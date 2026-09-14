@@ -1,4 +1,4 @@
-# Model Effort Router (v2.2.0)
+# Model Effort Router (v2.2.1)
 
 A cross-platform bundle that routes a coding task to one model-and-effort
 profile for Codex, Claude Code, or Antigravity.
