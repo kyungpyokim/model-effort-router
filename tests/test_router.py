@@ -30,9 +30,14 @@ BASE_FACTS = {
     "intermittent_or_concurrency": "no",
     "needs_new_structure": "no",
     "changes_security_or_payment_logic": "no",
+    "reviews_security_sensitive_code": "no",
+    "security_domain": "none",
     "changes_public_api_contract": "no",
     "changes_persisted_data": "no",
     "irreversible_or_ledger_or_crypto": "no",
+    "changes_trust_boundary": "no",
+    "blast_radius": "narrow",
+    "silent_failure_material_harm": "no",
 }
 # The smallest fact change that makes DIFFICULTY_RULES pick each level.
 LEVEL_FACTS = {
@@ -42,7 +47,7 @@ LEVEL_FACTS = {
     "L4": {"crosses_module_boundary": "yes"},
     "L5": {"needs_new_structure": "yes"},
     "L6": {"intermittent_or_concurrency": "yes", "crosses_service_boundary": "yes"},
-    "L7": {"needs_new_structure": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no"},
+    "L7": {"needs_new_structure": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "blast_radius": "broad"},
 }
 FLAG_FACTS = {
     "security_sensitive": "changes_security_or_payment_logic",
@@ -191,13 +196,18 @@ class PlatformClassifierTests(unittest.TestCase):
 
     def test_escalation_preserves_primary_migration_public_api_and_critical_facts(self):
         cases = (
-            ("changes_persisted_data", "L4", "data_migration"),
-            ("changes_public_api_contract", "L4", "public_api_change"),
-            ("irreversible_or_ledger_or_crypto", "critical", None),
+            ("changes_persisted_data", "yes", "L4", "data_migration"),
+            ("changes_public_api_contract", "yes", "L4", "public_api_change"),
+            ("irreversible_or_ledger_or_crypto", "yes", "critical", None),
+            ("reviews_security_sensitive_code", "yes", "L4", None),
+            ("security_domain", "payment", "L5", None),
+            ("changes_trust_boundary", "yes", "L2", None),
+            ("silent_failure_material_harm", "yes", "L2", None),
+            ("blast_radius", "broad", "L2", None),
         )
-        for fact, expected_level, risk_flag in cases:
+        for fact, value, expected_level, risk_flag in cases:
             with self.subTest(fact=fact):
-                primary_output = classifier_output(**{fact: "yes", "crosses_module_boundary": "unknown"})
+                primary_output = classifier_output(**{fact: value, "crosses_module_boundary": "unknown"})
                 escalated_output = classifier_output(level="L2")
 
                 def fake_run(command, **kwargs):
@@ -209,10 +219,10 @@ class PlatformClassifierTests(unittest.TestCase):
                     classification_ = router.classify_task("inspect an unclear module boundary")
                 result = routed(classifier=lambda _: classification_)
                 self.assertEqual(result.level, expected_level)
-                self.assertEqual(classification_.facts[fact], "yes")
+                self.assertEqual(classification_.facts[fact], value)
                 if risk_flag:
                     self.assertTrue(classification_.risk_flags[risk_flag])
-                else:
+                elif expected_level == "critical":
                     self.assertTrue(classification_.critical)
 
     def test_known_facts_do_not_escalate(self):
@@ -487,11 +497,78 @@ class DifficultyRuleTests(unittest.TestCase):
     def test_unknown_policy(self):
         # security unknown sits one level below the security floor; other unknowns take the rule
         self.assertEqual(self.level_of(changes_security_or_payment_logic="unknown")[0], "L5")
-        for fact in ("crosses_module_boundary", "crosses_service_boundary", "changes_public_api_contract", "changes_persisted_data"):
+        for fact in ("crosses_service_boundary", "changes_public_api_contract", "changes_persisted_data"):
             with self.subTest(fact=fact):
                 level, _, _, needs_context = self.level_of(**{fact: "unknown"})
                 self.assertEqual((level, needs_context), ("L4", True))
         self.assertEqual(self.level_of(files_touched="unknown")[2:], (["L3:files_touched_2_to_5 (unknown)"], False))
+
+    def test_module_boundary_unknown_escalates_without_raising_the_floor(self):
+        # Eval finding: an unknown module boundary over-routed single-module tasks to
+        # L4; unknown now only asks for repository context, and yes keeps the L4 rule.
+        level, critical, matched, needs_context = self.level_of(crosses_module_boundary="unknown")
+        self.assertEqual((level, critical, needs_context), ("L2", False, True))
+        self.assertEqual(matched, ["context:crosses_module_boundary_unknown (unknown)"])
+        level, _, matched, needs_context = self.level_of(crosses_module_boundary="unknown", files_touched="2-5")
+        self.assertEqual((level, needs_context), ("L3", True))
+        level, _, matched, needs_context = self.level_of(crosses_module_boundary="yes")
+        self.assertEqual((level, needs_context, matched), ("L4", False, ["L4:crosses_module_boundary"]))
+        # unknown never matches the L5 open-result-across-modules rule either.
+        level, _, matched, _ = self.level_of(crosses_module_boundary="unknown", fix_or_result_known="no")
+        self.assertEqual(level, "L3")
+        self.assertNotIn("L5:open_result_across_modules", matched)
+
+    def test_module_boundary_unknown_still_triggers_the_repository_aware_cascade(self):
+        primary_output = classifier_output(crosses_module_boundary="unknown")
+        calls = []
+
+        def fake_run(command, **kwargs):
+            model = command[command.index("--model") + 1]
+            calls.append(model)
+            if model == "gpt-5.6-terra":
+                return subprocess.CompletedProcess([], 1, "", "failed")
+            return subprocess.CompletedProcess([], 0, primary_output, "")
+
+        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+            result = router.classify_task("change the export flow")
+        self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-terra"])
+        # The escalated classifier failed, so the primary answer is kept: still L2, not L4.
+        self.assertEqual((result.source, result.level, result.needs_context), ("gpt-5.6-luna", "L2", True))
+        self.assertEqual(list(result.matched_rules), ["context:crosses_module_boundary_unknown (unknown)"])
+
+    def test_intermittent_unknown_escalates_without_raising_the_floor(self):
+        # unknown is a needs_context-only signal here: it must not by itself bump an
+        # otherwise-L2 task past its base level.
+        level, critical, matched, needs_context = self.level_of(intermittent_or_concurrency="unknown")
+        self.assertEqual((level, critical, needs_context), ("L2", False, True))
+        self.assertEqual(matched, ["context:intermittent_or_concurrency_unknown (unknown)"])
+
+    def test_intermittent_unknown_does_not_match_the_l6_cross_service_rule(self):
+        level, critical, matched, needs_context = self.level_of(
+            intermittent_or_concurrency="unknown", crosses_service_boundary="yes",
+        )
+        self.assertNotIn("L6:intermittent_across_services", matched)
+        self.assertEqual((level, critical, needs_context), ("L4", False, True))
+
+    def test_irreversible_unknown_floors_at_l5_and_is_never_critical(self):
+        level, critical, matched, needs_context = self.level_of(irreversible_or_ledger_or_crypto="unknown")
+        self.assertEqual((level, critical, needs_context), ("L5", False, True))
+        self.assertEqual(matched, ["L5:irreversible_or_ledger_or_crypto_unknown (unknown)"])
+
+    def test_irreversible_yes_is_still_critical_never_unknown(self):
+        _, critical, matched, _ = self.level_of(irreversible_or_ledger_or_crypto="yes")
+        self.assertTrue(critical)
+        _, critical_unknown, _, _ = self.level_of(irreversible_or_ledger_or_crypto="unknown")
+        self.assertFalse(critical_unknown)
+
+    def test_classifier_reply_with_new_unknown_values_is_accepted(self):
+        output = classifier_output(
+            raw=False, intermittent_or_concurrency="unknown", irreversible_or_ledger_or_crypto="unknown",
+        )
+        classification_ = router.validate_classifier_output(output)
+        self.assertEqual(classification_.level, "L5")
+        self.assertTrue(classification_.needs_context)
+        self.assertFalse(classification_.critical)
 
     def test_read_only_design_and_review_accept_zero_files_touched(self):
         for task_type in ("design", "review"):
@@ -532,6 +609,423 @@ class DifficultyRuleTests(unittest.TestCase):
             self.assertIn(f"- {fact}: ", prompt)
         self.assertIn("Do not assign a level or score", prompt)
         self.assertNotIn("level", router.CLASSIFIER_SCHEMA["properties"])
+
+    def test_schema_enums_allow_unknown_for_intermittent_and_irreversible(self):
+        self.assertEqual(router.FACTS["intermittent_or_concurrency"], ("yes", "no", "unknown"))
+        self.assertEqual(router.FACTS["irreversible_or_ledger_or_crypto"], ("yes", "no", "unknown"))
+        facts_schema = router.CLASSIFIER_SCHEMA["properties"]["facts"]
+        self.assertEqual(facts_schema["properties"]["intermittent_or_concurrency"]["enum"], ["yes", "no", "unknown"])
+        self.assertEqual(facts_schema["properties"]["irreversible_or_ledger_or_crypto"]["enum"], ["yes", "no", "unknown"])
+
+    def test_prompt_narrows_crypto_definition_to_new_design_not_existing_libraries(self):
+        prompt = router.classifier_prompt("task")
+        irreversible_line = next(
+            line for line in prompt.splitlines() if line.startswith("- irreversible_or_ledger_or_crypto:")
+        )
+        self.assertIn("designing new cryptographic algorithms", irreversible_line)
+        self.assertIn("JWT", irreversible_line)
+        self.assertIn("token rotation", irreversible_line)
+        self.assertIn("is no", irreversible_line)
+
+    def test_prompt_replaces_permissive_unknown_guidance(self):
+        prompt = router.classifier_prompt("task")
+        self.assertNotIn("Answer unknown only when neither the task text nor any repository you can read establishes the fact", prompt)
+        self.assertIn("Answer no when neither the task text nor the repository you read mentions or implies that area", prompt)
+        self.assertIn("Answer unknown only when the area is plausibly involved but the text and your reads cannot settle it", prompt)
+        self.assertIn("never answer yes just to be safe", prompt)
+
+    def test_prompt_and_schema_define_the_security_review_facts(self):
+        # Eval finding: "security review of the payment webhook signature check" was
+        # changes_security_or_payment_logic = no (nothing changes) and routed review/L2.
+        prompt = router.classifier_prompt("task")
+        self.assertEqual(router.FACTS["reviews_security_sensitive_code"], ("yes", "no", "unknown"))
+        self.assertEqual(
+            router.FACTS["security_domain"],
+            ("none", "auth", "payment", "secrets", "crypto", "permissions", "pii", "unknown"),
+        )
+        changes_line = next(line for line in prompt.splitlines() if line.startswith("- changes_security_or_payment_logic:"))
+        self.assertIn("reviews_security_sensitive_code", changes_line)
+        review_line = next(line for line in prompt.splitlines() if line.startswith("- reviews_security_sensitive_code:"))
+        self.assertIn("regardless of whether code is changed", review_line)
+        domain_line = next(line for line in prompt.splitlines() if line.startswith("- security_domain:"))
+        self.assertIn("payment over crypto over auth over permissions over pii over secrets", domain_line)
+        facts_schema = router.CLASSIFIER_SCHEMA["properties"]["facts"]
+        self.assertIn("security_domain", facts_schema["required"])
+        self.assertEqual(facts_schema["properties"]["security_domain"]["enum"], list(router.FACTS["security_domain"]))
+
+
+class SecurityReviewFloorTests(unittest.TestCase):
+    """Reviewing security code is not a change, but a wrong judgement there costs as
+    much as a wrong change: the floor follows the impact, not whether code is edited."""
+
+    def level_of(self, **facts):
+        return router.evaluate_rules({**BASE_FACTS, **facts})
+
+    def review_route(self, platform="codex", **facts):
+        output = classifier_output(task_type="review", raw=False, **{"files_touched": "0", **facts})
+        return routed(platform=platform, classifier=lambda _: router.validate_classifier_output(output))
+
+    def test_payment_webhook_signature_review_routes_at_least_l5(self):
+        result = self.review_route(reviews_security_sensitive_code="yes", security_domain="payment")
+        self.assertEqual((result.task_type, result.level), ("review", "L5"))
+        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "high"))
+        self.assertIn("L5:security_domain_critical", result.matched_rules)
+        self.assertIn("L4:reviews_security_sensitive_code", result.matched_rules)
+        claude = self.review_route(platform="claude-code", reviews_security_sensitive_code="yes", security_domain="payment")
+        self.assertEqual((claude.level, claude.model, claude.effort), ("L5", "claude-fable-5-1", "high"))
+
+    def test_critical_domains_floor_at_l5_regardless_of_task_type(self):
+        for domain in ("payment", "auth", "crypto", "permissions", "pii"):
+            for task_type in router.TASK_TYPES:
+                with self.subTest(domain=domain, task_type=task_type):
+                    output = classifier_output(task_type=task_type, raw=False, security_domain=domain)
+                    result = routed(classifier=lambda _: router.validate_classifier_output(output))
+                    self.assertEqual(result.level, "L5")
+
+    def test_secrets_only_review_gets_the_l4_floor(self):
+        level, _, matched, needs_context = self.level_of(reviews_security_sensitive_code="yes", security_domain="secrets")
+        self.assertEqual((level, needs_context), ("L4", False))
+        self.assertEqual(matched, ["L4:reviews_security_sensitive_code"])
+        # secrets alone (no review, no change) is not a floor of its own
+        self.assertEqual(self.level_of(security_domain="secrets")[0], "L2")
+
+    def test_generic_review_without_a_security_domain_is_unchanged(self):
+        self.assertEqual(self.review_route().level, "L2")
+        self.assertEqual(self.review_route(files_touched="2-5").level, "L3")
+
+    def test_changing_payment_logic_still_reaches_l6(self):
+        level, _, matched, _ = self.level_of(changes_security_or_payment_logic="yes", security_domain="payment")
+        self.assertEqual(level, "L6")
+        self.assertEqual(matched[0], "L6:changes_security_or_payment_logic")
+
+    def test_critical_override_still_wins(self):
+        _, critical, _, _ = self.level_of(irreversible_or_ledger_or_crypto="yes", reviews_security_sensitive_code="yes", security_domain="crypto")
+        self.assertTrue(critical)
+        result = self.review_route(irreversible_or_ledger_or_crypto="yes", reviews_security_sensitive_code="yes", security_domain="crypto")
+        self.assertEqual(result.level, "critical")
+
+    def test_floors_never_lower_a_higher_level(self):
+        level, _, _, _ = self.level_of(
+            needs_new_structure="yes", crosses_service_boundary="yes", fix_or_result_known="no",
+            blast_radius="broad", reviews_security_sensitive_code="yes", security_domain="pii",
+        )
+        self.assertEqual(level, "L7")
+
+    def test_unknown_review_facts_take_at_most_the_l4_floor_and_ask_for_context(self):
+        # Unknown-driven L5 floors already over-route (~33-38% in the eval); an unknown
+        # review fact escalates for repository context but stops at L4.
+        for facts, rule in (
+            ({"reviews_security_sensitive_code": "unknown"}, "L4:reviews_security_sensitive_code (unknown)"),
+            ({"security_domain": "unknown"}, "L4:security_domain_unknown (unknown)"),
+        ):
+            with self.subTest(facts=facts):
+                level, _, matched, needs_context = self.level_of(**facts)
+                self.assertEqual((level, needs_context, matched), ("L4", True, [rule]))
+
+    def test_review_facts_do_not_raise_the_change_flags_or_the_l6_floor(self):
+        classification_ = router.validate_classifier_output(
+            classifier_output(task_type="review", files_touched="0", raw=False, reviews_security_sensitive_code="yes", security_domain="payment")
+        )
+        self.assertFalse(any(classification_.risk_flags.values()))
+        self.assertEqual(routed(classifier=lambda _: classification_).level, "L5")
+
+    def test_policy_and_readme_document_the_review_floors(self):
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        for text in (policy, readme):
+            self.assertIn("reviews_security_sensitive_code", text)
+            self.assertIn("security_domain", text)
+        self.assertIn("sixteen bounded facts", readme)
+        self.assertNotIn("13 facts", policy)
+        self.assertIn("16 facts", policy)
+
+
+class ImpactFloorTests(unittest.TestCase):
+    """L6/L7 follow the impact of a wrong judgement. needs_new_structure is a design
+    difficulty signal; L7 also needs a security trust boundary or high impact."""
+
+    def level_of(self, **facts):
+        return router.evaluate_rules({**BASE_FACTS, **facts})
+
+    CROSS_SERVICE_DESIGN = {"needs_new_structure": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no"}
+
+    def test_auth_extraction_deciding_a_trust_boundary_is_l6(self):
+        level, critical, matched, _ = self.level_of(security_domain="auth", changes_trust_boundary="yes")
+        self.assertEqual((level, critical), ("L6", False))
+        self.assertIn("L6:critical_domain_trust_boundary", matched)
+
+    def test_new_auth_structure_across_a_trust_boundary_is_l7(self):
+        level, _, matched, _ = self.level_of(security_domain="auth", changes_trust_boundary="yes", needs_new_structure="yes")
+        self.assertEqual(level, "L7")
+        self.assertIn("L7:new_structure_security_trust_boundary", matched)
+
+    def test_trust_boundary_needs_a_critical_domain(self):
+        for domain in ("none", "secrets", "unknown"):
+            with self.subTest(domain=domain):
+                level, _, matched, _ = self.level_of(security_domain=domain, changes_trust_boundary="yes", needs_new_structure="yes")
+                self.assertNotIn(level, ("L6", "L7"))
+                self.assertFalse(any("trust_boundary" in rule for rule in matched))
+
+    def test_narrow_cross_service_structure_design_is_l6_not_l7(self):
+        level, _, matched, _ = self.level_of(**self.CROSS_SERVICE_DESIGN)
+        self.assertEqual(level, "L6")
+        self.assertEqual(matched[0], "L6:new_structure_across_services_with_open_result")
+        self.assertFalse(any(rule.startswith("L7:") for rule in matched))
+
+    def test_broad_distributed_design_is_l7(self):
+        level, _, matched, _ = self.level_of(**self.CROSS_SERVICE_DESIGN, blast_radius="broad")
+        self.assertEqual(level, "L7")
+        self.assertIn("L7:new_structure_across_services_broad_impact", matched)
+
+    def test_silent_harm_distributed_design_is_l7(self):
+        level, _, matched, _ = self.level_of(**self.CROSS_SERVICE_DESIGN, silent_failure_material_harm="yes")
+        self.assertEqual(level, "L7")
+        self.assertIn("L7:new_structure_across_services_silent_harm", matched)
+
+    def test_impact_alone_does_not_reach_l7_without_new_structure(self):
+        for missing in ("needs_new_structure", "crosses_service_boundary"):
+            facts = {**self.CROSS_SERVICE_DESIGN, "blast_radius": "broad", "silent_failure_material_harm": "yes", missing: "no"}
+            with self.subTest(missing=missing):
+                self.assertNotEqual(self.level_of(**facts)[0], "L7")
+        known = {**self.CROSS_SERVICE_DESIGN, "fix_or_result_known": "yes", "blast_radius": "broad"}
+        self.assertNotEqual(self.level_of(**known)[0], "L7")
+
+    def test_every_l7_rule_requires_new_structure_and_an_impact_condition(self):
+        impact = {"changes_trust_boundary", "blast_radius", "silent_failure_material_harm"}
+        l7_rules = [(name, conditions) for level, name, conditions in router.DIFFICULTY_RULES if level == "L7"]
+        self.assertEqual(len(l7_rules), 3)
+        for name, conditions in l7_rules:
+            with self.subTest(rule=name):
+                self.assertEqual(conditions["needs_new_structure"], ("yes",))
+                self.assertTrue(impact & set(conditions))
+                self.assertNotIn("unknown", [value for values in conditions.values() for value in values])
+
+    def test_identical_facts_route_to_the_same_level_for_every_task_type(self):
+        for facts in (
+            {"security_domain": "auth", "changes_trust_boundary": "yes"},
+            {"security_domain": "auth", "changes_trust_boundary": "yes", "needs_new_structure": "yes"},
+            {**self.CROSS_SERVICE_DESIGN, "blast_radius": "broad"},
+            dict(self.CROSS_SERVICE_DESIGN),
+        ):
+            levels = set()
+            for task_type in ("review", "design", "implementation"):
+                output = classifier_output(task_type=task_type, raw=False, **facts)
+                levels.add(routed(classifier=lambda _, o=output: router.validate_classifier_output(o)).level)
+            with self.subTest(facts=facts):
+                self.assertEqual(len(levels), 1)
+
+    def test_unknown_impact_facts_ask_for_context_without_a_floor(self):
+        for fact in ("changes_trust_boundary", "blast_radius", "silent_failure_material_harm"):
+            with self.subTest(fact=fact):
+                level, critical, matched, needs_context = self.level_of(**{fact: "unknown"})
+                self.assertEqual((level, critical, needs_context), ("L2", False, True))
+                self.assertEqual(matched, [f"context:{fact}_unknown (unknown)"])
+
+    def test_unknown_impact_facts_never_match_l6_or_l7(self):
+        level, _, matched, _ = self.level_of(
+            **self.CROSS_SERVICE_DESIGN, security_domain="auth",
+            changes_trust_boundary="unknown", blast_radius="unknown", silent_failure_material_harm="unknown",
+        )
+        self.assertEqual(level, "L6")
+        self.assertNotIn("L6:critical_domain_trust_boundary", matched)
+        self.assertFalse(any(rule.startswith("L7:") for rule in matched))
+
+    def test_cascade_keeps_primary_impact_answers(self):
+        primary = router.validate_classifier_output(classifier_output(
+            raw=False, crosses_module_boundary="unknown", blast_radius="broad",
+            changes_trust_boundary="yes", silent_failure_material_harm="yes",
+        ))
+        escalated = router.validate_classifier_output(classifier_output(raw=False, **self.CROSS_SERVICE_DESIGN, security_domain="auth"))
+        combined = router.combine_cascade(primary, escalated)
+        self.assertEqual(
+            [combined.facts[f] for f in ("blast_radius", "changes_trust_boundary", "silent_failure_material_harm")],
+            ["broad", "yes", "yes"],
+        )
+        self.assertEqual(combined.level, "L7")
+
+    def test_schema_enums_for_impact_facts(self):
+        facts_schema = router.CLASSIFIER_SCHEMA["properties"]["facts"]
+        expected = {
+            "changes_trust_boundary": ["yes", "no", "unknown"],
+            "blast_radius": ["narrow", "broad", "unknown"],
+            "silent_failure_material_harm": ["yes", "no", "unknown"],
+        }
+        self.assertEqual(len(router.FACTS), 16)
+        for fact, values in expected.items():
+            with self.subTest(fact=fact):
+                self.assertIn(fact, facts_schema["required"])
+                self.assertEqual(facts_schema["properties"][fact]["enum"], values)
+        on_disk = json.loads((ROOT / "config" / "classification-schema.json").read_text(encoding="utf-8"))
+        self.assertEqual(on_disk, router.CLASSIFIER_SCHEMA)
+
+    def prompt_line(self, fact):
+        return next(line for line in router.classifier_prompt("task").splitlines() if line.startswith(f"- {fact}:"))
+
+    def test_prompt_defines_impact_facts(self):
+        self.assertIn("service-to-service authentication", self.prompt_line("changes_trust_boundary"))
+        self.assertIn("covered by reviews_security_sensitive_code", self.prompt_line("changes_trust_boundary"))
+        self.assertIn("all users or tenants", self.prompt_line("blast_radius"))
+        self.assertIn("recoverable subset", self.prompt_line("blast_radius"))
+        self.assertIn("no error, alert, or failing test", self.prompt_line("silent_failure_material_harm"))
+
+    def test_prompt_narrows_the_over_routing_definitions(self):
+        self.assertIn("Laying out files inside one new module", self.prompt_line("needs_new_structure"))
+        self.assertIn("choosing between explicitly named options", self.prompt_line("fix_or_result_known"))
+        self.assertIn("Occasional slowness or failures with no timing or concurrency aspect stated are no", self.prompt_line("intermittent_or_concurrency"))
+        irreversible = self.prompt_line("irreversible_or_ledger_or_crypto")
+        self.assertIn("can be rolled back is no", irreversible)
+        self.assertIn("JWT", irreversible)
+
+    def test_prompt_adds_the_eval_false_positive_examples(self):
+        # 40-case eval: recoverable fixes, single-module layouts, and internal endpoints over-routed.
+        self.assertIn("retries, compensating transactions, idempotent re-runs, and other recoverable fixes", self.prompt_line("irreversible_or_ledger_or_crypto"))
+        self.assertIn("proposing the file layout for one new module inside an existing service", self.prompt_line("needs_new_structure"))
+        public_api = self.prompt_line("changes_public_api_contract")
+        self.assertIn("a new endpoint consumed only by your own frontend", public_api)
+        self.assertIn("is no", public_api)
+
+    def test_prompt_and_policy_settle_persisted_data_from_listed_files(self):
+        # Eval finding: tasks that named only UI or service files still answered
+        # changes_persisted_data = unknown and took the L4 migration floor.
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        persisted_row = next(line for line in policy.splitlines() if line.startswith("| `changes_persisted_data`"))
+        for text in (self.prompt_line("changes_persisted_data"), persisted_row):
+            self.assertIn("lists the files to change", text)
+            self.assertIn("migration, schema, or repository/data-access file", text)
+            self.assertIn("no", text)
+
+    def test_prompt_and_policy_define_payment_by_monetary_consequence(self):
+        prompt = router.classifier_prompt("task")
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        for text in (prompt, policy):
+            self.assertIn("monetary consequence", text)
+            for included in ("moving money", "amount charged", "refunding", "order cancellation that decides a refund",
+                             "ledger or settlement correctness", "monetary obligation"):
+                self.assertIn(included, text)
+            for excluded in ("order list UI", "billing address", "invoice PDF", "order status strings",
+                             "lives in a billing or order module",
+                             "Caching or reading billing or order data is not payment"):
+                self.assertIn(excluded, text)
+            # ...but a cached value that decides the amount charged stays payment.
+            self.assertIn("unless the cached or read value decides the amount charged", text)
+        # The precedence text and the fact set stay as they are.
+        self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
+        self.assertEqual(len(router.FACTS), 16)
+
+    def test_prompt_and_policy_count_tenant_and_customer_data_isolation_as_permissions(self):
+        # A wrong per-customer cache key exposes one customer's data to another: that
+        # is a permissions (access boundary) review, not payment, even for invoices.
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        policy_rows = [line for line in policy.splitlines()
+                       if line.startswith(("| `reviews_security_sensitive_code`", "| `security_domain`"))]
+        self.assertEqual(len(policy_rows), 2)
+        for text in (self.prompt_line("reviews_security_sensitive_code"), self.prompt_line("security_domain"), *policy_rows):
+            self.assertIn("tenant isolation", text)
+            self.assertIn("customer-specific data isolation", text)
+            self.assertIn("cache keys or namespaces", text)
+        for text in (self.prompt_line("security_domain"), policy):
+            self.assertIn("caching per-customer invoices is not payment but is a permissions review", text)
+        # The enum, the precedence text, and the billing-cache exclusion are untouched.
+        self.assertEqual(router.SECURITY_DOMAINS, ("none", "auth", "payment", "secrets", "crypto", "permissions", "pii", "unknown"))
+        self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
+        self.assertIn("Caching or reading billing or order data is not payment", router.CLASSIFIER_PROMPT)
+
+
+class CascadeOrAggregationTests(unittest.TestCase):
+    """Irreversible risk is asymmetric: the cascade ORs the primary and escalated
+    answers, so a yes from either reply is sticky and an unknown or no from the other
+    reply never lowers it. Never weaken this to make an eval case pass."""
+
+    FACT = "irreversible_or_ledger_or_crypto"
+
+    def combine(self, fact, primary_value, escalated_value):
+        primary = router.validate_classifier_output(
+            classifier_output(raw=False, crosses_module_boundary="unknown", **{fact: primary_value})
+        )
+        escalated = router.validate_classifier_output(classifier_output(raw=False, **{fact: escalated_value}))
+        return router.combine_cascade(primary, escalated)
+
+    def test_irreversible_is_or_aggregated_over_all_nine_combinations(self):
+        expected_level = {"yes": "L2", "unknown": "L5", "no": "L2"}
+        for primary_value in ("yes", "no", "unknown"):
+            for escalated_value in ("yes", "no", "unknown"):
+                expected = "yes" if "yes" in (primary_value, escalated_value) else escalated_value
+                with self.subTest(primary=primary_value, escalated=escalated_value):
+                    combined = self.combine(self.FACT, primary_value, escalated_value)
+                    self.assertEqual(combined.facts[self.FACT], expected)
+                    self.assertEqual(combined.critical, expected == "yes")
+                    self.assertEqual(combined.level, expected_level[expected])
+                    if expected == "yes":
+                        self.assertIn("critical:irreversible_or_ledger_or_crypto", combined.matched_rules)
+                        self.assertEqual(routed(classifier=lambda _: combined).level, "critical")
+
+    def test_other_affirmative_safety_facts_are_or_aggregated(self):
+        cases = (
+            ("changes_security_or_payment_logic", "yes", "no", "yes", "L6"),
+            ("changes_security_or_payment_logic", "yes", "unknown", "yes", "L6"),
+            ("changes_security_or_payment_logic", "no", "yes", "yes", "L6"),
+            ("changes_security_or_payment_logic", "unknown", "yes", "yes", "L6"),
+            ("changes_security_or_payment_logic", "no", "unknown", "unknown", "L5"),
+            ("security_domain", "payment", "none", "payment", "L5"),
+            ("security_domain", "payment", "unknown", "payment", "L5"),
+            ("security_domain", "none", "payment", "payment", "L5"),
+            ("security_domain", "unknown", "auth", "auth", "L5"),
+            ("security_domain", "none", "unknown", "unknown", "L4"),
+        )
+        for fact, primary_value, escalated_value, expected, level in cases:
+            with self.subTest(fact=fact, primary=primary_value, escalated=escalated_value):
+                combined = self.combine(fact, primary_value, escalated_value)
+                self.assertEqual((combined.facts[fact], combined.level, combined.critical), (expected, level, False))
+
+    def test_policy_documents_the_or_aggregation(self):
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        self.assertIn("aggregation is OR", policy)
+        self.assertIn("never lowers it", policy)
+
+
+class ServiceBoundaryUnknownCascadeTests(unittest.TestCase):
+    """crosses_service_boundary = unknown keeps its L4 floor, unlike the context-only
+    crosses_module_boundary: a multi-service task must not fall to L3 only because
+    the boundary could not be settled. unknown still triggers one repository-aware
+    reclassification, whose yes/no answer then decides the level."""
+
+    def primary(self):
+        return router.validate_classifier_output(
+            classifier_output(raw=False, crosses_service_boundary="unknown", fix_or_result_known="no")
+        )
+
+    def combine(self, escalated_value):
+        escalated = router.validate_classifier_output(
+            classifier_output(raw=False, crosses_service_boundary=escalated_value, fix_or_result_known="no")
+        )
+        return router.combine_cascade(self.primary(), escalated)
+
+    def test_primary_unknown_floors_at_l4_and_asks_for_context(self):
+        primary = self.primary()
+        self.assertEqual((primary.level, primary.needs_context), ("L4", True))
+        self.assertIn("L4:crosses_service_boundary (unknown)", primary.matched_rules)
+
+    def test_escalated_yes_takes_the_normal_l4_rule(self):
+        combined = self.combine("yes")
+        self.assertEqual((combined.level, combined.needs_context), ("L4", False))
+        self.assertIn("L4:crosses_service_boundary", combined.matched_rules)
+
+    def test_escalated_no_drops_the_l4_floor(self):
+        combined = self.combine("no")
+        self.assertEqual((combined.level, combined.needs_context), ("L3", False))
+        self.assertEqual(list(combined.matched_rules), ["L3:open_fix_or_result"])
+
+    def test_escalated_unknown_keeps_the_l4_floor(self):
+        combined = self.combine("unknown")
+        self.assertEqual((combined.level, combined.needs_context), ("L4", True))
+        self.assertIn("L4:crosses_service_boundary (unknown)", combined.matched_rules)
+        self.assertFalse(any(rule.startswith("L5:") for rule in combined.matched_rules))
+
+    def test_escalation_failure_keeps_the_primary_l4_route(self):
+        primary = self.primary()
+        combined = router.combine_cascade(primary, router.fallback_classification("timed out", "timeout"))
+        self.assertIs(combined, primary)
+        self.assertEqual((combined.level, combined.needs_context), ("L4", True))
 
 
 class ExternalClassificationTests(unittest.TestCase):
@@ -584,18 +1078,23 @@ class ExternalClassificationTests(unittest.TestCase):
 
     def test_session_cascade_envelope_preserves_primary_safety_facts(self):
         cases = (
-            ("changes_security_or_payment_logic", "L6"),
-            ("changes_persisted_data", "L4"),
-            ("changes_public_api_contract", "L4"),
-            ("irreversible_or_ledger_or_crypto", "critical"),
+            ("changes_security_or_payment_logic", "yes", "L6"),
+            ("changes_persisted_data", "yes", "L4"),
+            ("changes_public_api_contract", "yes", "L4"),
+            ("irreversible_or_ledger_or_crypto", "yes", "critical"),
+            ("reviews_security_sensitive_code", "yes", "L4"),
+            ("security_domain", "auth", "L5"),
+            ("changes_trust_boundary", "yes", "L2"),
+            ("silent_failure_material_harm", "yes", "L2"),
+            ("blast_radius", "broad", "L2"),
         )
-        for fact, expected_level in cases:
+        for fact, value, expected_level in cases:
             with self.subTest(fact=fact):
                 envelope = json.dumps({
                     "primary": classifier_output(
                         crosses_module_boundary="unknown",
                         raw=False,
-                        **{fact: "yes"},
+                        **{fact: value},
                     ),
                     "escalated": classifier_output(level="L2", raw=False),
                 })
@@ -605,8 +1104,18 @@ class ExternalClassificationTests(unittest.TestCase):
                     )
                 payload = json.loads(out)
                 self.assertEqual((code, payload["effective_level"], payload["source"]), (0, expected_level, "classification-file"))
-                self.assertEqual(payload["facts"][fact], "yes")
+                self.assertEqual(payload["facts"][fact], value)
                 self.assertFalse(payload["needs_context"])
+
+    def test_classification_file_missing_the_security_review_facts_exits_2(self):
+        # Replies from the pre-v2.4.0 prompt never answered the review facts; they are
+        # rejected like any other incomplete reply rather than silently defaulted.
+        legacy = classifier_output(raw=False)
+        del legacy["facts"]["reviews_security_sensitive_code"], legacy["facts"]["security_domain"]
+        with mock.patch.object(router.sys, "stdin", io.StringIO(json.dumps(legacy))):
+            code, out, err = self.run_main(["fix", "--platform", "codex", "--classification-file", "-"])
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("facts must contain exactly", err)
 
     def test_pinned_task_type_and_level_route_without_spawning(self):
         code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--task-type", "implementation", "--level", "L3"])
