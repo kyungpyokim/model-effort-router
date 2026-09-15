@@ -843,6 +843,81 @@ class ImpactFloorTests(unittest.TestCase):
         self.assertIn("can be rolled back is no", irreversible)
         self.assertIn("JWT", irreversible)
 
+    def test_prompt_adds_the_eval_false_positive_examples(self):
+        # 40-case eval: recoverable fixes, single-module layouts, and internal endpoints over-routed.
+        self.assertIn("retries, compensating transactions, idempotent re-runs, and other recoverable fixes", self.prompt_line("irreversible_or_ledger_or_crypto"))
+        self.assertIn("proposing the file layout for one new module inside an existing service", self.prompt_line("needs_new_structure"))
+        public_api = self.prompt_line("changes_public_api_contract")
+        self.assertIn("a new endpoint consumed only by your own frontend", public_api)
+        self.assertIn("is no", public_api)
+
+    def test_prompt_and_policy_define_payment_by_monetary_consequence(self):
+        prompt = router.classifier_prompt("task")
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        for text in (prompt, policy):
+            self.assertIn("monetary consequence", text)
+            for included in ("moving money", "amount charged", "refunding", "order cancellation that decides a refund",
+                             "ledger or settlement correctness", "monetary obligation"):
+                self.assertIn(included, text)
+            for excluded in ("order list UI", "billing address", "invoice PDF", "order status strings",
+                             "lives in a billing or order module"):
+                self.assertIn(excluded, text)
+        # The precedence text and the fact set stay as they are.
+        self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
+        self.assertEqual(len(router.FACTS), 16)
+
+
+class CascadeOrAggregationTests(unittest.TestCase):
+    """Irreversible risk is asymmetric: the cascade ORs the primary and escalated
+    answers, so a yes from either reply is sticky and an unknown or no from the other
+    reply never lowers it. Never weaken this to make an eval case pass."""
+
+    FACT = "irreversible_or_ledger_or_crypto"
+
+    def combine(self, fact, primary_value, escalated_value):
+        primary = router.validate_classifier_output(
+            classifier_output(raw=False, crosses_module_boundary="unknown", **{fact: primary_value})
+        )
+        escalated = router.validate_classifier_output(classifier_output(raw=False, **{fact: escalated_value}))
+        return router.combine_cascade(primary, escalated)
+
+    def test_irreversible_is_or_aggregated_over_all_nine_combinations(self):
+        expected_level = {"yes": "L2", "unknown": "L5", "no": "L2"}
+        for primary_value in ("yes", "no", "unknown"):
+            for escalated_value in ("yes", "no", "unknown"):
+                expected = "yes" if "yes" in (primary_value, escalated_value) else escalated_value
+                with self.subTest(primary=primary_value, escalated=escalated_value):
+                    combined = self.combine(self.FACT, primary_value, escalated_value)
+                    self.assertEqual(combined.facts[self.FACT], expected)
+                    self.assertEqual(combined.critical, expected == "yes")
+                    self.assertEqual(combined.level, expected_level[expected])
+                    if expected == "yes":
+                        self.assertIn("critical:irreversible_or_ledger_or_crypto", combined.matched_rules)
+                        self.assertEqual(routed(classifier=lambda _: combined).level, "critical")
+
+    def test_other_affirmative_safety_facts_are_or_aggregated(self):
+        cases = (
+            ("changes_security_or_payment_logic", "yes", "no", "yes", "L6"),
+            ("changes_security_or_payment_logic", "yes", "unknown", "yes", "L6"),
+            ("changes_security_or_payment_logic", "no", "yes", "yes", "L6"),
+            ("changes_security_or_payment_logic", "unknown", "yes", "yes", "L6"),
+            ("changes_security_or_payment_logic", "no", "unknown", "unknown", "L5"),
+            ("security_domain", "payment", "none", "payment", "L5"),
+            ("security_domain", "payment", "unknown", "payment", "L5"),
+            ("security_domain", "none", "payment", "payment", "L5"),
+            ("security_domain", "unknown", "auth", "auth", "L5"),
+            ("security_domain", "none", "unknown", "unknown", "L4"),
+        )
+        for fact, primary_value, escalated_value, expected, level in cases:
+            with self.subTest(fact=fact, primary=primary_value, escalated=escalated_value):
+                combined = self.combine(fact, primary_value, escalated_value)
+                self.assertEqual((combined.facts[fact], combined.level, combined.critical), (expected, level, False))
+
+    def test_policy_documents_the_or_aggregation(self):
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        self.assertIn("aggregation is OR", policy)
+        self.assertIn("never lowers it", policy)
+
 
 class ExternalClassificationTests(unittest.TestCase):
     """A sandboxed Codex session cannot spawn `codex exec`, so it classifies with a
