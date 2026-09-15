@@ -851,6 +851,16 @@ class ImpactFloorTests(unittest.TestCase):
         self.assertIn("a new endpoint consumed only by your own frontend", public_api)
         self.assertIn("is no", public_api)
 
+    def test_prompt_and_policy_settle_persisted_data_from_listed_files(self):
+        # Eval finding: tasks that named only UI or service files still answered
+        # changes_persisted_data = unknown and took the L4 migration floor.
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        persisted_row = next(line for line in policy.splitlines() if line.startswith("| `changes_persisted_data`"))
+        for text in (self.prompt_line("changes_persisted_data"), persisted_row):
+            self.assertIn("lists the files to change", text)
+            self.assertIn("migration, schema, or repository/data-access file", text)
+            self.assertIn("no", text)
+
     def test_prompt_and_policy_define_payment_by_monetary_consequence(self):
         prompt = router.classifier_prompt("task")
         policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
