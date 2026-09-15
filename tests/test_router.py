@@ -497,11 +497,44 @@ class DifficultyRuleTests(unittest.TestCase):
     def test_unknown_policy(self):
         # security unknown sits one level below the security floor; other unknowns take the rule
         self.assertEqual(self.level_of(changes_security_or_payment_logic="unknown")[0], "L5")
-        for fact in ("crosses_module_boundary", "crosses_service_boundary", "changes_public_api_contract", "changes_persisted_data"):
+        for fact in ("crosses_service_boundary", "changes_public_api_contract", "changes_persisted_data"):
             with self.subTest(fact=fact):
                 level, _, _, needs_context = self.level_of(**{fact: "unknown"})
                 self.assertEqual((level, needs_context), ("L4", True))
         self.assertEqual(self.level_of(files_touched="unknown")[2:], (["L3:files_touched_2_to_5 (unknown)"], False))
+
+    def test_module_boundary_unknown_escalates_without_raising_the_floor(self):
+        # Eval finding: an unknown module boundary over-routed single-module tasks to
+        # L4; unknown now only asks for repository context, and yes keeps the L4 rule.
+        level, critical, matched, needs_context = self.level_of(crosses_module_boundary="unknown")
+        self.assertEqual((level, critical, needs_context), ("L2", False, True))
+        self.assertEqual(matched, ["context:crosses_module_boundary_unknown (unknown)"])
+        level, _, matched, needs_context = self.level_of(crosses_module_boundary="unknown", files_touched="2-5")
+        self.assertEqual((level, needs_context), ("L3", True))
+        level, _, matched, needs_context = self.level_of(crosses_module_boundary="yes")
+        self.assertEqual((level, needs_context, matched), ("L4", False, ["L4:crosses_module_boundary"]))
+        # unknown never matches the L5 open-result-across-modules rule either.
+        level, _, matched, _ = self.level_of(crosses_module_boundary="unknown", fix_or_result_known="no")
+        self.assertEqual(level, "L3")
+        self.assertNotIn("L5:open_result_across_modules", matched)
+
+    def test_module_boundary_unknown_still_triggers_the_repository_aware_cascade(self):
+        primary_output = classifier_output(crosses_module_boundary="unknown")
+        calls = []
+
+        def fake_run(command, **kwargs):
+            model = command[command.index("--model") + 1]
+            calls.append(model)
+            if model == "gpt-5.6-terra":
+                return subprocess.CompletedProcess([], 1, "", "failed")
+            return subprocess.CompletedProcess([], 0, primary_output, "")
+
+        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+            result = router.classify_task("change the export flow")
+        self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-terra"])
+        # The escalated classifier failed, so the primary answer is kept: still L2, not L4.
+        self.assertEqual((result.source, result.level, result.needs_context), ("gpt-5.6-luna", "L2", True))
+        self.assertEqual(list(result.matched_rules), ["context:crosses_module_boundary_unknown (unknown)"])
 
     def test_intermittent_unknown_escalates_without_raising_the_floor(self):
         # unknown is a needs_context-only signal here: it must not by itself bump an
