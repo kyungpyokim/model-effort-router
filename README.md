@@ -1,5 +1,7 @@
 # Model Effort Router (v2.3.2)
 
+English | [한국어](README.ko.md)
+
 A cross-platform bundle that routes a coding task to one model-and-effort
 profile for Codex, Claude Code, or Antigravity.
 
@@ -11,11 +13,12 @@ Antigravity: Flash/Pro/Sonnet Thinking/Opus Thinking).
 
 ## Cascading preflight classifier
 
-The classifier never scores difficulty. It answers eleven bounded facts about
+The classifier never scores difficulty. It answers sixteen bounded facts about
 the work (files touched, module or service boundaries, whether the result is known,
-new structure, security/payment logic, public API, persisted data, irreversible
-changes), and `DIFFICULTY_RULES` in `scripts/router.py` turn those facts into the
-level. The highest matching rule wins; `matched_rules` in the route JSON names it.
+new structure, security/payment logic changed or reviewed, the security domain,
+public API, persisted data, irreversible changes, trust-boundary changes, blast
+radius, silent material harm), and `DIFFICULTY_RULES` in
+`scripts/router.py` turn those facts into the level. The highest matching rule wins; `matched_rules` in the route JSON names it.
 When a fact that decides L4 or above is `unknown`, the router escalates once to a
 repository-aware classifier:
 
@@ -81,7 +84,13 @@ safe Codex single routes at L5–L7 with `delegability: 2` can be eligible.
 
 Risk policy lives in code, not in prompts: security, authentication,
 authorization, or payment flags force an L6 floor with Autobahn scope guards;
-data migration and public API changes force an L4 floor.
+data migration and public API changes force an L4 floor. Review-only security
+work is floored by facts rather than flags: `reviews_security_sensitive_code`
+gives at least L4 and a critical `security_domain` (payment, crypto, auth,
+permissions, pii) at least L5, whatever the task type. L6/L7 follow the impact of
+a wrong judgement: a critical domain whose trust boundary changes floors at L6, and
+new structure alone never reaches L7 — it also needs that trust boundary, or a
+cross-service open design with a broad blast radius or silent material harm.
 
 For Antigravity, detect account-local models before printing its command:
 
