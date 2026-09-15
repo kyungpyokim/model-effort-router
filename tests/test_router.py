@@ -1108,7 +1108,7 @@ class ExternalClassificationTests(unittest.TestCase):
                 self.assertFalse(payload["needs_context"])
 
     def test_classification_file_missing_the_security_review_facts_exits_2(self):
-        # Replies from the pre-v2.3.3 prompt never answered the review facts; they are
+        # Replies from the pre-v2.4.0 prompt never answered the review facts; they are
         # rejected like any other incomplete reply rather than silently defaulted.
         legacy = classifier_output(raw=False)
         del legacy["facts"]["reviews_security_sensitive_code"], legacy["facts"]["security_domain"]
