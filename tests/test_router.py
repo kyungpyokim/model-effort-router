@@ -870,8 +870,11 @@ class ImpactFloorTests(unittest.TestCase):
                              "ledger or settlement correctness", "monetary obligation"):
                 self.assertIn(included, text)
             for excluded in ("order list UI", "billing address", "invoice PDF", "order status strings",
-                             "lives in a billing or order module"):
+                             "lives in a billing or order module",
+                             "Caching or reading billing or order data is not payment"):
                 self.assertIn(excluded, text)
+            # ...but a cached value that decides the amount charged stays payment.
+            self.assertIn("unless the cached or read value decides the amount charged", text)
         # The precedence text and the fact set stay as they are.
         self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
         self.assertEqual(len(router.FACTS), 16)
