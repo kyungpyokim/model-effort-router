@@ -20,7 +20,17 @@ public API, persisted data, irreversible changes, trust-boundary changes, blast
 radius, silent material harm), and `DIFFICULTY_RULES` in
 `scripts/router.py` turn those facts into the level. The highest matching rule wins; `matched_rules` in the route JSON names it.
 When a fact that decides L4 or above is `unknown`, the router escalates once to a
-repository-aware classifier:
+repository-aware classifier. Some unknowns only ask for that escalation without raising
+the level: `crosses_module_boundary`, `intermittent_or_concurrency`,
+`changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm`. A
+`crosses_service_boundary` still unknown after escalation keeps the L4 floor, and an
+unknown `irreversible_or_ledger_or_crypto` floors at L5 but never triggers the Critical
+Override. The escalated reply may replace resolved facts, but a safety fact the first
+reply affirmed (security/payment change or review, critical security domain, persisted
+data, public API, irreversible, trust boundary, broad blast radius, silent harm) is
+kept: a yes from either reply wins.
+
+Escalation models by platform:
 
 - **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
 - **Claude Code**: `claude-haiku-4-5` (N/A) → `claude-sonnet-5` (medium)
@@ -91,6 +101,13 @@ permissions, pii) at least L5, whatever the task type. L6/L7 follow the impact o
 a wrong judgement: a critical domain whose trust boundary changes floors at L6, and
 new structure alone never reaches L7 — it also needs that trust boundary, or a
 cross-service open design with a broad blast radius or silent material harm.
+
+Payment means monetary consequence: moving money, deciding the amount charged
+(price, discount, tax), authorizing, capturing, cancelling, or refunding, ledger or
+settlement correctness, or a monetary obligation. Code that only lives in a billing or
+order module, or that caches or reads billing data, is not payment. Permissions covers
+access boundaries, including tenant and customer data isolation and the cache keys or
+namespaces that hold per-customer data.
 
 For Antigravity, detect account-local models before printing its command:
 

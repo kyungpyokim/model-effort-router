@@ -23,6 +23,10 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 
 L4 이상을 결정하는 핵심 팩트가 `unknown`(불명확) 상태인 경우, 라우터는 저장소 컨텍스트를 읽을 수 있는 분류기로 1회 에스컬레이션(재분석)합니다.
 
+일부 `unknown`은 레벨을 올리지 않고 에스컬레이션만 요청합니다: `crosses_module_boundary`, `intermittent_or_concurrency`, `changes_trust_boundary`, `blast_radius`, `silent_failure_material_harm`. 에스컬레이션 후에도 `crosses_service_boundary`가 `unknown`이면 L4 바닥선을 유지하고, `irreversible_or_ledger_or_crypto`가 `unknown`이면 L5 바닥선을 적용하되 Critical Override는 발동하지 않습니다. 에스컬레이션 응답은 확정된 팩트를 대체할 수 있지만, 첫 응답이 확인한 안전 팩트(보안/결제 변경 또는 검토, 치명적 보안 영역, 영속 데이터, 퍼블릭 API, 비가역 변경, 신뢰 경계, 넓은 영향 반경, 무음 피해)는 유지됩니다. 어느 한쪽이라도 yes면 yes입니다.
+
+플랫폼별 에스컬레이션 모델:
+
 - **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
 - **Claude Code**: `claude-haiku-4-5` (N/A) → `claude-sonnet-5` (medium)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
@@ -74,6 +78,8 @@ L5~L7 난이도에 `delegability: 2`를 만족하는 안전한 단일 Codex 라�
   - 치명적인 보안 영역(`security_domain`: payment, crypto, auth, permissions, pii)의 경우 작업 유형과 무관하게 최소 **L5**
   - 신뢰 경계(trust boundary)가 변경되는 치명적 보안 영역은 최소 **L6**
   - 새로운 구조(new structure) 자체만으로는 L7에 도달하지 않으며, 신뢰 경계 변경이 동반되거나 서비스 간 광범위한 영향 반경 또는 감지되지 않는 치명적 피해(silent material harm)가 수반되어야 **L7**에 도달합니다.
+- **결제(payment)**는 금전적 결과로 판단합니다: 돈의 이동, 청구 금액 결정(가격·할인·세금), 승인·매입·취소·환불, 원장·정산 정확성, 금전적 의무 발생. billing/order 모듈에 있을 뿐인 코드나 결제 데이터를 캐싱·조회만 하는 작업은 결제가 아닙니다.
+- **권한(permissions)**은 접근 경계를 포함합니다: 테넌트 격리, 고객별 데이터 격리, 고객별 데이터를 담는 캐시 키·네임스페이스.
 
 ### Antigravity 모델 자동 탐지
 
