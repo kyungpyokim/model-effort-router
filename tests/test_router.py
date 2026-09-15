@@ -912,6 +912,24 @@ class ImpactFloorTests(unittest.TestCase):
         self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
         self.assertEqual(len(router.FACTS), 16)
 
+    def test_prompt_and_policy_count_tenant_and_customer_data_isolation_as_permissions(self):
+        # A wrong per-customer cache key exposes one customer's data to another: that
+        # is a permissions (access boundary) review, not payment, even for invoices.
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        policy_rows = [line for line in policy.splitlines()
+                       if line.startswith(("| `reviews_security_sensitive_code`", "| `security_domain`"))]
+        self.assertEqual(len(policy_rows), 2)
+        for text in (self.prompt_line("reviews_security_sensitive_code"), self.prompt_line("security_domain"), *policy_rows):
+            self.assertIn("tenant isolation", text)
+            self.assertIn("customer-specific data isolation", text)
+            self.assertIn("cache keys or namespaces", text)
+        for text in (self.prompt_line("security_domain"), policy):
+            self.assertIn("caching per-customer invoices is not payment but is a permissions review", text)
+        # The enum, the precedence text, and the billing-cache exclusion are untouched.
+        self.assertEqual(router.SECURITY_DOMAINS, ("none", "auth", "payment", "secrets", "crypto", "permissions", "pii", "unknown"))
+        self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
+        self.assertIn("Caching or reading billing or order data is not payment", router.CLASSIFIER_PROMPT)
+
 
 class CascadeOrAggregationTests(unittest.TestCase):
     """Irreversible risk is asymmetric: the cascade ORs the primary and escalated
