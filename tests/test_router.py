@@ -965,6 +965,51 @@ class CascadeOrAggregationTests(unittest.TestCase):
         self.assertIn("never lowers it", policy)
 
 
+class ServiceBoundaryUnknownCascadeTests(unittest.TestCase):
+    """crosses_service_boundary = unknown keeps its L4 floor, unlike the context-only
+    crosses_module_boundary: a multi-service task must not fall to L3 only because
+    the boundary could not be settled. unknown still triggers one repository-aware
+    reclassification, whose yes/no answer then decides the level."""
+
+    def primary(self):
+        return router.validate_classifier_output(
+            classifier_output(raw=False, crosses_service_boundary="unknown", fix_or_result_known="no")
+        )
+
+    def combine(self, escalated_value):
+        escalated = router.validate_classifier_output(
+            classifier_output(raw=False, crosses_service_boundary=escalated_value, fix_or_result_known="no")
+        )
+        return router.combine_cascade(self.primary(), escalated)
+
+    def test_primary_unknown_floors_at_l4_and_asks_for_context(self):
+        primary = self.primary()
+        self.assertEqual((primary.level, primary.needs_context), ("L4", True))
+        self.assertIn("L4:crosses_service_boundary (unknown)", primary.matched_rules)
+
+    def test_escalated_yes_takes_the_normal_l4_rule(self):
+        combined = self.combine("yes")
+        self.assertEqual((combined.level, combined.needs_context), ("L4", False))
+        self.assertIn("L4:crosses_service_boundary", combined.matched_rules)
+
+    def test_escalated_no_drops_the_l4_floor(self):
+        combined = self.combine("no")
+        self.assertEqual((combined.level, combined.needs_context), ("L3", False))
+        self.assertEqual(list(combined.matched_rules), ["L3:open_fix_or_result"])
+
+    def test_escalated_unknown_keeps_the_l4_floor(self):
+        combined = self.combine("unknown")
+        self.assertEqual((combined.level, combined.needs_context), ("L4", True))
+        self.assertIn("L4:crosses_service_boundary (unknown)", combined.matched_rules)
+        self.assertFalse(any(rule.startswith("L5:") for rule in combined.matched_rules))
+
+    def test_escalation_failure_keeps_the_primary_l4_route(self):
+        primary = self.primary()
+        combined = router.combine_cascade(primary, router.fallback_classification("timed out", "timeout"))
+        self.assertIs(combined, primary)
+        self.assertEqual((combined.level, combined.needs_context), ("L4", True))
+
+
 class ExternalClassificationTests(unittest.TestCase):
     """A sandboxed Codex session cannot spawn `codex exec`, so it classifies with a
     spawned worker and hands the JSON back to the router."""
