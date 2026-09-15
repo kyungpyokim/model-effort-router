@@ -31,9 +31,14 @@
         "intermittent_or_concurrency",
         "needs_new_structure",
         "changes_security_or_payment_logic",
+        "reviews_security_sensitive_code",
+        "security_domain",
         "changes_public_api_contract",
         "changes_persisted_data",
-        "irreversible_or_ledger_or_crypto"
+        "irreversible_or_ledger_or_crypto",
+        "changes_trust_boundary",
+        "blast_radius",
+        "silent_failure_material_harm"
       ],
       "properties": {
         "mechanical_only": {
@@ -80,7 +85,8 @@
           "type": "string",
           "enum": [
             "yes",
-            "no"
+            "no",
+            "unknown"
           ]
         },
         "needs_new_structure": {
@@ -95,6 +101,27 @@
           "enum": [
             "yes",
             "no",
+            "unknown"
+          ]
+        },
+        "reviews_security_sensitive_code": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "security_domain": {
+          "type": "string",
+          "enum": [
+            "none",
+            "auth",
+            "payment",
+            "secrets",
+            "crypto",
+            "permissions",
+            "pii",
             "unknown"
           ]
         },
@@ -118,7 +145,32 @@
           "type": "string",
           "enum": [
             "yes",
-            "no"
+            "no",
+            "unknown"
+          ]
+        },
+        "changes_trust_boundary": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "blast_radius": {
+          "type": "string",
+          "enum": [
+            "narrow",
+            "broad",
+            "unknown"
+          ]
+        },
+        "silent_failure_material_harm": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
           ]
         }
       }

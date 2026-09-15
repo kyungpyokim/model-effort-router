@@ -13,7 +13,7 @@ and no self-reported confidence.
 User Request
      │
 Classifier (Luna Med / Haiku 4.5 / Gemini 3.8 Flash Med, or the in-session difficulty-assessor agent)
-  -> task_type + 11 facts (yes / no / unknown) + evidence
+  -> task_type + 16 facts (yes / no / unknown, plus a security domain and blast radius) + evidence
      │
 DIFFICULTY_RULES (scripts/router.py)
   ├─ Base L2 (L1 when mechanical_only = yes)
@@ -23,7 +23,7 @@ DIFFICULTY_RULES (scripts/router.py)
 needs_context -> one repository-aware classifier (Terra Med / Sonnet 5 Med / Gemini 3.1 Pro High)
   whose reply is combined with the first answer (the first is kept if it fails)
      │
-Risk floors (Security/Payment -> L6, Migration/Public API -> L4) -> Matrix lookup (task_type × level)
+Risk floors (Security/Payment change or critical-domain trust boundary -> L6, critical security domain -> L5, security review -> L4, Migration/Public API -> L4) -> Matrix lookup (task_type × level)
 ```
 
 The classifier returns structured JSON with `task_type`, `facts`, `delegability` (0–2), up to five `evidence` strings, and a one-sentence `reason`. The classifier applies a `readchk` reflex first: restating intent internally and resolving referents.
@@ -81,13 +81,18 @@ Mixed tasks classify by their primary purpose. Design with sample code is `desig
 | `files_touched` | 0 / 1 / 2-5 / 6+ / unknown | Files the work changes, including new and test files (not files only read); read-only design and review are 0 |
 | `crosses_module_boundary` | yes / no / unknown | Spans modules or packages, or moves responsibilities between them |
 | `crosses_service_boundary` | yes / no / unknown | Work or diagnosis spans services, processes, or repositories |
-| `fix_or_result_known` | yes / no | The expected result or place to change is stated or evident |
-| `intermittent_or_concurrency` | yes / no | Intermittent, timing-dependent, or concurrent behaviour |
-| `needs_new_structure` | yes / no | New architecture, protocol, module boundary, or migration strategy |
-| `changes_security_or_payment_logic` | yes / no / unknown | Auth, secrets, cryptography, or payment behaviour changes (mentions or moves do not count) |
+| `fix_or_result_known` | yes / no | The expected result or place to change is stated or evident, including choosing between explicitly named options; no when the goal or candidates must still be investigated or invented |
+| `intermittent_or_concurrency` | yes / no / unknown | Only timing-dependent or concurrency defects (races, deadlocks, ordering, interleaved retries or distributed transactions); occasional slowness or failures without a stated timing aspect are no |
+| `needs_new_structure` | yes / no | Only a new architecture, protocol, cross-module or cross-service boundary, or data-migration strategy designed with open choices; laying out files in one new module or moving code along a stated boundary is no |
+| `changes_security_or_payment_logic` | yes / no / unknown | Auth, secrets, cryptography, or payment behaviour changes (mentions, moves, and review-only work do not count; reviews are covered by the two facts below) |
+| `reviews_security_sensitive_code` | yes / no / unknown | The work reviews, audits, analyses vulnerabilities or attack paths in, or judges the correctness or safety of code or designs in a security-sensitive area (auth, permissions, secrets, cryptography, payment, personal data), whether or not code changes |
+| `security_domain` | none / auth / payment / secrets / crypto / permissions / pii / unknown | The most critical security-sensitive area whose behaviour the work changes or whose correctness it judges (payment > crypto > auth > permissions > pii > secrets); `none` for mentions, moves, renames, or docs |
 | `changes_public_api_contract` | yes / no / unknown | Externally consumed API, CLI, schema, or response format changes |
 | `changes_persisted_data` | yes / no / unknown | Stored data, database schema, or data migration changes |
-| `irreversible_or_ledger_or_crypto` | yes / no | Irreversible production data, ledger correctness, or cryptographic design |
+| `irreversible_or_ledger_or_crypto` | yes / no / unknown | Irreversible production data, ledger correctness, or designing new cryptographic algorithms/protocols/key-management (implementing or reviewing signing, verification, hashing, or token rotation with existing libraries is no; a schema or data migration that can be rolled back is no) |
+| `changes_trust_boundary` | yes / no / unknown | Designs, changes, or decides where trust is established or delegated between components, services, tenants, or principals (service-to-service auth, token propagation, permission delegation, isolation), including whether to move it; reviewing existing boundary code or moving code within one trust zone is no |
+| `blast_radius` | narrow / broad / unknown | broad: a wrong result affects many services, all users or tenants, production data at large, external API consumers, or money/credentials system-wide; narrow: one component, feature, or a recoverable subset |
+| `silent_failure_material_harm` | yes / no / unknown | A mistake could go unnoticed (no error, alert, or failing test) while causing data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency |
 
 ### Difficulty Rules
 
@@ -96,19 +101,31 @@ The level is the highest matching rule over a base of L2 (L1 when `mechanical_on
 | Level | Rule (all conditions must hold) |
 |---|---|
 | **Critical** | `irreversible_or_ledger_or_crypto` = yes |
-| **L7** | `needs_new_structure` = yes, `crosses_service_boundary` = yes, `fix_or_result_known` = no |
+| **L7** | `needs_new_structure` = yes, `security_domain` = payment, crypto, auth, permissions, or pii, `changes_trust_boundary` = yes |
+| **L7** | `needs_new_structure` = yes, `crosses_service_boundary` = yes, `fix_or_result_known` = no, `blast_radius` = broad |
+| **L7** | `needs_new_structure` = yes, `crosses_service_boundary` = yes, `fix_or_result_known` = no, `silent_failure_material_harm` = yes |
+| **L6** | `needs_new_structure` = yes, `crosses_service_boundary` = yes, `fix_or_result_known` = no |
+| **L6** | `security_domain` = payment, crypto, auth, permissions, or pii, `changes_trust_boundary` = yes |
 | **L6** | `changes_security_or_payment_logic` = yes |
 | **L6** | `intermittent_or_concurrency` = yes, `crosses_service_boundary` = yes |
 | **L5** | `changes_security_or_payment_logic` = unknown |
+| **L5** | `irreversible_or_ledger_or_crypto` = unknown |
+| **L5** | `security_domain` = payment, crypto, auth, permissions, or pii |
 | **L5** | `needs_new_structure` = yes |
 | **L5** | `intermittent_or_concurrency` = yes |
 | **L5** | `fix_or_result_known` = no, `crosses_module_boundary` = yes |
+| **L4** | `reviews_security_sensitive_code` = yes or unknown |
+| **L4** | `security_domain` = unknown |
 | **L4** | `crosses_module_boundary`, `crosses_service_boundary`, `changes_public_api_contract`, or `changes_persisted_data` = yes or unknown |
 | **L4** | `files_touched` = 6+ |
 | **L3** | `files_touched` = 2-5 or unknown |
 | **L3** | `fix_or_result_known` = no |
 
-Unknown policy: an unknown security/payment fact routes one level below the security floor (L5); other unknown deciding facts take their rule. A rule at L4 or above that matched only through `unknown` sets `needs_context` and triggers one repository-aware reclassification. That reclassification may replace resolved facts, but it retains any primary affirmative safety fact: security/payment, persisted-data, public-API, or irreversible/ledger/crypto. An unrelated unknown therefore cannot lower the L6/L4 floor or clear the Critical override.
+Security floors follow the impact of a wrong judgement, not whether code is edited: a review-only task in a security-sensitive area (`reviews_security_sensitive_code` = yes) floors at L4 independent of `task_type`, and a critical `security_domain` (payment, crypto, auth, permissions, pii) floors at L5. `secrets` alone has no floor of its own; it reaches L4 through the review fact or L6 through the change fact. These are floors: they never lower a higher matching rule or the Critical override.
+
+L6/L7 follow the impact of a wrong judgement; `task_type` and whether code changes never lower a level. A critical `security_domain` whose trust boundary changes floors at L6. `needs_new_structure` is a design-difficulty signal, not an L7 signal by itself: a cross-service open design is L6, and reaches L7 only with a broad `blast_radius` or `silent_failure_material_harm` = yes, or when new structure is designed across a critical-domain trust boundary.
+
+Unknown policy: an unknown security/payment change fact or an unknown irreversible/ledger/crypto fact routes at the L5 floor (never the Critical override, which fires only on an explicit yes); an unknown review fact or security domain takes at most the L4 floor (an unknown-driven L5 floor over-routed in evaluation); other unknown deciding facts take their rule. `intermittent_or_concurrency` = unknown is a needs_context-only signal: it triggers one repository-aware reclassification without raising the level floor by itself. The same holds for `changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm` = unknown; unknown never matches their L6/L7 conditions. A rule at L4 or above that matched only through `unknown` sets `needs_context` and triggers one repository-aware reclassification. That reclassification may replace resolved facts, but it retains any primary affirmative safety fact: security/payment change, security review, a critical security domain, persisted-data, public-API, irreversible/ledger/crypto, trust-boundary change, broad blast radius, or silent material harm. An unrelated unknown therefore cannot lower the L6/L5/L4 floor or clear the Critical override.
 
 ### Risk Flags and Hard Floors
 
@@ -121,7 +138,8 @@ payment              data_migration      public_api_change
 
 - Any of `security_sensitive`, `authentication`, `authorization`, or `payment` (when involving actual code/behavior changes) forces a hard floor of **L6** and activates an Autobahn scope guard instruction. Non-security changes mentioning security terms (such as typo fixes or documentation edits) do not activate these flags and remain at their natural score (e.g. L1).
 - An active `data_migration` or `public_api_change` forces a floor of **L4**. Floors do not stack: the risk factor already scores these risks.
-- **Critical Override**: Irreversible data migration, mass production data deletion, financial ledger correctness, cryptographic design, or explicit `--critical` argument overrides the level directly to the **Critical Profile** (`GPT-6 Astra Max` / `Claude Opus Max`).
+- Review-only security work sets no risk flag (the L6 change floor and the Autobahn scope guard belong to behaviour changes); its L4/L5 floors come from `DIFFICULTY_RULES` alone.
+- **Critical Override**: Irreversible data migration, mass production data deletion, financial ledger correctness, designing new cryptographic algorithms/protocols/key-management, or explicit `--critical` argument overrides the level directly to the **Critical Profile** (`GPT-6 Astra Max` / `Claude Opus Max`). Fires only on an explicit yes; an unknown never triggers it.
 
 ## Default Execution Model Map
 

@@ -16,7 +16,12 @@ routes it through the v4 `task_type × level` matrix in `config/model-map.json`:
 design and review use `files_touched: 0`; files only read for context do not count.
 
 Security-related risk flags (security_sensitive, authentication,
-authorization, payment) force an L6 floor before the matrix lookup.
+authorization, payment) force an L6 floor before the matrix lookup. Review-only
+security work floors through facts instead: `reviews_security_sensitive_code`
+at L4 and a critical `security_domain` (payment, crypto, auth, permissions, pii)
+at L5, whatever the task type. A critical domain whose trust boundary changes
+floors at L6; L7 requires new structure plus that trust boundary, or a
+cross-service open design with a broad blast radius or silent material harm.
 
 ## Test locally
 
