@@ -993,10 +993,30 @@ class ImpactFloorTests(unittest.TestCase):
         self.assertEqual(router.SECURITY_DOMAINS, ("none", "auth", "payment", "secrets", "crypto", "permissions", "pii", "unknown"))
         self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
         self.assertIn("Caching or reading billing or order data is not payment", router.CLASSIFIER_PROMPT)
-        self.assertIn("model execution approval, CLI confirmation prompts", router.CLASSIFIER_PROMPT)
-        self.assertIn("general workflow/runtime control, NOT authorization, permissions, or security changes", router.CLASSIFIER_PROMPT)
-        self.assertIn("model execution approval, CLI confirmation prompts", policy)
-        self.assertIn("general workflow/runtime control, NOT authorization, permissions, or security changes", policy)
+
+    def test_prompt_and_policy_narrow_the_approval_gate_carve_out(self):
+        # MEDIUM-A: model-tier/UX confirmations stay non-security, but deciding
+        # whether a tool, command, or deploy may run without consent is permissions.
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        for text in (router.CLASSIFIER_PROMPT, policy):
+            # The narrowed carve-out: cost/model-tier and plain UX confirmations only.
+            self.assertIn("Two narrow carve-outs are NOT authorization, permissions, or security changes", text)
+            self.assertIn("cost/model-tier confirmations", text)
+            self.assertIn("approving an expensive model before it runs", text)
+            self.assertIn("plain UX confirmations that do not decide whether an action is allowed", text)
+            # The counter-examples: access-control decisions remain permissions.
+            self.assertIn(
+                "Everything else that decides whether an agent, tool, or command may run "
+                "without the user's consent IS authorization/permissions",
+                text,
+            )
+            self.assertIn("tool or command permission prompts", text)
+            self.assertIn("sandbox or allowlist rules for shell commands", text)
+            self.assertIn("production or deploy approval gates", text)
+            self.assertIn("adding, removing, or bypassing any such gate", text)
+            # The old, over-broad wording is gone.
+            self.assertNotIn("general workflow/runtime control, NOT authorization, permissions, or security changes", text)
+            self.assertNotIn("asking the user before running a tool or command", text)
 
 
 class CascadeEscalatedOverridesPrimaryTests(unittest.TestCase):
@@ -2708,6 +2728,37 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("steps[].command", primary)
         self.assertIn("two_stage", primary)
         self.assertIn("runs the executor only if the plan step succeeds", primary)
+
+    def test_bounded_fast_path_is_mechanical_and_consistent_across_skills(self):
+        # MEDIUM-B: the fast path must be gated on the stored route, not left to the
+        # parent's judgment, and must never mean the parent implements the task itself.
+        for plugin in ("codex", "claude", "antigravity"):
+            primary = self._primary_section(plugin)  # already whitespace-collapsed
+            with self.subTest(plugin=plugin):
+                self.assertIn("bounded changes", primary)
+                self.assertIn("single-agent fast path", primary)
+                self.assertIn("effective_level` L1-L3", primary)
+                self.assertIn("empty `risk_flags`", primary)
+                self.assertIn("`security_review` or `migration_safety`", primary)
+                self.assertIn("verification.recommended", primary)
+                self.assertIn("`single` `mode`", primary)
+                self.assertIn("no `fable`/`astra` model", primary)
+                self.assertIn("delegating once to the routed executor", primary)
+                self.assertIn("at most one review", primary)
+                self.assertIn("no multi-agent chains", primary)
+                self.assertIn("re-route only if new evidence raises scope or risk", primary)
+                self.assertIn("never means the parent implements the task itself", primary)
+                self.assertNotIn("implement directly", primary)
+
+        # The same hooks that carry the router into a session also carry the fast-path
+        # gate; both codex and claude have a hook, antigravity has none.
+        for plugin in ("codex", "claude"):
+            hook = ROOT / "plugins" / f"{plugin}-model-effort-router" / "scripts" / "routing_policy_hook.py"
+            text = hook.read_text(encoding="utf-8")
+            for expected in ("bounded changes", "single-agent fast path", "L1-L3", "fable/astra"):
+                self.assertIn(expected, text)
+            self.assertNotIn("implement directly", text)
+        self.assertFalse((ROOT / "plugins" / "antigravity-model-effort-router" / "scripts" / "routing_policy_hook.py").exists())
 
     def test_root_and_plugin_docs_describe_v2_to_v4_replay_contract(self):
         paths = [ROOT / "README.md", ROOT / "references" / "routing-policy.md"]

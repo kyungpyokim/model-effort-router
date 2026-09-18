@@ -26,6 +26,13 @@ flag, route replay fails closed with exit code `3`.
 Do not describe the current session's model or attempt to change it. Do not
 continue the task in the parent session or invoke the router again from replayed steps.
 
+For bounded changes, use a single-agent fast path: applies only when the stored route has
+`effective_level` L1-L3, empty `risk_flags`, no `security_review` or `migration_safety` in
+`verification.recommended`, a `single` `mode`, and no `fable`/`astra` model. It means delegating
+once to the routed executor (one step) with focused tests, at most one review, and no
+multi-agent chains; re-route only if new evidence raises scope or risk. It never means the
+parent implements the task itself.
+
 Schema v4 records facts and `orchestration_eligible` as future metadata only.
 `scripts/astra_adapter.py` is caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect

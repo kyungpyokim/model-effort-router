@@ -62,6 +62,12 @@ The model comes from the selected `task_type × level` matrix row, never from an
 3. The delegated agent must use every `verification.recommended` ID and reason to select applicable existing repository checks and report each result or why it was not run.
 4. Do not invoke this router again from the delegated steps.
 5. Re-route only if new evidence materially raises scope or risk.
+6. For bounded changes, use a single-agent fast path: applies only when the stored route has
+   `effective_level` L1-L3, empty `risk_flags`, no `security_review` or `migration_safety` in
+   `verification.recommended`, a `single` `mode`, and no `fable`/`astra` model. It means delegating
+   once to the routed executor (one step) with focused tests, at most one review, and no
+   multi-agent chains; re-route only if new evidence raises scope or risk. It never means the
+   parent implements the task itself.
 
 Outside a Claude Code session, run `bin/claude-route -- "<task>"` from a terminal. It
 starts an interactive `claude` session with the matrix `--model` and `--effort`, so the

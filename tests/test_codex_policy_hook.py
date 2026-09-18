@@ -77,6 +77,31 @@ class CodexPolicyHookTests(unittest.TestCase):
         ):
             self.assertIn(expected, policy)
 
+    def test_policy_states_the_bounded_fast_path_conditions_and_never_parent_implements(self):
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "SessionStart"],
+            input="{}",
+            text=True,
+            capture_output=True,
+            timeout=3,
+            check=True,
+        )
+        policy = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+        for expected in (
+            "L1-L3",
+            "risk_flags",
+            "security_review/migration_safety",
+            "single mode",
+            "fable/astra",
+            "delegates once",
+            "at most 1 review",
+            "no multi-agent chains",
+            "re-route only on new",
+            "never the parent implementing directly",
+        ):
+            self.assertIn(expected, policy)
+        self.assertNotIn("implement directly", policy)
+
     def test_malformed_input_is_ignored_without_failing_the_host(self):
         result = subprocess.run(
             [sys.executable, str(HOOK), "SessionStart"],
@@ -99,8 +124,14 @@ class CodexPolicyHookTests(unittest.TestCase):
             "does not invoke this router again",
             "bounded changes",
             "single-agent fast path",
+            "effective_level` L1-L3",
+            "empty `risk_flags`",
+            "`security_review` or `migration_safety`",
+            "no `fable`/`astra` model",
+            "never means the parent implements the task itself",
         ):
             self.assertIn(expected, skill)
+        self.assertNotIn("implement directly", skill)
 
     def test_codex_manifest_and_validator_include_only_the_codex_hook_release(self):
         manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))

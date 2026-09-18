@@ -56,6 +56,26 @@ class ClaudePolicyHookTests(unittest.TestCase):
         ):
             self.assertIn(expected, context["additionalContext"])
 
+    def test_policy_states_the_bounded_fast_path_conditions_and_never_parent_implements(self):
+        result = run_hook(json.dumps({"source": "startup"}))
+        policy = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+        for expected in (
+            "bounded changes",
+            "single-agent fast path",
+            "L1-L3",
+            "risk_flags",
+            "security_review/migration_safety",
+            "single mode",
+            "fable/astra",
+            "delegates once",
+            "at most 1 review",
+            "no multi-agent chains",
+            "re-route only on new",
+            "never the parent implementing directly",
+        ):
+            self.assertIn(expected, policy)
+        self.assertNotIn("implement directly", policy)
+
     def test_malformed_input_is_ignored_without_failing_the_host(self):
         result = run_hook("not json")
         self.assertEqual(result.returncode, 0)

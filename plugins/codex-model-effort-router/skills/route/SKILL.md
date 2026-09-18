@@ -68,7 +68,12 @@ worker classifies instead.
 7. The classification-only worker classifies only. An executor that received the
    complete route JSON executes its assigned work and does not invoke this router again.
 8. Re-route only if new evidence materially raises scope or risk.
-9. For bounded changes (clear target files, no contract changes, clear tests, no security/data impact), use a single-agent fast path: route once, implement directly with focused tests, at most one review, and do not spawn multi-agent chains or re-route.
+9. For bounded changes, use a single-agent fast path: applies only when the stored route has
+   `effective_level` L1-L3, empty `risk_flags`, no `security_review` or `migration_safety` in
+   `verification.recommended`, a `single` `mode`, and no `fable`/`astra` model. It means delegating
+   once to the routed executor (one step) with focused tests, at most one review, and no
+   multi-agent chains; re-route only if new evidence raises scope or risk. It never means the
+   parent implements the task itself.
 
 When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the same working directory. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
 

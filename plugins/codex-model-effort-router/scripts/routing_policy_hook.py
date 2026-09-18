@@ -8,18 +8,19 @@ import sys
 
 EVENTS = {"SessionStart"}
 POLICY = (
-    "For a new implementation, design, review, refactoring, or debugging task, "
-    "invoke model-effort:route before substantive work. Save the complete route "
-    "JSON and delegate with its exact model/effort; replay saved steps without "
-    "classifying again. Reuse the existing route for same-scope follow-ups. Re-route for "
-    "a distinct task, a new review, materially increased scope/risk, or a missing prior route. "
-    "Do not route casual chat or status-only questions. For bounded changes, use a single-agent "
-    "fast path: route once, implement with focused tests, at most 1 review, no multi-agent chains. "
-    "If you are the classification-only process, classify only. If you are an executor "
-    "given a complete route, execute only your assigned work; return escalation evidence instead "
-    "of recursively routing. Report classifier fallback as fallback, not successful semantic "
-    "routing. Briefly show task_type, effective_level, selected model/effort, and source before "
-    "delegation. Follow higher-priority rules and user constraints."
+    "For implementation, design, review, refactoring, or debugging work, invoke "
+    "model-effort:route first. Save the route JSON; delegate with its model/effort; "
+    "replay without reclassifying. Reuse the route for same-scope follow-ups. "
+    "Re-route for a distinct task, a new review, materially increased scope/risk, or "
+    "missing route. Skip casual chat or status-only questions. For bounded changes "
+    "(L1-L3, empty risk_flags, no security_review/migration_safety, single mode, no "
+    "fable/astra), a single-agent fast path delegates once to the routed executor: "
+    "focused tests, at most 1 review, no multi-agent chains, re-route only on new "
+    "scope/risk; never the parent implementing directly. As classification-only "
+    "process, classify only. As executor given a complete route, run only assigned "
+    "work; return escalation evidence, not recursive routing. Report fallback as "
+    "fallback, not successful semantic routing. Show task_type, level, model/effort, "
+    "source before delegating. Follow higher-priority rules."
 )
 
 
