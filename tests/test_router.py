@@ -693,6 +693,17 @@ class DifficultyRuleTests(unittest.TestCase):
         self.assertIn("Answer unknown only when the area is plausibly involved but the text and your reads cannot settle it", prompt)
         self.assertIn("never answer yes just to be safe", prompt)
 
+    def test_prompt_keeps_bounded_local_config_or_log_inspection_single_stage_without_a_repository(self):
+        prompt = router.classifier_prompt("task")
+        self.assertIn("bounded, read-only inspection of local configuration or logs", prompt)
+        self.assertIn("files_touched 0, crosses_module_boundary no, crosses_service_boundary no", prompt)
+        self.assertIn("unless the task supplies concrete risk evidence", prompt)
+        inspection = router.validate_classifier_output(classifier_output(
+            task_type="review", raw=False, files_touched="0",
+        ))
+        result = routed(classifier=lambda _: inspection)
+        self.assertEqual((result.level, result.mode, result.effort), ("L2", "single", "low"))
+
     def test_prompt_and_schema_define_the_security_review_facts(self):
         # Eval finding: "security review of the payment webhook signature check" was
         # changes_security_or_payment_logic = no (nothing changes) and routed review/L2.
