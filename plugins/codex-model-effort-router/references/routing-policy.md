@@ -96,6 +96,8 @@ Mixed tasks classify by their primary purpose. Design with sample code is `desig
 
 Payment, in `changes_security_or_payment_logic`, `reviews_security_sensitive_code`, and `security_domain`, is decided by monetary consequence, not by a module or file named billing or order: moving money; determining the amount charged (price, discount, or tax calculation); authorizing, capturing, cancelling, or refunding payments, including an order cancellation that decides a refund; ledger or settlement correctness; or creating or changing a monetary obligation. Not payment: an order list UI, billing address edits, displaying an invoice PDF, order status strings, order creation that charges nothing, or code that merely lives in a billing or order module. Caching or reading billing or order data is not payment unless the cached or read value decides the amount charged.
 
+Authorization or permissions, in `changes_security_or_payment_logic`, `reviews_security_sensitive_code`, and `security_domain`, is decided by access control boundaries (user authentication, RBAC, ACL, privilege, tenant isolation, credentials, or customer data isolation), not by general workflow control or UX confirmations: model execution approval, CLI confirmation prompts, asking the user before running a tool or command, workflow approval gates, or flags such as `--approved` are general workflow/runtime control, NOT authorization, permissions, or security changes.
+
 ### Difficulty Rules
 
 The level is the highest matching rule over a base of L2 (L1 when `mechanical_only` is yes).

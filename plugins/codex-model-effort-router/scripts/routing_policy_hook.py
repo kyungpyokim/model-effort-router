@@ -9,16 +9,17 @@ import sys
 EVENTS = {"SessionStart"}
 POLICY = (
     "For a new implementation, design, review, refactoring, or debugging task, "
-    "invoke model-effort:route before substantive repository work. Save the complete "
-    "route JSON and delegate with its exact model and effort; replay saved steps without "
-    "classifying again. Reuse the existing route for same-scope follow-ups. Re-route for a "
-    "distinct task, a new review, materially increased scope/risk, or a missing prior route. "
-    "Do not route casual chat or status-only questions. If you are the classification-only "
-    "process, classify only. If you are an executor given a complete route, execute only your "
-    "assigned work; return escalation evidence instead of recursively routing. Report classifier "
-    "fallback as fallback, not successful semantic routing. Briefly show task_type, effective_level, "
-    "selected model/effort, and source before delegation. Follow higher-priority instructions and "
-    "explicit user constraints."
+    "invoke model-effort:route before substantive work. Save the complete route "
+    "JSON and delegate with its exact model/effort; replay saved steps without "
+    "classifying again. Reuse the existing route for same-scope follow-ups. Re-route for "
+    "a distinct task, a new review, materially increased scope/risk, or a missing prior route. "
+    "Do not route casual chat or status-only questions. For bounded changes, use a single-agent "
+    "fast path: route once, implement with focused tests, at most 1 review, no multi-agent chains. "
+    "If you are the classification-only process, classify only. If you are an executor "
+    "given a complete route, execute only your assigned work; return escalation evidence instead "
+    "of recursively routing. Report classifier fallback as fallback, not successful semantic "
+    "routing. Briefly show task_type, effective_level, selected model/effort, and source before "
+    "delegation. Follow higher-priority rules and user constraints."
 )
 
 

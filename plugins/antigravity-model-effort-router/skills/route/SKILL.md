@@ -17,6 +17,12 @@ planner, then runs the executor only if the plan step succeeds. The executor mus
 `verification.recommended` ID and reason to select applicable existing
 repository checks and report each result or why it was not run.
 
+If any final `steps[].model` or present `steps[].agent.model` contains `fable` or
+`astra` (case-insensitive), show the matching selected model names to the user and
+wait for explicit approval before execution. Do not reclassify. After approval, replay the same file with
+`../../bin/agy-route --approved --route-file "<route.json>"`; without a TTY or this
+flag, route replay fails closed with exit code `3`.
+
 Do not describe the current session's model or attempt to change it. Do not
 continue the task in the parent session or invoke the router again from replayed steps.
 

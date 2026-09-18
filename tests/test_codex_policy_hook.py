@@ -69,6 +69,8 @@ class CodexPolicyHookTests(unittest.TestCase):
             "same-scope follow-ups",
             "a distinct task, a new review, materially increased scope/risk",
             "casual chat or status-only questions",
+            "bounded changes",
+            "single-agent fast path",
             "classification-only process",
             "executor given a complete route",
             "not successful semantic routing",
@@ -95,6 +97,8 @@ class CodexPolicyHookTests(unittest.TestCase):
             "materially raises scope or risk",
             "Do not route casual chat or status-only questions",
             "does not invoke this router again",
+            "bounded changes",
+            "single-agent fast path",
         ):
             self.assertIn(expected, skill)
 

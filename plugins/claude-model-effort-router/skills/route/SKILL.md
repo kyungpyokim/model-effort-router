@@ -47,13 +47,17 @@ Classify with the in-session assessor, not a nested CLI:
    once more; if the router still exits non-zero, do not guess a route and do not delegate.
    Report the failure, ask the user for `task_type` and `level`, and rerun the router with
    `--task-type` and `--level`.
+   After the one allowed `needs_context` cascade, inspect the final `steps[].model` and, when
+   present, `steps[].agent.model` values. If a selected model contains `fable` or `astra`, show
+   the matching model names to the user and wait for explicit approval. Do not delegate,
+   reclassify, or execute before approval. After approval, reuse this exact stored route JSON.
 5. Outside that manual step, never run the router in this flow without `--classification-file`:
    that spawns a nested classifier CLI. Never delegate a route whose `source` is `fallback`;
    classification did not happen, so stop and report it.
 
 The model comes from the selected `task_type × level` matrix row, never from an agent default. `review` and `design` use `claude-haiku-4-5` at L1, `claude-opus-5` at L2-L4, then `claude-fable-5-1` with Opus fallback at L5-L7. A level-only delegation that keeps the agent's own model is wrong.
 
-1. Execute the route with the Agent tool, one call per stored step, in order. Pass the complete generated route JSON with the original task. For each step, set `subagent_type` to `steps[].agent.subagent_type`, `model` to `steps[].agent.model`, and use the last element of `steps[].command` as the prompt; it already carries the task, the stage instructions, and the verification handoff. A `single` route is one call; a `two_stage` route (`architectural_refactoring` L3+) runs the planner, then runs the executor only if the plan step succeeds. Never reclassify, and do not continue the task in the parent session.
+1. Execute the route with the Agent tool, one call per stored step, in order. If any selected `steps[].model` or present `steps[].agent.model` contains `fable` or `astra` (case-insensitive), wait for the explicit user approval above before this step. Pass the complete generated route JSON with the original task. For each step, set `subagent_type` to `steps[].agent.subagent_type`, `model` to `steps[].agent.model`, and use the last element of `steps[].command` as the prompt; it already carries the task, the stage instructions, and the verification handoff. A `single` route is one call; a `two_stage` route (`architectural_refactoring` L3+) runs the planner, then runs the executor only if the plan step succeeds. Never reclassify, and do not continue the task in the parent session.
 2. The Agent tool cannot set effort, so `steps[].agent.subagent_type` is an `effort-*` agent whose frontmatter pins `steps[].effort`. Do not substitute a `level-N` agent.
 3. The delegated agent must use every `verification.recommended` ID and reason to select applicable existing repository checks and report each result or why it was not run.
 4. Do not invoke this router again from the delegated steps.
