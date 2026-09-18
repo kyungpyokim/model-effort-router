@@ -20,7 +20,8 @@ public API, persisted data, irreversible changes, trust-boundary changes, blast
 radius, silent material harm), and `DIFFICULTY_RULES` in
 `scripts/router.py` turn those facts into the level. The highest matching rule wins; `matched_rules` in the route JSON names it.
 When a fact that decides L4 or above is `unknown`, the router escalates once to a
-repository-aware classifier. Some unknowns only ask for that escalation without raising
+repository-aware classifier, unless the working directory has no inspectable repository
+(then `needs_context` is reported false and the first reply's floors stand). Some unknowns only ask for that escalation without raising
 the level: `crosses_module_boundary`, `intermittent_or_concurrency`,
 `changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm`. A
 `crosses_service_boundary` still unknown after escalation keeps the L4 floor, and an

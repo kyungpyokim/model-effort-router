@@ -1010,8 +1010,12 @@ class ImpactFloorTests(unittest.TestCase):
         # whether a tool, command, or deploy may run without consent is permissions.
         policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
         for text in (router.CLASSIFIER_PROMPT, policy):
-            # The narrowed carve-out: cost/model-tier and plain UX confirmations only.
-            self.assertIn("Two narrow carve-outs are NOT authorization, permissions, or security changes", text)
+            # The narrowed carve-outs: cost/model-tier, plain UX confirmations, and the
+            # user's own local hook/plugin configuration.
+            self.assertIn("Three narrow carve-outs are NOT authorization, permissions, or security changes", text)
+            self.assertIn("hooks, plugins, or extensions in the user's own local tool configuration", text)
+            self.assertIn("installing, registering, enabling, or trusting them", text)
+            self.assertIn("unless it grants, widens, or bypasses a tool or command permission prompt, sandbox, or allowlist rule", text)
             self.assertIn("cost/model-tier confirmations", text)
             self.assertIn("approving an expensive model before it runs", text)
             self.assertIn("plain UX confirmations that do not decide whether an action is allowed", text)
@@ -1209,6 +1213,78 @@ class ServiceBoundaryUnknownCascadeTests(unittest.TestCase):
         combined = router.combine_cascade(primary, router.fallback_classification("timed out", "timeout"))
         self.assertIs(combined, primary)
         self.assertEqual((combined.level, combined.needs_context), ("L4", True))
+
+
+class NoInspectableRepositoryTests(unittest.TestCase):
+    """Incident: an empty Codex workspace (only empty `outputs/` and `work/` folders)
+    still ran the repository-aware reclassification, which had nothing to read. The
+    second classifier is skipped there, but every unknown-driven floor stays."""
+
+    def empty_workspace(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for name in ("outputs", "work", ".codex"):
+            (Path(tmp.name) / name).mkdir()
+        (Path(tmp.name) / ".codex" / "state.json").write_text("{}", encoding="utf-8")
+        return Path(tmp.name)
+
+    def test_inspectable_repository_needs_one_visible_file(self):
+        workspace = self.empty_workspace()
+        self.assertFalse(router.has_inspectable_repository(workspace))
+        self.assertFalse(router.has_inspectable_repository(workspace / "missing"))
+        (workspace / "work" / "notes.txt").write_text("x", encoding="utf-8")
+        self.assertTrue(router.has_inspectable_repository(workspace))
+        self.assertTrue(router.has_inspectable_repository(ROOT))
+
+    def test_cascade_skips_the_repository_aware_call_but_keeps_the_primary_floors(self):
+        primary_output = classifier_output(
+            changes_security_or_payment_logic="unknown", security_domain="permissions",
+            crosses_module_boundary="unknown",
+        )
+        with (
+            contextlib.chdir(self.empty_workspace()),
+            mock.patch.object(router.subprocess, "run",
+                              return_value=subprocess.CompletedProcess([], 0, primary_output, "")) as run,
+        ):
+            result = router.route("diagnose the hooks page", "codex", CONFIG)
+        self.assertEqual(run.call_count, 1)
+        self.assertNotIn("Repository to inspect", run.call_args.args[0][-1])
+        self.assertEqual((result.source, result.level, result.needs_context), ("gpt-5.6-luna", "L5", False))
+        self.assertIn("L5:security_or_payment_logic_unknown (unknown)", result.matched_rules)
+        self.assertIn("L5:security_domain_critical", result.matched_rules)
+        self.assertIn("no inspectable repository", " ".join(result.rationale))
+
+    def test_cascade_still_runs_when_the_workspace_has_files(self):
+        workspace = self.empty_workspace()
+        (workspace / "app.py").write_text("print(1)\n", encoding="utf-8")
+        primary_output = classifier_output(crosses_module_boundary="unknown")
+        escalated_output = classifier_output(level="L3")
+
+        def fake_run(command, **kwargs):
+            model = command[command.index("--model") + 1]
+            return subprocess.CompletedProcess([], 0, escalated_output if model == "gpt-5.6-terra" else primary_output, "")
+
+        with contextlib.chdir(workspace), mock.patch.object(router.subprocess, "run", side_effect=fake_run) as run:
+            result = router.route("change the export flow", "codex", CONFIG)
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual((result.source, result.level), ("gpt-5.6-terra", "L3"))
+
+    def test_classification_file_route_json_tells_the_skill_not_to_escalate(self):
+        # The route skills escalate on `needs_context: true`; in an empty workspace the
+        # route JSON reports false so the skill keeps the primary route.
+        payload_text = classifier_output(changes_security_or_payment_logic="unknown")
+        stdout = io.StringIO()
+        with (
+            contextlib.chdir(self.empty_workspace()),
+            mock.patch.object(router.sys, "stdin", io.StringIO(payload_text)),
+            mock.patch.object(router.subprocess, "run") as run,
+            contextlib.redirect_stdout(stdout),
+        ):
+            code = router.main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(run.call_count, 0)
+        self.assertEqual((code, payload["effective_level"], payload["needs_context"]), (0, "L5", False))
+        self.assertEqual(payload["matched_rules"], ["L5:security_or_payment_logic_unknown (unknown)"])
 
 
 class ExternalClassificationTests(unittest.TestCase):
