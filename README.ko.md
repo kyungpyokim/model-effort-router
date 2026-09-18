@@ -1,4 +1,4 @@
-# Model Effort Router (v2.4.0)
+# Model Effort Router (v2.5.0)
 
 [English](README.md) | 한국어
 
@@ -23,12 +23,12 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 
 L4 이상을 결정하는 핵심 팩트가 `unknown`(불명확) 상태인 경우, 라우터는 저장소 컨텍스트를 읽을 수 있는 분류기로 1회 에스컬레이션(재분석)합니다.
 
-일부 `unknown`은 레벨을 올리지 않고 에스컬레이션만 요청합니다: `crosses_module_boundary`, `intermittent_or_concurrency`, `changes_trust_boundary`, `blast_radius`, `silent_failure_material_harm`. 에스컬레이션 후에도 `crosses_service_boundary`가 `unknown`이면 L4 바닥선을 유지하고, `irreversible_or_ledger_or_crypto`가 `unknown`이면 L5 바닥선을 적용하되 Critical Override는 발동하지 않습니다. 에스컬레이션 응답은 확정된 팩트를 대체할 수 있지만, 첫 응답이 확인한 안전 팩트(보안/결제 변경 또는 검토, 치명적 보안 영역, 영속 데이터, 퍼블릭 API, 비가역 변경, 신뢰 경계, 넓은 영향 반경, 무음 피해)는 유지됩니다. 어느 한쪽이라도 yes면 yes입니다.
+일부 `unknown`은 레벨을 올리지 않고 에스컬레이션만 요청합니다: `crosses_module_boundary`, `intermittent_or_concurrency`, `changes_trust_boundary`, `blast_radius`, `silent_failure_material_harm`. 에스컬레이션 후에도 `crosses_service_boundary`가 `unknown`이면 L4 바닥선을 유지하고, `irreversible_or_ledger_or_crypto`가 `unknown`이면 L5 바닥선을 적용하되 Critical Override는 발동하지 않습니다. 에스컬레이션된 분류기는 저장소 코드를 직접 읽었지만, 일부 안전 팩트만 그 응답으로 낮출 수 있습니다. 고정(sticky) 안전 팩트(보안/결제 변경, 영속 데이터, 퍼블릭 API, 비가역 변경, 신뢰 경계, 무음 피해)는 OR로 결합되어 에스컬레이션 응답이 무엇이든 낮아지지 않습니다. 교정 가능한(correctable) 안전 팩트(치명적 보안 영역, 보안 검토, 넓은 영향 반경)는 키워드 기반 1차 분류기가 일반적인 검토 작업에서 가장 자주 오탐하는 지점으로, 에스컬레이션 응답이 `unknown`이 아닌 명시적 답을 준 경우에만 교정될 수 있습니다: no/narrow로 명시하면 그 값이 우선하고, `none`이면 그 값이 우선하며, 서로 다른 보안 영역을 명시한 경우에는 우선순위(payment > crypto > auth > permissions > pii > secrets)상 더 치명적인 쪽이 유지됩니다.
 
 플랫폼별 에스컬레이션 모델:
 
 - **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
-- **Claude Code**: `claude-haiku-4-5` (N/A) → `claude-sonnet-5` (medium)
+- **Claude Code**: `claude-sonnet-5` (medium) → `claude-sonnet-5` (medium)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
 
 각 사전 분류는 격리된 임시 디렉토리에서 실행되며 구조화된 JSON(`task_type`, `facts`, `delegability`, `evidence`, `reason`)을 검증한 뒤 프로필을 선택합니다. 읽기 전용인 `design` 및 `review` 작업의 경우 `files_touched`가 `0`으로 처리됩니다. Claude Code 또는 Codex 세션 내에서는 라우트 스킬이 인세션 `difficulty-assessor` 에이전트를 통해 동일한 프롬프트를 실행하고 `--classification-file`로 JSON을 전달합니다. 저장소 컨텍스트가 필요한 경우 `primary`/`escalated` JSON 엔벨로프를 전달하여 라우터가 두 응답을 결합한 뒤 경로를 선택합니다.

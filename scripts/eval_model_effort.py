@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate Model and Effort profiles across Codex, Claude Code, and Antigravity (v2.4.0).
+"""Evaluate Model and Effort profiles across Codex, Claude Code, and Antigravity (v2.5.0).
 
 Performs static verification of all model+effort combinations defined in
 config/model-map.json and plugin agent definitions.

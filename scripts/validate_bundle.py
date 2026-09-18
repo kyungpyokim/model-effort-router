@@ -2,10 +2,20 @@
 """Static validation for the cross-platform plugin bundle."""
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import tomllib
 from pathlib import Path
+
+
+def load_router(root: Path):
+    spec = importlib.util.spec_from_file_location("router", root / "scripts" / "router.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def require(path: Path) -> None:
@@ -29,13 +39,27 @@ def main() -> int:
     root = Path(__file__).resolve().parent.parent
     require(root / "config" / "model-map.json")
 
+    router = load_router(root)
+    model_map = read_json(root / "config" / "model-map.json")
+    classifiers = model_map["classifiers"]
+    # antigravity is excluded here: its model-map fallback patterns have long since
+    # drifted from router.FALLBACK_CLASSIFIER_CONFIG (predates this change, a
+    # separate pre-existing bug -- not asserted on until that drift is resolved).
+    for platform in ("codex", "claude-code"):
+        assert classifiers[platform]["primary"] == router.PRIMARY_CLASSIFIER_CONFIG[platform], (
+            f"model-map classifiers.{platform}.primary does not match router.PRIMARY_CLASSIFIER_CONFIG"
+        )
+        assert classifiers[platform]["fallback"] == router.FALLBACK_CLASSIFIER_CONFIG[platform], (
+            f"model-map classifiers.{platform}.fallback does not match router.FALLBACK_CLASSIFIER_CONFIG"
+        )
+
     codex = root / "plugins" / "codex-model-effort-router"
     claude = root / "plugins" / "claude-model-effort-router"
     agy = root / "plugins" / "antigravity-model-effort-router"
 
     c_manifest = read_json(codex / ".codex-plugin" / "plugin.json")
     assert c_manifest["name"] == "model-effort"
-    assert c_manifest["version"] == "2.4.0"
+    assert c_manifest["version"] == "2.5.0"
     require(codex / "skills" / "route" / "SKILL.md")
     require(codex / "hooks" / "hooks.json")
     require(codex / "scripts" / "routing_policy_hook.py")
@@ -51,7 +75,7 @@ def main() -> int:
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
     assert a_manifest["name"] == "model-effort"
-    assert a_manifest["version"] == "2.4.0"
+    assert a_manifest["version"] == "2.5.0"
     require(claude / "skills" / "route" / "SKILL.md")
     require(claude / "scripts" / "routing_policy_hook.py")
     claude_hooks = read_json(claude / "hooks" / "hooks.json")["hooks"]
@@ -67,7 +91,9 @@ def main() -> int:
     assert assessor["tools"] == "Read, Grep, Glob", "the difficulty assessor must stay read-only"
     assert int(assessor["maxTurns"]) >= 16, "the difficulty assessor needs turns to finish its JSON"
     assert "at most 6 tool calls" in (claude / "agents" / "difficulty-assessor.md").read_text(encoding="utf-8")
-    assert "`model` `haiku`" in (claude / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
+    claude_skill_text = (claude / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
+    assert "`model` `sonnet`" in claude_skill_text, "primary classification step must stay on sonnet"
+    assert "`model` `opus`" in claude_skill_text, "escalation step must use a stronger model than the primary (opus)"
     # The route skill delegates through the Agent tool, which cannot set effort,
     # so each matrix effort needs an agent that pins it.
     for effort in ("none", "low", "medium", "high", "xhigh", "max"):
@@ -107,7 +133,7 @@ def main() -> int:
 
     g_manifest = read_json(agy / "gemini-extension.json")
     assert g_manifest["name"] == "model-effort"
-    assert g_manifest["version"] == "2.4.0"
+    assert g_manifest["version"] == "2.5.0"
     require(agy / "skills" / "route" / "SKILL.md")
     require(agy / "GEMINI.md")
     require(agy / "commands" / "route.toml")

@@ -1,4 +1,4 @@
-# Model Effort Router (v2.4.0)
+# Model Effort Router (v2.5.0)
 
 English | [한국어](README.ko.md)
 
@@ -25,15 +25,20 @@ the level: `crosses_module_boundary`, `intermittent_or_concurrency`,
 `changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm`. A
 `crosses_service_boundary` still unknown after escalation keeps the L4 floor, and an
 unknown `irreversible_or_ledger_or_crypto` floors at L5 but never triggers the Critical
-Override. The escalated reply may replace resolved facts, but a safety fact the first
-reply affirmed (security/payment change or review, critical security domain, persisted
-data, public API, irreversible, trust boundary, broad blast radius, silent harm) is
-kept: a yes from either reply wins.
+Override. The escalated classifier read the repository, but only some safety facts may
+be lowered by it. A sticky safety fact the first reply affirmed (security/payment
+change, persisted data, public API, irreversible, trust boundary, silent harm) is
+OR-aggregated and can never be lowered by the escalated reply. A correctable safety
+fact (critical security domain, security review, broad blast radius) — where a
+keyword-driven primary produces most of its false positives — may be corrected once
+the escalated reply gives an explicit, non-`unknown` answer: an explicit no/narrow
+wins, `none` wins, and a differing named domain keeps whichever of the two is more
+critical by priority (payment > crypto > auth > permissions > pii > secrets).
 
 Escalation models by platform:
 
 - **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
-- **Claude Code**: `claude-haiku-4-5` (N/A) → `claude-sonnet-5` (medium)
+- **Claude Code**: `claude-sonnet-5` (medium) → `claude-sonnet-5` (medium)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON

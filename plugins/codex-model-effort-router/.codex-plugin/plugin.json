@@ -1,6 +1,6 @@
 {
   "name": "model-effort",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Routes coding tasks from task facts to a Codex model and reasoning-effort profile.",
   "author": {
     "name": "Model Effort Router contributors"

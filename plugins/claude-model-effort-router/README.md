@@ -31,8 +31,8 @@ Then invoke:
 /model-effort:route <task>
 ```
 
-The router preflights each task with native `claude-haiku-4-5`, then uses
-`claude-sonnet-5` / medium once when `needs_context` is true. Claude's JSON-schema output is
+The router preflights each task with native `claude-sonnet-5` / medium, then uses
+`claude-sonnet-5` / medium again once when `needs_context` is true. Claude's JSON-schema output is
 read from its `structured_output` result field. Safe mode,
 no tools, plan permissions, no session persistence, and a temporary working
 directory isolate the classifier. Failure safely selects L3. Each agent pins
