@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -993,6 +994,30 @@ class ImpactFloorTests(unittest.TestCase):
         self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
         self.assertIn("Caching or reading billing or order data is not payment", router.CLASSIFIER_PROMPT)
 
+    def test_prompt_and_policy_narrow_the_approval_gate_carve_out(self):
+        # MEDIUM-A: model-tier/UX confirmations stay non-security, but deciding
+        # whether a tool, command, or deploy may run without consent is permissions.
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        for text in (router.CLASSIFIER_PROMPT, policy):
+            # The narrowed carve-out: cost/model-tier and plain UX confirmations only.
+            self.assertIn("Two narrow carve-outs are NOT authorization, permissions, or security changes", text)
+            self.assertIn("cost/model-tier confirmations", text)
+            self.assertIn("approving an expensive model before it runs", text)
+            self.assertIn("plain UX confirmations that do not decide whether an action is allowed", text)
+            # The counter-examples: access-control decisions remain permissions.
+            self.assertIn(
+                "Everything else that decides whether an agent, tool, or command may run "
+                "without the user's consent IS authorization/permissions",
+                text,
+            )
+            self.assertIn("tool or command permission prompts", text)
+            self.assertIn("sandbox or allowlist rules for shell commands", text)
+            self.assertIn("production or deploy approval gates", text)
+            self.assertIn("adding, removing, or bypassing any such gate", text)
+            # The old, over-broad wording is gone.
+            self.assertNotIn("general workflow/runtime control, NOT authorization, permissions, or security changes", text)
+            self.assertNotIn("asking the user before running a tool or command", text)
+
 
 class CascadeEscalatedOverridesPrimaryTests(unittest.TestCase):
     """combine_cascade splits primary safety facts into two groups (see
@@ -1765,15 +1790,199 @@ class CommandAndLauncherTests(unittest.TestCase):
             for output_format in ("json", "command"):
                 with self.subTest(platform=platform, output=output_format):
                     output = io.StringIO()
-                    with contextlib.redirect_stdout(output):
-                        self.assertEqual(router.main([
-                            "task", "--platform", platform, "--task-type", "implementation",
-                            "--level", "L7", "--interactive", "--format", output_format,
-                        ]), 0)
+                    with mock.patch("builtins.input", side_effect=AssertionError("route generation must not request approval")):
+                        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(output):
+                            self.assertEqual(router.main([
+                                "task", "--platform", platform, "--task-type", "implementation",
+                                "--level", "L7", "--interactive", "--format", output_format,
+                            ]), 0)
                     command = json.loads(output.getvalue())["steps"][0]["command"] if output_format == "json" else router.shlex.split(output.getvalue())
                     self.assertNotIn({"codex": "exec", "claude-code": "-p", "antigravity": "--prompt"}[platform], command)
                     if platform == "antigravity":
                         self.assertIn("--prompt-interactive", command)
+
+    def test_direct_launchers_replay_high_tier_routes_before_execution(self):
+        cases = (
+            ("codex-route", "codex", "gpt-5.6-luna", classifier_output(level="L7")),
+            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
+            ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
+        )
+        for launcher, executable, classifier_model, classifier_reply in cases:
+            with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                marker = directory / "executor-called"
+                classifier_calls = directory / "classifier-calls"
+                fake = directory / executable
+                fake.write_text(
+                    f"#!{sys.executable}\nimport pathlib, sys\n"
+                    f"if {classifier_model!r} in sys.argv[1:]:\n"
+                    f"    calls = pathlib.Path({str(classifier_calls)!r})\n"
+                    f"    calls.write_text(str(int(calls.read_text() or '0') + 1) if calls.exists() else '1')\n"
+                    f"    print({classifier_reply!r})\n"
+                    f"else:\n"
+                    f"    pathlib.Path({str(marker)!r}).touch()\n",
+                    encoding="utf-8",
+                )
+                fake.chmod(0o755)
+                temp_dir = directory / "routes"
+                temp_dir.mkdir()
+                env = {
+                    **os.environ,
+                    "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                    "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
+                    "TMPDIR": str(temp_dir),
+                }
+                if launcher == "agy-route":
+                    models = directory / "models.txt"
+                    models.write_text("Claude Fable 5.1 (Thinking)\n", encoding="utf-8")
+                    env["MODEL_EFFORT_ROUTER_MODELS_FILE"] = str(models)
+
+                proc = subprocess.run(
+                    [str(ROOT / self.LAUNCHERS[launcher]), "--", "task"],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    env=env,
+                )
+                self.assertEqual(proc.returncode, 3, proc.stderr)
+                self.assertEqual(classifier_calls.read_text(), "1")
+                self.assertFalse(marker.exists())
+                self.assertEqual(list(temp_dir.iterdir()), [])
+
+    def test_direct_two_stage_launchers_leave_no_plan_dir_behind(self):
+        # Regression for the generate-then-replay launcher flow: a direct two-stage
+        # run (classify -> route JSON -> --route-file replay) must clean up its plan
+        # dir exactly like the old single-invocation `--format command` path did.
+        cases = (
+            ("codex-route", "codex", "gpt-5.6-luna", classifier_output(task_type="architectural_refactoring", level="L3")),
+            (
+                "agy-route", "agy", "Gemini 3.8 Flash (Medium)",
+                json.dumps({"structured_output": json.loads(classifier_output(task_type="architectural_refactoring", level="L3"))}),
+            ),
+        )
+        for launcher, executable, classifier_model, classifier_reply in cases:
+            with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                calls = directory / "calls"
+                fake = directory / executable
+                fake.write_text(
+                    f"#!{sys.executable}\nimport pathlib, sys\n"
+                    f"if {classifier_model!r} in sys.argv[1:]:\n"
+                    f"    print({classifier_reply!r})\n"
+                    "else:\n"
+                    f"    with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
+                    "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n",
+                    encoding="utf-8",
+                )
+                fake.chmod(0o755)
+                temp_dir = directory / "routes"
+                temp_dir.mkdir()
+                env = {
+                    **os.environ,
+                    "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                    "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
+                    "TMPDIR": str(temp_dir),
+                }
+                if launcher == "agy-route":
+                    models = directory / "models.txt"
+                    models.write_text("Claude Fable 5.1 (Thinking)\n", encoding="utf-8")
+                    env["MODEL_EFFORT_ROUTER_MODELS_FILE"] = str(models)
+
+                proc = subprocess.run(
+                    [str(ROOT / self.LAUNCHERS[launcher]), "--", "split module boundaries"],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    env=env,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn("planning stage", calls.read_text())
+                self.assertIn("execution stage", calls.read_text())
+                self.assertEqual(list(temp_dir.iterdir()), [], f"leaked temp entries: {list(temp_dir.iterdir())}")
+
+    def test_launchers_request_plan_dir_cleanup_only_for_the_route_file_they_generate(self):
+        # Static guard for the launcher scripts themselves: the route file a launcher
+        # mktemp's and replays for its own direct run must ask for cleanup, while a
+        # route file the user explicitly hands in via `--route-file <path>` (a stored
+        # file whose plan artifacts the user may still want) must not.
+        for launcher, script in self.LAUNCHERS.items():
+            with self.subTest(launcher=launcher):
+                text = (ROOT / script).read_text(encoding="utf-8")
+                user_supplied = re.search(r'ROUTE_ARGS=\(--route-file "\$2"\)', text)
+                generated = re.search(r'ROUTE_ARGS=\(--route-file "\$\{ROUTE_FILE\}" --cleanup-plan-dir\)', text)
+                self.assertIsNotNone(user_supplied, "user-supplied --route-file branch changed shape")
+                self.assertIsNotNone(generated, "direct-run generated route file must pass --cleanup-plan-dir")
+
+    def test_high_tier_print_only_outputs_without_approval_or_execution(self):
+        cases = (
+            ("codex-route", "codex", "gpt-5.6-luna", classifier_output(level="L7")),
+            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
+            ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
+        )
+        for launcher, executable, classifier_model, classifier_reply in cases:
+            with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                marker = directory / "executor-called"
+                classifier_calls = directory / "classifier-calls"
+                fake = directory / executable
+                fake.write_text(
+                    f"#!{sys.executable}\nimport pathlib, sys\n"
+                    f"if {classifier_model!r} in sys.argv[1:]:\n"
+                    f"    calls = pathlib.Path({str(classifier_calls)!r})\n"
+                    f"    calls.write_text(str(int(calls.read_text() or '0') + 1) if calls.exists() else '1')\n"
+                    f"    print({classifier_reply!r})\n"
+                    f"else:\n"
+                    f"    pathlib.Path({str(marker)!r}).touch()\n",
+                    encoding="utf-8",
+                )
+                fake.chmod(0o755)
+                available_models = ["Claude Fable 5.1 (Thinking)"] if launcher == "agy-route" else None
+                result = routed(
+                    platform={"codex-route": "codex", "claude-route": "claude-code", "agy-route": "antigravity"}[launcher],
+                    classifier=lambda _: classification("implementation", "L7"),
+                    available_models=available_models,
+                )
+                route_file = directory / "route.json"
+                route_file.write_text(json.dumps(router.result_payload(result, router.stage_commands(result, "task"))), encoding="utf-8")
+                temp_dir = directory / "routes"
+                temp_dir.mkdir()
+                env = {
+                    **os.environ,
+                    "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                    "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1",
+                    "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
+                    "TMPDIR": str(temp_dir),
+                }
+                if launcher == "agy-route":
+                    models = directory / "models.txt"
+                    models.write_text("Claude Fable 5.1 (Thinking)\n", encoding="utf-8")
+                    env["MODEL_EFFORT_ROUTER_MODELS_FILE"] = str(models)
+
+                saved = subprocess.run(
+                    [str(ROOT / self.LAUNCHERS[launcher]), "--route-file", str(route_file)],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    env=env,
+                )
+                self.assertEqual(saved.returncode, 0, saved.stderr)
+                self.assertIn(result.stages[0]["model"], saved.stderr)
+                self.assertFalse(marker.exists())
+
+                direct = subprocess.run(
+                    [str(ROOT / self.LAUNCHERS[launcher]), "--", "task"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    env=env,
+                )
+                self.assertEqual(direct.returncode, 0, direct.stderr)
+                self.assertEqual(classifier_calls.read_text(), "1")
+                self.assertIn(result.stages[0]["model"], direct.stderr)
+                self.assertFalse(marker.exists())
+                self.assertEqual(list(temp_dir.iterdir()), [])
 
     def test_antigravity_launcher_executes_stored_route_without_reclassification(self):
         result = routed(platform="antigravity", classifier=lambda _: classification("review", "L3"))
@@ -2024,6 +2233,197 @@ class CommandAndLauncherTests(unittest.TestCase):
             route_file.write_text(json.dumps(payload), encoding="utf-8")
             with mock.patch.object(router, "classify_task", side_effect=AssertionError("must not reclassify")):
                 self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
+
+    def test_route_file_cleanup_plan_dir_removes_dir_on_success_and_failure(self):
+        # Regression: a direct two-stage run replayed through --route-file must not
+        # leak its plan dir, on either a clean run or a failing implementer stage --
+        # but a stored/user route file replayed WITHOUT --cleanup-plan-dir (the
+        # launchers' explicit `--route-file <path>` mode) must never have its plan
+        # dir deleted out from under the user.
+        result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
+        for should_fail in (False, True):
+            with self.subTest(should_fail=should_fail), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                plan_dir = directory / "plan"
+                run_result = dataclasses.replace(result, plan_dir=str(plan_dir))
+                payload = router.result_payload(run_result, router.stage_commands(run_result, "restructure modules"))
+                route_file = directory / "route.json"
+                route_file.write_text(json.dumps(payload), encoding="utf-8")
+
+                fake_codex = directory / "codex"
+                fake_codex.write_text(
+                    f"#!{sys.executable}\nimport sys\n"
+                    f"if 'execution stage' in ' '.join(sys.argv[1:]) and {should_fail}:\n"
+                    "    raise SystemExit(9)\n",
+                    encoding="utf-8",
+                )
+                fake_codex.chmod(0o755)
+                env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+
+                output = io.StringIO()
+                with mock.patch.object(router, "classify_task", side_effect=AssertionError("must not reclassify")):
+                    with contextlib.redirect_stdout(output):
+                        self.assertEqual(router.main(["--route-file", str(route_file), "--cleanup-plan-dir"]), 0)
+                chain = output.getvalue().strip()
+                self.assertIn("rm -rf", chain)
+
+                proc = subprocess.run(["bash", "-c", chain], capture_output=True, text=True, timeout=10, env=env)
+                self.assertEqual(proc.returncode, 9 if should_fail else 0, proc.stderr)
+                self.assertFalse(plan_dir.exists(), f"plan dir leaked (should_fail={should_fail})")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            plan_dir = directory / "plan"
+            run_result = dataclasses.replace(result, plan_dir=str(plan_dir))
+            payload = router.result_payload(run_result, router.stage_commands(run_result, "restructure modules"))
+            route_file = directory / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            fake_codex = directory / "codex"
+            fake_codex.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+            fake_codex.chmod(0o755)
+            env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
+            chain = output.getvalue().strip()
+            self.assertNotIn("rm -rf", chain)
+
+            subprocess.run(["bash", "-c", chain], capture_output=True, text=True, timeout=10, env=env, check=True)
+            self.assertTrue(plan_dir.is_dir(), "stored route file's plan dir must be preserved")
+
+    def test_high_tier_route_file_requires_explicit_approval_before_execution(self):
+        for platform, task_type, level in (
+            ("codex", "implementation", "L7"),
+            ("claude-code", "implementation", "L5"),
+            ("codex", "architectural_refactoring", "L7"),
+        ):
+            with self.subTest(platform=platform, task_type=task_type), tempfile.TemporaryDirectory() as tmp:
+                result = routed(platform=platform, classifier=lambda _: classification(task_type, level))
+                route_file = Path(tmp) / "route.json"
+                route_file.write_text(json.dumps(router.result_payload(result, router.stage_commands(result, "task"))), encoding="utf-8")
+
+                with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
+
+                with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
+                    with mock.patch("builtins.input", return_value="yes") as approval:
+                        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                            self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
+                    self.assertEqual(approval.call_count, 1)
+                with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
+                    with mock.patch("builtins.input", return_value="no"):
+                        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                            self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
+
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    self.assertEqual(router.main(["--approved", "--route-file", str(route_file)]), 0)
+                self.assertIn(result.stages[0]["model"], output.getvalue())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            result = routed(classifier=lambda _: classification("implementation", "L7"))
+            route_file = directory / "route.json"
+            route_file.write_text(json.dumps(router.result_payload(result, router.stage_commands(result, "task"))), encoding="utf-8")
+            marker = directory / "codex-called"
+            fake_codex = directory / "codex"
+            fake_codex.write_text(f"#!/bin/sh\ntouch '{marker}'\n", encoding="utf-8")
+            fake_codex.chmod(0o755)
+            env = {
+                **os.environ,
+                "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
+            }
+
+            blocked = subprocess.run(
+                [str(ROOT / self.LAUNCHERS["codex-route"]), "--route-file", str(route_file)],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+            )
+            self.assertEqual(blocked.returncode, 3, blocked.stderr)
+            self.assertFalse(marker.exists())
+
+            approved = subprocess.run(
+                [str(ROOT / self.LAUNCHERS["codex-route"]), "--approved", "--route-file", str(route_file)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+            )
+            self.assertEqual(approved.returncode, 0, approved.stderr)
+            self.assertTrue(marker.exists())
+
+    def test_route_file_rejects_tampered_model_metadata_before_approval_check(self):
+        for task_type in ("implementation", "architectural_refactoring"):
+            with self.subTest(task_type=task_type), tempfile.TemporaryDirectory() as tmp:
+                result = routed(classifier=lambda _: classification(task_type, "L7"))
+                payload = router.result_payload(result, router.stage_commands(result, "task"))
+                for step in payload["steps"]:
+                    step["model"] = "gpt-5.6-sol"
+                route_file = Path(tmp) / "route.json"
+                route_file.write_text(json.dumps(payload), encoding="utf-8")
+
+                with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
+
+    def test_route_file_requires_approval_for_selected_claude_agent_model(self):
+        result = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
+        payload = router.result_payload(result, router.stage_commands(result, "task"))
+        payload["steps"][0]["agent"]["model"] = "FaBlE"
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
+
+    def test_route_file_requires_approval_for_a_fallback_model(self):
+        result = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
+        payload = router.result_payload(result, router.stage_commands(result, "task"))
+        payload["steps"][0]["command"][-1:-1] = ["--fallback-model", "claude-fable-5-1"]
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
+
+    def test_route_file_requires_approval_for_equals_form_model_options(self):
+        for option, model in (
+            ("--model", "claude-fable-5-1"),
+            ("--fallback-model", "claude-fable-5-1"),
+        ):
+            with self.subTest(option=option), tempfile.TemporaryDirectory() as tmp:
+                result = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
+                payload = router.result_payload(result, router.stage_commands(result, "task"))
+                command = payload["steps"][0]["command"]
+                if option == "--model":
+                    payload["steps"][0]["model"] = model
+                    index = command.index("--model")
+                    command[index:index + 2] = [f"{option}={model}"]
+                else:
+                    command[-1:-1] = [f"{option}={model}"]
+                route_file = Path(tmp) / "route.json"
+                route_file.write_text(json.dumps(payload), encoding="utf-8")
+                with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
+
+    def test_route_file_does_not_treat_prompt_text_as_a_model_selection(self):
+        result = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
+        payload = router.result_payload(result, router.stage_commands(result, "mention fable and astra"))
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
 
     def test_v2_and_v3_direct_replay_never_invokes_the_astra_adapter(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
@@ -2328,6 +2728,37 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("steps[].command", primary)
         self.assertIn("two_stage", primary)
         self.assertIn("runs the executor only if the plan step succeeds", primary)
+
+    def test_bounded_fast_path_is_mechanical_and_consistent_across_skills(self):
+        # MEDIUM-B: the fast path must be gated on the stored route, not left to the
+        # parent's judgment, and must never mean the parent implements the task itself.
+        for plugin in ("codex", "claude", "antigravity"):
+            primary = self._primary_section(plugin)  # already whitespace-collapsed
+            with self.subTest(plugin=plugin):
+                self.assertIn("bounded changes", primary)
+                self.assertIn("single-agent fast path", primary)
+                self.assertIn("effective_level` L1-L3", primary)
+                self.assertIn("empty `risk_flags`", primary)
+                self.assertIn("`security_review` or `migration_safety`", primary)
+                self.assertIn("verification.recommended", primary)
+                self.assertIn("`single` `mode`", primary)
+                self.assertIn("no `fable`/`astra` model", primary)
+                self.assertIn("delegating once to the routed executor", primary)
+                self.assertIn("at most one review", primary)
+                self.assertIn("no multi-agent chains", primary)
+                self.assertIn("re-route only if new evidence raises scope or risk", primary)
+                self.assertIn("never means the parent implements the task itself", primary)
+                self.assertNotIn("implement directly", primary)
+
+        # The same hooks that carry the router into a session also carry the fast-path
+        # gate; both codex and claude have a hook, antigravity has none.
+        for plugin in ("codex", "claude"):
+            hook = ROOT / "plugins" / f"{plugin}-model-effort-router" / "scripts" / "routing_policy_hook.py"
+            text = hook.read_text(encoding="utf-8")
+            for expected in ("bounded changes", "single-agent fast path", "L1-L3", "fable/astra"):
+                self.assertIn(expected, text)
+            self.assertNotIn("implement directly", text)
+        self.assertFalse((ROOT / "plugins" / "antigravity-model-effort-router" / "scripts" / "routing_policy_hook.py").exists())
 
     def test_root_and_plugin_docs_describe_v2_to_v4_replay_contract(self):
         paths = [ROOT / "README.md", ROOT / "references" / "routing-policy.md"]

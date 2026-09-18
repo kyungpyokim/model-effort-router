@@ -232,6 +232,41 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         expected_level="L6",
     ),
 
+    # MEDIUM-A regression: the approval-gate carve-out must stay narrow. A
+    # cost/model-tier confirmation (this router's own Fable/Astra approval gate)
+    # is workflow control, not permissions, and must not float to a security
+    # floor. Removing the equivalent gate on a real access-control boundary
+    # (a prod deploy approval bypass) is the opposite: that IS permissions.
+    BenchmarkCase(
+        name="L2_model_tier_approval_confirmation",
+        task="Add a confirmation prompt before running the router's Fable/Astra high-tier model, gated behind --approved",
+        task_type="implementation",
+        facts={
+            "mechanical_only": "no",
+            "files_touched": "1",
+            "fix_or_result_known": "yes",
+            "changes_security_or_payment_logic": "no",
+            "reviews_security_sensitive_code": "no",
+            "security_domain": "none",
+        },
+        expected_level="L2",
+    ),
+    BenchmarkCase(
+        name="L6_deploy_approval_bypass_removed",
+        task="Remove the --approved bypass on the production deploy approval gate so deploys can no longer skip user consent",
+        task_type="implementation",
+        facts={
+            "mechanical_only": "no",
+            "files_touched": "1",
+            "fix_or_result_known": "yes",
+            "changes_security_or_payment_logic": "yes",
+            "reviews_security_sensitive_code": "yes",
+            "security_domain": "permissions",
+        },
+        expected_level="L6",
+        expected_risk_flags=("security_sensitive",),
+    ),
+
     # L7 Cases (needs_new_structure + crosses_service_boundary + fix_or_result_known=no)
     BenchmarkCase(
         # Old policy: cross-service open design alone was L7. New policy: that

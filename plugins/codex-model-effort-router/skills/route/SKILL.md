@@ -44,6 +44,11 @@ worker classifies instead.
    If the router exits non-zero, the classification JSON was invalid. Classify once more; if it
    still fails, do not guess a route and do not delegate. Report the failure, ask the user for
    `task_type` and `level`, and rerun step 2 with `--task-type` and `--level`.
+   After the one allowed `needs_context` cascade, inspect the final `steps[].model` and, when
+   present, `steps[].agent.model` values. If a selected model contains `fable` or `astra`, show
+   the matching model names to the user and wait for explicit approval. Do not delegate,
+   reclassify, or execute before approval. After approval, reuse this exact stored route JSON;
+   terminal replay uses `<skill-dir>/../../bin/codex-route --approved --route-file <route.json>`.
    Outside that manual step, never run the router in this flow without `--classification-file`:
    that spawns a nested `codex exec` that fails in the sandbox. Never delegate a route whose
    `source` is `fallback`; classification did not happen, so stop and report it.
@@ -53,7 +58,9 @@ worker classifies instead.
    step's `command`, followed by the last element of `command`. Pass the complete generated
    route JSON along with the original task. The delegated executor must use every
    `verification.recommended` ID and reason to select applicable existing repository
-   checks and report each result or why it was not run.
+   checks and report each result or why it was not run. If any selected `steps[].model` or present
+   `steps[].agent.model` contains `fable` or `astra` (case-insensitive), this delegation happens
+   only after the explicit user approval described above.
 5. For `two_stage` (`architectural_refactoring` L3+), the planner step writes the plan
    file, then the executor step reads it together with the repository and implements it.
    Never run the executor after a failed plan stage.
@@ -61,6 +68,12 @@ worker classifies instead.
 7. The classification-only worker classifies only. An executor that received the
    complete route JSON executes its assigned work and does not invoke this router again.
 8. Re-route only if new evidence materially raises scope or risk.
+9. For bounded changes, use a single-agent fast path: applies only when the stored route has
+   `effective_level` L1-L3, empty `risk_flags`, no `security_review` or `migration_safety` in
+   `verification.recommended`, a `single` `mode`, and no `fable`/`astra` model. It means delegating
+   once to the routed executor (one step) with focused tests, at most one review, and no
+   multi-agent chains; re-route only if new evidence raises scope or risk. It never means the
+   parent implements the task itself.
 
 When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the same working directory. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
 

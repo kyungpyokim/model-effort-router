@@ -43,6 +43,8 @@ SCHEMA_VERSION = 4
 SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, 3, SCHEMA_VERSION)
 SAFE_ORCHESTRATION_LEVELS = ("L5", "L6", "L7")
 SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY = 2
+APPROVAL_REQUIRED_EXIT_CODE = 3
+APPROVAL_MODEL_MARKERS = ("fable", "astra")
 
 PRIMARY_CLASSIFIER_CONFIG = {
     "codex": {"model": "gpt-5.6-luna", "effort": "medium"},
@@ -214,6 +216,7 @@ Answer each fact about the work the task requires. Do not assign a level or scor
 - reviews_security_sensitive_code: yes when the work reviews, audits, analyses vulnerabilities or attack paths in, or judges the correctness or safety of code or designs in a security-sensitive area (authentication, authorization or permissions, secrets, cryptography, payment, personal data), regardless of whether code is changed. Authorization or permissions covers access boundaries: tenant isolation and customer-specific data isolation, including cache keys or namespaces that hold per-customer or per-tenant data (a wrong key can expose one customer's data to another).
 - security_domain: the most critical security-sensitive area whose behaviour the work changes or whose correctness or safety it reviews or judges: none, auth, payment, secrets, crypto, permissions, pii, or unknown. When several apply pick the most critical, payment over crypto over auth over permissions over pii over secrets. permissions covers the access boundaries above: tenant isolation and customer-specific data isolation, including cache keys or namespaces that hold per-customer or per-tenant data; caching per-customer invoices is not payment but is a permissions review. none when such code is only mentioned, moved, renamed, formatted, or documented without changing or judging its behaviour.
 Payment, in the three facts above, is decided by monetary consequence, not by a module or file named billing or order: moving money; determining the amount charged (price, discount, or tax calculation); authorizing, capturing, cancelling, or refunding payments, including an order cancellation that decides a refund; ledger or settlement correctness; or creating or changing a monetary obligation. Not payment: an order list UI, billing address edits, displaying an invoice PDF, order status strings, order creation that charges nothing, or code that merely lives in a billing or order module. Caching or reading billing or order data is not payment unless the cached or read value decides the amount charged.
+Authorization or permissions, in the three facts above, is decided by access control boundaries (user authentication, RBAC, ACL, privilege, tenant isolation, credentials, or customer data isolation). Two narrow carve-outs are NOT authorization, permissions, or security changes: cost/model-tier confirmations (approving an expensive model before it runs, e.g. this router's Fable/Astra approval gate and its --approved flag), and plain UX confirmations that do not decide whether an action is allowed. Everything else that decides whether an agent, tool, or command may run without the user's consent IS authorization/permissions: tool or command permission prompts, sandbox or allowlist rules for shell commands, production or deploy approval gates, and adding, removing, or bypassing any such gate.
 - changes_public_api_contract: an externally consumed API, CLI, schema, or response format changes. Adding a new endpoint consumed only by your own frontend, without changing existing external consumers or a published schema, is no.
 - changes_persisted_data: stored data, a database schema, or a data migration changes. When the task lists the files to change and none of them is a migration, schema, or repository/data-access file, answer no.
 - irreversible_or_ledger_or_crypto: yes for irreversible production data changes, financial ledger correctness, or designing new cryptographic algorithms, protocols, or key-management schemes; unknown when plausibly involved but unsettled. Implementing or reviewing signing, verification, hashing, or token rotation with existing libraries (JWT, OAuth, TLS) is no; that risk is covered by changes_security_or_payment_logic, reviews_security_sensitive_code, and security_domain. A schema or data migration that can be rolled back is no, as are retries, compensating transactions, idempotent re-runs, and other recoverable fixes; yes only when data is destroyed or cannot be restored, ledger correctness is at stake, or new cryptography is designed.
@@ -1195,8 +1198,44 @@ def command_chain(result: RouteResult, task: str, keep_plan: bool = False, inter
     return f"{prefix} && {' && '.join(parts)}{cleanup}"
 
 
-def command_chain_from_payload(payload: object) -> str:
-    """Return the already-classified platform command chain from a route JSON payload."""
+def command_model(command: list[str], option: str) -> str | None:
+    """Return the one model selected by a generated platform command."""
+    models: list[str] = []
+    prefix = f"{option}="
+    for index, value in enumerate(command):
+        if value == option and index + 1 < len(command):
+            models.append(command[index + 1])
+        elif value.startswith(prefix):
+            models.append(value[len(prefix):])
+    return models[0] if len(models) == 1 else None
+
+
+def command_models(command: object) -> list[str]:
+    """Return model arguments from generated command options, never prompt text."""
+    if not isinstance(command, list):
+        return []
+    models: list[str] = []
+    options = {"-m", "--model", "--fallback-model"}
+    for index, value in enumerate(command):
+        if value in options and index + 1 < len(command) and isinstance(command[index + 1], str):
+            models.append(command[index + 1])
+        else:
+            for option in options:
+                prefix = f"{option}="
+                if value.startswith(prefix):
+                    models.append(value[len(prefix):])
+    return models
+
+
+def command_chain_from_payload(payload: object, cleanup_plan_dir: bool = False) -> str:
+    """Return the already-classified platform command chain from a route JSON payload.
+
+    ``cleanup_plan_dir`` removes the two-stage plan directory after the chain runs,
+    on both success and failure. It must only be set by a caller that just generated
+    this route file for an immediate direct run (the plan dir was created for this
+    run alone) -- never for a stored/user-supplied route file replayed later, whose
+    plan artifacts the user may still want.
+    """
     if not isinstance(payload, dict) or payload.get("schema_version") not in SUPPORTED_ROUTE_SCHEMA_VERSIONS:
         raise ValueError("route file must be a supported route JSON payload")
     if payload["schema_version"] >= 3:
@@ -1206,6 +1245,7 @@ def command_chain_from_payload(payload: object) -> str:
     executable = {"codex": "codex", "claude-code": "claude", "antigravity": "agy"}.get(platform)
     if executable is None:
         raise ValueError("route file must target a supported platform")
+    model_option = "-m" if platform == "codex" else "--model"
     steps = payload.get("steps")
     if not isinstance(steps, list) or not steps:
         raise ValueError("route file must contain at least one execution step")
@@ -1214,6 +1254,8 @@ def command_chain_from_payload(payload: object) -> str:
         command = step.get("command") if isinstance(step, dict) else None
         if not isinstance(command, list) or not command or command[0] != executable or not all(isinstance(arg, str) and arg for arg in command):
             raise ValueError("route file contains an invalid platform command")
+        if not isinstance(step.get("model"), str) or step["model"] != command_model(command, model_option):
+            raise ValueError("route file step model does not match its command")
         commands.append(command)
     if payload.get("mode") == "single" and len(commands) == 1:
         return shlex.join(commands[0])
@@ -1222,8 +1264,46 @@ def command_chain_from_payload(payload: object) -> str:
         plan_path = plan.get("path") if isinstance(plan, dict) else None
         if not isinstance(plan_path, str) or not plan_path:
             raise ValueError("two-stage route file must declare its plan output")
-        return f"mkdir -p {shlex.quote(str(Path(plan_path).parent))} && {' && '.join(shlex.join(command) for command in commands)}"
+        plan_dir = shlex.quote(str(Path(plan_path).parent))
+        stages = " && ".join(shlex.join(command) for command in commands)
+        if not cleanup_plan_dir:
+            return f"mkdir -p {plan_dir} && {stages}"
+        # Clean up on both success and failure (rc preserved) -- unlike a plain
+        # `&&` tail, this must not depend on every stage succeeding.
+        return f"mkdir -p {plan_dir} && ({stages}; rc=$?; rm -rf {plan_dir}; exit $rc)"
     raise ValueError("route file mode does not match its execution steps")
+
+
+def approval_models(steps: object) -> list[str]:
+    """Return selected route models that require a human approval before execution."""
+    if not isinstance(steps, list):
+        return []
+    selected: list[str] = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        models = [step.get("model")]
+        models.extend(command_models(step.get("command")))
+        agent = step.get("agent")
+        if isinstance(agent, dict):
+            models.append(agent.get("model"))
+        for model in models:
+            if (
+                isinstance(model, str)
+                and any(marker in model.casefold() for marker in APPROVAL_MODEL_MARKERS)
+                and model not in selected
+            ):
+                selected.append(model)
+    return selected
+
+
+def prompt_execution_approval(models: list[str]) -> bool:
+    """Ask once before a route invokes a selected Fable or Astra stage."""
+    sys.stderr.write(
+        "Selected high-tier model(s): " + ", ".join(models) + ". Continue? [y/N]: "
+    )
+    sys.stderr.flush()
+    return input().strip().casefold() in {"y", "yes"}
 
 
 def verification_recommendations(task_type: str, level: str, risk_flags: dict[str, bool], mode: str) -> dict[str, list[dict[str, str]]]:
@@ -1459,6 +1539,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--available-models-file", type=Path)
     parser.add_argument("--format", choices=("json", "text", "command"), default="text")
     parser.add_argument("--interactive", action="store_true", help="Build an interactive-session command (single-stage only)")
+    parser.add_argument("--approved", action="store_true", help="Confirm prior user approval when replaying a Fable/Astra route file")
+    parser.add_argument("--print-only", action="store_true", help="Print a stored route command without executing or requesting approval")
+    parser.add_argument(
+        "--cleanup-plan-dir",
+        action="store_true",
+        help="Remove the two-stage plan directory after the chain runs; only for a route "
+        "file just generated for this direct run, never for a stored/user route file",
+    )
     parser.add_argument(
         "--no-prompt",
         action="store_true",
@@ -1474,6 +1562,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         }
         if args.task or any(option in argv for option in task_options):
             parser.error("--route-file cannot be combined with task-routing options")
+    elif args.approved or args.print_only or args.cleanup_plan_dir:
+        parser.error("--approved, --print-only, and --cleanup-plan-dir require --route-file")
     elif args.print_classifier_prompt:
         if not args.task:
             parser.error("task is required with --print-classifier-prompt")
@@ -1487,10 +1577,27 @@ def main(argv: list[str] | None = None) -> int:
     if args.route_file:
         try:
             payload = json.loads(args.route_file.read_text(encoding="utf-8"))
-            print(command_chain_from_payload(payload))
+            chain = command_chain_from_payload(payload, cleanup_plan_dir=args.cleanup_plan_dir)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             print(f"invalid route file: {exc}", file=sys.stderr)
             return 2
+        models = approval_models(payload.get("steps"))
+        if models and not args.approved and not args.print_only:
+            if sys.stdin.isatty():
+                try:
+                    if not prompt_execution_approval(models):
+                        print("high-tier route execution was not approved", file=sys.stderr)
+                        return APPROVAL_REQUIRED_EXIT_CODE
+                except (EOFError, KeyboardInterrupt):
+                    print("high-tier route execution was not approved", file=sys.stderr)
+                    return APPROVAL_REQUIRED_EXIT_CODE
+            else:
+                print(
+                    "high-tier route requires user approval; replay the same route with --approved after approval",
+                    file=sys.stderr,
+                )
+                return APPROVAL_REQUIRED_EXIT_CODE
+        print(chain)
         return 0
     if args.print_classifier_prompt:
         print(classifier_prompt(args.task, Path.cwd() if args.repo_aware else None))
