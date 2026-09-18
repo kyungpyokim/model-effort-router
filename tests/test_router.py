@@ -1784,7 +1784,7 @@ class CommandAndLauncherTests(unittest.TestCase):
     def test_direct_launchers_replay_high_tier_routes_before_execution(self):
         cases = (
             ("codex-route", "codex", "gpt-5.6-luna", classifier_output(level="L7")),
-            ("claude-route", "claude", "claude-haiku-4-5", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
+            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
             ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
         )
         for launcher, executable, classifier_model, classifier_reply in cases:
@@ -1898,7 +1898,7 @@ class CommandAndLauncherTests(unittest.TestCase):
     def test_high_tier_print_only_outputs_without_approval_or_execution(self):
         cases = (
             ("codex-route", "codex", "gpt-5.6-luna", classifier_output(level="L7")),
-            ("claude-route", "claude", "claude-haiku-4-5", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
+            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
             ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
         )
         for launcher, executable, classifier_model, classifier_reply in cases:
