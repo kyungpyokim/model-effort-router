@@ -175,12 +175,13 @@ class PlatformClassifierTests(unittest.TestCase):
         # The repository-aware facts replace the primary guess, including a lower level.
         self.assertEqual((result.source, result.level, result.needs_context), ("gpt-5.6-terra", "L3", False))
 
-    def test_escalation_resolves_unrelated_unknown_but_its_explicit_no_overrides_primary_yes(self):
-        # The escalated classifier read the repository and explicitly said "no" (its
-        # L2 default) for changes_security_or_payment_logic, so that explicit answer
-        # wins over the primary's "yes" -- the primary never saw the code. The
-        # unrelated crosses_module_boundary unknown is still resolved by escalation,
-        # unaffected by this fact.
+    def test_escalation_resolves_unrelated_unknown_but_a_sticky_primary_yes_survives_an_explicit_escalated_no(self):
+        # changes_security_or_payment_logic is a sticky safety fact (see
+        # STICKY_AFFIRMATIVE_SAFETY_FACTS): the primary's "yes" is OR-aggregated in
+        # and survives even an explicit escalated "no", because missing a real
+        # security/payment change is far costlier than routing a false positive one
+        # tier too high. Never weaken this to make an eval case pass. The unrelated
+        # crosses_module_boundary unknown is still resolved by escalation.
         primary_output = classifier_output(
             changes_security_or_payment_logic="yes",
             crosses_module_boundary="unknown",
@@ -195,9 +196,9 @@ class PlatformClassifierTests(unittest.TestCase):
         with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
             result = router.classify_task("inspect an unclear module boundary around authentication")
 
-        self.assertEqual((result.source, result.level), ("gpt-5.6-terra", "L2"))
-        self.assertEqual(result.facts["changes_security_or_payment_logic"], "no")
-        self.assertFalse(result.risk_flags["security_sensitive"])
+        self.assertEqual((result.source, result.level), ("gpt-5.6-terra", "L6"))
+        self.assertEqual(result.facts["changes_security_or_payment_logic"], "yes")
+        self.assertTrue(result.risk_flags["security_sensitive"])
         self.assertEqual(result.facts["crosses_module_boundary"], "no")
 
     def test_escalation_keeps_a_known_security_fact_when_escalated_stays_unknown_on_it(self):
@@ -222,18 +223,47 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(result.facts["changes_security_or_payment_logic"], "yes")
         self.assertTrue(result.risk_flags["security_sensitive"])
 
-    def test_escalation_explicit_answer_overrides_primary_migration_public_api_and_critical_facts(self):
+    def test_escalation_keeps_sticky_primary_safety_facts_despite_an_explicit_escalated_no(self):
+        # Sticky facts (STICKY_AFFIRMATIVE_SAFETY_FACTS) are OR-aggregated: a primary
+        # affirmative survives no matter what escalation says, because missing one of
+        # these under-routes a real irreversible or security/data/API/trust-boundary
+        # change. Never weaken this to make an eval case pass.
         cases = (
             ("changes_persisted_data", "yes", "no", "data_migration"),
             ("changes_public_api_contract", "yes", "no", "public_api_change"),
             ("irreversible_or_ledger_or_crypto", "yes", "no", None),
-            ("reviews_security_sensitive_code", "yes", "no", None),
-            ("security_domain", "payment", "none", None),
             ("changes_trust_boundary", "yes", "no", None),
             ("silent_failure_material_harm", "yes", "no", None),
-            ("blast_radius", "broad", "narrow", None),
         )
         for fact, primary_value, escalated_value, risk_flag in cases:
+            with self.subTest(fact=fact):
+                primary_output = classifier_output(**{fact: primary_value, "crosses_module_boundary": "unknown"})
+                escalated_output = classifier_output(level="L2")
+
+                def fake_run(command, **kwargs):
+                    model = command[command.index("--model") + 1]
+                    output = escalated_output if model == "gpt-5.6-terra" else primary_output
+                    return subprocess.CompletedProcess([], 0, output, "")
+
+                with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+                    classification_ = router.classify_task("inspect an unclear module boundary")
+                self.assertEqual(classification_.facts[fact], primary_value)
+                self.assertNotEqual(classification_.facts[fact], escalated_value)
+                if risk_flag:
+                    self.assertTrue(classification_.risk_flags[risk_flag])
+                if fact == "irreversible_or_ledger_or_crypto":
+                    self.assertTrue(classification_.critical)
+
+    def test_escalation_corrects_review_scope_facts_on_an_explicit_escalated_answer(self):
+        # Correctable facts (CORRECTABLE_SAFETY_FACTS) are where a keyword-driven
+        # primary classifier produces most of its false positives on ordinary
+        # review-scope tasks, so an explicit escalated no/none/narrow overrides them.
+        cases = (
+            ("reviews_security_sensitive_code", "yes", "no"),
+            ("security_domain", "payment", "none"),
+            ("blast_radius", "broad", "narrow"),
+        )
+        for fact, primary_value, escalated_value in cases:
             with self.subTest(fact=fact):
                 primary_output = classifier_output(**{fact: primary_value, "crosses_module_boundary": "unknown"})
                 escalated_output = classifier_output(level="L2")
@@ -249,8 +279,6 @@ class PlatformClassifierTests(unittest.TestCase):
                 self.assertEqual(result.level, "L2")
                 self.assertEqual(classification_.facts[fact], escalated_value)
                 self.assertFalse(classification_.critical)
-                if risk_flag:
-                    self.assertFalse(classification_.risk_flags[risk_flag])
 
     def test_known_facts_do_not_escalate(self):
         output = classifier_output(level="L5", files_touched="unknown")
@@ -967,15 +995,18 @@ class ImpactFloorTests(unittest.TestCase):
 
 
 class CascadeEscalatedOverridesPrimaryTests(unittest.TestCase):
-    """The escalated classifier read the repository, so its explicit answers are
-    authoritative. A primary affirmative safety fact only fills a gap: it survives
-    when escalated itself answers "unknown" for that fact, and is replaced whenever
-    escalated gives an explicit answer (no/none/narrow/a different domain), even
-    though the primary said yes. This used to be an OR-aggregation (a primary "yes"
-    was sticky no matter what escalated said) that let a primary false positive
-    survive an escalated classifier that read the code and said otherwise -- that
-    over-routed real reviews (e.g. a non-security "runtime approval gate" misread as
-    security_domain=permissions by the primary) and is fixed here."""
+    """combine_cascade splits primary safety facts into two groups (see
+    STICKY_AFFIRMATIVE_SAFETY_FACTS / CORRECTABLE_SAFETY_FACTS in scripts/router.py).
+    Sticky facts (irreversible/ledger/crypto, security/payment change, persisted
+    data, public API, trust boundary, silent material harm) are OR-aggregated: a
+    primary "yes" is kept no matter what the escalated reply says, because missing
+    one of these under-routes a real irreversible or security change. Correctable
+    facts (security_domain, reviews_security_sensitive_code, blast_radius) are where
+    a keyword-driven primary classifier produces most of its false positives on
+    ordinary review-scope tasks (e.g. a non-security "runtime approval gate" misread
+    as security_domain=permissions); these may be corrected once the escalated
+    classifier -- which read the repository -- gives an explicit, non-"unknown"
+    answer."""
 
     FACT = "irreversible_or_ledger_or_crypto"
 
@@ -986,11 +1017,13 @@ class CascadeEscalatedOverridesPrimaryTests(unittest.TestCase):
         escalated = router.validate_classifier_output(classifier_output(raw=False, **{fact: escalated_value}))
         return router.combine_cascade(primary, escalated)
 
-    def test_irreversible_only_kept_when_escalated_is_unknown(self):
+    def test_irreversible_is_or_aggregated_over_all_nine_combinations(self):
+        # irreversible_or_ledger_or_crypto is sticky. Never weaken this to make an
+        # eval case pass.
         expected_level = {"yes": "L2", "unknown": "L5", "no": "L2"}
         for primary_value in ("yes", "no", "unknown"):
             for escalated_value in ("yes", "no", "unknown"):
-                expected = "yes" if (primary_value == "yes" and escalated_value == "unknown") else escalated_value
+                expected = "yes" if "yes" in (primary_value, escalated_value) else escalated_value
                 with self.subTest(primary=primary_value, escalated=escalated_value):
                     combined = self.combine(self.FACT, primary_value, escalated_value)
                     self.assertEqual(combined.facts[self.FACT], expected)
@@ -1000,29 +1033,58 @@ class CascadeEscalatedOverridesPrimaryTests(unittest.TestCase):
                         self.assertIn("critical:irreversible_or_ledger_or_crypto", combined.matched_rules)
                         self.assertEqual(routed(classifier=lambda _: combined).level, "critical")
 
-    def test_other_affirmative_safety_facts_only_kept_when_escalated_is_unknown(self):
+    def test_other_sticky_safety_facts_are_or_aggregated(self):
+        # Never weaken this to make an eval case pass.
         cases = (
-            # (fact, primary, escalated, expected combined value, expected level)
-            ("changes_security_or_payment_logic", "yes", "no", "no", "L2"),  # escalated explicit no wins
-            ("changes_security_or_payment_logic", "yes", "unknown", "yes", "L6"),  # escalated unknown -> primary fills
+            ("changes_security_or_payment_logic", "yes", "no", "yes", "L6"),
+            ("changes_security_or_payment_logic", "yes", "unknown", "yes", "L6"),
             ("changes_security_or_payment_logic", "no", "yes", "yes", "L6"),
             ("changes_security_or_payment_logic", "unknown", "yes", "yes", "L6"),
             ("changes_security_or_payment_logic", "no", "unknown", "unknown", "L5"),
-            ("security_domain", "payment", "none", "none", "L2"),  # escalated explicit none wins
-            ("security_domain", "payment", "unknown", "payment", "L5"),  # escalated unknown -> primary fills
-            ("security_domain", "none", "payment", "payment", "L5"),
-            ("security_domain", "unknown", "auth", "auth", "L5"),
-            ("security_domain", "none", "unknown", "unknown", "L4"),
         )
         for fact, primary_value, escalated_value, expected, level in cases:
             with self.subTest(fact=fact, primary=primary_value, escalated=escalated_value):
                 combined = self.combine(fact, primary_value, escalated_value)
                 self.assertEqual((combined.facts[fact], combined.level, combined.critical), (expected, level, False))
 
-    def test_policy_documents_escalated_explicit_answers_winning(self):
+    def test_security_domain_is_correctable_not_or_aggregated(self):
+        # Unlike the sticky facts above, security_domain may be lowered once
+        # escalated gives an explicit, non-unknown answer -- this is the original
+        # bug fix: a primary false positive (e.g. permissions for a non-security
+        # "runtime approval gate") must not survive an escalated `none`.
+        cases = (
+            ("payment", "none", "none", "L2"),  # escalated explicit none wins
+            ("payment", "unknown", "payment", "L5"),  # escalated unknown -> primary fills
+            ("none", "payment", "payment", "L5"),  # primary not critical -> escalated stands
+            ("unknown", "auth", "auth", "L5"),
+            ("none", "unknown", "unknown", "L4"),
+        )
+        for primary_value, escalated_value, expected, level in cases:
+            with self.subTest(primary=primary_value, escalated=escalated_value):
+                combined = self.combine("security_domain", primary_value, escalated_value)
+                self.assertEqual(
+                    (combined.facts["security_domain"], combined.level, combined.critical), (expected, level, False)
+                )
+
+    def test_security_domain_priority_picks_the_more_critical_of_two_named_domains(self):
+        # When both classifiers name an actual (non-none) domain and they disagree,
+        # the more critical one by SECURITY_DOMAIN_PRIORITY is kept rather than
+        # letting escalation silently drop a real finding to a lower-priority one.
+        cases = (
+            ("auth", "secrets", "auth"),  # auth outranks secrets -> primary's domain kept
+            ("secrets", "payment", "payment"),  # primary not critical -> escalated's payment stands
+            ("permissions", "payment", "payment"),  # payment outranks permissions -> escalated's domain kept
+            ("payment", "auth", "payment"),  # payment outranks auth -> primary's domain kept
+        )
+        for primary_value, escalated_value, expected in cases:
+            with self.subTest(primary=primary_value, escalated=escalated_value):
+                combined = self.combine("security_domain", primary_value, escalated_value)
+                self.assertEqual(combined.facts["security_domain"], expected)
+
+    def test_policy_documents_sticky_and_correctable_facts(self):
         policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
-        self.assertIn("its explicit answers are authoritative", policy)
-        self.assertIn("only fills a gap the escalated reply left as `unknown`", policy)
+        self.assertIn("can never be lowered by the escalated reply", policy)
+        self.assertIn("payment > crypto > auth > permissions > pii > secrets", policy)
 
     # Regression coverage for the over-routing bug: a haiku primary misreads a
     # non-security review (e.g. a "runtime approval gate") as security_domain =
@@ -1161,21 +1223,16 @@ class ExternalClassificationTests(unittest.TestCase):
         payload = json.loads(out)
         self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L4", "classification-file"))
 
-    def test_session_cascade_envelope_prefers_escalated_explicit_safety_facts(self):
+    def test_session_cascade_envelope_prefers_escalated_explicit_correctable_facts(self):
         # The escalated classifier read the repository and explicitly answered every
-        # fact (its L2 defaults, e.g. security_domain=none), so its explicit answers
-        # win even though the primary flagged the same facts affirmatively -- this is
-        # the fix for the over-routing bug: a primary false positive must not survive
-        # an escalated reply that explicitly disagrees.
+        # fact (its L2 defaults, e.g. security_domain=none). For the three
+        # correctable facts, its explicit answer wins even though the primary
+        # flagged the same fact affirmatively -- this is the fix for the
+        # over-routing bug: a primary false positive must not survive an escalated
+        # reply that explicitly disagrees.
         cases = (
-            ("changes_security_or_payment_logic", "yes", "no"),
-            ("changes_persisted_data", "yes", "no"),
-            ("changes_public_api_contract", "yes", "no"),
-            ("irreversible_or_ledger_or_crypto", "yes", "no"),
             ("reviews_security_sensitive_code", "yes", "no"),
             ("security_domain", "auth", "none"),
-            ("changes_trust_boundary", "yes", "no"),
-            ("silent_failure_material_harm", "yes", "no"),
             ("blast_radius", "broad", "narrow"),
         )
         for fact, primary_value, escalated_value in cases:
@@ -1196,6 +1253,38 @@ class ExternalClassificationTests(unittest.TestCase):
                 self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L2", "classification-file"))
                 self.assertEqual(payload["facts"][fact], escalated_value)
                 self.assertFalse(payload["needs_context"])
+
+    def test_session_cascade_envelope_keeps_sticky_facts_despite_explicit_escalated_no(self):
+        # Unlike the correctable facts above, the six sticky facts are OR-aggregated:
+        # a primary affirmative survives even an explicit escalated no, because
+        # missing one of these under-routes a real irreversible or security change.
+        # Never weaken this to make an eval case pass.
+        cases = (
+            ("changes_security_or_payment_logic", "yes", "no"),
+            ("changes_persisted_data", "yes", "no"),
+            ("changes_public_api_contract", "yes", "no"),
+            ("irreversible_or_ledger_or_crypto", "yes", "no"),
+            ("changes_trust_boundary", "yes", "no"),
+            ("silent_failure_material_harm", "yes", "no"),
+        )
+        for fact, primary_value, escalated_value in cases:
+            with self.subTest(fact=fact):
+                envelope = json.dumps({
+                    "primary": classifier_output(
+                        crosses_module_boundary="unknown",
+                        raw=False,
+                        **{fact: primary_value},
+                    ),
+                    "escalated": classifier_output(level="L2", raw=False),
+                })
+                with mock.patch.object(router.sys, "stdin", io.StringIO(envelope)):
+                    code, out, _ = self.run_main(
+                        ["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"]
+                    )
+                payload = json.loads(out)
+                self.assertEqual(code, 0)
+                self.assertEqual(payload["facts"][fact], primary_value)
+                self.assertNotEqual(payload["facts"][fact], escalated_value)
 
     def test_session_cascade_envelope_preserves_primary_safety_facts_when_escalated_is_unknown(self):
         cases = (
@@ -2218,10 +2307,20 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertIn("--classification-file - <<'FACTS_JSON'", primary)
                 self.assertIn('"primary": <first classifier reply>', primary)
                 self.assertIn('"escalated": <repository-aware classifier reply>', primary)
-                self.assertIn("repository-aware reply itself left unknown", primary)
+                self.assertIn("gives an explicit, non-`unknown` answer", primary)
                 self.assertIn("Escalate at most once", primary)
                 self.assertIn("Never delegate a route whose", primary)
                 self.assertNotIn("--classification-file <", primary)
+
+    def test_claude_escalation_step_uses_a_stronger_model_than_the_primary(self):
+        # Both the primary and escalated in-session calls run the same repository-
+        # aware prompt through the same difficulty-assessor agent, so a same-model
+        # resample would not add anything the primary lacked; escalation must use a
+        # stronger model (opus) instead of sonnet again.
+        primary = self._primary_section("claude")
+        self.assertIn("`model` `sonnet`", primary)
+        self.assertIn("`model` `opus`", primary)
+        self.assertNotIn("read the code", primary)
 
     def test_antigravity_skill_replays_stored_steps_for_both_modes(self):
         primary = self._primary_section("antigravity")

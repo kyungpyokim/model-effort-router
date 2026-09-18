@@ -30,10 +30,13 @@ Classify with the in-session assessor, not a nested CLI:
    FACTS_JSON
    ```
 3. If the route JSON has `needs_context: true`, call the assessor once more with the same
-   prompt and `model` `sonnet`, then rerun step 2 with this JSON envelope on stdin. It combines
-   the primary and repository-aware facts before routing: the repository-aware reply read the
-   code, so its explicit answer wins, and a primary safety fact only fills a gap the
-   repository-aware reply itself left unknown.
+   prompt and `model` `opus`, then rerun step 2 with this JSON envelope on stdin. Both calls
+   read the same repository-aware prompt with the same agent; escalation instead uses a
+   stronger model to correct the primary's answer. It combines the primary and escalated
+   facts before routing: a primary irreversible, security/payment, persisted-data,
+   public-API, trust-boundary, or silent-failure "yes" is always kept (sticky), while
+   `security_domain`, `reviews_security_sensitive_code`, and `blast_radius` are correctable
+   and may be lowered once the escalated reply gives an explicit, non-`unknown` answer.
 
    ```json
    {"primary": <first classifier reply>, "escalated": <repository-aware classifier reply>}

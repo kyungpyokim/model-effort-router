@@ -82,6 +82,11 @@ YES_NO_UNKNOWN = ("yes", "no", "unknown")
 # Domains where a wrong judgement costs as much as a wrong change; "secrets" floors
 # only through the review or change facts.
 CRITICAL_SECURITY_DOMAINS = ("payment", "crypto", "auth", "permissions", "pii")
+# Full security_domain criticality order, most critical first -- the same order the
+# classifier prompt states ("payment over crypto over auth over permissions over pii
+# over secrets"). Used by combine_cascade to pick the more critical of two disagreeing
+# non-none domains.
+SECURITY_DOMAIN_PRIORITY = CRITICAL_SECURITY_DOMAINS + ("secrets",)
 SECURITY_DOMAINS = ("none", "auth", "payment", "secrets", "crypto", "permissions", "pii", "unknown")
 # Facts the classifier answers. It never scores or picks a level.
 FACTS = {
@@ -102,19 +107,26 @@ FACTS = {
     "blast_radius": ("narrow", "broad", "unknown"),
     "silent_failure_material_harm": YES_NO_UNKNOWN,
 }
-# Primary answers the repository-aware escalation may never lower: fact -> its
-# affirmative values.
-PRIMARY_AFFIRMATIVE_SAFETY_FACTS = {
+# Sticky safety facts: fact -> its affirmative values. A primary affirmative here is
+# OR-aggregated into the cascade result and the repository-aware escalation may never
+# lower it, no matter what it answers. These guard the changes where under-routing is
+# far costlier than a false positive: missing a real irreversible, security/payment,
+# persisted-data, public-API, trust-boundary, or silent-failure change routes it at a
+# model/effort tier that cannot be trusted with it.
+STICKY_AFFIRMATIVE_SAFETY_FACTS = {
     "changes_security_or_payment_logic": ("yes",),
-    "reviews_security_sensitive_code": ("yes",),
-    "security_domain": CRITICAL_SECURITY_DOMAINS,
     "changes_persisted_data": ("yes",),
     "changes_public_api_contract": ("yes",),
     "irreversible_or_ledger_or_crypto": ("yes",),
     "changes_trust_boundary": ("yes",),
     "silent_failure_material_harm": ("yes",),
-    "blast_radius": ("broad",),
 }
+# Correctable safety facts: these are where a keyword-driven primary classifier
+# produces most of its false positives on ordinary review-scope tasks (e.g. reading a
+# non-security "approval gate" as a permissions review). Unlike the sticky facts
+# above, the repository-aware escalation may lower these once it gives an explicit,
+# non-"unknown" answer -- see combine_cascade for the exact per-fact rule.
+CORRECTABLE_SAFETY_FACTS = ("security_domain", "reviews_security_sensitive_code", "blast_radius")
 
 # (level, rule, conditions). A rule matches when every fact has one of its listed
 # values; the highest matching level wins over the L2 base (L1 for mechanical_only).
@@ -700,26 +712,74 @@ def classify_task(
     return combine_cascade(primary, run_single(FALLBACK_CLASSIFIER_CONFIG[platform], repo_path))
 
 
+def _kept_unless_negated(
+    primary: Classification, escalated: Classification, fact: str, affirmative: str, negation: str
+) -> str | None:
+    """Correctable binary fact: the primary's affirmative value survives unless the
+    escalated classifier explicitly gives the opposing answer. Returns None when
+    there is nothing to override (primary was not affirmative, or escalated already
+    settled on the same value), meaning escalated's own answer stands unchanged."""
+    if primary.facts.get(fact) != affirmative or escalated.facts.get(fact) == negation:
+        return None
+    return affirmative
+
+
+def _resolve_security_domain(primary: Classification, escalated: Classification) -> str | None:
+    """Correctable, but not a simple keep-unless-negated: both classifiers named an
+    actual domain, so a differing non-none escalated answer does not just win -- the
+    more critical of the two (by SECURITY_DOMAIN_PRIORITY) is kept, because dropping a
+    real critical-domain finding to a lower-priority one is itself under-routing.
+    Returns None (no override) whenever the primary's domain was not critical to begin
+    with -- there is nothing worth protecting -- so escalated's answer stands."""
+    primary_domain = primary.facts.get("security_domain")
+    if primary_domain not in CRITICAL_SECURITY_DOMAINS:
+        return None
+    escalated_domain = escalated.facts.get("security_domain")
+    if escalated_domain == "unknown":
+        return primary_domain
+    if escalated_domain in ("none", primary_domain) or escalated_domain not in SECURITY_DOMAIN_PRIORITY:
+        return None
+    return min((primary_domain, escalated_domain), key=SECURITY_DOMAIN_PRIORITY.index)
+
+
 def combine_cascade(primary: Classification, escalated: Classification) -> Classification:
-    """The escalated classifier read the repository, so its explicit answers are
-    authoritative. A primary affirmative safety fact only fills a gap: it is kept
-    when the escalated classifier could not settle that same fact ("unknown"), and
-    is overridden whenever escalated gives an explicit answer (no / none / narrow /
-    a different domain), because the primary never saw the code and escalated did."""
+    """The escalated classifier read the repository, so its explicit answers usually
+    win. Two exceptions, split by how costly each kind of false negative is:
+
+    - Sticky facts (STICKY_AFFIRMATIVE_SAFETY_FACTS): a primary affirmative is
+      OR-aggregated in and can never be lowered by escalation -- missing a real
+      irreversible, security/payment, persisted-data, public-API, trust-boundary, or
+      silent-failure change is far costlier than routing a false positive one tier
+      too high.
+    - Correctable facts (CORRECTABLE_SAFETY_FACTS): security_domain,
+      reviews_security_sensitive_code, and blast_radius are where a keyword-driven
+      primary classifier produces most of its false positives on ordinary
+      review-scope tasks (see _kept_unless_negated / _resolve_security_domain), so
+      escalation may lower these once it gives an explicit, non-"unknown" answer.
+    """
     # A failed escalation must not discard a valid primary classification.
     if escalated.source == "fallback":
         return primary
-    safety_facts = {
+
+    overrides = {
         fact: primary.facts[fact]
-        for fact, affirmative in PRIMARY_AFFIRMATIVE_SAFETY_FACTS.items()
-        if primary.facts.get(fact) in affirmative and escalated.facts.get(fact) == "unknown"
+        for fact, affirmative in STICKY_AFFIRMATIVE_SAFETY_FACTS.items()
+        if primary.facts.get(fact) in affirmative
     }
-    if not safety_facts:
+    reviews_value = _kept_unless_negated(primary, escalated, "reviews_security_sensitive_code", "yes", "no")
+    if reviews_value is not None:
+        overrides["reviews_security_sensitive_code"] = reviews_value
+    blast_value = _kept_unless_negated(primary, escalated, "blast_radius", "broad", "narrow")
+    if blast_value is not None:
+        overrides["blast_radius"] = blast_value
+    domain_value = _resolve_security_domain(primary, escalated)
+    if domain_value is not None:
+        overrides["security_domain"] = domain_value
+
+    if not overrides:
         return escalated
 
-    # Only fill escalated's unresolved ("unknown") safety facts with the primary's
-    # affirmative answer; every fact escalated did settle keeps escalated's value.
-    facts = {**escalated.facts, **safety_facts}
+    facts = {**escalated.facts, **overrides}
     level, critical, matched, needs_context = evaluate_rules(facts)
     return replace(
         escalated,
