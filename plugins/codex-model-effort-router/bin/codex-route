@@ -44,7 +44,7 @@ trap 'rm -f "${ROUTE_FILE}"' EXIT
 ARGS=("${ROUTER}" "${TASK}" --platform codex --format json)
 if [[ "$INTERACTIVE" -eq 1 ]]; then ARGS+=(--interactive); fi
 python3 "${ARGS[@]}" > "${ROUTE_FILE}"
-ROUTE_ARGS=(--route-file "${ROUTE_FILE}")
+ROUTE_ARGS=(--route-file "${ROUTE_FILE}" --cleanup-plan-dir)
 if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then ROUTE_ARGS+=(--print-only); fi
 COMMAND="$(python3 "${ROUTER}" "${ROUTE_ARGS[@]}")"
 echo "[model-effort-router] ${COMMAND}" >&2

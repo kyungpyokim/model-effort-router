@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -1829,6 +1830,71 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertFalse(marker.exists())
                 self.assertEqual(list(temp_dir.iterdir()), [])
 
+    def test_direct_two_stage_launchers_leave_no_plan_dir_behind(self):
+        # Regression for the generate-then-replay launcher flow: a direct two-stage
+        # run (classify -> route JSON -> --route-file replay) must clean up its plan
+        # dir exactly like the old single-invocation `--format command` path did.
+        cases = (
+            ("codex-route", "codex", "gpt-5.6-luna", classifier_output(task_type="architectural_refactoring", level="L3")),
+            (
+                "agy-route", "agy", "Gemini 3.8 Flash (Medium)",
+                json.dumps({"structured_output": json.loads(classifier_output(task_type="architectural_refactoring", level="L3"))}),
+            ),
+        )
+        for launcher, executable, classifier_model, classifier_reply in cases:
+            with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                calls = directory / "calls"
+                fake = directory / executable
+                fake.write_text(
+                    f"#!{sys.executable}\nimport pathlib, sys\n"
+                    f"if {classifier_model!r} in sys.argv[1:]:\n"
+                    f"    print({classifier_reply!r})\n"
+                    "else:\n"
+                    f"    with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
+                    "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n",
+                    encoding="utf-8",
+                )
+                fake.chmod(0o755)
+                temp_dir = directory / "routes"
+                temp_dir.mkdir()
+                env = {
+                    **os.environ,
+                    "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                    "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
+                    "TMPDIR": str(temp_dir),
+                }
+                if launcher == "agy-route":
+                    models = directory / "models.txt"
+                    models.write_text("Claude Fable 5.1 (Thinking)\n", encoding="utf-8")
+                    env["MODEL_EFFORT_ROUTER_MODELS_FILE"] = str(models)
+
+                proc = subprocess.run(
+                    [str(ROOT / self.LAUNCHERS[launcher]), "--", "split module boundaries"],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    env=env,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn("planning stage", calls.read_text())
+                self.assertIn("execution stage", calls.read_text())
+                self.assertEqual(list(temp_dir.iterdir()), [], f"leaked temp entries: {list(temp_dir.iterdir())}")
+
+    def test_launchers_request_plan_dir_cleanup_only_for_the_route_file_they_generate(self):
+        # Static guard for the launcher scripts themselves: the route file a launcher
+        # mktemp's and replays for its own direct run must ask for cleanup, while a
+        # route file the user explicitly hands in via `--route-file <path>` (a stored
+        # file whose plan artifacts the user may still want) must not.
+        for launcher, script in self.LAUNCHERS.items():
+            with self.subTest(launcher=launcher):
+                text = (ROOT / script).read_text(encoding="utf-8")
+                user_supplied = re.search(r'ROUTE_ARGS=\(--route-file "\$2"\)', text)
+                generated = re.search(r'ROUTE_ARGS=\(--route-file "\$\{ROUTE_FILE\}" --cleanup-plan-dir\)', text)
+                self.assertIsNotNone(user_supplied, "user-supplied --route-file branch changed shape")
+                self.assertIsNotNone(generated, "direct-run generated route file must pass --cleanup-plan-dir")
+
     def test_high_tier_print_only_outputs_without_approval_or_execution(self):
         cases = (
             ("codex-route", "codex", "gpt-5.6-luna", classifier_output(level="L7")),
@@ -2147,6 +2213,64 @@ class CommandAndLauncherTests(unittest.TestCase):
             route_file.write_text(json.dumps(payload), encoding="utf-8")
             with mock.patch.object(router, "classify_task", side_effect=AssertionError("must not reclassify")):
                 self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
+
+    def test_route_file_cleanup_plan_dir_removes_dir_on_success_and_failure(self):
+        # Regression: a direct two-stage run replayed through --route-file must not
+        # leak its plan dir, on either a clean run or a failing implementer stage --
+        # but a stored/user route file replayed WITHOUT --cleanup-plan-dir (the
+        # launchers' explicit `--route-file <path>` mode) must never have its plan
+        # dir deleted out from under the user.
+        result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
+        for should_fail in (False, True):
+            with self.subTest(should_fail=should_fail), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                plan_dir = directory / "plan"
+                run_result = dataclasses.replace(result, plan_dir=str(plan_dir))
+                payload = router.result_payload(run_result, router.stage_commands(run_result, "restructure modules"))
+                route_file = directory / "route.json"
+                route_file.write_text(json.dumps(payload), encoding="utf-8")
+
+                fake_codex = directory / "codex"
+                fake_codex.write_text(
+                    f"#!{sys.executable}\nimport sys\n"
+                    f"if 'execution stage' in ' '.join(sys.argv[1:]) and {should_fail}:\n"
+                    "    raise SystemExit(9)\n",
+                    encoding="utf-8",
+                )
+                fake_codex.chmod(0o755)
+                env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+
+                output = io.StringIO()
+                with mock.patch.object(router, "classify_task", side_effect=AssertionError("must not reclassify")):
+                    with contextlib.redirect_stdout(output):
+                        self.assertEqual(router.main(["--route-file", str(route_file), "--cleanup-plan-dir"]), 0)
+                chain = output.getvalue().strip()
+                self.assertIn("rm -rf", chain)
+
+                proc = subprocess.run(["bash", "-c", chain], capture_output=True, text=True, timeout=10, env=env)
+                self.assertEqual(proc.returncode, 9 if should_fail else 0, proc.stderr)
+                self.assertFalse(plan_dir.exists(), f"plan dir leaked (should_fail={should_fail})")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            plan_dir = directory / "plan"
+            run_result = dataclasses.replace(result, plan_dir=str(plan_dir))
+            payload = router.result_payload(run_result, router.stage_commands(run_result, "restructure modules"))
+            route_file = directory / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            fake_codex = directory / "codex"
+            fake_codex.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+            fake_codex.chmod(0o755)
+            env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
+            chain = output.getvalue().strip()
+            self.assertNotIn("rm -rf", chain)
+
+            subprocess.run(["bash", "-c", chain], capture_output=True, text=True, timeout=10, env=env, check=True)
+            self.assertTrue(plan_dir.is_dir(), "stored route file's plan dir must be preserved")
 
     def test_high_tier_route_file_requires_explicit_approval_before_execution(self):
         for platform, task_type, level in (

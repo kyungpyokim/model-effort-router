@@ -1227,8 +1227,15 @@ def command_models(command: object) -> list[str]:
     return models
 
 
-def command_chain_from_payload(payload: object) -> str:
-    """Return the already-classified platform command chain from a route JSON payload."""
+def command_chain_from_payload(payload: object, cleanup_plan_dir: bool = False) -> str:
+    """Return the already-classified platform command chain from a route JSON payload.
+
+    ``cleanup_plan_dir`` removes the two-stage plan directory after the chain runs,
+    on both success and failure. It must only be set by a caller that just generated
+    this route file for an immediate direct run (the plan dir was created for this
+    run alone) -- never for a stored/user-supplied route file replayed later, whose
+    plan artifacts the user may still want.
+    """
     if not isinstance(payload, dict) or payload.get("schema_version") not in SUPPORTED_ROUTE_SCHEMA_VERSIONS:
         raise ValueError("route file must be a supported route JSON payload")
     if payload["schema_version"] >= 3:
@@ -1257,7 +1264,13 @@ def command_chain_from_payload(payload: object) -> str:
         plan_path = plan.get("path") if isinstance(plan, dict) else None
         if not isinstance(plan_path, str) or not plan_path:
             raise ValueError("two-stage route file must declare its plan output")
-        return f"mkdir -p {shlex.quote(str(Path(plan_path).parent))} && {' && '.join(shlex.join(command) for command in commands)}"
+        plan_dir = shlex.quote(str(Path(plan_path).parent))
+        stages = " && ".join(shlex.join(command) for command in commands)
+        if not cleanup_plan_dir:
+            return f"mkdir -p {plan_dir} && {stages}"
+        # Clean up on both success and failure (rc preserved) -- unlike a plain
+        # `&&` tail, this must not depend on every stage succeeding.
+        return f"mkdir -p {plan_dir} && ({stages}; rc=$?; rm -rf {plan_dir}; exit $rc)"
     raise ValueError("route file mode does not match its execution steps")
 
 
@@ -1529,6 +1542,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--approved", action="store_true", help="Confirm prior user approval when replaying a Fable/Astra route file")
     parser.add_argument("--print-only", action="store_true", help="Print a stored route command without executing or requesting approval")
     parser.add_argument(
+        "--cleanup-plan-dir",
+        action="store_true",
+        help="Remove the two-stage plan directory after the chain runs; only for a route "
+        "file just generated for this direct run, never for a stored/user route file",
+    )
+    parser.add_argument(
         "--no-prompt",
         action="store_true",
         help="Never prompt for manual axes when the preflight fails; emit the safe fallback route and exit non-zero",
@@ -1543,8 +1562,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         }
         if args.task or any(option in argv for option in task_options):
             parser.error("--route-file cannot be combined with task-routing options")
-    elif args.approved or args.print_only:
-        parser.error("--approved and --print-only require --route-file")
+    elif args.approved or args.print_only or args.cleanup_plan_dir:
+        parser.error("--approved, --print-only, and --cleanup-plan-dir require --route-file")
     elif args.print_classifier_prompt:
         if not args.task:
             parser.error("task is required with --print-classifier-prompt")
@@ -1558,7 +1577,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.route_file:
         try:
             payload = json.loads(args.route_file.read_text(encoding="utf-8"))
-            chain = command_chain_from_payload(payload)
+            chain = command_chain_from_payload(payload, cleanup_plan_dir=args.cleanup_plan_dir)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             print(f"invalid route file: {exc}", file=sys.stderr)
             return 2
