@@ -30,7 +30,9 @@ worker classifies instead.
    ```
 3. If the route JSON has `needs_context: true`, classify once more with `gpt-5.6-terra` /
    `medium` and the same prompt, then rerun step 2 with this JSON envelope on stdin. It combines
-   the primary and repository-aware facts before routing, so a known safety fact cannot drop.
+   the primary and repository-aware facts before routing: the repository-aware reply read the
+   code, so its explicit answer wins, and a primary safety fact only fills a gap the
+   repository-aware reply itself left unknown.
 
    ```json
    {"primary": <first classifier reply>, "escalated": <repository-aware classifier reply>}

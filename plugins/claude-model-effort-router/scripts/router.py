@@ -46,7 +46,7 @@ SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY = 2
 
 PRIMARY_CLASSIFIER_CONFIG = {
     "codex": {"model": "gpt-5.6-luna", "effort": "medium"},
-    "claude-code": {"model": "claude-haiku-4-5", "effort": None},
+    "claude-code": {"model": "claude-sonnet-5", "effort": "medium"},
     "antigravity": {
         "patterns": [
             r"Gemini 3\.8 Flash \(Medium\)",
@@ -701,20 +701,24 @@ def classify_task(
 
 
 def combine_cascade(primary: Classification, escalated: Classification) -> Classification:
-    """The escalated classifier read the repository, so its facts replace the primary's."""
+    """The escalated classifier read the repository, so its explicit answers are
+    authoritative. A primary affirmative safety fact only fills a gap: it is kept
+    when the escalated classifier could not settle that same fact ("unknown"), and
+    is overridden whenever escalated gives an explicit answer (no / none / narrow /
+    a different domain), because the primary never saw the code and escalated did."""
     # A failed escalation must not discard a valid primary classification.
     if escalated.source == "fallback":
         return primary
     safety_facts = {
         fact: primary.facts[fact]
         for fact, affirmative in PRIMARY_AFFIRMATIVE_SAFETY_FACTS.items()
-        if primary.facts.get(fact) in affirmative
+        if primary.facts.get(fact) in affirmative and escalated.facts.get(fact) == "unknown"
     }
     if not safety_facts:
         return escalated
 
-    # Repository context can resolve the unrelated unknown that caused escalation,
-    # but must not erase a known affirmative safety fact from the first classification.
+    # Only fill escalated's unresolved ("unknown") safety facts with the primary's
+    # affirmative answer; every fact escalated did settle keeps escalated's value.
     facts = {**escalated.facts, **safety_facts}
     level, critical, matched, needs_context = evaluate_rules(facts)
     return replace(

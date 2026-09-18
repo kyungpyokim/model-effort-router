@@ -25,15 +25,17 @@ the level: `crosses_module_boundary`, `intermittent_or_concurrency`,
 `changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm`. A
 `crosses_service_boundary` still unknown after escalation keeps the L4 floor, and an
 unknown `irreversible_or_ledger_or_crypto` floors at L5 but never triggers the Critical
-Override. The escalated reply may replace resolved facts, but a safety fact the first
-reply affirmed (security/payment change or review, critical security domain, persisted
-data, public API, irreversible, trust boundary, broad blast radius, silent harm) is
-kept: a yes from either reply wins.
+Override. The escalated classifier read the repository, so its explicit answers are
+authoritative: a safety fact the first reply affirmed (security/payment change or
+review, critical security domain, persisted data, public API, irreversible, trust
+boundary, broad blast radius, silent harm) only fills a gap the escalated reply itself
+left `unknown`. When escalated answers explicitly instead — no, none, narrow, or a
+different domain — that answer wins over the primary's affirmative.
 
 Escalation models by platform:
 
 - **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
-- **Claude Code**: `claude-haiku-4-5` (N/A) → `claude-sonnet-5` (medium)
+- **Claude Code**: `claude-sonnet-5` (medium) → `claude-sonnet-5` (medium)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
