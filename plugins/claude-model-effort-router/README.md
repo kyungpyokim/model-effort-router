@@ -50,7 +50,7 @@ The v5 execution matrix (levels L1-L5, plus a separate risk tier) is:
 (`implementation`, `local_refactoring`, `architectural_refactoring`) gets its planner from the
 `design` row and a merged review from the `review` row; the exception is `architectural_refactoring`
 at L2, where the design row (opus high) equals the implementer, so no planner is inserted and
-the route stays single-stage. L1 code changes are single-stage with only the test gate
+the route stays single-stage. There the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). L1 code changes are single-stage with only the test gate
 (`PLAN_MIN_LEVEL` / `REVIEW_MIN_LEVEL` in `scripts/router.py`). At L2, `requires_code_understanding` = yes swaps the
 `haiku` implementer for `sonnet low`.
 Read-only design and review use `files_touched: 0`; files only read for context do not

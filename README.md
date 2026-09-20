@@ -178,7 +178,7 @@ On every platform, code changes (`implementation`, `local_refactoring`,
 chain, with the planner taken from the platform's `design` row at that level. The exception: when the
 derived planner's model and effort equal the implementer's, no planner is inserted and the route
 stays single-stage (Codex and Claude Code `architectural_refactoring` at L2, and every
-Antigravity L2 code change). L1 code changes are always single-stage. The planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
+Antigravity L2 code change). On those rows the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). L1 code changes are always single-stage. The planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
 into a temporary run directory, then the implementer (`luna`/`terra`, or
 `sonnet`) reads the plan plus the repository and implements it with the plan's
 validation commands. The implementer does not make new design decisions: it stops

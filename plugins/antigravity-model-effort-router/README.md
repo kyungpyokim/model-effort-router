@@ -82,7 +82,7 @@ after the implementation and the tests, make one merged verification + review ca
 sent only the requirement, approved plan, git diff, test results, and key code. On review
 FAIL the route's implementer fixes it (the reviewer does not); the next failure re-plans once.
 Code changes at L2+ get a planner from the `design` row, except that Antigravity L2 code
-changes stay single-stage (Flash High plans and implements alike); L1 is single-stage with only the
+changes stay single-stage (Flash High plans and implements alike, so the review is a self-review by the same Flash model until reviewer separation lands in Phase 3); L1 is single-stage with only the
 test gate. The router does not enforce per-stage permissions on Antigravity (planned). An implementer that finds
 something outside the plan (scope expansion, architecture or public API change, DB
 migration, security boundary change, plan/code mismatch) stops and returns evidence;

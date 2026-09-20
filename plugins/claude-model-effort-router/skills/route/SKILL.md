@@ -50,7 +50,7 @@ The model comes from the selected `task_type × level` matrix row plus any confi
    - `pipeline` non-null (every code change: `implementation`, `local_refactoring`, `architectural_refactoring`): save the complete route JSON, exactly as generated, to a fresh temp file (`mktemp`), then run it with Bash from the user's current working directory:
 
      ```bash
-     python3 "${CLAUDE_SKILL_DIR}/../../scripts/pipeline.py" --route-file <route.json>
+     python3 "${CLAUDE_SKILL_DIR}/../../scripts/pipeline.py" --route-file <route.json> --cleanup-plan-dir
      ```
 
      Run it in the background: it can outlast a foreground Bash timeout. The launcher runs the plan, implement, test, review, and fix stages itself (see Pipeline guidance below), so do not run those steps with the Agent tool. Report to the user the exit code (`0` done; `2` invalid route file; `10` gave up after the fix and re-plan budget; `11` review gave no verdict; `12` a stage failed to start; `13` no plan file; any other code is the stage's own exit code) and the last `phase=` line of stderr (or `state.json` in the work directory). The user's deterministic check goes in `MODEL_EFFORT_ROUTER_TEST_CMD` (or `--test-cmd`); ask the user once if you do not know it, and if there is none leave it unset: the review prompt then states that no test command was configured.

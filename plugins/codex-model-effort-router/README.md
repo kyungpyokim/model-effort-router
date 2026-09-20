@@ -16,7 +16,7 @@ routes it through the v5 `task_type × level` matrix in `config/model-map.json`:
 (`implementation`, `local_refactoring`, `architectural_refactoring`) gets its planner from the
 `design` row and a merged review from the `review` row; the exception is
 `architectural_refactoring` at L2, where the design row (sol high) equals the implementer, so no
-planner is inserted and the route stays single-stage. L1 code changes are single-stage with
+planner is inserted and the route stays single-stage. There the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). L1 code changes are single-stage with
 only the test gate (`PLAN_MIN_LEVEL` / `REVIEW_MIN_LEVEL` in `scripts/router.py`). At L2,
 `requires_code_understanding` = yes swaps `luna med` for `luna high`. The `elevated` and
 `critical` risk tiers imply L5 and raise only the planning and review stages to `xhigh` / `max`
@@ -104,10 +104,10 @@ python3 scripts/router.py --platform codex --format command "<task>"
 python3 scripts/router.py --platform codex --task-type design "<task>" --format command
 ```
 
-Example single-stage output:
+Example single-stage output (an L1 `implementation`):
 
 ```bash
-codex exec -m gpt-5.6-luna -c model_reasoning_effort=medium -c 'developer_instructions="..."' '<task>'
+codex exec -m gpt-5.6-luna -c model_reasoning_effort=low -c 'developer_instructions="..."' '<task>'
 ```
 
 Example two-stage output (any L2+ code change except `architectural_refactoring` at L2):

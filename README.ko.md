@@ -107,7 +107,7 @@ python3 scripts/router.py --platform antigravity --detect-antigravity-models --f
 
 ## 2단계 라우트 (Two-stage routes)
 
-모든 플랫폼에서 L2 이상의 코드 변경(`implementation`, `local_refactoring`, `architectural_refactoring`)은 성공 여부에 따라 체인 형태로 실행되며, 계획 모델은 해당 레벨의 플랫폼 `design` 행에서 가져옵니다. 예외: 파생된 계획자의 모델과 effort가 구현 모델과 같으면 계획 단계를 넣지 않고 단일 stage로 남습니다(Codex/Claude Code의 L2 `architectural_refactoring`, 그리고 Antigravity의 모든 L2 코드 변경). L1 코드 변경은 항상 단일 stage입니다.
+모든 플랫폼에서 L2 이상의 코드 변경(`implementation`, `local_refactoring`, `architectural_refactoring`)은 성공 여부에 따라 체인 형태로 실행되며, 계획 모델은 해당 레벨의 플랫폼 `design` 행에서 가져옵니다. 예외: 파생된 계획자의 모델과 effort가 구현 모델과 같으면 계획 단계를 넣지 않고 단일 stage로 남습니다(Codex/Claude Code의 L2 `architectural_refactoring`, 그리고 Antigravity의 모든 L2 코드 변경). 이 행들은 review 판정 모델이 구현 모델과 같으므로, reviewer 분리(Phase 3)가 들어오기 전까지 review는 자기 검토(self-review)입니다. L1 코드 변경은 항상 단일 stage입니다.
 1. 계획 모델(Codex `sol`, Claude Code `opus`, Antigravity Pro)이 임시 실행 디렉토리에 구조화된 계획 JSON을 작성합니다.
 2. 구현 모델(`luna`/`terra` 또는 `sonnet`)이 계획서와 저장소를 읽고 계획의 검증 명령과 함께 구현을 진행합니다. 구현 모델은 새로운 설계 결정을 내리지 않으며, 계획 밖의 문제를 발견하면 멈추고 계획 모델을 위한 에스컬레이션 근거를 반환합니다.
 

@@ -356,7 +356,8 @@ Task 5 리뷰에서 발견: `plugins/{claude,codex}-model-effort-router/scripts/
 ## Task 1 결과에서 확정된 이월 사항
 
 - 레벨 agent 프로필(`agents/level-N-*`) 지시문은 two-stage 경로에 전달되지 않는다 (L5는 원래 그랬고 이제 L2~L4도). two-stage 템플릿은 schema v6에 고정돼 있어 지금 바꾸면 저장된 route가 무효가 되므로 **Phase 4(launcher가 role별 지시문 생성)로 이월**.
-- 단일 stage로 남은 계획자=구현자 행은 review도 같은 모델이다. Phase 3에서 review 모델 분리를 재검토.
+- 단일 stage로 남은 계획자=구현자 행은 review도 같은 모델이다. Phase 3에서 review 모델 분리를 재검토. 그 전까지 이 행(Codex/Claude `architectural_refactoring` L2, Antigravity L2 코드 변경 전부)의 review는 자기 검토(self-review)다.
+- two-stage 프롬프트 접두사(`PLANNER_PROMPT_PREFIX` "Produce an architectural refactoring plan.", `IMPLEMENTER_PROMPT_PREFIX` "Execute the prepared refactoring plan.")는 schema v6에 고정돼 있고 이제 모든 L2+ 코드 변경 two-stage route에 쓰이므로, Phase 4 launcher 생성 role 지시문이 대체하기 전까지 모든 two-stage route에서 "architectural refactoring"이라고 말한다.
 
 ## Self-Review
 
