@@ -184,7 +184,9 @@ class Pipeline:
         step = payload["steps"][-1]
         self.implementer = {"model": step["model"], "effort": step.get("effort")}
         self.task = pipe["task"] if isinstance(pipe.get("task"), str) else "(the original request is in the earlier prompt of this run)"
-        self.scope_guard = f"\n{router.AUTOBAHN_SCOPE_GUARD}" if payload.get("scope_guard") else ""
+        # Derived from the validated risk flags, not from the unvalidated top-level scope_guard block.
+        secure = any(flag in router.SECURITY_FLOOR_FLAGS for flag in payload.get("risk_flags") or [])
+        self.scope_guard = f"\n{router.AUTOBAHN_SCOPE_GUARD}" if secure else ""
         self.test_commands, self.cwd, self.workdir, self.plan_file = test_commands, cwd, workdir, plan_file
         self.counts = {"test": 0, "review": 0}
         self.replans = 0
