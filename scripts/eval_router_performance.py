@@ -9,6 +9,7 @@ import json
 import statistics
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -100,7 +101,7 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
     # yes = the edit is only right after reading existing code; no = self-contained and evident from the text.
     BenchmarkCase(
         name="L2U_pattern_following_validation",
-        task="Add input validation to create_user in api/users.py, following how create_order in api/orders.py validates its input and reports errors",
+        task="Add input validation to create_user in api/users.py, following how create_order in api/orders.py validates its input",
         task_type="implementation",
         facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
         expected_level="L2",
@@ -114,14 +115,14 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
     ),
     BenchmarkCase(
         name="L2U_match_existing_retry_semantics",
-        task="Make fetch_report() in report.py retry only on the errors that the existing _is_transient() helper in the same file already treats as transient",
+        task="In report.py, make the error branch of fetch_report() use the same error set that the existing _is_transient() helper in that file already checks",
         task_type="implementation",
         facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
         expected_level="L2",
     ),
     BenchmarkCase(
         name="L2U_add_optional_field",
-        task="Add an optional nickname string field with default None to the User dataclass in models.py",
+        task="Add an optional nickname string field with default None to the User dataclass in dto.py",
         task_type="implementation",
         facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "no"},
         expected_level="L2",
@@ -297,6 +298,7 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
             "changes_security_or_payment_logic": "no",
             "reviews_security_sensitive_code": "no",
             "security_domain": "none",
+            "requires_code_understanding": "yes",
         },
         expected_level="L2",
     ),
@@ -370,6 +372,7 @@ _FACT_DEFAULT_OVERRIDES = {
     "files_touched": "1",
     "security_domain": "none",
     "blast_radius": "narrow",
+    **router.OPTIONAL_FACT_DEFAULTS,
 }
 
 
@@ -425,7 +428,7 @@ def evaluate_rules_benchmark() -> dict:
                 reason="benchmark",
                 source="test",
                 risk_tier=tier,
-                facts=merged_facts,
+                facts=dict(merged_facts),
             )
             route_res = router.route(
                 case.task,
@@ -481,7 +484,7 @@ def evaluate_rules_benchmark() -> dict:
     }
 
 
-def _route_profile(config: dict, platform: str, task: str, classification, critical: bool) -> dict:
+def _route_profile(config: dict, platform: str, task: str, classification: router.Classification, critical: bool) -> dict:
     """Model/effort per stage and mode a classification routes to; a routing error is reported, not raised."""
     try:
         result = router.route(task, platform, config, classifier=lambda _t: classification, critical=critical)
@@ -490,13 +493,84 @@ def _route_profile(config: dict, platform: str, task: str, classification, criti
     return {"mode": result.mode, "stages": [(stage["model"], stage["effort"]) for stage in result.stages]}
 
 
+def _pct(hit: int, total: int) -> float:
+    return round((hit / total) * 100, 2) if total else 0.0
+
+
+def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict, platform: str, base_facts: dict[str, str]) -> dict:
+    """Grade one classifier answer against its labels: fact agreement, level/tier, and the routed model+effort."""
+    expected_facts = {**base_facts, **case.facts}
+    expected_level, expected_tier, _, expected_needs_context = router.evaluate_rules(expected_facts)
+    per_fact = {name: {"expected": expected, "actual": actual.facts.get(name)} for name, expected in expected_facts.items()}
+    # task_type is graded on its own: implementation and local_refactoring route identically, so a swap must not fail routing.
+    routing_match = (
+        actual.level == expected_level
+        and actual.risk_tier == expected_tier
+        and actual.needs_context == expected_needs_context
+    )
+    # An unlabelled requires_code_understanding must not be graded on the corpus default: for the profile check
+    # that fact follows the classifier's own answer.
+    profile_facts = dict(expected_facts)
+    if "requires_code_understanding" not in case.facts:
+        profile_facts["requires_code_understanding"] = actual.facts.get("requires_code_understanding", "unknown")
+    expected_classification = router.Classification(
+        task_type=case.task_type, level=expected_level, risk_flags=router.risk_flags_from_facts(expected_facts),
+        reason="labelled", source="test", facts=profile_facts, risk_tier=expected_tier,
+    )
+    expected_profile = _route_profile(config, platform, case.task, expected_classification, expected_tier == "critical")
+    actual_profile = _route_profile(config, platform, case.task, actual, actual.risk_tier == "critical")
+    return {
+        "name": case.name,
+        "source": actual.source,
+        "graded": True,
+        "passed": routing_match,
+        "task_type_passed": actual.task_type == case.task_type,
+        # A routing error on both sides is a broken config, never a match.
+        "profile_passed": "error" not in actual_profile and expected_profile == actual_profile,
+        "expected": {
+            "task_type": case.task_type, "level": expected_level, "risk_tier": expected_tier,
+            "needs_context": expected_needs_context, "profile": expected_profile,
+        },
+        "actual": {
+            "task_type": actual.task_type, "level": actual.level, "risk_tier": actual.risk_tier,
+            "needs_context": actual.needs_context, "profile": actual_profile,
+        },
+        "facts": per_fact,
+    }
+
+
+def _tally_facts(case: BenchmarkCase, graded: dict, tally: dict) -> None:
+    for name, item in graded["facts"].items():
+        agree = item["expected"] == item["actual"]
+        tally["all_matches"] += agree
+        tally["all_total"] += 1
+        if name in case.facts:
+            counts = tally["per_fact"].setdefault(name, {"matches": 0, "total": 0})
+            counts["matches"] += agree
+            counts["total"] += 1
+        if item["actual"] is None:
+            continue  # a missing fact resolved nothing, and is not a regression either
+        if item["expected"] == "unknown":
+            tally["unknown"]["expected_unknown_to_unknown" if item["actual"] == "unknown" else "expected_unknown_to_known"] += 1
+        elif item["actual"] == "unknown":
+            tally["unknown"]["expected_known_to_unknown"] += 1
+    if "requires_code_understanding" in case.facts:
+        key = f"{case.facts['requires_code_understanding']}->{graded['facts']['requires_code_understanding']['actual']}"
+        tally["confusion"][key] = tally["confusion"].get(key, 0) + 1
+
+
 def evaluate_classifier_benchmark(
-    platform: str = "codex", classifier=None, limit: int | None = None, case_names: tuple[str, ...] | None = None,
+    platform: str = "codex",
+    classifier: Callable[[str, str], router.Classification] | None = None,
+    limit: int | None = None,
+    case_names: tuple[str, ...] | None = None,
 ) -> dict:
     """Compare live classifier facts and routing against the human-labelled corpus.
 
     ``classifier`` keeps this deterministic in unit tests; omitted, it invokes the
-    platform's real semantic preflight and therefore spends model usage.
+    platform's real semantic preflight and therefore spends model usage. A case where the
+    classifier fell back (down, rate-limited, timed out) is reported but not graded: an
+    outage must not read as an accuracy regression.
     """
     if platform not in ("codex", "claude-code", "antigravity"):
         raise ValueError(f"unknown platform: {platform}")
@@ -514,114 +588,47 @@ def evaluate_classifier_benchmark(
     base_facts = _base_facts()
     classifier = classifier or router.classify_task
     config = router.load_config(CONFIG_PATH)
-    results = []
-    all_fact_matches = 0
-    all_fact_total = 0
-    labelled_fact_matches = 0
-    labelled_fact_total = 0
-    per_fact_accuracy: dict[str, dict[str, int]] = {}
-    understanding_confusion: dict[str, int] = {}
-    routing_matches = 0
-    profile_matches = 0
-    fallbacks = 0
-    unknown_transitions = {
-        "expected_unknown_to_unknown": 0,
-        "expected_unknown_to_known": 0,
-        "expected_known_to_unknown": 0,
+    tally = {
+        "all_matches": 0, "all_total": 0, "per_fact": {}, "confusion": {},
+        "unknown": {"expected_unknown_to_unknown": 0, "expected_unknown_to_known": 0, "expected_known_to_unknown": 0},
     }
+    results = []
     started = time.perf_counter()
-
     for case in cases:
-        expected_facts = {**base_facts, **case.facts}
-        expected_level, expected_tier, _, expected_needs_context = router.evaluate_rules(expected_facts)
         case_started = time.perf_counter()
         actual = classifier(case.task, platform)
         case_seconds = round(time.perf_counter() - case_started, 2)
-        fallbacks += actual.source == "fallback"
-        actual_facts = actual.facts
-        per_fact = {
-            name: {"expected": expected, "actual": actual_facts.get(name)}
-            for name, expected in expected_facts.items()
-        }
-        all_fact_matches += sum(item["expected"] == item["actual"] for item in per_fact.values())
-        all_fact_total += len(per_fact)
-        for name in case.facts:
-            matched = per_fact[name]["expected"] == per_fact[name]["actual"]
-            labelled_fact_matches += matched
-            labelled_fact_total += 1
-            counts = per_fact_accuracy.setdefault(name, {"matches": 0, "total": 0})
-            counts["matches"] += matched
-            counts["total"] += 1
-        if "requires_code_understanding" in case.facts:
-            key = f"{case.facts['requires_code_understanding']}->{actual_facts.get('requires_code_understanding')}"
-            understanding_confusion[key] = understanding_confusion.get(key, 0) + 1
-        for item in per_fact.values():
-            if item["expected"] == "unknown":
-                unknown_transitions["expected_unknown_to_unknown" if item["actual"] == "unknown" else "expected_unknown_to_known"] += 1
-            elif item["actual"] == "unknown":
-                unknown_transitions["expected_known_to_unknown"] += 1
+        if actual.source == "fallback":
+            results.append({"name": case.name, "source": "fallback", "graded": False, "seconds": case_seconds})
+            continue
+        graded = _grade_case(case, actual, config, platform, base_facts)
+        graded["seconds"] = case_seconds
+        _tally_facts(case, graded, tally)
+        results.append(graded)
 
-        routing_match = (
-            actual.task_type == case.task_type
-            and actual.level == expected_level
-            and actual.risk_tier == expected_tier
-            and actual.needs_context == expected_needs_context
-        )
-        routing_matches += routing_match
-        # The end-to-end check: does the classifier's answer land on the same model and effort as the labelled facts?
-        # A case that does not label requires_code_understanding must not be graded on the corpus default:
-        # for the profile check that fact follows the classifier's own answer.
-        profile_facts = dict(expected_facts)
-        if "requires_code_understanding" not in case.facts:
-            profile_facts["requires_code_understanding"] = actual_facts.get("requires_code_understanding", "unknown")
-        expected_classification = router.Classification(
-            task_type=case.task_type, level=expected_level, risk_flags=router.risk_flags_from_facts(expected_facts),
-            reason="labelled", source="test", facts=profile_facts, risk_tier=expected_tier,
-        )
-        expected_profile = _route_profile(config, platform, case.task, expected_classification, expected_tier == "critical")
-        actual_profile = _route_profile(config, platform, case.task, actual, actual.risk_tier == "critical")
-        profile_match = expected_profile == actual_profile
-        profile_matches += profile_match
-        results.append({
-            "name": case.name,
-            "source": actual.source,
-            "passed": routing_match,
-            "profile_passed": profile_match,
-            "seconds": case_seconds,
-            "expected": {
-                "task_type": case.task_type,
-                "level": expected_level,
-                "risk_tier": expected_tier,
-                "needs_context": expected_needs_context,
-                "profile": expected_profile,
-            },
-            "actual": {
-                "task_type": actual.task_type,
-                "level": actual.level,
-                "risk_tier": actual.risk_tier,
-                "needs_context": actual.needs_context,
-                "profile": actual_profile,
-            },
-            "facts": per_fact,
-        })
-
-    total_cases = len(cases)
-    pct = lambda hit, total: round((hit / total) * 100, 2) if total else 0.0  # noqa: E731
+    graded_cases = [item for item in results if item["graded"]]
+    total = len(graded_cases)
+    labelled_matches = sum(counts["matches"] for counts in tally["per_fact"].values())
+    labelled_total = sum(counts["total"] for counts in tally["per_fact"].values())
     return {
         "summary": {
             "platform": platform,
-            "total_benchmark_cases": total_cases,
-            "passed_cases": routing_matches,
-            "routing_accuracy_pct": pct(routing_matches, total_cases),
-            "profile_accuracy_pct": pct(profile_matches, total_cases),
-            "labelled_fact_accuracy_pct": pct(labelled_fact_matches, labelled_fact_total),
-            "all_fact_agreement_pct": pct(all_fact_matches, all_fact_total),
-            "per_fact_accuracy_pct": {name: pct(c["matches"], c["total"]) for name, c in sorted(per_fact_accuracy.items())},
-            "code_understanding_confusion": dict(sorted(understanding_confusion.items())),
-            "classifier_fallbacks": fallbacks,
-            "classifier_calls": total_cases,
+            "total_benchmark_cases": len(cases),
+            "graded_cases": total,
+            "passed_cases": sum(item["passed"] for item in graded_cases),
+            "routing_accuracy_pct": _pct(sum(item["passed"] for item in graded_cases), total),
+            "task_type_accuracy_pct": _pct(sum(item["task_type_passed"] for item in graded_cases), total),
+            "profile_accuracy_pct": _pct(sum(item["profile_passed"] for item in graded_cases), total),
+            # Without refinements on this platform the profile cannot see an implementer-rung miss.
+            "refinement_coverage": bool(router.load_refinements(config, platform)),
+            "labelled_fact_accuracy_pct": _pct(labelled_matches, labelled_total),
+            "all_fact_agreement_pct": _pct(tally["all_matches"], tally["all_total"]),
+            "per_fact_accuracy_pct": {name: _pct(c["matches"], c["total"]) for name, c in sorted(tally["per_fact"].items())},
+            "code_understanding_confusion": dict(sorted(tally["confusion"].items())),
+            "classifier_fallbacks": len(results) - total,
+            "classifier_calls": len(cases),
             "seconds": round(time.perf_counter() - started, 1),
-            "unknown_transitions": unknown_transitions,
+            "unknown_transitions": tally["unknown"],
         },
         "cases": results,
     }
@@ -654,8 +661,10 @@ def print_report(data: dict) -> None:
         print("-" * 80)
         print(f" Live Classifier ({classifier_summary['platform']}): {classifier_summary['routing_accuracy_pct']}% routing, "
               f"{classifier_summary['labelled_fact_accuracy_pct']}% labelled facts "
-              f"({classifier_summary['passed_cases']}/{classifier_summary['total_benchmark_cases']})")
-        print(f" Model+effort profile match: {classifier_summary['profile_accuracy_pct']}%, "
+              f"({classifier_summary['passed_cases']}/{classifier_summary['graded_cases']} graded), "
+              f"task_type {classifier_summary['task_type_accuracy_pct']}%")
+        print(f" Model+effort profile match: {classifier_summary['profile_accuracy_pct']}%"
+              f"{'' if classifier_summary['refinement_coverage'] else ' (no refinements on this platform: not informative)'}, "
               f"classifier fallbacks: {classifier_summary['classifier_fallbacks']}, "
               f"calls: {classifier_summary['classifier_calls']}, {classifier_summary['seconds']}s")
         print(f" requires_code_understanding (expected->actual): {classifier_summary['code_understanding_confusion'] or 'no labelled cases'}")
@@ -674,9 +683,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, help="Limit live cases (useful for a low-cost sample)")
     parser.add_argument("--case", action="append", dest="case_names", help="Run one named live benchmark case; repeat to select more")
     args = parser.parse_args(argv or sys.argv[1:])
+    if args.limit is not None and args.limit <= 0:
+        parser.error("--limit must be positive")
+    if args.limit is not None and args.case_names:
+        parser.error("--limit and --case cannot be combined")
+    known = {case.name for case in GOLDEN_BENCHMARK_CASES}
+    if unknown := sorted(set(args.case_names or ()) - known):
+        parser.error(f"unknown --case: {', '.join(unknown)}")
 
     benchmark_data = evaluate_rules_benchmark()
     if args.live_classifier:
+        calls = len(args.case_names or GOLDEN_BENCHMARK_CASES[: args.limit])
+        print(f"Running {calls} live classifier calls on {args.platform} (this spends model usage)...", file=sys.stderr)
         benchmark_data["classifier_benchmark"] = evaluate_classifier_benchmark(args.platform, limit=args.limit, case_names=tuple(args.case_names or ()))
     if args.json:
         print(json.dumps(benchmark_data, indent=2, ensure_ascii=False))
@@ -684,11 +702,14 @@ def main(argv: list[str] | None = None) -> int:
         print_report(benchmark_data)
 
     rules_ok = benchmark_data["summary"]["accuracy_pct"] == 100.0
-    classifier_summary = benchmark_data.get("classifier_benchmark", {}).get("summary", {})
-    classifier_ok = not args.live_classifier or (
-        classifier_summary["routing_accuracy_pct"] == 100.0 and classifier_summary["profile_accuracy_pct"] == 100.0
-    )
-    return 0 if rules_ok and classifier_ok else 1
+    if not args.live_classifier:
+        return 0 if rules_ok else 1
+    summary = benchmark_data["classifier_benchmark"]["summary"]
+    if summary["classifier_fallbacks"]:
+        print(f"FAIL: {summary['classifier_fallbacks']} classifier call(s) fell back; the classifier was unavailable, so accuracy is not reported as a result", file=sys.stderr)
+        return 1
+    profile_ok = summary["profile_accuracy_pct"] == 100.0 or not summary["refinement_coverage"]
+    return 0 if rules_ok and summary["routing_accuracy_pct"] == 100.0 and profile_ok else 1
 
 
 if __name__ == "__main__":
