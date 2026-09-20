@@ -26,7 +26,7 @@ L1 stays single-stage with only the test gate and no review. At L2+ the planner 
 platform's `design` row and a merged review runs after a green test run. Antigravity L2
 routes stay single-stage (the design row equals the implementer, Flash High), but still get
 the L2+ review; L3+ routes are two_stage (Pro High plans). Re-route only if new evidence raises
-scope or risk. The parent session never implements the task itself.
+scope or risk. It never means the parent implements the task itself.
 
 Schema v6 records facts, `risk_tier`, and `orchestration_eligible` as future metadata only.
 `scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
@@ -39,8 +39,9 @@ matrix model. Reuse the stored route for same-task follow-ups; re-classify only 
 task-type change, large scope growth, new risk evidence, or a fact showing the approved
 design cannot be implemented. Run one merged verification + review call after the
 implementation steps and tests (not after each step), send it only the requirement,
-approved plan, git diff, test results, and key code, and on review FAIL re-classify the
-fix instead of having the reviewer fix it. An executor that finds something outside the
+approved plan, git diff, test results, and key code, and on review FAIL the reviewer does not
+fix it: the route's implementer does. Planned (not enforced yet): choosing the fix model by fix
+difficulty; today every fix uses the route's implementer. An executor that finds something outside the
 plan (scope expansion, architecture or public API change, DB migration, security boundary
 change, plan/code mismatch) stops and returns evidence; difficulty or uncertainty alone
 is not a reason.

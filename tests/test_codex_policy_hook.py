@@ -121,14 +121,15 @@ class CodexPolicyHookTests(unittest.TestCase):
             "materially raises scope or risk",
             "Do not route casual chat or status-only questions",
             "does not invoke this router again",
-            "bounded changes",
-            "single-agent fast path",
-            "effective_level` L1-L3",
-            "empty `risk_flags`",
-            "`security_review` or `migration_safety`",
+            "`pipeline` non-null",
+            "bin/codex-route --route-file",
+            "scripts/pipeline.py",
+            "`pipeline` null",
+            "design row equals the implementer row",
             "never means the parent implements the task itself",
         ):
             self.assertIn(expected, skill)
+        self.assertNotIn("single-agent fast path", skill)
         self.assertNotIn("implement directly", skill)
 
     def test_codex_manifest_and_validator_include_only_the_codex_hook_release(self):

@@ -2263,7 +2263,12 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("steps[].agent.model", primary)
         self.assertIn("last element of `steps[].command`", primary)
         self.assertIn("two_stage", primary)
-        self.assertIn("runs the executor only if the plan step succeeds", primary)
+        # Only `pipeline == null` (read-only design/review) routes are delegated through the Agent tool;
+        # code changes run through pipeline.py, which owns the plan/implement/test/review stages.
+        self.assertIn("`pipeline` null", primary)
+        self.assertIn("`pipeline` non-null", primary)
+        self.assertIn("scripts/pipeline.py", primary)
+        self.assertIn("do not run those steps with the Agent tool", primary)
         self.assertNotIn("claude-route", primary)
 
     def test_claude_skill_keeps_the_user_cwd_and_stops_on_fallback(self):
@@ -2315,27 +2320,27 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("steps[].command", primary)
         self.assertIn("two_stage", primary)
         self.assertIn("runs the executor only if the plan step succeeds", primary)
+        self.assertIn("scripts/pipeline.py", primary)
+        self.assertIn("MODEL_EFFORT_ROUTER_TEST_CMD", primary)
 
-    def test_bounded_fast_path_is_mechanical_and_consistent_across_skills(self):
-        # MEDIUM-B: the fast path must be gated on the stored route, not left to the
-        # parent's judgment, and must never mean the parent implements the task itself.
+    def test_code_change_workflow_is_stated_consistently_across_skills(self):
+        # The fast-path paragraph is gone: L1 code changes are single-stage with only the test gate,
+        # L2+ code changes plan from the design row and get a merged review, and the parent
+        # session never implements the task itself.
         for plugin in ("codex", "claude", "antigravity"):
             primary = self._primary_section(plugin)  # already whitespace-collapsed
             with self.subTest(plugin=plugin):
-                self.assertIn("bounded changes", primary)
-                self.assertIn("single-agent fast path", primary)
-                self.assertIn("effective_level` L1-L3", primary)
-                self.assertIn("empty `risk_flags`", primary)
-                self.assertIn("`security_review` or `migration_safety`", primary)
+                self.assertNotIn("single-agent fast path", primary)
+                self.assertNotIn("bounded changes", primary)
                 self.assertIn("verification.recommended", primary)
-                self.assertIn("`single` `mode`", primary)
+                self.assertIn("two_stage", primary)
+                self.assertIn("design row equals the implementer", primary)
+                self.assertIn("L1", primary)
+                self.assertRegex(primary, r"L1 (code change|stays single-stage)")
+                self.assertRegex(primary, r"(?i)re-route only if new evidence (materially )?raises scope or risk")
+                self.assertRegex(primary, r"never means the parent implements the task itself")
                 self.assertNotIn("fable", primary.lower())
                 self.assertNotIn("astra", primary.lower().replace("astra_adapter.py", ""))
-                self.assertIn("delegating once to the routed executor", primary)
-                self.assertIn("at most one review", primary)
-                self.assertIn("no multi-agent chains", primary)
-                self.assertIn("re-route only if new evidence raises scope or risk", primary)
-                self.assertIn("never means the parent implements the task itself", primary)
                 self.assertNotIn("implement directly", primary)
 
         # The same hooks that carry the router into a session also carry the fast-path
@@ -2351,15 +2356,16 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertFalse((ROOT / "plugins" / "antigravity-model-effort-router" / "scripts" / "routing_policy_hook.py").exists())
 
     def test_skills_and_policy_carry_the_role_pipeline(self):
-        # The judging model reviews once, a failed review re-classifies the fix, and
-        # escalation needs evidence rather than difficulty.
+        # The judging model reviews once, a failed review is fixed by the route's implementer
+        # (model-by-difficulty is planned), and escalation needs evidence rather than difficulty.
         judges = {"codex": "sol", "claude": "opus", "antigravity": "opus"}
         for plugin, judge in judges.items():
             skill = ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md"
             primary = " ".join(skill.read_text(encoding="utf-8").split()).lower()
             with self.subTest(plugin=plugin):
                 self.assertIn("merge", primary)
-                self.assertIn("re-classify the fix", primary)
+                self.assertIn("planned", primary)
+                self.assertIn("every fix uses the route's implementer", primary)
                 self.assertIn("reuse the stored route", primary)
                 self.assertIn("scope expansion", primary) if plugin != "antigravity" else self.assertIn("scope growth", primary)
                 self.assertIn(judge, primary)
