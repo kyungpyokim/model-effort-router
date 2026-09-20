@@ -71,14 +71,14 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L2_simple_bug_fix",
         task="Fix off-by-one error in pagination calculation in view.py",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
         expected_level="L2",
     ),
     BenchmarkCase(
         name="L2_single_file_helper",
         task="Add helper function to parse date string in utils.py",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "no"},
         expected_level="L2",
     ),
     BenchmarkCase(
@@ -92,7 +92,52 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L2_local_extract_function",
         task="Extract duplicate validation logic into a local function in validator.py",
         task_type="local_refactoring",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
+        expected_level="L2",
+    ),
+
+    # L2 implementer rung: requires_code_understanding picks Luna high / Sonnet low over Luna medium / Haiku.
+    # yes = the edit is only right after reading existing code; no = self-contained and evident from the text.
+    BenchmarkCase(
+        name="L2U_pattern_following_validation",
+        task="Add input validation to create_user in api/users.py, following how create_order in api/orders.py validates its input and reports errors",
+        task_type="implementation",
+        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
+        expected_level="L2",
+    ),
+    BenchmarkCase(
+        name="L2U_fix_after_reading_call_sites",
+        task="Fix the off-by-one in paginate() in utils.py, but first check how its callers pass the page index so the fix does not break them",
+        task_type="implementation",
+        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
+        expected_level="L2",
+    ),
+    BenchmarkCase(
+        name="L2U_match_existing_retry_semantics",
+        task="Make fetch_report() in report.py retry only on the errors that the existing _is_transient() helper in the same file already treats as transient",
+        task_type="implementation",
+        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
+        expected_level="L2",
+    ),
+    BenchmarkCase(
+        name="L2U_add_optional_field",
+        task="Add an optional nickname string field with default None to the User dataclass in models.py",
+        task_type="implementation",
+        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "no"},
+        expected_level="L2",
+    ),
+    BenchmarkCase(
+        name="L2U_standalone_helper",
+        task="Add a standalone function clamp(value, low, high) that returns value limited to the range, to utils.py",
+        task_type="implementation",
+        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "no"},
+        expected_level="L2",
+    ),
+    BenchmarkCase(
+        name="L2U_test_for_stated_behaviour",
+        task="Add a unit test in tests/test_math.py asserting that add(2, 3) returns 5",
+        task_type="implementation",
+        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "no"},
         expected_level="L2",
     ),
 
@@ -380,6 +425,7 @@ def evaluate_rules_benchmark() -> dict:
                 reason="benchmark",
                 source="test",
                 risk_tier=tier,
+                facts=merged_facts,
             )
             route_res = router.route(
                 case.task,
@@ -391,6 +437,7 @@ def evaluate_rules_benchmark() -> dict:
             platform_routes[plat] = {
                 "level": route_res.level,
                 "stages": [s["model"] for s in route_res.stages],
+                "efforts": [s["effort"] for s in route_res.stages],
                 "mode": route_res.mode,
             }
 
@@ -434,6 +481,152 @@ def evaluate_rules_benchmark() -> dict:
     }
 
 
+def _route_profile(config: dict, platform: str, task: str, classification, critical: bool) -> dict:
+    """Model/effort per stage and mode a classification routes to; a routing error is reported, not raised."""
+    try:
+        result = router.route(task, platform, config, classifier=lambda _t: classification, critical=critical)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {"mode": result.mode, "stages": [(stage["model"], stage["effort"]) for stage in result.stages]}
+
+
+def evaluate_classifier_benchmark(
+    platform: str = "codex", classifier=None, limit: int | None = None, case_names: tuple[str, ...] | None = None,
+) -> dict:
+    """Compare live classifier facts and routing against the human-labelled corpus.
+
+    ``classifier`` keeps this deterministic in unit tests; omitted, it invokes the
+    platform's real semantic preflight and therefore spends model usage.
+    """
+    if platform not in ("codex", "claude-code", "antigravity"):
+        raise ValueError(f"unknown platform: {platform}")
+    if limit is not None and limit <= 0:
+        raise ValueError("limit must be positive")
+
+    cases = GOLDEN_BENCHMARK_CASES
+    if case_names:
+        wanted = set(case_names)
+        cases = [case for case in cases if case.name in wanted]
+        unknown = wanted - {case.name for case in cases}
+        if unknown:
+            raise ValueError(f"unknown benchmark cases: {', '.join(sorted(unknown))}")
+    cases = cases[:limit]
+    base_facts = _base_facts()
+    classifier = classifier or router.classify_task
+    config = router.load_config(CONFIG_PATH)
+    results = []
+    all_fact_matches = 0
+    all_fact_total = 0
+    labelled_fact_matches = 0
+    labelled_fact_total = 0
+    per_fact_accuracy: dict[str, dict[str, int]] = {}
+    understanding_confusion: dict[str, int] = {}
+    routing_matches = 0
+    profile_matches = 0
+    fallbacks = 0
+    unknown_transitions = {
+        "expected_unknown_to_unknown": 0,
+        "expected_unknown_to_known": 0,
+        "expected_known_to_unknown": 0,
+    }
+    started = time.perf_counter()
+
+    for case in cases:
+        expected_facts = {**base_facts, **case.facts}
+        expected_level, expected_tier, _, expected_needs_context = router.evaluate_rules(expected_facts)
+        case_started = time.perf_counter()
+        actual = classifier(case.task, platform)
+        case_seconds = round(time.perf_counter() - case_started, 2)
+        fallbacks += actual.source == "fallback"
+        actual_facts = actual.facts
+        per_fact = {
+            name: {"expected": expected, "actual": actual_facts.get(name)}
+            for name, expected in expected_facts.items()
+        }
+        all_fact_matches += sum(item["expected"] == item["actual"] for item in per_fact.values())
+        all_fact_total += len(per_fact)
+        for name in case.facts:
+            matched = per_fact[name]["expected"] == per_fact[name]["actual"]
+            labelled_fact_matches += matched
+            labelled_fact_total += 1
+            counts = per_fact_accuracy.setdefault(name, {"matches": 0, "total": 0})
+            counts["matches"] += matched
+            counts["total"] += 1
+        if "requires_code_understanding" in case.facts:
+            key = f"{case.facts['requires_code_understanding']}->{actual_facts.get('requires_code_understanding')}"
+            understanding_confusion[key] = understanding_confusion.get(key, 0) + 1
+        for item in per_fact.values():
+            if item["expected"] == "unknown":
+                unknown_transitions["expected_unknown_to_unknown" if item["actual"] == "unknown" else "expected_unknown_to_known"] += 1
+            elif item["actual"] == "unknown":
+                unknown_transitions["expected_known_to_unknown"] += 1
+
+        routing_match = (
+            actual.task_type == case.task_type
+            and actual.level == expected_level
+            and actual.risk_tier == expected_tier
+            and actual.needs_context == expected_needs_context
+        )
+        routing_matches += routing_match
+        # The end-to-end check: does the classifier's answer land on the same model and effort as the labelled facts?
+        # A case that does not label requires_code_understanding must not be graded on the corpus default:
+        # for the profile check that fact follows the classifier's own answer.
+        profile_facts = dict(expected_facts)
+        if "requires_code_understanding" not in case.facts:
+            profile_facts["requires_code_understanding"] = actual_facts.get("requires_code_understanding", "unknown")
+        expected_classification = router.Classification(
+            task_type=case.task_type, level=expected_level, risk_flags=router.risk_flags_from_facts(expected_facts),
+            reason="labelled", source="test", facts=profile_facts, risk_tier=expected_tier,
+        )
+        expected_profile = _route_profile(config, platform, case.task, expected_classification, expected_tier == "critical")
+        actual_profile = _route_profile(config, platform, case.task, actual, actual.risk_tier == "critical")
+        profile_match = expected_profile == actual_profile
+        profile_matches += profile_match
+        results.append({
+            "name": case.name,
+            "source": actual.source,
+            "passed": routing_match,
+            "profile_passed": profile_match,
+            "seconds": case_seconds,
+            "expected": {
+                "task_type": case.task_type,
+                "level": expected_level,
+                "risk_tier": expected_tier,
+                "needs_context": expected_needs_context,
+                "profile": expected_profile,
+            },
+            "actual": {
+                "task_type": actual.task_type,
+                "level": actual.level,
+                "risk_tier": actual.risk_tier,
+                "needs_context": actual.needs_context,
+                "profile": actual_profile,
+            },
+            "facts": per_fact,
+        })
+
+    total_cases = len(cases)
+    pct = lambda hit, total: round((hit / total) * 100, 2) if total else 0.0  # noqa: E731
+    return {
+        "summary": {
+            "platform": platform,
+            "total_benchmark_cases": total_cases,
+            "passed_cases": routing_matches,
+            "routing_accuracy_pct": pct(routing_matches, total_cases),
+            "profile_accuracy_pct": pct(profile_matches, total_cases),
+            "labelled_fact_accuracy_pct": pct(labelled_fact_matches, labelled_fact_total),
+            "all_fact_agreement_pct": pct(all_fact_matches, all_fact_total),
+            "per_fact_accuracy_pct": {name: pct(c["matches"], c["total"]) for name, c in sorted(per_fact_accuracy.items())},
+            "code_understanding_confusion": dict(sorted(understanding_confusion.items())),
+            "classifier_fallbacks": fallbacks,
+            "classifier_calls": total_cases,
+            "seconds": round(time.perf_counter() - started, 1),
+            "unknown_transitions": unknown_transitions,
+        },
+        "cases": results,
+    }
+
+
 def print_report(data: dict) -> None:
     summary = data["summary"]
     print("=" * 80)
@@ -454,21 +647,48 @@ def print_report(data: dict) -> None:
         status = "PASS" if c["passed"] else "FAIL"
         ctx = "YES" if c["needs_context"] else "no"
         print(f"{c['name']:<35} | {c['level']:<8} | {c['risk_tier']:<9} | {ctx:<5} | {status:<6} | {c['latency_us']} µs")
+    classifier_data = data.get("classifier_benchmark")
+    if classifier_data:
+        classifier_summary = classifier_data["summary"]
+        transitions = classifier_summary["unknown_transitions"]
+        print("-" * 80)
+        print(f" Live Classifier ({classifier_summary['platform']}): {classifier_summary['routing_accuracy_pct']}% routing, "
+              f"{classifier_summary['labelled_fact_accuracy_pct']}% labelled facts "
+              f"({classifier_summary['passed_cases']}/{classifier_summary['total_benchmark_cases']})")
+        print(f" Model+effort profile match: {classifier_summary['profile_accuracy_pct']}%, "
+              f"classifier fallbacks: {classifier_summary['classifier_fallbacks']}, "
+              f"calls: {classifier_summary['classifier_calls']}, {classifier_summary['seconds']}s")
+        print(f" requires_code_understanding (expected->actual): {classifier_summary['code_understanding_confusion'] or 'no labelled cases'}")
+        print(" Unknown transitions: "
+              f"expected→unknown={transitions['expected_unknown_to_unknown']}, "
+              f"expected→known={transitions['expected_unknown_to_known']}, "
+              f"known→unknown={transitions['expected_known_to_unknown']}")
     print("=" * 80)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Evaluate Model Effort Router performance and accuracy.")
     parser.add_argument("--json", action="store_true", help="Output raw JSON results")
+    parser.add_argument("--live-classifier", action="store_true", help="Call the real classifier and compare its facts and route to the labelled corpus")
+    parser.add_argument("--platform", choices=("codex", "claude-code", "antigravity"), default="codex", help="Classifier platform for --live-classifier")
+    parser.add_argument("--limit", type=int, help="Limit live cases (useful for a low-cost sample)")
+    parser.add_argument("--case", action="append", dest="case_names", help="Run one named live benchmark case; repeat to select more")
     args = parser.parse_args(argv or sys.argv[1:])
 
     benchmark_data = evaluate_rules_benchmark()
+    if args.live_classifier:
+        benchmark_data["classifier_benchmark"] = evaluate_classifier_benchmark(args.platform, limit=args.limit, case_names=tuple(args.case_names or ()))
     if args.json:
         print(json.dumps(benchmark_data, indent=2, ensure_ascii=False))
     else:
         print_report(benchmark_data)
 
-    return 0 if benchmark_data["summary"]["accuracy_pct"] == 100.0 else 1
+    rules_ok = benchmark_data["summary"]["accuracy_pct"] == 100.0
+    classifier_summary = benchmark_data.get("classifier_benchmark", {}).get("summary", {})
+    classifier_ok = not args.live_classifier or (
+        classifier_summary["routing_accuracy_pct"] == 100.0 and classifier_summary["profile_accuracy_pct"] == 100.0
+    )
+    return 0 if rules_ok and classifier_ok else 1
 
 
 if __name__ == "__main__":
