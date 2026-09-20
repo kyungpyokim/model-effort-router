@@ -130,6 +130,36 @@ class L2RefinementTests(unittest.TestCase):
                 self.assertNotIn("sol", ref["stage"]["model"])
                 self.assertNotIn("opus", ref["stage"]["model"])
 
+    def test_a_refinement_may_only_raise_the_rung(self):
+        for platform in ("codex", "claude-code"):
+            matrix = CONFIG["platforms"][platform]["matrix"]["implementation"]["L2"]
+            ref = CONFIG["platforms"][platform]["refinements"][0]["stage"]
+            rank = {"haiku": 0, "luna": 0, "sonnet": 1, "terra": 1}
+            model_rank = lambda name: next(v for k, v in rank.items() if k in name)
+            self.assertGreaterEqual(
+                (model_rank(ref["model"]), router.EFFORT_ORDER.index(ref["effort"])),
+                (model_rank(matrix["model"]), router.EFFORT_ORDER.index(matrix.get("effort") or "low")),
+            )
+
+    def test_a_refinement_that_lowers_the_same_models_effort_is_refused(self):
+        config = copy.deepcopy(CONFIG)
+        config["platforms"]["codex"]["matrix"]["implementation"]["L2"]["effort"] = "high"
+        config["platforms"]["codex"]["refinements"][0]["stage"]["effort"] = "low"
+        with self.assertRaises(ValueError):
+            routed("codex", understanding="yes", config=config)
+
+    def test_malformed_refinements_fail_on_every_route_not_only_single_stage_ones(self):
+        config = copy.deepcopy(CONFIG)
+        config["platforms"]["codex"]["refinements"] = "nonsense"
+        with self.assertRaises(ValueError):
+            routed("codex", "architectural_refactoring", "yes", needs_new_structure="yes", config=config)
+
+    def test_the_model_effort_eval_covers_the_refined_profiles(self):
+        import eval_model_effort
+        combos = {(c.model, c.effort) for c in eval_model_effort.collect_profiles(CONFIG)}
+        self.assertIn(("gpt-5.6-luna", "high"), combos)
+        self.assertIn(("claude-sonnet-5", "low"), combos)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1099,12 +1099,19 @@ def apply_refinement(
     config: dict, platform: str, task_type: str, level: str, facts: dict[str, str], raw_stages: list[dict], mode: str,
 ) -> tuple[list[dict], str | None]:
     """Swap a single-stage implementer for a matching refinement (a fact that picks the rung inside a level)."""
+    refinements = load_refinements(config, platform)  # validated on every route, not only single-stage ones
     if mode != "single":
         return raw_stages, None
-    for ref in load_refinements(config, platform):
+    for ref in refinements:
         if task_type in ref["task_types"] and level == ref["level"] and all(
             facts.get(fact, OPTIONAL_FACT_DEFAULTS.get(fact, "unknown")) == value for fact, value in ref["when"].items()
         ):
+            base, refined = raw_stages[0], ref["stage"]
+            if (
+                base.get("model") == refined.get("model") and base.get("effort") in EFFORT_ORDER and refined.get("effort") in EFFORT_ORDER
+                and EFFORT_ORDER.index(refined["effort"]) < EFFORT_ORDER.index(base["effort"])
+            ):
+                raise ValueError(f"refinement lowers the {platform} {level} matrix effort; a refinement may only raise the rung")
             label = ", ".join(f"{fact}={value}" for fact, value in ref["when"].items())
             return [{"role": raw_stages[0].get("role", "executor"), **ref["stage"]}], label
     return raw_stages, None
