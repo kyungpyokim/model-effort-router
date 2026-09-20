@@ -1068,8 +1068,8 @@ def pipeline_plan(
 ) -> dict | None:
     """Who reviews and re-plans a code change once the implementer is done.
 
-    The merged Sol/Opus review and re-plan stage run at L4+ and take the risk tier's effort;
-    lower levels keep only the deterministic test gate and the cheap fix loop."""
+    The merged Sol/Opus review and re-plan stage run at L2+ and take the risk tier's effort;
+    L1 keeps only the deterministic test gate and the cheap fix loop."""
     if task_type not in CODE_CHANGE_TASK_TYPES:
         return None
     review = replan = None
@@ -1135,8 +1135,10 @@ def route(
         # The planning judge is the platform's design row; the implementer keeps its matrix/refined rung.
         planner_raw, _ = resolve_stages(matrix, "design", level)
         planner = materialise_stages(platform, planner_raw, "single", available_models)[0]
-        stages = [{**planner, "role": "planner"}, {**stages[0], "role": "implementer"}]
-        mode = "two_stage"
+        # A planner identical to the implementer buys nothing, so that route stays single-stage.
+        if (planner["model"], planner["effort"]) != (stages[0]["model"], stages[0]["effort"]):
+            stages = [{**planner, "role": "planner"}, {**stages[0], "role": "implementer"}]
+            mode = "two_stage"
     stages = apply_tier(platform, stages, tier_profile, available_models)
     pipeline = pipeline_plan(platform, task_type, level, mode, matrix, stages, tier_profile, available_models)
     plan_dir = None

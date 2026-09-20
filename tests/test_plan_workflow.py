@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
 
+import router  # noqa: E402
 from test_l2_refinement import routed  # noqa: E402
 
 SOL, OPUS = "gpt-5.6-sol", "claude-opus-5"
@@ -62,3 +63,21 @@ class PlanWorkflowTests(unittest.TestCase):
                 result = routed("codex", task_type, files_touched="2-5")
                 self.assertEqual(result.mode, "single")
                 self.assertIsNone(result.pipeline)
+
+    def test_architectural_refactoring_at_l2_stays_single_when_the_design_row_is_the_implementer(self):
+        for platform, judge in (("codex", SOL), ("claude-code", OPUS)):
+            with self.subTest(platform=platform):
+                result = routed(platform, "architectural_refactoring", level="L2", understanding="yes")
+                self.assertEqual((result.level, result.mode), ("L2", "single"))
+                self.assertEqual((result.model, result.effort), (judge, "high"))
+                self.assertEqual(result.stages[0]["role"], "executor")
+
+    def test_no_two_stage_route_plans_with_the_implementer_profile(self):
+        for platform in ("codex", "claude-code", "antigravity"):
+            for task_type in router.CODE_CHANGE_TASK_TYPES:
+                for level in ("L2", "L3", "L4", "L5"):
+                    with self.subTest(platform=platform, task_type=task_type, level=level):
+                        result = routed(platform, task_type, level=level)
+                        if result.mode == "two_stage":
+                            planner, implementer = result.stages
+                            self.assertNotEqual(profile(planner), profile(implementer))
