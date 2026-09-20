@@ -46,50 +46,53 @@ Classify with the in-session assessor, not a nested CLI:
 
 The model comes from the selected `task_type × level` matrix row plus any configured L2 refinement (already applied in `steps[].model`), never from an agent default. `review` and `design` use `claude-haiku-4-5` at L1, then `claude-opus-5` at L2-L5. The `elevated` and `critical` `risk_tier` values imply L5 and raise only the planning/judging stage effort (Opus xhigh / max); the implementer keeps its matrix profile. A level-only delegation that keeps the agent's own model is wrong.
 
-1. Execute the route with the Agent tool, one call per stored step, in order. Pass the complete generated route JSON with the original task. For each step, set `subagent_type` to `steps[].agent.subagent_type`, `model` to `steps[].agent.model`, and use the last element of `steps[].command` as the prompt; it already carries the task, the stage instructions, and the verification handoff. A `single` route is one call; a `two_stage` route (`architectural_refactoring` L3+, or `implementation` / `local_refactoring` at L5) runs the planner, then runs the executor only if the plan step succeeds. Never reclassify, and do not continue the task in the parent session.
+1. Pick the executor from the route JSON's `pipeline` block. Never reclassify, and do not continue or implement the task in the parent session.
+   - `pipeline` non-null (every code change: `implementation`, `local_refactoring`, `architectural_refactoring`): save the complete route JSON, exactly as generated, to a fresh temp file (`mktemp`), then run it with Bash from the user's current working directory:
+
+     ```bash
+     python3 "${CLAUDE_SKILL_DIR}/../../scripts/pipeline.py" --route-file <route.json>
+     ```
+
+     Run it in the background: it can outlast a foreground Bash timeout. The launcher runs the plan, implement, test, review, and fix stages itself (see Pipeline guidance below), so do not run those steps with the Agent tool. Report to the user the exit code (`0` done; `2` invalid route file; `10` gave up after the fix and re-plan budget; `11` review gave no verdict; `12` a stage failed to start; `13` no plan file) and the last `phase=` line of stderr (or `state.json` in the work directory). The user's deterministic check goes in `MODEL_EFFORT_ROUTER_TEST_CMD` (or `--test-cmd`); ask the user once if you do not know it, and if there is none leave it unset: the review prompt then states that no test command was configured.
+   - `pipeline` null (read-only `design` / `review`): run the Agent tool, one call per stored step, in order. Pass the complete generated route JSON with the original task. For each step, set `subagent_type` to `steps[].agent.subagent_type`, `model` to `steps[].agent.model`, and use the last element of `steps[].command` as the prompt; it already carries the task, the stage instructions, and the verification handoff. These routes are `single`, so it is one call.
 2. The Agent tool cannot set effort, so `steps[].agent.subagent_type` is an `effort-*` agent whose frontmatter pins `steps[].effort`. Do not substitute a `level-N` agent.
-3. The delegated agent must use every `verification.recommended` ID and reason to select applicable existing repository checks and report each result or why it was not run.
+3. The executor must use every `verification.recommended` ID and reason to select applicable existing repository checks and report each result or why it was not run.
 4. Do not invoke this router again from the delegated steps.
 5. Re-route only if new evidence materially raises scope or risk. Reuse the stored route for same-task follow-ups.
-6. For bounded changes, use a single-agent fast path: applies only when the stored route has
-   `effective_level` L1-L3, empty `risk_flags`, no `security_review` or `migration_safety` in
-   `verification.recommended`, and a `single` `mode`. It means delegating
-   once to the routed executor (one step) with focused tests, at most one review, and no
-   multi-agent chains; re-route only if new evidence raises scope or risk. It never means the
-   parent implements the task itself.
+6. `two_stage` code-change routes (a judge plans, a cheaper model implements) cover L2+ code changes except where the design row equals the implementer row (`architectural_refactoring` at L2). Every other route is `single`: one step, no chain (an L1 code change, or a read-only `design` / `review` route). A `single` code-change route still goes through `pipeline.py`, so it gets the test gate (and, at L2+, the merged review); it never means the parent implements the task itself.
 
-Outside a Claude Code session, run `bin/claude-route -- "<task>"` from a terminal. It
-starts an interactive `claude` session with the matrix `--model` and `--effort`, so the
-executor keeps normal edit permissions; `--route-file` replays stored `steps[].command`
-without reclassifying. A non-interactive `-p` executor runs with default permissions and
-cannot edit files unless the user's settings allow it.
+Outside a Claude Code session, run `bin/claude-route -- "<task>"` from a terminal. It classifies and then runs the same `pipeline.py` launcher; `--route-file` replays a stored route without reclassifying. `--interactive` opts into a single hand-off `claude` session with the matrix `--model` and `--effort` and normal edit permissions; it skips the test and review stages and cannot be used with a multi-stage route. `--print` is accepted and changes nothing.
 
 Schema v6 records facts, `risk_tier`, and `orchestration_eligible` (future metadata only).
 `scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
 `execution_strategy: direct` because direct v2-v6 route-file replay never invokes it.
 
-Pipeline guidance (Opus thinks and verifies, Haiku and Sonnet implement):
+Pipeline guidance (Opus thinks and verifies, Haiku and Sonnet implement). `pipeline.py` enforces:
 
 - Follow-up questions in the same task reuse the stored route; do not route again.
   Re-classify only when the task type changes (for example inspect to modify), the scope
   grows a lot, new risk evidence appears, or a fact shows the approved design cannot be
   implemented.
-- Do not call Opus after each step. Batch the implementation steps and run the tests
-  (test execution stays on the cheap implementation models), then make ONE Opus call
-  that merges verification and code review. Send only the original requirement, the
-  approved plan, the git diff, the test results, and the key code, never the whole
-  session. Effort is High by default, XHigh for an `elevated` `risk_tier`, and Max for
-  `critical`.
-- On review FAIL the reviewer does not fix it. Re-classify the fix: simple (for example
-  null handling) to Haiku, an ordinary logic change to Sonnet, a design problem to Opus,
-  then a final Opus review.
-- An executor that finds something outside the plan stops and returns evidence for an
-  Opus re-plan instead of deciding structure itself. Valid evidence: scope expansion,
-  architecture change, public API change, DB migration, security boundary change, or a
-  plan/code-structure mismatch. "It is hard" or "I am unsure" alone is not a reason to
-  escalate.
-
+- The planner (Opus) writes a plan file (read plus that file only), then the implementer
+  (Haiku/Sonnet, edit permissions) implements it. No plan file stops the run (exit `13`).
+- Tests run in the launcher without a model, and only a failure sends a truncated log to
+  the cheap implementer to fix. Then ONE merged Opus verification and code review runs
+  (read-only), given the requirement, plan, git diff, test results, and key code. Its effort is
+  High by default, XHigh for an `elevated` `risk_tier`, and Max for `critical`. Below L2 there is
+  no review, only the test gate and the fix loop.
+- On review FAIL the reviewer does not fix it. The implementer fixes once, then the planning
+  model re-plans. The limits come from `pipeline.limits` (`PIPELINE_LIMITS` in `router.py`): at
+  most 2 test fixes, 1 review fix before a re-plan, and 1 re-plan; beyond that the run gives up
+  (exit `10`).
+- An executor that finds something outside the plan stops with an `ESCALATE:` line and evidence,
+  which triggers the re-plan instead of the executor deciding structure itself. Valid evidence:
+  scope expansion, architecture change, public API change, DB migration, security boundary
+  change, or a plan/code-structure mismatch. "It is hard" or "I am unsure" alone is not a reason
+  to escalate.
+- Planned (Phase 3), not enforced yet: choosing the fix model by fix difficulty after a review
+  FAIL (simple to Haiku, ordinary logic to Sonnet, design problem to Opus). Today every fix uses
+  the route's implementer.
 
 The result's `verification` object is recommendation metadata only. The
 selected executor receives recommended IDs and reasons, selects applicable

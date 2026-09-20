@@ -47,7 +47,7 @@ The v5 execution matrix (levels L1-L5, plus a separate risk tier) is:
 | architectural_refactoring | haiku | opus high | opus high -> sonnet med | opus xhigh -> sonnet high | opus xhigh -> sonnet high |
 
 `A -> B` is the success-dependent planner-to-implementer chain
-(`architectural_refactoring` L3+, and `implementation` / `local_refactoring` at L5).
+(L2+ code changes, except where the design row equals the implementer row: `architectural_refactoring` at L2).
 Read-only design and review use `files_touched: 0`; files only read for context do not
 count. The `elevated` and `critical` risk tiers imply L5 and raise only the
 planning/judging stage (the planner of a two-stage route, otherwise the single stage)
@@ -55,16 +55,19 @@ to `xhigh` / `max`; `--critical` forces the critical tier and `--level` accepts
 `L1`-`L5` only. Rules never drive difficulty on their own: the keyword "security"
 alone implies no level, and `unknown` is missing information, not confirmed risk.
 
-Inside a session, the route skill delegates each stored step with the Agent tool
-(`steps[].agent.subagent_type` + `steps[].agent.model`), so the executor keeps the
-session's working directory and edit permissions. The Agent tool cannot set effort, so
-the subagent is an `effort-*` agent whose frontmatter pins the matrix effort; the level
-instructions travel at the top of the prompt.
+Inside a session, the route skill runs a code-change route (one with a `pipeline` block)
+through `scripts/pipeline.py`: plan, implement, a deterministic test (set
+`MODEL_EFFORT_ROUTER_TEST_CMD`), one merged review, and a bounded fix/re-plan loop, each stage
+with its own permission mode (plan is read plus the plan file, review is read-only). Only
+read-only routes (`pipeline: null`, i.e. `design` / `review`) are delegated with the Agent tool
+(`steps[].agent.subagent_type` + `steps[].agent.model`); it cannot set effort, so the subagent
+is an `effort-*` agent whose frontmatter pins the matrix effort, and the level instructions
+travel at the top of the prompt.
 
-From a terminal, `bin/claude-route` starts an interactive session with the selected
-model/effort and puts the matching level agent's instructions at the top of the prompt,
-so it works without the plugin installed. `--print` forces `claude -p`, which runs with
-default permissions and cannot edit files unless your settings allow it.
+From a terminal, `bin/claude-route -- "<task>"` classifies and then runs the same
+`pipeline.py` launcher, so it works without the plugin installed. `--interactive` opts into a
+single hand-off `claude` session with the selected model/effort, which skips the test and
+review stages. `--print` is accepted and changes nothing.
 
 Route-file replay accepts v2-v6 payloads. Schema v6 records `facts`,
 `matched_rules`, `unresolved_facts`, `questions`, `evidence`, and `risk_tier` alongside direct-only
