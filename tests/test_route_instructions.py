@@ -1,8 +1,10 @@
 import copy
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -14,30 +16,31 @@ CONFIG = router.load_config(ROOT / "config" / "model-map.json")
 PLATFORMS = ("codex", "claude-code", "antigravity")
 
 
-def payload_for(platform, level, secure=False, task="do the thing", task_type="implementation"):
-    flags = {flag: secure and flag == "security_sensitive" for flag in router.RISK_FLAGS}
+def payload_for(platform, level, secure=False, task="do the thing", task_type="implementation", extra_flags=(), interactive=False):
+    flags = {flag: (secure and flag == "security_sensitive") or flag in extra_flags for flag in router.RISK_FLAGS}
     classification = router.Classification(
         task_type=task_type, level=level, risk_flags=flags, reason="r", source="primary",
         risk_tier="elevated" if secure else "standard",
     )
     result = router.route(task, platform, CONFIG, classifier=lambda _: classification)
-    return router.result_payload(result, router.stage_commands(result, task), task)
-
-
-def rewrite_last(command, old, new):
-    changed = list(command)
-    assert old in changed[-1] or any(old in part for part in changed)
-    changed = [part.replace(old, new) if old in part else part for part in changed]
-    return changed
+    return router.result_payload(result, router.stage_commands(result, task, interactive), task)
 
 
 class GeneratedInstructionTests(unittest.TestCase):
     def test_generated_routes_validate_with_and_without_a_security_guard(self):
         for platform in PLATFORMS:
-            for level, secure in (("L2", False), ("L4", False), ("L5", False), ("L5", True), ("L4", True)):
-                for task_type in ("implementation", "design", "architectural_refactoring"):
+            for level, secure in (("L1", False), ("L2", False), ("L3", False), ("L4", False), ("L5", False), ("L5", True), ("L4", True)):
+                for task_type in router.TASK_TYPES:
                     with self.subTest(platform=platform, level=level, secure=secure, task_type=task_type):
                         router.validated_commands(payload_for(platform, level, secure, task_type=task_type))
+
+    def test_interactive_forms_and_migration_or_api_flags_validate(self):
+        for platform in PLATFORMS:
+            with self.subTest(platform=platform):
+                router.validated_commands(payload_for(platform, "L3", interactive=True))
+                payload = payload_for(platform, "L4", extra_flags=("data_migration", "public_api_change"))
+                self.assertIn("migration_safety", json.dumps(payload["steps"]))
+                router.validated_commands(payload)
 
     def test_the_task_text_itself_stays_free(self):
         for platform in PLATFORMS:
@@ -69,18 +72,50 @@ class TamperedInstructionTests(unittest.TestCase):
                 tampered["steps"][0]["command"][index] = "developer_instructions=" + json.dumps(text)
                 self.assert_rejected(tampered)
 
-    def test_a_repeated_developer_instructions_or_effort_override_is_rejected(self):
+    def test_a_repeated_developer_instructions_is_rejected(self):
         payload = payload_for("codex", "L4")
         command = payload["steps"][0]["command"]
         index = next(i for i, part in enumerate(command) if part.startswith("developer_instructions="))
         repeated = copy.deepcopy(payload)
         repeated["steps"][0]["command"][index + 1:index + 1] = ["-c", "developer_instructions=" + json.dumps("x")]
         self.assert_rejected(repeated)
-        for effort in ("max", "low"):
-            tampered = copy.deepcopy(payload)
-            tampered["steps"][0]["command"] = [f"model_reasoning_effort={effort}" if p.startswith("model_reasoning_effort=") else p for p in command]
-            if tampered["steps"][0]["command"] != command:
+
+    def test_an_argv_effort_that_disagrees_with_the_step_is_rejected(self):
+        payload = payload_for("codex", "L4")
+        actual = payload["steps"][0]["effort"]
+        other = next(effort for effort in router.EFFORT_ORDER if effort != actual)
+        tampered = copy.deepcopy(payload)
+        tampered["steps"][0]["command"] = [
+            f"model_reasoning_effort={other}" if part.startswith("model_reasoning_effort=") else part for part in payload["steps"][0]["command"]
+        ]
+        self.assertNotEqual(tampered["steps"][0]["command"], payload["steps"][0]["command"])
+        self.assert_rejected(tampered)
+
+    def test_the_codex_plan_prompt_suffix_is_pinned_too(self):
+        payload = payload_for("codex", "L5")
+        for step in (0, 1):
+            with self.subTest(step=step):
+                tampered = copy.deepcopy(payload)
+                tampered["steps"][step]["command"][-1] = payload["steps"][step]["command"][-1].rsplit("\n\n", 1)[0]
                 self.assert_rejected(tampered)
+
+    def test_a_missing_agent_profile_is_reported_as_unverifiable_not_tampered(self):
+        for platform, target in (("codex", "codex_agent_instructions"), ("claude-code", "markdown_agent_instructions"), ("antigravity", "markdown_agent_instructions")):
+            with self.subTest(platform=platform):
+                payload = payload_for(platform, "L4")
+                with mock.patch.object(router, target, side_effect=FileNotFoundError("agents/level-4")):
+                    with self.assertRaises(ValueError) as caught:
+                        router.validated_commands(payload)
+                self.assertIn("cannot be verified", str(caught.exception))
+                self.assertNotIn("does not carry", str(caught.exception))
+
+    def test_malformed_risk_flags_are_rejected(self):
+        for bad in ({"security_sensitive": False}, "payment", ["not_a_flag"], [3]):
+            with self.subTest(bad=bad):
+                payload = payload_for("codex", "L4")
+                payload["risk_flags"] = bad
+                with self.assertRaises(ValueError):
+                    router.validated_commands(payload)
 
     def test_two_stage_codex_planner_and_implementer_are_pinned(self):
         payload = payload_for("codex", "L5")
@@ -137,6 +172,9 @@ class TamperedInstructionTests(unittest.TestCase):
         command = payload["steps"][0]["command"]
         index = next(i for i, part in enumerate(command) if part.startswith("developer_instructions="))
         command[index] = "developer_instructions=" + json.dumps("instructions written by an older router")
+        as_v6 = copy.deepcopy(payload)
+        with self.assertRaises(ValueError):
+            router.validated_commands(as_v6)
         payload["schema_version"] = 5
         payload.pop("pipeline")
         router.validated_commands(payload)
@@ -144,8 +182,20 @@ class TamperedInstructionTests(unittest.TestCase):
     def test_the_pipeline_runner_refuses_a_tampered_route(self):
         payload = payload_for("codex", "L4")
         payload["steps"][0]["command"] = [p.replace("Do not invoke", "Please invoke") for p in payload["steps"][0]["command"]]
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as caught:
             pipeline.Pipeline.validate(payload)
+        self.assertIn("generated instructions", str(caught.exception))
+
+    def test_fix_and_replan_stages_keep_the_scope_guard_when_the_scope_guard_block_is_deleted(self):
+        payload = payload_for("codex", "L5", secure=True)
+        payload.pop("scope_guard")
+        router.validated_commands(payload)
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = pipeline.Pipeline(payload, [], tmp, Path(tmp), Path(tmp) / "plan.json")
+        self.assertIn(router.AUTOBAHN_SCOPE_GUARD, runner.scope_guard)
+        plain = payload_for("codex", "L5")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(pipeline.Pipeline(plain, [], tmp, Path(tmp), Path(tmp) / "plan.json").scope_guard, "")
 
 
 if __name__ == "__main__":
