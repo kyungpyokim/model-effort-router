@@ -42,15 +42,20 @@ The v5 execution matrix (levels L1-L5, plus a separate risk tier) is:
 
 | task type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation / local_refactoring | haiku | haiku | sonnet med | sonnet high | opus high -> sonnet high |
+| implementation / local_refactoring | haiku | opus high -> haiku | opus high -> sonnet med | opus high -> sonnet high | opus high -> sonnet high |
 | design / review | haiku | opus high | opus high | opus high | opus high |
 | architectural_refactoring | haiku | opus high | opus high -> sonnet med | opus xhigh -> sonnet high | opus xhigh -> sonnet high |
 
-`A -> B` is the success-dependent planner-to-implementer chain
-(L2+ code changes, except where the design row equals the implementer row: `architectural_refactoring` at L2).
+`A -> B` is the success-dependent planner-to-implementer chain. Every L2+ code change
+(`implementation`, `local_refactoring`, `architectural_refactoring`) gets its planner from the
+`design` row and a merged review from the `review` row; the exception is `architectural_refactoring`
+at L2, where the design row (opus high) equals the implementer, so no planner is inserted and
+the route stays single-stage. L1 code changes are single-stage with only the test gate
+(`PLAN_MIN_LEVEL` / `REVIEW_MIN_LEVEL` in `scripts/router.py`). At L2, `requires_code_understanding` = yes swaps the
+`haiku` implementer for `sonnet low`.
 Read-only design and review use `files_touched: 0`; files only read for context do not
 count. The `elevated` and `critical` risk tiers imply L5 and raise only the
-planning/judging stage (the planner of a two-stage route, otherwise the single stage)
+planning and review stages (the implementer keeps its matrix profile)
 to `xhigh` / `max`; `--critical` forces the critical tier and `--level` accepts
 `L1`-`L5` only. Rules never drive difficulty on their own: the keyword "security"
 alone implies no level, and `unknown` is missing information, not confirmed risk.
@@ -79,18 +84,22 @@ verified artifacts; direct v2-v6 route-file replay never invokes it.
 ## Execution roles and pipeline
 
 Goal: **Opus thinks and verifies, Haiku and Sonnet implement.** Opus designs,
-verifies, and reviews; Haiku/Sonnet implement, fix, and run tests; re-promote to Opus
-when the implementation hits a new design problem. Classification stays on Sonnet.
+verifies, and reviews; Haiku/Sonnet implement and fix; the launcher runs the tests with no
+model; re-promote to Opus when the implementation hits a new design problem.
+Classification stays on Sonnet.
 
 - Reuse the stored route for follow-up questions in the same task. Re-classify only
   when the task type changes, scope grows a lot, new risk evidence appears, or a
   fact shows the approved design cannot be implemented.
-- Classify each planned step again (tweak or tests -> Haiku, ordinary logic ->
-  Sonnet); test execution (pytest, lint, typecheck, build) belongs to the cheap models.
-- Do not call Opus after each step. After steps 1..N and the tests, make one Opus
-  verification + code review call (High; elevated tier XHigh; critical tier Max),
+- Test execution (pytest, lint, typecheck, build) runs in the launcher with no model call
+  (`MODEL_EFFORT_ROUTER_TEST_CMD` or `--test-cmd`); only a failing log goes to the implementer.
+- Do not call Opus after each step. After the implementation and the tests, make one Opus
+  verification + code review call at L2+ (High; elevated tier XHigh; critical tier Max),
   sent only the requirement, approved plan, git diff, test results, and key code.
-- On review FAIL the reviewer does not fix it: re-classify the fix (simple -> Haiku, ordinary logic -> Sonnet, design problem -> Opus), then a final Opus review.
+- On review FAIL the reviewer does not fix it: the route's implementer fixes it (every fix
+  uses the route's implementer today), then the review runs again; the next failure re-plans
+  once. Re-classifying each planned step and each fix to pick Haiku / Sonnet / Opus by
+  difficulty is planned, not implemented.
 - An implementer that finds something outside the plan stops and returns evidence
   (scope expansion, architecture or public API change, DB migration, security
   boundary change, plan/code mismatch) for an Opus re-plan; "hard" or "unsure" alone
@@ -111,11 +120,15 @@ claude plugin validate .
 python3 scripts/router.py --platform claude-code --format command "<task>"
 ```
 
-This prints a command such as:
+For a single-stage route (for example `--task-type implementation --level L1`) this prints a command such as:
 
 ```bash
-claude --model claude-sonnet-5 --effort high -p '<level-4-complex instructions> <task>'
+claude -p --model claude-haiku-4-5 --permission-mode acceptEdits -- '<level instructions> <task>'
 ```
+
+A model with an effort setting adds `--effort <e>` after `--model`. An L2+ code change prints the
+two-stage plan/implement chain instead; run it through `scripts/pipeline.py --route-file`
+(what `bin/claude-route` does) to get the test gate and review.
 
 `--level` alone is a minimum; `--level` with an explicit `--task-type`
 pins both axes and bypasses the preflight.

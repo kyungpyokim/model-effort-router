@@ -64,7 +64,7 @@ plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort
 
 ### 체이닝 파이프라인
 
-비대화형 런처(`codex-route`, `claude-route`, `agy-route`) 실행은 `scripts/pipeline.py`를 거칩니다: 계획 -> 구현 -> 결정적 테스트 -> Sol/Opus 통합 리뷰 1회. 테스트는 모델 호출 없이 런처가 직접 실행하며(`MODEL_EFFORT_ROUTER_TEST_CMD` 또는 `pipeline.py --test-cmd`), 실패했을 때만 잘라낸 로그를 구현 모델에 넘깁니다. L4 이상 코드 변경은 리스크 티어 effort로 리뷰를 받고, 리뷰 FAIL은 1회 수정, 다음 실패는 1회 재계획, 그 뒤에는 중단합니다. Claude 구현/수정 단계만 `acceptEdits`로 실행되고 계획/리뷰 단계는 코드를 수정할 수 없습니다. 라우트 파일에는 라우터가 생성한 argv 형태만 허용됩니다. 런처는 단계마다 `phase=...` 한 줄을 남깁니다(`MODEL_EFFORT_ROUTER_VERBOSE=1`이면 명령도 출력). 라우트(누가)와 실행 상태(어디까지, `state.json`)는 분리됩니다. 자세한 내용: `references/routing-policy.md`.
+비대화형 런처(`codex-route`, `claude-route`, `agy-route`) 실행은 `scripts/pipeline.py`를 거칩니다: 계획 -> 구현 -> 결정적 테스트 -> Sol/Opus 통합 리뷰 1회. 테스트는 모델 호출 없이 런처가 직접 실행하며(`MODEL_EFFORT_ROUTER_TEST_CMD` 또는 `pipeline.py --test-cmd`), 실패했을 때만 잘라낸 로그를 구현 모델에 넘깁니다. L2 이상 코드 변경(`implementation`, `local_refactoring`, `architectural_refactoring`)은 플랫폼의 `design` 행에서 가져온 계획자와 리스크 티어 effort의 리뷰를 받고, L1 코드 변경은 단일 stage로 테스트 게이트만 거칩니다. 리뷰 FAIL은 라우트의 구현 모델이 1회 수정하고, 다음 실패는 1회 재계획한 뒤 중단합니다. Claude 구현/수정 단계만 `acceptEdits`로 실행되고 계획/리뷰 단계는 코드를 수정할 수 없습니다. 라우트 파일에는 라우터가 생성한 argv 형태만 허용됩니다. 런처는 단계마다 `phase=...` 한 줄을 남깁니다(`MODEL_EFFORT_ROUTER_VERBOSE=1`이면 명령도 출력). 라우트(누가)와 실행 상태(어디까지, `state.json`)는 분리됩니다. 자세한 내용: `references/routing-policy.md`.
 
 ### 라우트 재사용
 
@@ -89,7 +89,7 @@ L5 난이도에 `delegability: 2`를 만족하는 안전한 단일 Codex 라우�
   - 치명적인 보안 영역(`security_domain`: payment, crypto, auth, permissions, pii)의 경우 작업 유형과 무관하게 최소 **L5**
 - **`elevated` 티어** (L5): 보안/결제 로직 변경, 신뢰 경계가 바뀌는 치명적 보안 영역, 서비스 간 간헐적 장애, 결과가 열려 있는 서비스 간 새 구조 설계. 계획/판단 단계의 effort를 Codex(Sol)와 Claude Code(Opus)에서는 `xhigh`로 올리고, effort 설정이 없는 Antigravity는 해당 단계를 Claude Opus Thinking으로 교체합니다.
 - **`critical` 티어** (L5): `irreversible_or_ledger_or_crypto` = yes(비가역 운영 데이터, 원장 정확성, 신규 암호 설계) 또는 `--critical` 플래그. 같은 단계를 `max`로 올립니다(Antigravity: Claude Opus Thinking). 명시적 yes에서만 발동하며 `unknown`은 발동하지 않습니다.
-- 2단계 라우트에서 구현 단계는 매트릭스 프로필을 그대로 유지하고, 계획/판단 단계만 상향됩니다. 티어 프로필은 `config/model-map.json`의 `tiers`에 있습니다.
+- 2단계 라우트에서 구현 단계는 매트릭스 프로필을 그대로 유지하고, 계획/리뷰 단계만 상향됩니다. 티어 프로필은 `config/model-map.json`의 `tiers`에 있습니다.
 - **결제(payment)**는 금전적 결과로 판단합니다: 돈의 이동, 청구 금액 결정(가격·할인·세금), 승인·매입·취소·환불, 원장·정산 정확성, 금전적 의무 발생. billing/order 모듈에 있을 뿐인 코드나 결제 데이터를 캐싱·조회만 하는 작업은 결제가 아닙니다.
 - **권한(permissions)**은 접근 경계를 포함합니다: 테넌트 격리, 고객별 데이터 격리, 고객별 데이터를 담는 캐시 키·네임스페이스.
 
@@ -107,8 +107,8 @@ python3 scripts/router.py --platform antigravity --detect-antigravity-models --f
 
 ## 2단계 라우트 (Two-stage routes)
 
-모든 플랫폼에서 L3 이상의 `architectural_refactoring`, 그리고 L5의 `implementation` / `local_refactoring` 작업은 성공 여부에 따라 체인 형태로 실행됩니다.
-1. 계획 모델(Codex `sol`, Claude Code `opus`, Antigravity Pro)이 임시 실행 디렉토리에 구조화된 계획 JSON을 작성합니다.
+모든 플랫폼에서 L2 이상의 코드 변경(`implementation`, `local_refactoring`, `architectural_refactoring`)은 성공 여부에 따라 체인 형태로 실행되며, 계획 모델은 해당 레벨의 플랫폼 `design` 행에서 가져옵니다. 예외: 파생된 계획자의 모델과 effort가 구현 모델과 같으면 계획 단계를 넣지 않고 단일 stage로 남습니다(Codex/Claude Code의 L2 `architectural_refactoring`, 그리고 Antigravity의 모든 L2 코드 변경). L1 코드 변경은 항상 단일 stage입니다.
+1. 계획 모델(Codex `sol`, Claude Code `opus`, Antigravity Flash/Pro)이 임시 실행 디렉토리에 구조화된 계획 JSON을 작성합니다.
 2. 구현 모델(`luna`/`terra` 또는 `sonnet`)이 계획서와 저장소를 읽고 계획의 검증 명령과 함께 구현을 진행합니다. 구현 모델은 새로운 설계 결정을 내리지 않으며, 계획 밖의 문제를 발견하면 멈추고 계획 모델을 위한 에스컬레이션 근거를 반환합니다.
 
 임시 실행 디렉토리는 성공 시 자동 삭제되며, 실패 시에는 분석을 위해 보존됩니다 (`--keep-plan` 옵션으로 강제 보존 가능).
@@ -121,23 +121,24 @@ python3 scripts/router.py --platform codex --task-type architectural_refactoring
 
 ## 실행 역할과 파이프라인
 
-계획·설계·검증·리뷰에는 강한 모델을, 구현·수정·테스트에는 저렴한 모델을 씁니다. 모델과 effort는 역할 + 난이도 + 리스크로 결정됩니다. 같은 L4라도 설계/리뷰/검증이면 Sol/Opus, 구현이면 Terra high / Sonnet high로 매핑됩니다. 역할은 기존 task_type에 대응합니다: 설계 = `design`, 리뷰 = `review`, 구현 = `implementation`, `local_refactoring`, `architectural_refactoring`(이미 Sol/Opus로 계획하고 Terra/Sonnet으로 구현). 분류 자체는 저렴한 모델이 계속 담당합니다.
+계획·설계·검증·리뷰에는 강한 모델을, 구현·수정·테스트에는 저렴한 모델을 씁니다. 모델과 effort는 역할 + 난이도 + 리스크로 결정됩니다. 같은 L4라도 설계/리뷰/검증이면 Sol/Opus, 구현이면 Terra high / Sonnet high로 매핑됩니다. 역할은 기존 task_type에 대응합니다: 설계 = `design`, 리뷰 = `review`, 구현 = `implementation`, `local_refactoring`, `architectural_refactoring`(L2 이상에서 `design` 행이 계획하고 `review` 행이 리뷰). 분류 자체는 저렴한 모델이 계속 담당합니다.
 
 ```text
-요청 -> 분류(저렴) -> 계획/설계 (Sol / Opus)
-     -> 계획된 각 단계를 다시 분류 -> 구현 + 테스트 실행
-          (수정/테스트는 Luna med / Haiku, 일반 로직은 Terra / Sonnet)
-          새로운 설계 문제 발견? 중단 -> 근거 반환 -> Sol / Opus 재계획
-     -> 단계 1..N 완료 후: Sol / Opus 검증+리뷰 1회
+요청 -> 분류(저렴) -> 계획 (L2+ 코드 변경, design 행 판단 모델: Sol / Opus)
+     -> 구현 (라우트의 구현 모델: Luna / Terra / Haiku / Sonnet)
+          새로운 설계 문제 발견? 중단 -> 근거 반환 -> 재계획
+     -> 결정적 테스트 (런처, 모델 호출 없음)
+     -> L2 이상: Sol / Opus 검증+리뷰 1회
           (High, elevated 티어 XHigh, critical 티어 Max)
-     -> FAIL: 수정 작업을 다시 분류 (단순 -> Luna med / Haiku, 일반 로직 -> Terra / Sonnet,
-          설계 문제 -> Sol / Opus) -> 최종 Sol / Opus 리뷰
+     -> FAIL: 라우트의 구현 모델이 수정 -> 테스트 -> 다시 리뷰, 다음 실패는 1회 재계획
 ```
 
-- **계획 난이도와 구현 난이도는 별개입니다.** 전체적으로 어려운 작업(예: 라우터의 보안 hard floor 재설계)은 Sol/Opus가 설계하고, 그 결과로 나온 각 단계를 다시 분류합니다. 계획자가 직접 구현할 필요는 없습니다.
-- **테스트 실행**(pytest, lint, formatter, typecheck, build)은 저렴한 구현 모델이 수행하고, "요구사항을 만족하는가?"라는 최종 검증은 Sol/Opus가 합니다.
+아직 구현되지 않은 계획: 계획된 각 단계와 리뷰 FAIL을 다시 분류해 더 싼/더 강한 수정 모델을 고르는 난이도별 모델 라우팅.
+
+- **계획 난이도와 구현 난이도는 별개입니다.** 전체적으로 어려운 작업(예: 라우터의 보안 hard floor 재설계)은 Sol/Opus가 설계하고, 구현은 매트릭스가 그 레벨에 고른 더 저렴한 모델이 맡습니다(계획된 각 단계를 다시 분류하는 것은 계획 단계). 계획자가 직접 구현할 필요는 없습니다(계획자=구현자인 행 제외).
+- **테스트 실행**(pytest, lint, formatter, typecheck, build)은 런처가 모델 호출 없이 직접 수행하고, "요구사항을 만족하는가?"라는 최종 검증은 Sol/Opus 리뷰가 합니다.
 - **리뷰는 1회로 합칩니다.** 단계마다 Sol/Opus를 호출하지 않습니다. 단계 1..N을 묶어 테스트를 돌린 뒤, 검증과 코드 리뷰를 합친 Sol/Opus 호출을 한 번만 합니다. 전달 내용은 원 요구사항, 승인된 계획, git diff, 테스트 결과, 핵심 코드뿐이며 세션 전체는 보내지 않습니다.
-- **리뷰 FAIL 시** 리뷰어는 직접 고치지 않습니다. 수정 작업을 위 표대로 다시 분류하고 최종 Sol/Opus 리뷰를 받습니다.
+- **리뷰 FAIL 시** 리뷰어는 직접 고치지 않습니다. 라우트의 구현 모델이 수정하고 다시 리뷰를 받습니다(난이도별 수정 모델은 계획 단계).
 - **에스컬레이션은 근거 기반**입니다. 구현 모델이 계획 밖의 문제를 발견하면 멈추고 근거(범위 확대, 아키텍처 변경, 퍼블릭 API 변경, DB 마이그레이션, 보안 경계 변경, 계획과 코드 구조 불일치)를 반환합니다. "어렵다", "확신이 없다"만으로는 유효한 사유가 아닙니다.
 - **후속 질문은 저장된 라우트를 재사용**합니다. 작업 유형이 바뀌거나(예: INSPECT -> MODIFY), 범위가 크게 늘거나, 새로운 위험 증거가 나오거나, 승인된 설계를 구현할 수 없다는 사실이 드러날 때만 다시 분류합니다.
 - **Effort 상한**: Luna는 Low/Medium/High(Luna High로 부족하면 Luna XHigh가 아니라 Terra로), Terra는 Medium/High, Sol은 High/XHigh/Max. Claude Code는 Haiku(단순), Sonnet(일반~복잡 구현), Opus(계획/설계/검증/리뷰). Luna High와 Sonnet Low는 L2 세분화로만 라우팅됩니다: 단순 구현이지만 기존 코드 이해가 필요하면(`requires_code_understanding` = yes) Luna High / Sonnet Low, 아니면 L2는 Luna Medium / Haiku 그대로입니다.

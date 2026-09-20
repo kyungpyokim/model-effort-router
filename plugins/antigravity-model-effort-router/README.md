@@ -46,7 +46,8 @@ To execute an already-generated route without classifying or detecting models ag
 
 Replay preserves `steps[].command`, including the interactive choice saved when
 generating JSON with `--interactive`. Two-stage runs remain noninteractive and
-start the executor only after the planner succeeds.
+start the executor only after the planner succeeds. A non-interactive run goes through
+`scripts/pipeline.py` (plan -> implement -> launcher-run tests -> merged review).
 
 The router first classifies with native `agy` using fixed
 `Gemini 3.8 Flash (Medium)`, print mode, and an isolated sandboxed plan
@@ -58,8 +59,7 @@ In Antigravity, effort is represented in names such as `Gemini ... Flash (Low)` 
 
 Levels are L1-L5. A separate risk tier (`elevated` for security/payment logic changes
 and similar, `critical` for irreversible/ledger/crypto work or `--critical`) implies L5
-and, because Antigravity has no effort setting, swaps the planning/judging stage
-(the planner of a two-stage route, otherwise the single stage) to
+and, because Antigravity has no effort setting, swaps the planning and review stages to
 `Claude Opus Thinking`; the implementer stage keeps its matrix model. `--level` accepts
 `L1`-`L5` only.
 
@@ -74,13 +74,16 @@ verified artifacts; direct v2-v6 route-file replay never invokes it.
 
 Spend top-model tokens on important judgement and run already-decided work on the
 cheapest sufficient model: the strongest available model (Pro High / Opus Thinking)
-plans, designs, verifies, and reviews; Flash and Sonnet Thinking implement, fix, and
-run tests. Reuse the stored route for same-task follow-ups (re-classify only on a
+plans, designs, verifies, and reviews; Flash and Sonnet Thinking implement and fix; the
+launcher runs the tests with no model. Reuse the stored route for same-task follow-ups (re-classify only on a
 task-type change, large scope growth, new risk evidence, or a fact that shows the
 approved design cannot be implemented). Do not call the strong model after each step:
-after steps 1..N and the tests, make one merged verification + review call sent only
-the requirement, approved plan, git diff, test results, and key code. On review FAIL
-re-classify the fix instead of having the reviewer fix it. An implementer that finds
+after the implementation and the tests, make one merged verification + review call (L2+)
+sent only the requirement, approved plan, git diff, test results, and key code. On review
+FAIL the route's implementer fixes it (the reviewer does not); the next failure re-plans once.
+Code changes at L2+ get a planner from the `design` row, except that Antigravity L2 code
+changes stay single-stage (Flash High plans and implements alike); L1 is single-stage with only the
+test gate. The router does not enforce per-stage permissions on Antigravity (planned). An implementer that finds
 something outside the plan (scope expansion, architecture or public API change, DB
 migration, security boundary change, plan/code mismatch) stops and returns evidence;
 "hard" or "unsure" alone is not evidence. See `references/routing-policy.md`.

@@ -12,27 +12,28 @@ Execute the saved route with `../../bin/agy-route --route-file "<route.json>"`.
 Pass the complete generated route JSON as the replay input and keep the original
 task with it. The launcher executes `steps[].command` without reclassification
 or model detection, preserving the selected matrix models and embedded effort.
-A single route launches its L1-L5 agent; a two_stage route runs the
-planner, then runs the executor only if the plan step succeeds. The executor must use every
+The replay runs `scripts/pipeline.py`: a two_stage route runs the planner, then runs the executor only if the plan step succeeds; a code-change route (`pipeline` block present) then
+runs the launcher's test gate (`MODEL_EFFORT_ROUTER_TEST_CMD`) and, at L2+, one merged review
+with a bounded fix/re-plan loop. The executor must use every
 `verification.recommended` ID and reason to select applicable existing
 repository checks and report each result or why it was not run.
 
 Do not describe the current session's model or attempt to change it. Do not
 continue the task in the parent session or invoke the router again from replayed steps.
 
-For bounded changes, use a single-agent fast path: applies only when the stored route has
-`effective_level` L1-L3, empty `risk_flags`, no `security_review` or `migration_safety` in
-`verification.recommended`, and a `single` `mode`. It means delegating
-once to the routed executor (one step) with focused tests, at most one review, and no
-multi-agent chains; re-route only if new evidence raises scope or risk. It never means the
-parent implements the task itself.
+Workflow for code changes (`implementation`, `local_refactoring`, `architectural_refactoring`):
+L1 stays single-stage with only the test gate and no review. At L2+ the planner comes from the
+platform's `design` row and a merged review runs after a green test run. Antigravity L2
+routes stay single-stage (the design row equals the implementer, Flash High), but still get
+the L2+ review; L3+ routes are two_stage (Pro High plans). Re-route only if new evidence raises
+scope or risk. The parent session never implements the task itself.
 
 Schema v6 records facts, `risk_tier`, and `orchestration_eligible` as future metadata only.
 `scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
 `execution_strategy: direct` because direct v2-v6 route-file replay never invokes it.
 
-An `elevated` or `critical` `risk_tier` implies L5 and swaps the planning/judging stage to
+An `elevated` or `critical` `risk_tier` implies L5 and swaps the planning and review stages to
 `Claude Opus Thinking` (Antigravity has no effort setting); the implementer stage keeps its
 matrix model. Reuse the stored route for same-task follow-ups; re-classify only on a
 task-type change, large scope growth, new risk evidence, or a fact showing the approved

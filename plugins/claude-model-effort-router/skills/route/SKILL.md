@@ -53,7 +53,7 @@ The model comes from the selected `task_type × level` matrix row plus any confi
      python3 "${CLAUDE_SKILL_DIR}/../../scripts/pipeline.py" --route-file <route.json>
      ```
 
-     Run it in the background: it can outlast a foreground Bash timeout. The launcher runs the plan, implement, test, review, and fix stages itself (see Pipeline guidance below), so do not run those steps with the Agent tool. Report to the user the exit code (`0` done; `2` invalid route file; `10` gave up after the fix and re-plan budget; `11` review gave no verdict; `12` a stage failed to start; `13` no plan file) and the last `phase=` line of stderr (or `state.json` in the work directory). The user's deterministic check goes in `MODEL_EFFORT_ROUTER_TEST_CMD` (or `--test-cmd`); ask the user once if you do not know it, and if there is none leave it unset: the review prompt then states that no test command was configured.
+     Run it in the background: it can outlast a foreground Bash timeout. The launcher runs the plan, implement, test, review, and fix stages itself (see Pipeline guidance below), so do not run those steps with the Agent tool. Report to the user the exit code (`0` done; `2` invalid route file; `10` gave up after the fix and re-plan budget; `11` review gave no verdict; `12` a stage failed to start; `13` no plan file; any other code is the stage's own exit code) and the last `phase=` line of stderr (or `state.json` in the work directory). The user's deterministic check goes in `MODEL_EFFORT_ROUTER_TEST_CMD` (or `--test-cmd`); ask the user once if you do not know it, and if there is none leave it unset: the review prompt then states that no test command was configured.
    - `pipeline` null (read-only `design` / `review`): run the Agent tool, one call per stored step, in order. Pass the complete generated route JSON with the original task. For each step, set `subagent_type` to `steps[].agent.subagent_type`, `model` to `steps[].agent.model`, and use the last element of `steps[].command` as the prompt; it already carries the task, the stage instructions, and the verification handoff. These routes are `single`, so it is one call.
 2. The Agent tool cannot set effort, so `steps[].agent.subagent_type` is an `effort-*` agent whose frontmatter pins `steps[].effort`. Do not substitute a `level-N` agent.
 3. The executor must use every `verification.recommended` ID and reason to select applicable existing repository checks and report each result or why it was not run.
@@ -74,8 +74,9 @@ Pipeline guidance (Opus thinks and verifies, Haiku and Sonnet implement). `pipel
   Re-classify only when the task type changes (for example inspect to modify), the scope
   grows a lot, new risk evidence appears, or a fact shows the approved design cannot be
   implemented.
-- The planner (Opus) writes a plan file (read plus that file only), then the implementer
-  (Haiku/Sonnet, edit permissions) implements it. No plan file stops the run (exit `13`).
+- At L2+ the planner (Opus) writes a plan file (read plus that file only), then the implementer
+  (Haiku/Sonnet, edit permissions) implements it. No plan file stops the run (exit `13`). An L1
+  route has no plan stage; the implementer runs directly.
 - Tests run in the launcher without a model, and only a failure sends a truncated log to
   the cheap implementer to fix. Then ONE merged Opus verification and code review runs
   (read-only), given the requirement, plan, git diff, test results, and key code. Its effort is
@@ -83,7 +84,7 @@ Pipeline guidance (Opus thinks and verifies, Haiku and Sonnet implement). `pipel
   no review, only the test gate and the fix loop.
 - On review FAIL the reviewer does not fix it. The implementer fixes once, then the planning
   model re-plans. The limits come from `pipeline.limits` (`PIPELINE_LIMITS` in `router.py`): at
-  most 2 test fixes, 1 review fix before a re-plan, and 1 re-plan; beyond that the run gives up
+  most 2 test fixes per cycle (the count resets after a re-plan), 1 review fix before a re-plan, and 1 re-plan; beyond that the run gives up
   (exit `10`).
 - An executor that finds something outside the plan stops with an `ESCALATE:` line and evidence,
   which triggers the re-plan instead of the executor deciding structure itself. Valid evidence:

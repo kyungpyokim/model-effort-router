@@ -42,7 +42,7 @@ worker classifies instead.
    that spawns a nested `codex exec` that fails in the sandbox. Never delegate a route whose
    `source` is `fallback`; classification did not happen, so stop and report it.
 4. Pick the executor from the route JSON's `pipeline` block. Never reclassify, and do not continue or implement the task in the parent session.
-   - `pipeline` non-null (every code change: `implementation`, `local_refactoring`, `architectural_refactoring`): save the complete route JSON, exactly as generated, to a fresh temp file, then run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the user's current working directory (it runs `scripts/pipeline.py`). Run it in the background: it can outlast a foreground shell timeout. The launcher runs the plan, implement, test, review, and fix stages itself (see Pipeline guidance below), so do not spawn workers for them. Report to the user the exit code (`0` done; `2` invalid route file; `10` gave up after the fix and re-plan budget; `11` review gave no verdict; `12` a stage failed to start; `13` no plan file) and the last `phase=` line of stderr (or `state.json` in the work directory). The user's deterministic check goes in `MODEL_EFFORT_ROUTER_TEST_CMD`; ask the user once if you do not know it, and if there is none leave it unset: the review prompt then states that no test command was configured.
+   - `pipeline` non-null (every code change: `implementation`, `local_refactoring`, `architectural_refactoring`): save the complete route JSON, exactly as generated, to a fresh temp file, then run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the user's current working directory (it runs `scripts/pipeline.py`). Run it in the background: it can outlast a foreground shell timeout. The launcher runs the plan, implement, test, review, and fix stages itself (see Pipeline guidance below), so do not spawn workers for them. Report to the user the exit code (`0` done; `2` invalid route file; `10` gave up after the fix and re-plan budget; `11` review gave no verdict; `12` a stage failed to start; `13` no plan file; any other code is the stage's own exit code) and the last `phase=` line of stderr (or `state.json` in the work directory). The user's deterministic check goes in `MODEL_EFFORT_ROUTER_TEST_CMD`; ask the user once if you do not know it, and if there is none leave it unset: the review prompt then states that no test command was configured.
    - `pipeline` null (read-only `design` / `review`): delegate each entry in `steps` in order to a spawned worker whose `model` and `reasoning_effort` are set to that step's `model` and `effort`; never inherit the parent session model. The worker message is the `developer_instructions` value from that step's `command`, followed by the last element of `command`. Pass the complete generated route JSON along with the original task. The delegated executor must use every `verification.recommended` ID and reason to select applicable existing repository checks and report each result or why it was not run.
 5. `two_stage` code-change routes (a judge plans, a cheaper model implements) cover L2+ code changes except where the design row equals the implementer row (`architectural_refactoring` at L2); the launcher runs the planner, which writes the plan file, then the executor, which reads it with the repository. Never run the executor after a failed plan stage.
 6. Do not describe the parent session's model, effort, or inability to change models.
@@ -62,8 +62,8 @@ Pipeline guidance (Sol thinks and verifies, Luna and Terra implement). `pipeline
   Re-classify only when the task type changes (for example inspect to modify), the scope
   grows a lot, new risk evidence appears, or a fact shows the approved design cannot be
   implemented.
-- The planner (Sol) writes a plan file, then the implementer (Luna/Terra) implements it. No
-  plan file stops the run (exit `13`).
+- At L2+ the planner (Sol) writes a plan file, then the implementer (Luna/Terra) implements it. No
+  plan file stops the run (exit `13`). An L1 route has no plan stage; the implementer runs directly.
 - Tests run in the launcher without a model, and only a failure sends a truncated log to
   the cheap implementer to fix. Then ONE merged Sol verification and code review runs, given
   the requirement, plan, git diff, test results, and key code. Its effort is High by default,
@@ -71,7 +71,7 @@ Pipeline guidance (Sol thinks and verifies, Luna and Terra implement). `pipeline
   the test gate and the fix loop.
 - On review FAIL the reviewer does not fix it. The implementer fixes once, then the planning
   model re-plans. The limits come from `pipeline.limits` (`PIPELINE_LIMITS` in `router.py`): at
-  most 2 test fixes, 1 review fix before a re-plan, and 1 re-plan; beyond that the run gives up
+  most 2 test fixes per cycle (the count resets after a re-plan), 1 review fix before a re-plan, and 1 re-plan; beyond that the run gives up
   (exit `10`).
 - An executor that finds something outside the plan stops with an `ESCALATE:` line and evidence,
   which triggers the re-plan instead of the executor deciding structure itself. Valid evidence:
