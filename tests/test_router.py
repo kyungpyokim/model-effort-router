@@ -1183,6 +1183,10 @@ class MatrixTests(unittest.TestCase):
                 for level in router.LEVELS:
                     with self.subTest(cell=f"{platform}/{task_type}/{level}"):
                         result = routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
+                        if task_type == "inspect" and router.LEVELS.index(level) > router.LEVELS.index(router.INSPECT_MAX_LEVEL):
+                            # Unreachable matrix rows: route() promotes a high-level inspect to review.
+                            self.assertEqual((result.task_type, result.level), ("review", level))
+                            continue
                         self.assertEqual(result.task_type, task_type)
                         self.assertEqual((result.level, result.risk_tier), (level, "standard"))
                         if (task_type, level) in self.EXPECTED_SINGLE[platform]:

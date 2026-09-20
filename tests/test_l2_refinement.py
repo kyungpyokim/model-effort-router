@@ -19,7 +19,7 @@ BASE_FACTS = {
 }
 
 
-def routed(platform, task_type="implementation", understanding="yes", level=None, config=CONFIG, **facts):
+def routed(platform, task_type="implementation", understanding="yes", level=None, config=CONFIG, check_available=False, **facts):
     all_facts = {**BASE_FACTS, **facts}
     if understanding is not None:
         all_facts["requires_code_understanding"] = understanding
@@ -28,7 +28,9 @@ def routed(platform, task_type="implementation", understanding="yes", level=None
         task_type=task_type, level=level_, risk_flags={f: False for f in router.RISK_FLAGS}, reason="r", source="primary",
         facts=all_facts, matched_rules=tuple(matched), risk_tier=tier, unresolved=unresolved,
     )
-    return router.route("t", platform, config, explicit_level=level, classifier=lambda _: classification)
+    return router.route(
+        "t", platform, config, explicit_level=level, classifier=lambda _: classification, check_available=check_available
+    )
 
 
 class L2RefinementTests(unittest.TestCase):

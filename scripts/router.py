@@ -265,6 +265,8 @@ class RouteResult:
     orchestration_eligible: bool
     # Who reviews and re-plans after implementation; None for routes without a chained pipeline.
     pipeline: dict | None = None
+    # The cheap single-model path this route qualified for ("inspect" / "trivial_edit"), else None.
+    fast_path: str | None = None
 
 
 def agent_name(level: str) -> str:
@@ -1084,6 +1086,25 @@ def pipeline_plan(
     return {"review": review, "replan": replan, "limits": dict(PIPELINE_LIMITS)}
 
 
+INSPECT_MAX_LEVEL = "L2"
+TRIVIAL_EDIT_TASK_TYPES = ("implementation", "local_refactoring")
+
+
+def fast_path_for(task_type: str, level: str, risk_tier: str, facts: dict[str, str], check_available: bool) -> str | None:
+    """The cheap single-model path a route qualifies for, or None for the regular workflow.
+
+    Only an explicit ``requires_code_understanding == "no"`` qualifies a code change: unknown is missing
+    information, so it keeps the regular workflow without raising anything."""
+    if task_type == "inspect":
+        return "inspect"
+    if (
+        task_type in TRIVIAL_EDIT_TASK_TYPES and level == "L1" and risk_tier == "standard"
+        and facts.get("requires_code_understanding") == "no" and check_available
+    ):
+        return "trivial_edit"
+    return None
+
+
 def route(
     task: str,
     platform: str,
@@ -1094,6 +1115,7 @@ def route(
     classifier: Callable[[str], Classification] | None = None,
     repo_aware: bool = False,
     critical: bool = False,
+    check_available: bool = False,
 ) -> RouteResult:
     manual_bypass = explicit_task_type is not None and (critical or explicit_level is not None)
     if manual_bypass:
@@ -1124,6 +1146,10 @@ def route(
     level, risk_tier = apply_risk_escalation(base_level, risk_tier, classification.risk_flags)
     if risk_tier != "standard":
         rationale.append(f"{risk_tier} risk tier raises the {level} planning/judging effort")
+    # Promote before the matrix lookup and apply_tier so a risky inspect is a judge review, never a cheap row with effort.
+    if task_type == "inspect" and (risk_tier != "standard" or LEVELS.index(level) > LEVELS.index(INSPECT_MAX_LEVEL)):
+        task_type = "review"
+        rationale.append(f"inspect promoted to review: {level} / {risk_tier} tier needs judgement, not a lookup")
 
     level_name = config["levels"][level]["name"]
     matrix = load_matrix(config, platform)
@@ -1154,6 +1180,7 @@ def route(
     orchestration_eligible = is_orchestration_eligible(
         config, platform, level, mode, classification.risk_flags, risk_tier, classification.delegability
     )
+    fast_path = fast_path_for(task_type, level, risk_tier, classification.facts, check_available)
     return RouteResult(
         platform=platform,
         task_type=task_type,
@@ -1176,6 +1203,7 @@ def route(
         execution_strategy="direct",
         orchestration_eligible=orchestration_eligible,
         pipeline=pipeline,
+        fast_path=fast_path,
     )
 
 
@@ -1675,6 +1703,7 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None,
         "execution_strategy": result.execution_strategy,
         "orchestration_eligible": result.orchestration_eligible,
         "pipeline": pipeline_payload(result, task),
+        "fast_path": result.fast_path,
     }
     if any(flag in SECURITY_FLOOR_FLAGS for flag in active_risk_flags):
         payload["scope_guard"] = {
