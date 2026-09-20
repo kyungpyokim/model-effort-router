@@ -128,7 +128,7 @@ reasons only; it does not execute checks. The selected executor receives its
 recommended checks and reports each result or why it was not run. Route-file
 replay ignores the JSON object and reuses only the stored execution steps.
 
-Schema v6 records `facts`, `matched_rules`, `needs_context`, `evidence`, `risk_tier`, and
+Schema v6 records `facts`, `matched_rules`, `unresolved_facts`, `questions`, `evidence`, `risk_tier`, and
 `execution_strategy: "direct"` with
 `orchestration_eligible` separately. `scripts/astra_adapter.py` is the unchanged
 orchestration adapter, a caller-invoked isolated-worker boundary that revalidates worker

@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +40,7 @@ BASE_FACTS = {
     "changes_trust_boundary": "no",
     "blast_radius": "narrow",
     "silent_failure_material_harm": "no",
+    "requires_code_understanding": "no",
 }
 # The smallest fact change that makes DIFFICULTY_RULES pick each level.
 LEVEL_FACTS = {
@@ -160,134 +162,76 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(result.source, "gpt-5.6-luna")
         self.assertEqual(run.call_args.kwargs["timeout"], 7)
 
-    def test_unknown_deciding_fact_escalates_to_a_repository_aware_classifier(self):
-        primary_output = classifier_output(crosses_module_boundary="unknown")
-        fallback_output = classifier_output(level="L3")
-        calls = []
 
+    def fake_two_pass(self, first, lookup, seen):
+        """A codex stand-in: the first pass answers ``first``, a repository-reading lookup answers ``lookup``."""
         def fake_run(command, **kwargs):
-            model = command[command.index("--model") + 1]
-            calls.append((model, "Repository to inspect" in command[-1]))
-            out = fallback_output if model == "gpt-5.6-terra" else primary_output
-            return subprocess.CompletedProcess([], 0, out, "")
+            prompt = command[-1]
+            seen.append((command[command.index("--model") + 1], "Repository to inspect" in prompt, prompt))
+            return subprocess.CompletedProcess([], 0, lookup if "Repository to inspect" in prompt else first, "")
+        return fake_run
 
-        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
+    def test_an_unknown_fact_gets_one_bounded_lookup_by_the_same_model(self):
+        seen = []
+        run = self.fake_two_pass(classifier_output(crosses_module_boundary="unknown"), classifier_output(crosses_module_boundary="no"), seen)
+        with mock.patch.object(router.subprocess, "run", side_effect=run):
             result = router.classify_task("change the export flow")
-        self.assertEqual(calls, [("gpt-5.6-luna", False), ("gpt-5.6-terra", True)])
-        # The repository-aware facts replace the primary guess, including a lower level.
-        self.assertEqual((result.source, result.level, result.needs_context), ("gpt-5.6-terra", "L3", False))
+        self.assertEqual([(model, reads) for model, reads, _ in seen], [("gpt-5.6-luna", False), ("gpt-5.6-luna", True)])
+        self.assertIn("left these facts unknown: crosses_module_boundary", seen[1][2])
+        self.assertEqual((result.facts["crosses_module_boundary"], result.unresolved, result.level), ("no", (), "L2"))
 
-    def test_escalation_resolves_unrelated_unknown_but_a_sticky_primary_yes_survives_an_explicit_escalated_no(self):
-        # changes_security_or_payment_logic is a sticky safety fact (see
-        # STICKY_AFFIRMATIVE_SAFETY_FACTS): the primary's "yes" is OR-aggregated in
-        # and survives even an explicit escalated "no", because missing a real
-        # security/payment change is far costlier than routing a false positive one
-        # tier too high. Never weaken this to make an eval case pass. The unrelated
-        # crosses_module_boundary unknown is still resolved by escalation.
-        primary_output = classifier_output(
-            changes_security_or_payment_logic="yes",
-            crosses_module_boundary="unknown",
-        )
-        escalated_output = classifier_output(level="L2")
+    def test_the_lookup_can_only_settle_unknown_facts(self):
+        seen = []
+        first = classifier_output(crosses_module_boundary="unknown", changes_persisted_data="no")
+        lookup = classifier_output(level="L5", crosses_module_boundary="yes", changes_persisted_data="yes", changes_security_or_payment_logic="yes")
+        with mock.patch.object(router.subprocess, "run", side_effect=self.fake_two_pass(first, lookup, seen)):
+            result = router.classify_task("change the export flow")
+        self.assertEqual(result.facts["crosses_module_boundary"], "yes")   # the unknown one was settled
+        self.assertEqual(result.facts["changes_persisted_data"], "no")     # an answered fact stays as answered
+        self.assertEqual(result.facts["changes_security_or_payment_logic"], "no")
+        self.assertEqual((result.level, result.risk_tier), ("L4", "standard"))
 
-        def fake_run(command, **kwargs):
-            model = command[command.index("--model") + 1]
-            output = escalated_output if model == "gpt-5.6-terra" else primary_output
-            return subprocess.CompletedProcess([], 0, output, "")
-
-        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
-            result = router.classify_task("inspect an unclear module boundary around authentication")
-
-        self.assertEqual((result.source, result.level, result.risk_tier), ("gpt-5.6-terra", "L5", "elevated"))
-        self.assertEqual(result.facts["changes_security_or_payment_logic"], "yes")
-        self.assertTrue(result.risk_flags["security_sensitive"])
-        self.assertEqual(result.facts["crosses_module_boundary"], "no")
-
-    def test_escalation_keeps_a_known_security_fact_when_escalated_stays_unknown_on_it(self):
-        # Unlike the explicit-no case above, when escalated itself cannot settle the
-        # same fact (answers "unknown"), the primary's affirmative answer still fills
-        # that gap.
-        primary_output = classifier_output(
-            changes_security_or_payment_logic="yes",
-            crosses_module_boundary="unknown",
-        )
-        escalated_output = classifier_output(level="L2", changes_security_or_payment_logic="unknown")
-
-        def fake_run(command, **kwargs):
-            model = command[command.index("--model") + 1]
-            output = escalated_output if model == "gpt-5.6-terra" else primary_output
-            return subprocess.CompletedProcess([], 0, output, "")
-
-        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
-            result = router.classify_task("inspect an unclear module boundary around authentication")
-
-        self.assertEqual((result.source, result.level, result.risk_tier), ("gpt-5.6-terra", "L5", "elevated"))
-        self.assertEqual(result.facts["changes_security_or_payment_logic"], "yes")
-        self.assertTrue(result.risk_flags["security_sensitive"])
-
-    def test_escalation_keeps_sticky_primary_safety_facts_despite_an_explicit_escalated_no(self):
-        # Sticky facts (STICKY_AFFIRMATIVE_SAFETY_FACTS) are OR-aggregated: a primary
-        # affirmative survives no matter what escalation says, because missing one of
-        # these under-routes a real irreversible or security/data/API/trust-boundary
-        # change. Never weaken this to make an eval case pass.
-        cases = (
-            ("changes_persisted_data", "yes", "no", "data_migration"),
-            ("changes_public_api_contract", "yes", "no", "public_api_change"),
-            ("irreversible_or_ledger_or_crypto", "yes", "no", None),
-            ("changes_trust_boundary", "yes", "no", None),
-            ("silent_failure_material_harm", "yes", "no", None),
-        )
-        for fact, primary_value, escalated_value, risk_flag in cases:
-            with self.subTest(fact=fact):
-                primary_output = classifier_output(**{fact: primary_value, "crosses_module_boundary": "unknown"})
-                escalated_output = classifier_output(level="L2")
+    def test_a_fact_the_lookup_cannot_settle_stays_unresolved_and_never_raises_the_route(self):
+        for platform, models in (
+            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-sonnet-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
+        ):
+            with self.subTest(platform=platform):
+                calls = []
+                output = classifier_output(changes_security_or_payment_logic="unknown", irreversible_or_ledger_or_crypto="unknown")
+                reply = output if platform == "codex" else json.dumps({"structured_output": json.loads(output)})
 
                 def fake_run(command, **kwargs):
-                    model = command[command.index("--model") + 1]
-                    output = escalated_output if model == "gpt-5.6-terra" else primary_output
-                    return subprocess.CompletedProcess([], 0, output, "")
+                    calls.append(command[command.index("--model") + 1])
+                    return subprocess.CompletedProcess([], 0, reply, "")
 
                 with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
-                    classification_ = router.classify_task("inspect an unclear module boundary")
-                self.assertEqual(classification_.facts[fact], primary_value)
-                self.assertNotEqual(classification_.facts[fact], escalated_value)
-                if risk_flag:
-                    self.assertTrue(classification_.risk_flags[risk_flag])
-                if fact == "irreversible_or_ledger_or_crypto":
-                    self.assertEqual(classification_.risk_tier, "critical")
+                    result = router.classify_task("fix the login problem", platform=platform)
+                self.assertEqual(len(calls), 2)          # first pass + at most one lookup
+                self.assertEqual(set(calls), models)     # the same model class; never a stronger one
+                self.assertEqual(result.unresolved, ("changes_security_or_payment_logic", "irreversible_or_ledger_or_crypto"))
+                self.assertEqual((result.level, result.risk_tier), ("L2", "standard"))
+                self.assertFalse(any(result.risk_flags.values()))
 
-    def test_escalation_corrects_review_scope_facts_on_an_explicit_escalated_answer(self):
-        # Correctable facts (CORRECTABLE_SAFETY_FACTS) are where a keyword-driven
-        # primary classifier produces most of its false positives on ordinary
-        # review-scope tasks, so an explicit escalated no/none/narrow overrides them.
-        cases = (
-            ("reviews_security_sensitive_code", "yes", "no"),
-            ("security_domain", "payment", "none"),
-            ("blast_radius", "broad", "narrow"),
-        )
-        for fact, primary_value, escalated_value in cases:
-            with self.subTest(fact=fact):
-                primary_output = classifier_output(**{fact: primary_value, "crosses_module_boundary": "unknown"})
-                escalated_output = classifier_output(level="L2")
-
-                def fake_run(command, **kwargs):
-                    model = command[command.index("--model") + 1]
-                    output = escalated_output if model == "gpt-5.6-terra" else primary_output
-                    return subprocess.CompletedProcess([], 0, output, "")
-
-                with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
-                    classification_ = router.classify_task("inspect an unclear module boundary")
-                result = routed(classifier=lambda _: classification_)
-                self.assertEqual(result.level, "L2")
-                self.assertEqual(classification_.facts[fact], escalated_value)
-                self.assertNotEqual(classification_.risk_tier, "critical")
-
-    def test_known_facts_do_not_escalate(self):
-        output = classifier_output(level="L5", files_touched="unknown")
-        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, output, "")) as run:
+    def test_all_facts_known_means_no_lookup(self):
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, classifier_output(), "")) as run:
             result = router.classify_task("task")
-        # files_touched unknown only reaches an L3 rule, below the context threshold.
-        self.assertEqual((run.call_count, result.level, result.needs_context), (1, "L5", False))
+        self.assertEqual((run.call_count, result.unresolved), (1, ()))
+
+    def test_a_failed_lookup_keeps_the_first_answer(self):
+        first = classifier_output(changes_public_api_contract="unknown")
+        outcomes = [subprocess.CompletedProcess([], 0, first, ""), subprocess.CompletedProcess([], 1, "", "failed"), subprocess.CompletedProcess([], 1, "", "failed")]
+        with mock.patch.object(router.subprocess, "run", side_effect=outcomes) as run:
+            result = router.classify_task("ambiguous task")
+        self.assertEqual(run.call_count, 3)  # first pass, the lookup, and the one transient retry
+        self.assertEqual((result.source, result.level, result.unresolved), ("gpt-5.6-luna", "L2", ("changes_public_api_contract",)))
+
+    def test_repo_aware_reads_the_repository_in_the_single_pass(self):
+        seen = []
+        first = classifier_output(crosses_module_boundary="unknown")
+        with mock.patch.object(router.subprocess, "run", side_effect=self.fake_two_pass(first, first, seen)):
+            result = router.classify_task("fix intermittent bug", repo_aware=True)
+        self.assertEqual([(model, reads) for model, reads, _ in seen], [("gpt-5.6-luna", True)])
+        self.assertEqual(result.unresolved, ("crosses_module_boundary",))
 
     def test_timeout_is_not_retried(self):
         # A timeout usually means overload; retrying doubled the wait to 120s per classifier.
@@ -295,37 +239,6 @@ class PlatformClassifierTests(unittest.TestCase):
             result = router.classify_task("task")
         self.assertEqual(run.call_count, 1)
         self.assertEqual(result.failure_kind, "timeout")
-
-    def test_cascade_keeps_primary_when_escalated_classifier_fails(self):
-        primary_output = classifier_output(changes_public_api_contract="unknown")
-        calls = []
-
-        def fake_run(command, **kwargs):
-            model = command[command.index("--model") + 1]
-            calls.append(model)
-            if model == "gpt-5.6-terra":
-                return subprocess.CompletedProcess([], 1, "", "failed")
-            return subprocess.CompletedProcess([], 0, primary_output, "")
-
-        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
-            result = router.classify_task("ambiguous task")
-        # secondary transient failure is retried once, then the valid primary result is kept
-        self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-terra"])
-        self.assertEqual((result.source, result.level), ("gpt-5.6-luna", "L4"))
-        self.assertIn("L4:changes_public_api_contract (unknown)", result.matched_rules)
-
-    def test_repo_aware_uses_fallback_classifier_directly(self):
-        calls = []
-
-        def fake_run(command, **kwargs):
-            model = command[command.index("--model") + 1]
-            calls.append(model)
-            return subprocess.CompletedProcess([], 0, classifier_output(level="L4"), "")
-
-        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
-            result = router.classify_task("fix intermittent bug", repo_aware=True)
-        self.assertEqual(calls, ["gpt-5.6-terra"])
-        self.assertEqual(result.source, "gpt-5.6-terra")
 
     def test_repository_context_reaches_native_classifier_read_only(self):
         for platform in ("codex", "claude-code", "antigravity"):
@@ -356,7 +269,9 @@ class PlatformClassifierTests(unittest.TestCase):
                     executable.chmod(0o755)
                     with contextlib.chdir(repo):
                         result = router.classify_task("inspect module.txt", platform=platform, command=str(executable), repo_aware=explicit)
-                    self.assertEqual(result.reason, "fixture repository evidence")
+                    # The lookup only settles the unknown fact; the first answer's reason stays.
+                    self.assertEqual(result.reason, "fixture repository evidence" if explicit else "Clear scoped change.")
+                    self.assertEqual((result.facts["crosses_module_boundary"], result.unresolved), ("no", ()))
                     records = [json.loads(line) for line in calls.read_text().splitlines()]
                     self.assertEqual([record["read"] for record in records], [True] if explicit else [False, True])
                     self.assertTrue(all(Path(record["cwd"]) != repo for record in records))
@@ -399,44 +314,6 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
         self.assertEqual(result.source, "Gemini 3.8 Flash (Medium)")
 
-    def test_claude_cascading_fallback_uses_sonnet_medium(self):
-        # Both primary and escalated now run claude-sonnet-5 at medium effort; the
-        # escalated (repository-aware) call is distinguished by carrying --add-dir.
-        primary_output = json.dumps({"structured_output": json.loads(classifier_output(crosses_service_boundary="unknown"))})
-        fallback_output = json.dumps({"structured_output": json.loads(classifier_output(level="L3"))})
-        calls = []
-
-        def fake_run(command, **kwargs):
-            model = command[command.index("--model") + 1]
-            effort = command[command.index("--effort") + 1] if "--effort" in command else None
-            is_repo_aware = "--add-dir" in command
-            calls.append((model, effort, is_repo_aware))
-            out = fallback_output if is_repo_aware else primary_output
-            return subprocess.CompletedProcess([], 0, out, "")
-
-        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
-            result = router.classify_task("ambiguous task", platform="claude-code")
-        self.assertEqual(calls, [("claude-sonnet-5", "medium", False), ("claude-sonnet-5", "medium", True)])
-        self.assertEqual(result.source, "claude-sonnet-5")
-        self.assertEqual(result.level, "L3")
-
-    def test_antigravity_cascading_fallback_to_pro_high(self):
-        primary_output = json.dumps({"structured_output": json.loads(classifier_output(changes_security_or_payment_logic="unknown"))})
-        fallback_output = json.dumps({"structured_output": json.loads(classifier_output(level="L5"))})
-        calls = []
-
-        def fake_run(command, **kwargs):
-            model = command[command.index("--model") + 1]
-            calls.append(model)
-            out = fallback_output if "Pro" in model else primary_output
-            return subprocess.CompletedProcess([], 0, out, "")
-
-        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
-            result = router.classify_task("complex task", platform="antigravity")
-        self.assertEqual(calls, ["Gemini 3.8 Flash (Medium)", "Gemini 3.1 Pro (High)"])
-        self.assertEqual(result.source, "Gemini 3.1 Pro (High)")
-        self.assertEqual(result.level, "L5")
-
     def test_timeout_process_failure_and_invalid_output_fall_back(self):
         for outcome in (
             subprocess.TimeoutExpired("codex", 1),
@@ -472,19 +349,6 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertEqual(result.source, "fallback")
         self.assertEqual(result.failure_kind, "invalid_json")
-
-    def test_secondary_classifier_transient_failure_is_also_retried(self):
-        primary_output = classifier_output(changes_persisted_data="unknown")
-        secondary_output = classifier_output(level="L4")
-        outcomes = [
-            subprocess.CompletedProcess([], 0, primary_output, ""),          # primary
-            subprocess.CompletedProcess([], 1, "", "cold start"),            # secondary, transient
-            subprocess.CompletedProcess([], 0, secondary_output, ""),        # secondary retry
-        ]
-        with mock.patch.object(router.subprocess, "run", side_effect=outcomes) as run:
-            result = router.classify_task("complex ambiguous task")
-        self.assertEqual(run.call_count, 3)
-        self.assertEqual(result.level, "L4")
 
     def test_schema_validation_rejects_bad_values(self):
         valid = classifier_output(raw=False)
@@ -556,81 +420,30 @@ class DifficultyRuleTests(unittest.TestCase):
         result = routed(classifier=lambda _: router.validate_classifier_output(classifier_output(irreversible_or_ledger_or_crypto="yes", raw=False)))
         self.assertEqual((result.level, result.risk_tier, result.stages[0]["model"], result.stages[0]["effort"]), ("L5", "critical", "gpt-5.6-sol", "max"))
 
-    def test_unknown_policy(self):
-        # security unknown sits one level below the security floor; other unknowns take the rule
-        self.assertEqual(self.level_of(changes_security_or_payment_logic="unknown")[0], "L5")
-        for fact in ("crosses_service_boundary", "changes_public_api_contract", "changes_persisted_data"):
+
+    def test_unknown_never_matches_a_rule_it_is_missing_information(self):
+        # unknown != yes, != hard, != risky: no fact's unknown raises the level, tier, or flags.
+        for fact, values in router.FACTS.items():
+            if "unknown" not in values:
+                continue
             with self.subTest(fact=fact):
-                level, _, _, needs_context = self.level_of(**{fact: "unknown"})
-                self.assertEqual((level, needs_context), ("L4", True))
-        self.assertEqual(self.level_of(files_touched="unknown")[2:], (["L3:files_touched_2_to_5 (unknown)"], False))
+                level, tier, matched, unresolved = self.level_of(**{fact: "unknown"})
+                self.assertEqual((level, tier, matched), (self.level_of()[0], "standard", []))
+                self.assertEqual(unresolved, () if fact in router.OPTIONAL_FACT_DEFAULTS else (fact,))
 
-    def test_module_boundary_unknown_escalates_without_raising_the_floor(self):
-        # Eval finding: an unknown module boundary over-routed single-module tasks to
-        # L4; unknown now only asks for repository context, and yes keeps the L4 rule.
-        level, tier, matched, needs_context = self.level_of(crosses_module_boundary="unknown")
-        self.assertEqual((level, tier, needs_context), ("L2", "standard", True))
-        self.assertEqual(matched, ["context:crosses_module_boundary_unknown (unknown)"])
-        level, _, matched, needs_context = self.level_of(crosses_module_boundary="unknown", files_touched="2-5")
-        self.assertEqual((level, needs_context), ("L3", True))
-        level, _, matched, needs_context = self.level_of(crosses_module_boundary="yes")
-        self.assertEqual((level, needs_context, matched), ("L4", False, ["L4:crosses_module_boundary"]))
-        # unknown never matches the L5 open-result-across-modules rule either.
-        level, _, matched, _ = self.level_of(crosses_module_boundary="unknown", fix_or_result_known="no")
-        self.assertEqual(level, "L3")
-        self.assertNotIn("L5:open_result_across_modules", matched)
+    def test_unknown_only_costs_what_the_explicit_facts_already_decide(self):
+        level, _, matched, unresolved = self.level_of(crosses_module_boundary="unknown", files_touched="2-5")
+        self.assertEqual((level, matched, unresolved), ("L3", ["L3:files_touched_2_to_5"], ("crosses_module_boundary",)))
+        level, tier, _, _ = self.level_of(intermittent_or_concurrency="unknown", crosses_service_boundary="yes")
+        self.assertEqual((level, tier), ("L4", "standard"))   # the elevated cross-service rule needs an explicit yes
+        self.assertEqual(self.level_of(irreversible_or_ledger_or_crypto="unknown")[1], "standard")  # never critical
 
-    def test_module_boundary_unknown_still_triggers_the_repository_aware_cascade(self):
-        primary_output = classifier_output(crosses_module_boundary="unknown")
-        calls = []
-
-        def fake_run(command, **kwargs):
-            model = command[command.index("--model") + 1]
-            calls.append(model)
-            if model == "gpt-5.6-terra":
-                return subprocess.CompletedProcess([], 1, "", "failed")
-            return subprocess.CompletedProcess([], 0, primary_output, "")
-
-        with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
-            result = router.classify_task("change the export flow")
-        self.assertEqual(calls, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-terra"])
-        # The escalated classifier failed, so the primary answer is kept: still L2, not L4.
-        self.assertEqual((result.source, result.level, result.needs_context), ("gpt-5.6-luna", "L2", True))
-        self.assertEqual(list(result.matched_rules), ["context:crosses_module_boundary_unknown (unknown)"])
-
-    def test_intermittent_unknown_escalates_without_raising_the_floor(self):
-        # unknown is a needs_context-only signal here: it must not by itself bump an
-        # otherwise-L2 task past its base level.
-        level, tier, matched, needs_context = self.level_of(intermittent_or_concurrency="unknown")
-        self.assertEqual((level, tier, needs_context), ("L2", "standard", True))
-        self.assertEqual(matched, ["context:intermittent_or_concurrency_unknown (unknown)"])
-
-    def test_intermittent_unknown_does_not_match_the_elevated_cross_service_rule(self):
-        level, tier, matched, needs_context = self.level_of(
-            intermittent_or_concurrency="unknown", crosses_service_boundary="yes",
-        )
-        self.assertNotIn("elevated:intermittent_across_services", matched)
-        self.assertEqual((level, tier, needs_context), ("L4", "standard", True))
-
-    def test_irreversible_unknown_floors_at_l5_and_is_never_critical(self):
-        level, tier, matched, needs_context = self.level_of(irreversible_or_ledger_or_crypto="unknown")
-        self.assertEqual((level, tier, needs_context), ("L5", "standard", True))
-        self.assertEqual(matched, ["L5:irreversible_or_ledger_or_crypto_unknown (unknown)"])
-
-    def test_irreversible_yes_is_still_critical_never_unknown(self):
-        _, tier, matched, _ = self.level_of(irreversible_or_ledger_or_crypto="yes")
-        self.assertEqual(tier, "critical")
-        _, tier_unknown, _, _ = self.level_of(irreversible_or_ledger_or_crypto="unknown")
-        self.assertNotEqual(tier_unknown, "critical")
-
-    def test_classifier_reply_with_new_unknown_values_is_accepted(self):
-        output = classifier_output(
-            raw=False, intermittent_or_concurrency="unknown", irreversible_or_ledger_or_crypto="unknown",
-        )
+    def test_a_classifier_reply_with_unknown_values_is_accepted_and_reports_them(self):
+        output = classifier_output(raw=False, intermittent_or_concurrency="unknown", irreversible_or_ledger_or_crypto="unknown")
         classification_ = router.validate_classifier_output(output)
-        self.assertEqual(classification_.level, "L5")
-        self.assertTrue(classification_.needs_context)
-        self.assertNotEqual(classification_.risk_tier, "critical")
+        self.assertEqual((classification_.level, classification_.risk_tier), ("L2", "standard"))
+        self.assertEqual(classification_.unresolved, ("intermittent_or_concurrency", "irreversible_or_ledger_or_crypto"))
+        self.assertTrue(all(fact in router.FACT_QUESTIONS for fact in router.FACTS))
 
     def test_read_only_design_and_review_accept_zero_files_touched(self):
         for task_type in ("design", "review"):
@@ -746,8 +559,8 @@ class SecurityReviewFloorTests(unittest.TestCase):
                     self.assertEqual(result.level, "L5")
 
     def test_secrets_only_review_gets_the_l4_floor(self):
-        level, _, matched, needs_context = self.level_of(reviews_security_sensitive_code="yes", security_domain="secrets")
-        self.assertEqual((level, needs_context), ("L4", False))
+        level, _, matched, unresolved = self.level_of(reviews_security_sensitive_code="yes", security_domain="secrets")
+        self.assertEqual((level, unresolved), ("L4", ()))
         self.assertEqual(matched, ["L4:reviews_security_sensitive_code"])
         # secrets alone (no review, no change) is not a floor of its own
         self.assertEqual(self.level_of(security_domain="secrets")[0], "L2")
@@ -773,17 +586,6 @@ class SecurityReviewFloorTests(unittest.TestCase):
             blast_radius="broad", reviews_security_sensitive_code="yes", security_domain="pii",
         )
         self.assertEqual((level, tier), ("L5", "elevated"))
-
-    def test_unknown_review_facts_take_at_most_the_l4_floor_and_ask_for_context(self):
-        # Unknown-driven L5 floors already over-route (~33-38% in the eval); an unknown
-        # review fact escalates for repository context but stops at L4.
-        for facts, rule in (
-            ({"reviews_security_sensitive_code": "unknown"}, "L4:reviews_security_sensitive_code (unknown)"),
-            ({"security_domain": "unknown"}, "L4:security_domain_unknown (unknown)"),
-        ):
-            with self.subTest(facts=facts):
-                level, _, matched, needs_context = self.level_of(**facts)
-                self.assertEqual((level, needs_context, matched), ("L4", True, [rule]))
 
     def test_review_facts_do_not_raise_the_change_flags_or_the_elevated_tier(self):
         classification_ = router.validate_classifier_output(
@@ -880,13 +682,6 @@ class ImpactFloorTests(unittest.TestCase):
             with self.subTest(facts=facts):
                 self.assertEqual(len(levels), 1)
 
-    def test_unknown_impact_facts_ask_for_context_without_a_floor(self):
-        for fact in ("changes_trust_boundary", "blast_radius", "silent_failure_material_harm"):
-            with self.subTest(fact=fact):
-                level, tier, matched, needs_context = self.level_of(**{fact: "unknown"})
-                self.assertEqual((level, tier, needs_context), ("L2", "standard", True))
-                self.assertEqual(matched, [f"context:{fact}_unknown (unknown)"])
-
     def test_unknown_impact_facts_never_match_the_trust_boundary_tier_rule(self):
         level, tier, matched, _ = self.level_of(
             **self.CROSS_SERVICE_DESIGN, security_domain="auth",
@@ -894,25 +689,6 @@ class ImpactFloorTests(unittest.TestCase):
         )
         self.assertEqual((level, tier), ("L5", "elevated"))
         self.assertNotIn("elevated:critical_domain_trust_boundary", matched)
-
-    def test_cascade_keeps_primary_impact_answers_when_escalated_is_unknown(self):
-        # Escalated only fills its own gaps from primary's affirmative answers; it must
-        # say "unknown" on these facts itself, or its own explicit answer wins instead.
-        primary = router.validate_classifier_output(classifier_output(
-            raw=False, crosses_module_boundary="unknown", blast_radius="broad",
-            changes_trust_boundary="yes", silent_failure_material_harm="yes",
-        ))
-        escalated = router.validate_classifier_output(classifier_output(
-            raw=False, **self.CROSS_SERVICE_DESIGN, security_domain="auth",
-            blast_radius="unknown", changes_trust_boundary="unknown", silent_failure_material_harm="unknown",
-        ))
-        combined = router.combine_cascade(primary, escalated)
-        self.assertEqual(
-            [combined.facts[f] for f in ("blast_radius", "changes_trust_boundary", "silent_failure_material_harm")],
-            ["broad", "yes", "yes"],
-        )
-        self.assertEqual((combined.level, combined.risk_tier), ("L5", "elevated"))
-        self.assertIn("elevated:critical_domain_trust_boundary", combined.matched_rules)
 
     def test_schema_enums_for_impact_facts(self):
         facts_schema = router.CLASSIFIER_SCHEMA["properties"]["facts"]
@@ -1026,185 +802,6 @@ class ImpactFloorTests(unittest.TestCase):
             self.assertNotIn("asking the user before running a tool or command", text)
 
 
-class CascadeEscalatedOverridesPrimaryTests(unittest.TestCase):
-    """combine_cascade splits primary safety facts into two groups (see
-    STICKY_AFFIRMATIVE_SAFETY_FACTS / CORRECTABLE_SAFETY_FACTS in scripts/router.py).
-    Sticky facts (irreversible/ledger/crypto, security/payment change, persisted
-    data, public API, trust boundary, silent material harm) are OR-aggregated: a
-    primary "yes" is kept no matter what the escalated reply says, because missing
-    one of these under-routes a real irreversible or security change. Correctable
-    facts (security_domain, reviews_security_sensitive_code, blast_radius) are where
-    a keyword-driven primary classifier produces most of its false positives on
-    ordinary review-scope tasks (e.g. a non-security "runtime approval gate" misread
-    as security_domain=permissions); these may be corrected once the escalated
-    classifier -- which read the repository -- gives an explicit, non-"unknown"
-    answer."""
-
-    FACT = "irreversible_or_ledger_or_crypto"
-
-    def combine(self, fact, primary_value, escalated_value):
-        primary = router.validate_classifier_output(
-            classifier_output(raw=False, crosses_module_boundary="unknown", **{fact: primary_value})
-        )
-        escalated = router.validate_classifier_output(classifier_output(raw=False, **{fact: escalated_value}))
-        return router.combine_cascade(primary, escalated)
-
-    def test_irreversible_is_or_aggregated_over_all_nine_combinations(self):
-        # irreversible_or_ledger_or_crypto is sticky. Never weaken this to make an
-        # eval case pass.
-        expected_level = {"yes": "L5", "unknown": "L5", "no": "L2"}
-        for primary_value in ("yes", "no", "unknown"):
-            for escalated_value in ("yes", "no", "unknown"):
-                expected = "yes" if "yes" in (primary_value, escalated_value) else escalated_value
-                with self.subTest(primary=primary_value, escalated=escalated_value):
-                    combined = self.combine(self.FACT, primary_value, escalated_value)
-                    self.assertEqual(combined.facts[self.FACT], expected)
-                    self.assertEqual(combined.risk_tier == "critical", expected == "yes")
-                    self.assertEqual(combined.level, expected_level[expected])
-                    if expected == "yes":
-                        self.assertIn("critical:irreversible_or_ledger_or_crypto", combined.matched_rules)
-                        self.assertEqual(routed(classifier=lambda _: combined).risk_tier, "critical")
-
-    def test_other_sticky_safety_facts_are_or_aggregated(self):
-        # Never weaken this to make an eval case pass.
-        cases = (
-            ("changes_security_or_payment_logic", "yes", "no", "yes", "elevated"),
-            ("changes_security_or_payment_logic", "yes", "unknown", "yes", "elevated"),
-            ("changes_security_or_payment_logic", "no", "yes", "yes", "elevated"),
-            ("changes_security_or_payment_logic", "unknown", "yes", "yes", "elevated"),
-            ("changes_security_or_payment_logic", "no", "unknown", "unknown", "standard"),
-        )
-        for fact, primary_value, escalated_value, expected, tier in cases:
-            with self.subTest(fact=fact, primary=primary_value, escalated=escalated_value):
-                combined = self.combine(fact, primary_value, escalated_value)
-                self.assertEqual((combined.facts[fact], combined.level, combined.risk_tier), (expected, "L5", tier))
-
-    def test_security_domain_is_correctable_not_or_aggregated(self):
-        # Unlike the sticky facts above, security_domain may be lowered once
-        # escalated gives an explicit, non-unknown answer -- this is the original
-        # bug fix: a primary false positive (e.g. permissions for a non-security
-        # "runtime approval gate") must not survive an escalated `none`.
-        cases = (
-            ("payment", "none", "none", "L2"),  # escalated explicit none wins
-            ("payment", "unknown", "payment", "L5"),  # escalated unknown -> primary fills
-            ("none", "payment", "payment", "L5"),  # primary not critical -> escalated stands
-            ("unknown", "auth", "auth", "L5"),
-            ("none", "unknown", "unknown", "L4"),
-        )
-        for primary_value, escalated_value, expected, level in cases:
-            with self.subTest(primary=primary_value, escalated=escalated_value):
-                combined = self.combine("security_domain", primary_value, escalated_value)
-                self.assertEqual(
-                    (combined.facts["security_domain"], combined.level, combined.risk_tier), (expected, level, "standard")
-                )
-
-    def test_security_domain_priority_picks_the_more_critical_of_two_named_domains(self):
-        # When both classifiers name an actual (non-none) domain and they disagree,
-        # the more critical one by SECURITY_DOMAIN_PRIORITY is kept rather than
-        # letting escalation silently drop a real finding to a lower-priority one.
-        cases = (
-            ("auth", "secrets", "auth"),  # auth outranks secrets -> primary's domain kept
-            ("secrets", "payment", "payment"),  # primary not critical -> escalated's payment stands
-            ("permissions", "payment", "payment"),  # payment outranks permissions -> escalated's domain kept
-            ("payment", "auth", "payment"),  # payment outranks auth -> primary's domain kept
-        )
-        for primary_value, escalated_value, expected in cases:
-            with self.subTest(primary=primary_value, escalated=escalated_value):
-                combined = self.combine("security_domain", primary_value, escalated_value)
-                self.assertEqual(combined.facts["security_domain"], expected)
-
-    def test_policy_documents_sticky_and_correctable_facts(self):
-        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
-        self.assertIn("can never be lowered by the escalated reply", policy)
-        self.assertIn("payment > crypto > auth > permissions > pii > secrets", policy)
-
-    # Regression coverage for the over-routing bug: a haiku primary misreads a
-    # non-security review (e.g. a "runtime approval gate") as security_domain =
-    # permissions, but the repository-aware escalated classifier reads the code and
-    # explicitly says otherwise.
-    def primary_false_positive(self):
-        return router.validate_classifier_output(classifier_output(
-            raw=False, task_type="review", crosses_module_boundary="unknown",
-            security_domain="permissions", reviews_security_sensitive_code="yes", blast_radius="broad",
-        ))
-
-    def test_explicit_escalated_no_none_narrow_overrides_primary_false_positive(self):
-        primary = self.primary_false_positive()
-        self.assertEqual(primary.level, "L5")
-        escalated = router.validate_classifier_output(classifier_output(
-            raw=False, task_type="review",
-            security_domain="none", reviews_security_sensitive_code="no", blast_radius="narrow",
-        ))
-        combined = router.combine_cascade(primary, escalated)
-        self.assertEqual(
-            (combined.facts["security_domain"], combined.facts["reviews_security_sensitive_code"], combined.facts["blast_radius"]),
-            ("none", "no", "narrow"),
-        )
-        self.assertLess(router.LEVELS.index(combined.level), router.LEVELS.index("L5"))
-
-    def test_escalated_unknown_keeps_primary_yes(self):
-        primary = self.primary_false_positive()
-        escalated = router.validate_classifier_output(classifier_output(
-            raw=False, task_type="review",
-            security_domain="unknown", reviews_security_sensitive_code="unknown", blast_radius="unknown",
-        ))
-        combined = router.combine_cascade(primary, escalated)
-        self.assertEqual(
-            (combined.facts["security_domain"], combined.facts["reviews_security_sensitive_code"], combined.facts["blast_radius"]),
-            ("permissions", "yes", "broad"),
-        )
-        self.assertEqual(combined.level, "L5")
-
-    def test_fallback_escalation_returns_primary_unchanged(self):
-        primary = self.primary_false_positive()
-        fallback = router.fallback_classification("timed out", "timeout")
-        combined = router.combine_cascade(primary, fallback)
-        self.assertIs(combined, primary)
-
-
-class ServiceBoundaryUnknownCascadeTests(unittest.TestCase):
-    """crosses_service_boundary = unknown keeps its L4 floor, unlike the context-only
-    crosses_module_boundary: a multi-service task must not fall to L3 only because
-    the boundary could not be settled. unknown still triggers one repository-aware
-    reclassification, whose yes/no answer then decides the level."""
-
-    def primary(self):
-        return router.validate_classifier_output(
-            classifier_output(raw=False, crosses_service_boundary="unknown", fix_or_result_known="no")
-        )
-
-    def combine(self, escalated_value):
-        escalated = router.validate_classifier_output(
-            classifier_output(raw=False, crosses_service_boundary=escalated_value, fix_or_result_known="no")
-        )
-        return router.combine_cascade(self.primary(), escalated)
-
-    def test_primary_unknown_floors_at_l4_and_asks_for_context(self):
-        primary = self.primary()
-        self.assertEqual((primary.level, primary.needs_context), ("L4", True))
-        self.assertIn("L4:crosses_service_boundary (unknown)", primary.matched_rules)
-
-    def test_escalated_yes_takes_the_normal_l4_rule(self):
-        combined = self.combine("yes")
-        self.assertEqual((combined.level, combined.needs_context), ("L4", False))
-        self.assertIn("L4:crosses_service_boundary", combined.matched_rules)
-
-    def test_escalated_no_drops_the_l4_floor(self):
-        combined = self.combine("no")
-        self.assertEqual((combined.level, combined.needs_context), ("L3", False))
-        self.assertEqual(list(combined.matched_rules), ["L3:open_fix_or_result"])
-
-    def test_escalated_unknown_keeps_the_l4_floor(self):
-        combined = self.combine("unknown")
-        self.assertEqual((combined.level, combined.needs_context), ("L4", True))
-        self.assertIn("L4:crosses_service_boundary (unknown)", combined.matched_rules)
-        self.assertFalse(any(rule.startswith("L5:") for rule in combined.matched_rules))
-
-    def test_escalation_failure_keeps_the_primary_l4_route(self):
-        primary = self.primary()
-        combined = router.combine_cascade(primary, router.fallback_classification("timed out", "timeout"))
-        self.assertIs(combined, primary)
-        self.assertEqual((combined.level, combined.needs_context), ("L4", True))
 
 
 class ExternalClassificationTests(unittest.TestCase):
@@ -1255,101 +852,6 @@ class ExternalClassificationTests(unittest.TestCase):
         payload = json.loads(out)
         self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L4", "classification-file"))
 
-    def test_session_cascade_envelope_prefers_escalated_explicit_correctable_facts(self):
-        # The escalated classifier read the repository and explicitly answered every
-        # fact (its L2 defaults, e.g. security_domain=none). For the three
-        # correctable facts, its explicit answer wins even though the primary
-        # flagged the same fact affirmatively -- this is the fix for the
-        # over-routing bug: a primary false positive must not survive an escalated
-        # reply that explicitly disagrees.
-        cases = (
-            ("reviews_security_sensitive_code", "yes", "no"),
-            ("security_domain", "auth", "none"),
-            ("blast_radius", "broad", "narrow"),
-        )
-        for fact, primary_value, escalated_value in cases:
-            with self.subTest(fact=fact):
-                envelope = json.dumps({
-                    "primary": classifier_output(
-                        crosses_module_boundary="unknown",
-                        raw=False,
-                        **{fact: primary_value},
-                    ),
-                    "escalated": classifier_output(level="L2", raw=False),
-                })
-                with mock.patch.object(router.sys, "stdin", io.StringIO(envelope)):
-                    code, out, _ = self.run_main(
-                        ["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"]
-                    )
-                payload = json.loads(out)
-                self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L2", "classification-file"))
-                self.assertEqual(payload["facts"][fact], escalated_value)
-                self.assertFalse(payload["needs_context"])
-
-    def test_session_cascade_envelope_keeps_sticky_facts_despite_explicit_escalated_no(self):
-        # Unlike the correctable facts above, the six sticky facts are OR-aggregated:
-        # a primary affirmative survives even an explicit escalated no, because
-        # missing one of these under-routes a real irreversible or security change.
-        # Never weaken this to make an eval case pass.
-        cases = (
-            ("changes_security_or_payment_logic", "yes", "no"),
-            ("changes_persisted_data", "yes", "no"),
-            ("changes_public_api_contract", "yes", "no"),
-            ("irreversible_or_ledger_or_crypto", "yes", "no"),
-            ("changes_trust_boundary", "yes", "no"),
-            ("silent_failure_material_harm", "yes", "no"),
-        )
-        for fact, primary_value, escalated_value in cases:
-            with self.subTest(fact=fact):
-                envelope = json.dumps({
-                    "primary": classifier_output(
-                        crosses_module_boundary="unknown",
-                        raw=False,
-                        **{fact: primary_value},
-                    ),
-                    "escalated": classifier_output(level="L2", raw=False),
-                })
-                with mock.patch.object(router.sys, "stdin", io.StringIO(envelope)):
-                    code, out, _ = self.run_main(
-                        ["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"]
-                    )
-                payload = json.loads(out)
-                self.assertEqual(code, 0)
-                self.assertEqual(payload["facts"][fact], primary_value)
-                self.assertNotEqual(payload["facts"][fact], escalated_value)
-
-    def test_session_cascade_envelope_preserves_primary_safety_facts_when_escalated_is_unknown(self):
-        cases = (
-            ("changes_security_or_payment_logic", "yes", "L5", "elevated"),
-            ("changes_persisted_data", "yes", "L4", "standard"),
-            ("changes_public_api_contract", "yes", "L4", "standard"),
-            ("irreversible_or_ledger_or_crypto", "yes", "L5", "critical"),
-            ("reviews_security_sensitive_code", "yes", "L4", "standard"),
-            ("security_domain", "auth", "L5", "standard"),
-            ("changes_trust_boundary", "yes", "L2", "standard"),
-            ("silent_failure_material_harm", "yes", "L2", "standard"),
-            ("blast_radius", "broad", "L2", "standard"),
-        )
-        for fact, value, expected_level, expected_tier in cases:
-            with self.subTest(fact=fact):
-                envelope = json.dumps({
-                    "primary": classifier_output(
-                        crosses_module_boundary="unknown",
-                        raw=False,
-                        **{fact: value},
-                    ),
-                    "escalated": classifier_output(level="L2", raw=False, **{fact: "unknown"}),
-                })
-                with mock.patch.object(router.sys, "stdin", io.StringIO(envelope)):
-                    code, out, _ = self.run_main(
-                        ["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"]
-                    )
-                payload = json.loads(out)
-                self.assertEqual((code, payload["effective_level"], payload["source"]), (0, expected_level, "classification-file"))
-                self.assertEqual(payload["risk_tier"], expected_tier)
-                self.assertEqual(payload["facts"][fact], value)
-                self.assertFalse(payload["needs_context"])
-
     def test_classification_file_missing_the_security_review_facts_exits_2(self):
         # Replies from the pre-v2.4.0 prompt never answered the review facts; they are
         # rejected like any other incomplete reply rather than silently defaulted.
@@ -1368,15 +870,6 @@ class ExternalClassificationTests(unittest.TestCase):
     def test_classification_file_accepts_one_reply_only(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             router.parse_args(["fix", "--platform", "codex", "--classification-file", "a", "--classification-file", "b", "x"])
-
-    def test_single_classification_file_reports_needs_context(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            primary = Path(tmp) / "primary.json"
-            primary.write_text(classifier_output(changes_security_or_payment_logic="unknown"), encoding="utf-8")
-            code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--classification-file", str(primary)])
-        payload = json.loads(out)
-        self.assertEqual((code, payload["effective_level"], payload["needs_context"]), (0, "L5", True))
-        self.assertEqual(payload["matched_rules"], ["L5:security_or_payment_logic_unknown (unknown)"])
 
     def test_invalid_classification_file_exits_2(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1399,17 +892,6 @@ class ExternalClassificationTests(unittest.TestCase):
         payload = json.loads(out)
         self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L3", "classification-file"))
 
-    def test_classification_file_prose_before_fenced_envelope(self):
-        envelope = json.dumps({
-            "primary": classifier_output(level="L2", raw=False),
-            "escalated": classifier_output(level="L4", raw=False),
-        })
-        prose = f"Some analysis here.\n\n```json\n{envelope}\n```\n"
-        with mock.patch.object(router.sys, "stdin", io.StringIO(prose)):
-            code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
-        payload = json.loads(out)
-        self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L4", "classification-file"))
-
     def test_classification_file_prose_only_exits_2(self):
         with mock.patch.object(router.sys, "stdin", io.StringIO("Sorry, I could not finish the analysis in time.")):
             code, out, err = self.run_main(["fix", "--platform", "codex", "--classification-file", "-"])
@@ -1422,6 +904,141 @@ class ExternalClassificationTests(unittest.TestCase):
             code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
         payload = json.loads(out)
         self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L3", "classification-file"))
+
+
+class UnresolvedFactsTests(unittest.TestCase):
+    """An unknown that survives the bounded lookup becomes a question for the user, never a stronger model."""
+
+    UNKNOWN = {"changes_persisted_data": "unknown", "changes_security_or_payment_logic": "unknown"}
+
+    def route(self, *extra, tty=False, typed=""):
+        first = router.validate_classifier_output(classifier_output(raw=False, **self.UNKNOWN), source="classification-file")
+        stdin = io.StringIO(typed)
+        stdin.isatty = lambda: tty
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.object(router, "read_classification_file", return_value=first),
+            mock.patch.object(router.sys, "stdin", stdin),
+            mock.patch.object(router.subprocess, "run") as run,
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            code = router.main(["fix the login problem", "--platform", "codex", "--format", "json", "--classification-file", "-", *extra])
+        self.assertEqual(run.call_count, 0)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_unresolved_facts_are_reported_with_questions_and_exit_3(self):
+        code, out, err = self.route()
+        payload = json.loads(out)
+        self.assertEqual(code, router.EXIT_NEEDS_ANSWER)
+        self.assertEqual(payload["unresolved_facts"], ["changes_security_or_payment_logic", "changes_persisted_data"])
+        self.assertEqual({q["fact"] for q in payload["questions"]}, set(payload["unresolved_facts"]))
+        self.assertEqual(payload["questions"][0]["options"], ["yes", "no", "unknown"])
+        self.assertEqual((payload["effective_level"], payload["risk_tier"], payload["risk_flags"]), ("L2", "standard", []))
+        self.assertIn("--answer FACT=VALUE", err)
+
+    def test_an_answer_settles_the_route_and_exits_0(self):
+        code, out, _ = self.route("--answer", "changes_persisted_data=no", "--answer", "changes_security_or_payment_logic=no")
+        payload = json.loads(out)
+        self.assertEqual((code, payload["unresolved_facts"], payload["effective_level"]), (0, [], "L2"))
+
+    def test_an_answer_of_yes_applies_the_normal_rule_for_that_fact(self):
+        code, out, _ = self.route("--answer", "changes_persisted_data=yes", "--answer", "changes_security_or_payment_logic=yes")
+        payload = json.loads(out)
+        self.assertEqual((code, payload["risk_tier"], payload["effective_level"]), (0, "elevated", "L5"))
+        self.assertIn("elevated:changes_security_or_payment_logic", payload["matched_rules"])
+
+    def test_a_partial_answer_leaves_the_rest_unresolved(self):
+        code, out, _ = self.route("--answer", "changes_persisted_data=no")
+        self.assertEqual((code, json.loads(out)["unresolved_facts"]), (router.EXIT_NEEDS_ANSWER, ["changes_security_or_payment_logic"]))
+
+    def test_an_answer_never_overrides_a_fact_the_classifier_settled(self):
+        code, out, err = self.route("--answer", "changes_persisted_data=no", "--answer", "changes_security_or_payment_logic=no", "--answer", "blast_radius=broad")
+        self.assertEqual((code, json.loads(out)["facts"]["blast_radius"]), (0, "narrow"))
+        self.assertIn("ignored answers", err)
+
+    def test_answers_must_be_explicit_known_facts(self):
+        for bad in ("changes_persisted_data=unknown", "changes_persisted_data=maybe", "not_a_fact=yes", "changes_persisted_data"):
+            with self.subTest(bad=bad), self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                router.parse_args(["task", "--platform", "codex", "--answer", bad])
+
+    def test_a_terminal_asks_the_questions_directly(self):
+        code, out, err = self.route(tty=True, typed="no\nno\n")
+        self.assertEqual((code, json.loads(out)["unresolved_facts"]), (0, []))
+        self.assertIn("Does the work change stored data", err)
+
+    def test_no_prompt_keeps_a_terminal_from_asking(self):
+        code, out, _ = self.route("--no-prompt", tty=True, typed="no\nno\n")
+        self.assertEqual((code, len(json.loads(out)["unresolved_facts"])), (router.EXIT_NEEDS_ANSWER, 2))
+
+    def test_the_lookup_envelope_folds_a_same_model_lookup_into_the_first_reply(self):
+        envelope = json.dumps({
+            "primary": classifier_output(raw=False, **self.UNKNOWN),
+            "lookup": classifier_output(raw=False, level="L5", changes_persisted_data="no", changes_security_or_payment_logic="unknown", needs_new_structure="yes"),
+        })
+        with mock.patch.object(router.sys, "stdin", io.StringIO(envelope)):
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+                code = router.main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(code, router.EXIT_NEEDS_ANSWER)  # the lookup left one fact unknown
+        self.assertEqual(payload["unresolved_facts"], ["changes_security_or_payment_logic"])
+        self.assertEqual((payload["facts"]["changes_persisted_data"], payload["facts"]["needs_new_structure"]), ("no", "no"))
+
+    def test_the_old_escalated_envelope_is_rejected(self):
+        envelope = json.dumps({"primary": classifier_output(raw=False), "escalated": classifier_output(raw=False)})
+        with mock.patch.object(router.sys, "stdin", io.StringIO(envelope)), contextlib.redirect_stderr(io.StringIO()):
+            code = router.main(["fix", "--platform", "codex", "--classification-file", "-"])
+        self.assertEqual(code, 2)
+
+    def unresolved_payload(self):
+        first = router.validate_classifier_output(classifier_output(raw=False, **self.UNKNOWN), source="classification-file")
+        result = routed(classifier=lambda _: first)
+        return json.loads(json.dumps(router.result_payload(result, router.stage_commands(result, "task"), "task")))
+
+    def test_an_unresolved_route_is_refused_by_every_replay_path(self):
+        payload = self.unresolved_payload()
+        self.assertTrue(payload["unresolved_facts"])
+        with self.assertRaisesRegex(ValueError, "unresolved facts"):
+            router.validated_commands(payload)
+        with self.assertRaises(ValueError):
+            router.command_chain_from_payload(payload)
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            with mock.patch.object(router.subprocess, "run") as run, contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
+            self.assertEqual(run.call_count, 0)
+            self.assertIn("unresolved facts", err.getvalue())
+        payload["unresolved_facts"] = []
+        router.validated_commands(payload)  # once answered, the same route replays
+
+    def test_the_lookup_never_runs_only_for_the_optional_fact(self):
+        output = classifier_output(requires_code_understanding="unknown")
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, output, "")) as run:
+            result = router.classify_task("add a helper")
+        self.assertEqual((run.call_count, result.unresolved), (1, ()))
+
+    def test_files_touched_zero_is_only_settleable_for_read_only_work(self):
+        first = router.validate_classifier_output(classifier_output(raw=False, files_touched="unknown"))
+        again, ignored = router.apply_answers(first, {"files_touched": "0"})
+        self.assertEqual((again.facts["files_touched"], ignored), ("unknown", ["files_touched"]))
+        review = router.validate_classifier_output(classifier_output(raw=False, task_type="review", files_touched="unknown"))
+        self.assertEqual(router.apply_answers(review, {"files_touched": "0"})[0].facts["files_touched"], "0")
+        lookup = router.validate_classifier_output(classifier_output(raw=False, files_touched="0", task_type="review"))
+        self.assertEqual(router.merge_lookup(first, lookup).facts["files_touched"], "unknown")
+
+    def test_an_old_session_record_with_needs_context_still_blocks_reuse(self):
+        record = {"workspace": "/w", "saved_at": time.time(), "task_type": "implementation", "risk_flags": {}, "needs_context": True}
+        self.assertIn("unresolved", " ".join(router.route_reuse.reuse_blockers(record, "/w", "also fix x", True)))
+
+    def test_merge_lookup_and_apply_answers_are_pure(self):
+        first = router.validate_classifier_output(classifier_output(raw=False, **self.UNKNOWN))
+        merged = router.merge_lookup(first, router.fallback_classification("timed out", "timeout"))
+        self.assertIs(merged, first)
+        again, ignored = router.apply_answers(first, {"blast_radius": "broad"})
+        self.assertIs(again, first)
+        self.assertEqual(ignored, ["blast_radius"])
 
 
 class EscalationTests(unittest.TestCase):
@@ -2576,7 +2193,7 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("claude-sonnet-5", readme)
         self.assertNotIn("claude-haiku-4-5", readme)
         self.assertNotIn("claude-haiku-4.5", readme)
-        self.assertIn("needs_context", readme)
+        self.assertIn("unresolved_facts", readme)
         self.assertIn("DIFFICULTY_RULES", readme)
 
     FALLBACK_SENTINELS = (
@@ -2615,7 +2232,7 @@ class RouteSkillContractTests(unittest.TestCase):
         primary = self._primary_section("claude")
         self.assertIn("${CLAUDE_SKILL_DIR}/../../scripts/router.py", primary)
         self.assertIn("Do not change directory", primary)
-        self.assertIn("exits non-zero", primary)
+        self.assertIn("non-zero", primary)
         self.assertNotIn("`python3 ../../scripts/router.py", primary)
 
     def test_codex_skill_runs_router_outside_sandbox_and_spawns_with_route_model(self):
@@ -2624,37 +2241,34 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("--print-classifier-prompt", primary)
         self.assertIn("--classification-file", primary)
         self.assertIn("gpt-5.6-luna", primary)
-        self.assertIn("gpt-5.6-terra", primary)
+        self.assertNotIn("gpt-5.6-terra", primary)
         self.assertIn("`model` and `reasoning_effort`", primary)
-        self.assertIn("exits non-zero", primary)
+        self.assertIn("non-zero", primary)
         self.assertNotIn("escalated sandbox permissions", primary)
 
-    def test_session_skills_classify_with_an_assessor_and_escalate_on_needs_context(self):
+    def test_session_skills_classify_once_and_ask_the_user_about_unresolved_facts(self):
         for plugin, spawner in (("claude", "`model-effort:difficulty-assessor`"), ("codex", "`gpt-5.6-luna`")):
             primary = self._primary_section(plugin)
             with self.subTest(plugin=plugin):
                 self.assertIn(spawner, primary)
                 self.assertIn("--print-classifier-prompt --repo-aware", primary)
-                self.assertIn("needs_context: true", primary)
                 self.assertIn("--classification-file", primary)
                 self.assertIn("answers facts only", primary)
                 self.assertIn("--classification-file - <<'FACTS_JSON'", primary)
-                self.assertIn('"primary": <first classifier reply>', primary)
-                self.assertIn('"escalated": <repository-aware classifier reply>', primary)
-                self.assertIn("gives an explicit, non-`unknown` answer", primary)
-                self.assertIn("Escalate at most once", primary)
+                self.assertIn("exits `3`", primary)
+                self.assertIn("unresolved_facts", primary)
+                self.assertIn("--answer FACT=VALUE", primary)
+                self.assertIn("Ask the user each question", primary)
+                self.assertIn("missing information, not", primary)
                 self.assertIn("Never delegate a route whose", primary)
                 self.assertNotIn("--classification-file <", primary)
+                for stale in ("needs_context", '"escalated"', "Escalate at most once"):
+                    self.assertNotIn(stale, primary)
 
-    def test_claude_escalation_step_uses_a_stronger_model_than_the_primary(self):
-        # Both the primary and escalated in-session calls run the same repository-
-        # aware prompt through the same difficulty-assessor agent, so a same-model
-        # resample would not add anything the primary lacked; escalation must use a
-        # stronger model (opus) instead of sonnet again.
+    def test_claude_skill_never_calls_a_stronger_classifier_for_unknown_facts(self):
         primary = self._primary_section("claude")
         self.assertIn("`model` `sonnet`", primary)
-        self.assertIn("`model` `opus`", primary)
-        self.assertNotIn("read the code", primary)
+        self.assertNotIn("`model` `opus`", primary)
 
     def test_antigravity_skill_replays_stored_steps_for_both_modes(self):
         primary = self._primary_section("antigravity")

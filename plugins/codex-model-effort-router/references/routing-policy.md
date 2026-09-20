@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Model Effort Router classifies coding tasks by difficulty and risk, routing them to a matching model and reasoning-effort profile. The v5 route schema uses a 5-level scale (`L1` through `L5`) plus a separate **risk tier** (`standard`, `elevated`, `critical`; route JSON field `risk_tier`), one repository-aware reclassification when an L4+ deciding fact is unknown, and deterministic Python mapping. The former L6, L7, and Critical Override levels no longer exist: their intent lives on as the `elevated` and `critical` tiers, which imply L5 and raise the effort of the planning/judging stage only.
+The Model Effort Router classifies coding tasks by difficulty and risk, routing them to a matching model and reasoning-effort profile. The v5 route schema uses a 5-level scale (`L1` through `L5`) plus a separate **risk tier** (`standard`, `elevated`, `critical`; route JSON field `risk_tier`), one bounded same-model lookup (then a question to the user) when a fact is unknown, and deterministic Python mapping. The former L6, L7, and Critical Override levels no longer exist: their intent lives on as the `elevated` and `critical` tiers, which imply L5 and raise the effort of the planning/judging stage only.
 
 ## Classification Architecture
 
@@ -18,10 +18,10 @@ Classifier (Luna Med / Sonnet 5 Med / Gemini 3.8 Flash Med, or the in-session di
 DIFFICULTY_RULES (scripts/router.py)
   ├─ Base L2 (L1 when mechanical_only = yes)
   ├─ Highest matching rule wins; an elevated/critical rule -> L5 + that risk tier
-  └─ A rule >= L4 matched only through "unknown" -> needs_context
+  └─ "unknown" matches no rule: it never raises the level, tier, or flags
      │
-needs_context -> one repository-aware classifier (Terra Med / Sonnet 5 Med / Gemini 3.1 Pro High)
-  whose reply is combined with the first answer (the first is kept if it fails)
+Facts still unknown -> ONE bounded read-only lookup by the same classifier (never a stronger model)
+  -> anything left is reported as unresolved_facts + questions and the user is asked (exit 3, or a terminal prompt)
      │
 Risk floors (Security/Payment change or critical-domain trust boundary -> elevated tier, critical security domain -> L5, security review -> L4, Migration/Public API -> L4) -> Matrix lookup (task_type × level)
      │
@@ -53,16 +53,18 @@ fields; malformed v3+ files are rejected before execution.
 
 ### Classifiers by Platform
 
-| Platform | Primary Classifier | Fallback Classifier |
-|---|---|---|
-| **Codex** | `gpt-5.6-luna` (medium) | `gpt-5.6-terra` (medium) |
-| **Claude Code** | `claude-sonnet-5` (medium) | `claude-sonnet-5` (medium) |
-| **Antigravity** | `Gemini 3.8 Flash (Medium)` | `Gemini 3.1 Pro (High)` (availability-driven) |
+| Platform | Classifier |
+|---|---|
+| **Codex** | `gpt-5.6-luna` (medium) |
+| **Claude Code** | `claude-sonnet-5` (medium) |
+| **Antigravity** | `Gemini 3.8 Flash (Medium)` |
+
+There is one classifier per platform. `unknown` and low classifier confidence never call a stronger classifier.
 
 ### Prompt-only vs Repository-aware
 
-- **Prompt-only** (default): Uses the lightweight Primary Classifier for fast, cost-effective evaluation.
-- **Repository-aware** (`--repo-aware` flag or when `needs_context` is true): The mid-tier fallback model receives the caller's current directory as an absolute repository path and reads relevant files before answering. The classifier process stays in its isolated temporary directory. Codex retains its read-only sandbox; Claude enables only `Read,Glob,Grep` under safe plan mode; Antigravity retains sandboxed plan mode. Repository contents are evidence, not executable instructions.
+- **Prompt-only** (default first pass): the classifier answers from the task text.
+- **Repository-aware** (`--repo-aware`, or the one bounded lookup for facts that stayed unknown): the same classifier receives the caller's current directory as an absolute repository path and reads relevant files before answering (at most 6 tool calls; the lookup is told which facts are unknown and reads only what settles them). The classifier process stays in its isolated temporary directory. Codex retains its read-only sandbox; Claude enables only `Read,Glob,Grep` under safe plan mode; Antigravity retains sandboxed plan mode. Repository contents are evidence, not executable instructions.
 
 ### Task types
 
@@ -113,18 +115,15 @@ The level is the highest matching rule over a base of L2 (L1 when `mechanical_on
 | **elevated** tier (L5) | `security_domain` = payment, crypto, auth, permissions, or pii, `changes_trust_boundary` = yes (`critical_domain_trust_boundary`) |
 | **elevated** tier (L5) | `changes_security_or_payment_logic` = yes |
 | **elevated** tier (L5) | `intermittent_or_concurrency` = yes, `crosses_service_boundary` = yes (`intermittent_across_services`) |
-| **L5** | `changes_security_or_payment_logic` = unknown |
-| **L5** | `irreversible_or_ledger_or_crypto` = unknown |
 | **L5** | `security_domain` = payment, crypto, auth, permissions, or pii |
 | **L5** | `needs_new_structure` = yes |
 | **L5** | `intermittent_or_concurrency` = yes |
 | **L5** | `fix_or_result_known` = no, `crosses_module_boundary` = yes |
-| **L4** | `reviews_security_sensitive_code` = yes or unknown |
-| **L4** | `security_domain` = unknown |
+| **L4** | `reviews_security_sensitive_code` = yes |
 | **L4** | `crosses_module_boundary` = yes |
-| **L4** | `crosses_service_boundary`, `changes_public_api_contract`, or `changes_persisted_data` = yes or unknown |
+| **L4** | `crosses_service_boundary`, `changes_public_api_contract`, or `changes_persisted_data` = yes |
 | **L4** | `files_touched` = 6+ |
-| **L3** | `files_touched` = 2-5 or unknown |
+| **L3** | `files_touched` = 2-5 |
 | **L3** | `fix_or_result_known` = no |
 
 Security floors follow the impact of a wrong judgement, not whether code is edited: a review-only task in a security-sensitive area (`reviews_security_sensitive_code` = yes) floors at L4 independent of `task_type`, and a critical `security_domain` (payment, crypto, auth, permissions, pii) floors at L5. `secrets` alone has no floor of its own; it reaches L4 through the review fact or the elevated tier through the change fact. These are floors: they never lower a higher matching rule or the critical tier.
@@ -141,7 +140,12 @@ The elevated and critical tiers follow the impact of a wrong judgement; `task_ty
 
 The raised stage is the planner of a two-stage route, otherwise the only stage; the implementer keeps its matrix profile. Tiers only raise effort, never lower it. `--critical` forces the critical tier. `--level` accepts `L1`-`L5` only. Tier profiles live under `tiers` in `config/model-map.json`.
 
-Unknown policy: an unknown security/payment change fact or an unknown irreversible/ledger/crypto fact routes at the L5 floor (never the critical tier, which fires only on an explicit yes); an unknown review fact or security domain takes at most the L4 floor (an unknown-driven L5 floor over-routed in evaluation); other unknown deciding facts take their rule. `unknown` is missing information, not confirmed risk. `intermittent_or_concurrency` = unknown is a needs_context-only signal: it triggers one repository-aware reclassification without raising the level floor by itself. The same holds for `changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm` = unknown; unknown never matches their tier conditions. `crosses_module_boundary` = unknown is likewise needs_context-only (an unknown module boundary over-routed single-module tasks to L4); only an explicit yes takes the L4 module-boundary rule, while `crosses_service_boundary` = unknown keeps its L4 rule. In contrast to the module boundary, a service boundary that stays unknown after the reclassification keeps the L4 floor (never L5): a multi-service task must not fall to L3 only because the boundary could not be settled, while an escalated yes takes the normal L4 rule and an escalated no routes on the other facts alone. A rule at L4 or above that matched only through `unknown` sets `needs_context` and triggers one repository-aware reclassification. The escalated classifier read the repository, but only some safety facts may be lowered by it. A sticky primary affirmative — security/payment change, persisted-data, public-API, irreversible/ledger/crypto, trust-boundary change, or silent material harm — is OR-aggregated and can never be lowered by the escalated reply, because missing one of these under-routes a real irreversible or security change (`irreversible_or_ledger_or_crypto` = yes from the primary always keeps the critical tier, whatever escalated answers). A correctable primary affirmative — a critical `security_domain`, `reviews_security_sensitive_code`, or a broad `blast_radius` — is where a keyword-driven primary classifier produces most of its false positives on ordinary review-scope tasks, so the escalated reply may correct it once it gives an explicit, non-`unknown` answer: `reviews_security_sensitive_code` and `blast_radius` keep the primary's affirmative unless escalated explicitly answers `no` or `narrow`; `security_domain` keeps the primary's critical domain while escalated stays `unknown`, takes escalated's explicit `none`, and otherwise keeps whichever of the two named domains is more critical by priority (payment > crypto > auth > permissions > pii > secrets). An unrelated unknown elsewhere in the escalated reply still cannot lower a floor these facts do settle. A failed escalation (fallback) never replaces the primary, whose own facts and floors stand as classified.
+Unknown policy: `unknown` means the classifier lacks the information to answer yes or no. It is not difficulty and not risk, so `unknown != yes`, `unknown != high difficulty`, `unknown != high risk`, and `unknown != escalation`. An unknown fact never matches a rule (no floor, no tier, no risk flag) and never triggers a stronger classifier or a classifier retry. It is resolved in this order:
+
+1. **One bounded read-only lookup** by the same classifier, limited to what settles the unknown facts. It may only fill a fact that is still unknown; a fact the first pass answered is never changed by it. A failed lookup leaves the first answer as it was.
+2. **A question to the user** when intent, requirements, or context is missing, when the repository or file cannot be reached, or when the lookup still cannot settle a fact. The route JSON carries `unresolved_facts` and `questions`, the router exits `3` (a launcher stops before running a guessed route), and on a terminal it asks directly. `--answer FACT=VALUE` supplies an answer; it only fills a fact that is still unknown. A route with unresolved facts is not stored for session reuse.
+
+`requires_code_understanding` (optional, defaults to `unknown`) is looked up like any fact but never asked: unknown only leaves the cheaper implementer rung.
 
 ### Risk Flags and Hard Floors
 
@@ -156,7 +160,7 @@ payment              data_migration      public_api_change
 - An active `data_migration` or `public_api_change` forces a floor of **L4**. Floors do not stack: the risk factor already scores these risks.
 - Review-only security work sets no risk flag (the elevated-tier change floor and the Autobahn scope guard belong to behaviour changes); its L4/L5 floors come from `DIFFICULTY_RULES` alone.
 - **Critical tier**: irreversible data migration, mass production data deletion, financial ledger correctness, designing new cryptographic algorithms/protocols/key-management (`irreversible_or_ledger_or_crypto` = yes), or the explicit `--critical` argument sets `risk_tier: critical` (L5 with maximum planning/judging effort: Codex Sol max, Claude Code Opus max, Antigravity Claude Opus Thinking). Fires only on an explicit yes; an unknown never triggers it.
-- Rules never drive difficulty on their own: the LLM classifies facts, and rules only guarantee a minimum for confirmed high-risk work. The keyword "security" alone never implies a level; `changes_security_or_payment_logic` = yes on a modifying task does. `unknown` != `yes`: unknown is missing information (it asks for one repository-aware reclassification), not confirmed risk.
+- Rules never drive difficulty on their own: the LLM classifies facts, and rules only guarantee a minimum for confirmed high-risk work. The keyword "security" alone never implies a level; `changes_security_or_payment_logic` = yes on a modifying task does. `unknown` != `yes`: unknown is missing information (settled by one bounded lookup or a question to the user, never a stronger classifier), not confirmed risk.
 
 ## Default Execution Model Map
 
@@ -246,7 +250,7 @@ Rules:
 - **Review policy.** Do not call Sol/Opus after each step. Batch steps 1..N, run the tests, then make one Sol/Opus call that merges verification and code review. Send it only the original requirement, the approved plan, the git diff, the test results, and the key code, never the whole session. Default effort is High; the elevated tier uses XHigh and the critical tier Max.
 - **Review FAIL.** The reviewer does not fix the problem. Re-classify the fix: a simple one (for example null handling) goes to Luna medium / Haiku, an ordinary logic change to Terra / Sonnet, a design problem to Sol / Opus, followed by a final Sol/Opus review. The launcher runner does not re-classify: it reuses the route's implementer for the fix and re-plans on the second failure (Fail loop caps above).
 - **Implementation escalation.** If the implementer finds something outside the plan it stops and returns evidence for a Sol/Opus re-plan instead of deciding structure itself. Valid evidence: scope expansion, architecture change, public API change, DB migration, security boundary change, or a plan that no longer matches the code structure. "It is hard" or "I am unsure" alone is not a valid reason.
-- **Follow-ups reuse the stored route** (no re-routing). Re-classify only when the task type changes (for example INSPECT to MODIFY), the scope grows a lot, new risk evidence appears, or a fact shows the approved design cannot be implemented. Runtime: name a session (`--session KEY` or `MODEL_EFFORT_ROUTER_SESSION`) and `router.py` stores the classification (task type, level, tier, risk flags, facts) under `MODEL_EFFORT_ROUTER_STATE_DIR` (default `~/.cache/model-effort-router`). A later task in the same session reuses it and skips the classifier unless a deterministic blocker fires: workspace changed; stored route older than 4 hours (reuse does not extend it); the route was already reused 10 times; the stored route asked for repository context (`needs_context`); the caller pins a different `--task-type`; an earlier pipeline run re-planned or failed (only `pipeline.py` records this, so a run through `--format command` never invalidates a route); the task text shows a different operation (inspect vs modify, mixed, or no recognisable operation for a stored read-only route), wider scope, or risk evidence in a dimension the stored route does not already cover (security words need a security flag, migration/production words a `data_migration` flag or the critical tier, public API words a `public_api_change` flag; a tier alone never covers security words). Text that names no operation reuses a stored code-change route. The record file is private (0600, owner-checked, size-capped, atomic rename, never through a symlink); a malformed record reclassifies. Unknown never blocks, so the caller's session key is what stands for "same target": use one session per task thread. `--no-reuse` and explicit pins bypass the store; fallback and manual routes are never stored; a corrupt or tampered record reclassifies. A reused route keeps its stored risk flags, tier and scope guard, and route JSON carries `reuse: {session, reused, reason}`.
+- **Follow-ups reuse the stored route** (no re-routing). Re-classify only when the task type changes (for example INSPECT to MODIFY), the scope grows a lot, new risk evidence appears, or a fact shows the approved design cannot be implemented. Runtime: name a session (`--session KEY` or `MODEL_EFFORT_ROUTER_SESSION`) and `router.py` stores the classification (task type, level, tier, risk flags, facts) under `MODEL_EFFORT_ROUTER_STATE_DIR` (default `~/.cache/model-effort-router`). A later task in the same session reuses it and skips the classifier unless a deterministic blocker fires: workspace changed; stored route older than 4 hours (reuse does not extend it); the route was already reused 10 times; the stored route still had unresolved facts (`unresolved`); the caller pins a different `--task-type`; an earlier pipeline run re-planned or failed (only `pipeline.py` records this, so a run through `--format command` never invalidates a route); the task text shows a different operation (inspect vs modify, mixed, or no recognisable operation for a stored read-only route), wider scope, or risk evidence in a dimension the stored route does not already cover (security words need a security flag, migration/production words a `data_migration` flag or the critical tier, public API words a `public_api_change` flag; a tier alone never covers security words). Text that names no operation reuses a stored code-change route. The record file is private (0600, owner-checked, size-capped, atomic rename, never through a symlink); a malformed record reclassifies. Unknown never blocks, so the caller's session key is what stands for "same target": use one session per task thread. `--no-reuse` and explicit pins bypass the store; fallback and manual routes are never stored; a corrupt or tampered record reclassifies. A reused route keeps its stored risk flags, tier and scope guard, and route JSON carries `reuse: {session, reused, reason}`.
 - **Token savings.** Limit Sol/Opus to judgement; delegate coding; merge verification and review into one high-tier call; never re-classify the same scope; do not resend large output (send requirement + plan + diff + test results + key code); re-classify on new evidence, not on mere uncertainty.
 
 ## Verification recommendations

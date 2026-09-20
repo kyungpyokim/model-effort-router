@@ -22,18 +22,10 @@
       "primary": {
         "model": "gpt-5.6-luna",
         "effort": "medium"
-      },
-      "fallback": {
-        "model": "gpt-5.6-terra",
-        "effort": "medium"
       }
     },
     "claude-code": {
       "primary": {
-        "model": "claude-sonnet-5",
-        "effort": "medium"
-      },
-      "fallback": {
         "model": "claude-sonnet-5",
         "effort": "medium"
       }
@@ -48,16 +40,6 @@
           "Flash.*Medium"
         ],
         "fallback": "Gemini 3.8 Flash (Medium)"
-      },
-      "fallback": {
-        "patterns": [
-          "Gemini 3\\.1 Pro \\(High\\)",
-          "Gemini .* Pro \\(High\\)",
-          "Claude Sonnet .*\\(Thinking\\)",
-          "Sonnet.*Thinking",
-          "Pro.*High"
-        ],
-        "fallback": "Gemini 3.1 Pro (High)"
       }
     }
   },
