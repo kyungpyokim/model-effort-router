@@ -19,7 +19,7 @@ Haiku and Sonnet implement.** See [Execution roles and pipeline](#execution-role
 
 ## Cascading preflight classifier
 
-The classifier never scores difficulty. It answers sixteen bounded facts about
+The classifier never scores difficulty. It answers seventeen bounded facts about
 the work (files touched, module or service boundaries, whether the result is known,
 new structure, security/payment logic changed or reviewed, the security domain,
 public API, persisted data, irreversible changes, trust-boundary changes, blast
@@ -222,8 +222,9 @@ request -> classify (cheap) -> plan/design (Sol / Opus)
 - **Effort ceilings.** Luna low/medium/high (beyond Luna high, move to Terra rather than
   Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Claude Code: Haiku for simple work,
   Sonnet for general-to-complex implementation, Opus for plan/design/verify/review. The
-  current matrix does not use Luna high or Sonnet low as a level rung (a clear small
-  implementation is L2 = Luna medium); they are headroom, not routed profiles.
+  current matrix reaches Luna high and Sonnet low only through the L2 refinement: a simple
+  implementation that needs existing-code understanding (`requires_code_understanding`) gets Luna
+  high / Sonnet low, otherwise L2 stays Luna medium / Haiku.
 
 The full rule set and matrices are in [references/routing-policy.md](references/routing-policy.md).
 

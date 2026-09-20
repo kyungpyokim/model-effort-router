@@ -234,7 +234,23 @@
             ]
           }
         }
-      }
+      },
+      "refinements": [
+        {
+          "task_types": [
+            "implementation",
+            "local_refactoring"
+          ],
+          "level": "L2",
+          "when": {
+            "requires_code_understanding": "yes"
+          },
+          "stage": {
+            "model": "gpt-5.6-luna",
+            "effort": "high"
+          }
+        }
+      ]
     },
     "claude-code": {
       "routing": "task_matrix",
@@ -399,7 +415,23 @@
             ]
           }
         }
-      }
+      },
+      "refinements": [
+        {
+          "task_types": [
+            "implementation",
+            "local_refactoring"
+          ],
+          "level": "L2",
+          "when": {
+            "requires_code_understanding": "yes"
+          },
+          "stage": {
+            "model": "claude-sonnet-5",
+            "effort": "low"
+          }
+        }
+      ]
     },
     "antigravity": {
       "routing": "task_matrix",
