@@ -113,16 +113,24 @@ def run_tests(commands: list[str], cwd: str) -> str | None:
     return None
 
 
-def git_diff(cwd: str) -> tuple[str, bool | None]:
-    """The diff to review and whether the run changed anything (None when that cannot be told)."""
-    # ponytail: diffs against HEAD, so uncommitted work from before the run shows up too.
+def git_head(cwd: str) -> str | None:
+    proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, check=False)
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def git_diff(cwd: str, base: str | None = None) -> tuple[str, bool | None]:
+    """The diff to review and whether the run changed anything (None when that cannot be told).
+
+    Diffs the work tree against the HEAD seen when the run started, so commits the implementer
+    made still count."""
+    # ponytail: uncommitted work from before the run shows up too.
     def git(*args: str) -> str | None:
         proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, errors="replace", check=False)
         return proc.stdout if proc.returncode == 0 else None
 
     if git("rev-parse", "--git-dir") is None:
         return "(not a git repository; no diff available)", None
-    diff = git("diff", "HEAD")
+    diff = git("diff", base or "HEAD")
     if diff is None:  # no commits yet
         diff = git("diff") or ""
     untracked = git("ls-files", "--others", "--exclude-standard") or ""
@@ -136,10 +144,10 @@ def escalation(output: str) -> tuple[str, str] | None:
     return ("escalate", found.group(1)) if found else None
 
 
-def validated_stage(value: object, name: str) -> dict | None:
+def validated_stage(value: object, name: str, platform: str) -> dict | None:
     if value is None:
         return None
-    if not isinstance(value, dict) or not isinstance(value.get("model"), str) or not router.MODEL_RE.match(value["model"]):
+    if not isinstance(value, dict) or not router.model_ok(platform, value.get("model")):
         raise ValueError(f"pipeline {name} stage needs a model")
     if value.get("effort") is not None and value["effort"] not in router.EFFORT_ORDER:
         raise ValueError(f"pipeline {name} stage has an invalid effort")
@@ -160,8 +168,8 @@ class Pipeline:
         pipe = payload.get("pipeline") or {}
         self.platform = payload["platform"]
         self.limits = validated_limits(pipe)
-        self.reviewer = validated_stage(pipe.get("review"), "review")
-        self.planner = validated_stage(pipe.get("replan"), "replan")
+        self.reviewer = validated_stage(pipe.get("review"), "review", self.platform)
+        self.planner = validated_stage(pipe.get("replan"), "replan", self.platform)
         step = payload["steps"][-1]
         self.implementer = {"model": step["model"], "effort": step.get("effort")}
         self.task = pipe["task"] if isinstance(pipe.get("task"), str) else "(the original request is in the earlier prompt of this run)"
@@ -172,17 +180,20 @@ class Pipeline:
         self.reviews = 0
         self.tests_passed: list[str] = []
         self.verbose = bool(os.environ.get(VERBOSE_ENV))
+        self.base = git_head(cwd)
         self.plan_step = payload["steps"][0]
 
     @staticmethod
     def validate(payload: dict) -> None:
         pipe = payload.get("pipeline") or {}
         validated_limits(pipe)
-        validated_stage(pipe.get("review"), "review")
-        validated_stage(pipe.get("replan"), "replan")
-        _, plan_path = router.validated_commands(payload)
+        validated_stage(pipe.get("review"), "review", payload["platform"])
+        validated_stage(pipe.get("replan"), "replan", payload["platform"])
+        commands, plan_path = router.validated_commands(payload)
         if plan_path is not None and not Path(plan_path).is_absolute():
             raise ValueError("route plan path must be absolute")
+        if len(commands) > 1 and any(is_interactive(command) for command in commands):
+            raise ValueError("a multi-stage route cannot use interactive commands")
 
     def state(self, phase: str, who: dict | None = None, attempt: int | None = None) -> None:
         state = {"phase": phase, "test_fixes": self.counts["test"], "review_fixes": self.counts["review"], "reviews": self.reviews, "replans": self.replans}
@@ -240,11 +251,10 @@ class Pipeline:
         tests = "\n".join(f"PASS: {command}" for command in self.tests_passed) or (
             "No deterministic test command was configured; rely on the implementer's reported checks."
         )
-        diff, changed = git_diff(self.cwd)
+        diff, changed = git_diff(self.cwd, self.base)
         if changed is False:
             # Fail closed without spending a review: an implementer that changed nothing did not finish.
             log("no changes in the working tree after implementation")
-            self.reviews += 1
             return ("review", "The implementer finished without changing any file. Make the requested change.")
         prompt = (
             f"Original request:\n{self.task}\n\nPlan:\n{self.plan_text()}\n\n"
@@ -311,7 +321,7 @@ class Pipeline:
 
 def run_route(payload: object, test_commands: list[str], cwd: str, cleanup: bool = False) -> int:
     _, plan_path = router.validated_commands(payload)
-    workdir = Path(plan_path).parent if plan_path else Path(tempfile.mkdtemp(prefix="model-effort-pipeline-"))
+    workdir = Path(plan_path).parent if plan_path else Path(tempfile.mkdtemp(prefix="model-effort-pipeline-")).resolve()
     workdir.mkdir(parents=True, exist_ok=True)
     plan_file = Path(plan_path) if plan_path else workdir / "plan.json"
     try:

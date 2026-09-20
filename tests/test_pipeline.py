@@ -303,8 +303,8 @@ class ClaudeAccessTests(unittest.TestCase):
         self.assertNotIn("--permission-mode", router.shell_command(result, "t", True))
 
 
-class RouteFileArgvGrammarTests(unittest.TestCase):
-    def test_every_generated_command_passes_the_grammar(self):
+class RouteFileArgvGrammarTests(PipelineCase):
+    def test_every_generated_route_validates(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
         for platform in ("codex", "claude-code", "antigravity"):
             for level in router.LEVELS:
@@ -313,47 +313,106 @@ class RouteFileArgvGrammarTests(unittest.TestCase):
                     for interactive in (False, True):
                         if interactive and result.mode == "two_stage":
                             continue
-                        for command in router.stage_commands(result, "t", interactive):
-                            router.validate_argv(platform, command)
+                        payload = router.result_payload(result, router.stage_commands(result, "t", interactive), "t")
+                        with self.subTest(platform=platform, level=level, task_type=task_type, interactive=interactive):
+                            router.validated_commands(payload)
 
     def test_smuggled_flags_are_rejected(self):
-        bad = {
-            "codex": (
-                ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "sandbox_mode=danger-full-access", "task"],
-                ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "task"],
-                ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=turbo", "task"],
-                ["codex", "exec", "task"],
-            ),
-            "claude-code": (
-                ["claude", "-p", "--model", "claude-opus-5", "--dangerously-skip-permissions", "--", "task"],
-                ["claude", "-p", "--model", "claude-opus-5", "--permission-mode", "bypassPermissions", "--", "task"],
-                ["claude", "-p", "--model", "claude-opus-5", "--allowedTools", "Bash", "--", "task"],
-                ["claude", "-p", "--model", "claude-opus-5", "--allowedTools", "Edit(/etc/passwd)", "--", "task"],
-                ["claude", "-p", "--model", "claude-opus-5", "--add-dir", "/", "--", "task"],
-                ["claude", "-p", "--", "task"],
-            ),
-            "antigravity": (
-                ["agy", "--model", "Gemini 3.1 Pro (High)", "--yolo", "--prompt", "task"],
-                ["agy", "--model", "Gemini 3.1 Pro (High)", "--prompt"],
-            ),
-        }
-        for platform, commands in bad.items():
-            for command in commands:
-                with self.subTest(command=command), self.assertRaises(ValueError):
-                    router.validate_argv(platform, command)
+        claude = dict(model="claude-opus-5", effort="high", access="edit")
+        good = ["claude", "-p", "--model", "claude-opus-5", "--effort", "high", "--permission-mode", "acceptEdits", "--", "task"]
+        router.validate_argv("claude-code", good, **claude)
+        bad = (
+            ("codex", ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "sandbox_mode=danger-full-access", "task"], {}),
+            ("codex", ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "task"], {}),
+            ("codex", ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=turbo", "task"], {}),
+            ("codex", ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "developer_instructions", "task"], {}),
+            ("codex", ["codex", "exec", "-m", "gpt 5.6 --yolo", "task"], {}),
+            ("codex", ["codex", "exec", "task"], {}),
+            ("claude-code", good[:-3] + ["--dangerously-skip-permissions", "--", "task"], claude),
+            ("claude-code", [*good[:-2], "--permission-mode", "bypassPermissions", "--", "task"], claude),
+            ("claude-code", [*good[:-2], "--add-dir", "/", "--", "task"], claude),
+            ("claude-code", ["claude", "-p", "--model", "claude-opus-5", "--effort", "high", "--", "task"], claude),
+            ("claude-code", good, dict(claude, access="read")),
+            ("claude-code", good, dict(claude, effort="max")),
+            ("claude-code", good, dict(claude, model="claude-sonnet-5")),
+            ("antigravity", ["agy", "--model", "Gemini 3.1 Pro (High)", "--yolo", "--prompt", "task"], {}),
+            ("antigravity", ["agy", "--model", "Gemini 3.1 Pro (High)", "--prompt"], {}),
+        )
+        for platform, command, kwargs in bad:
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                router.validate_argv(platform, command, **kwargs)
+
+    def test_reader_stages_cannot_run_shell_or_write_and_the_planner_writes_only_its_plan(self):
+        review = router.claude_access_flags("read")
+        self.assertEqual(review[review.index("--disallowedTools") + 1:review.index("--strict-mcp-config")], ["Edit", "Write", "NotebookEdit", "Bash"])
+        plan = router.claude_access_flags("plan", "/tmp/codex-route-x/plan.json")
+        self.assertIn("Edit(//tmp/codex-route-x/plan.json)", plan)
+        self.assertIn("Bash", plan)
+        self.assertNotIn("Edit", plan[plan.index("--disallowedTools"):])
+        for path in (None, "relative/plan.json", "/tmp/a (b)/plan.json"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                router.claude_access_flags("plan", path)
+
+    def test_the_plan_rule_names_exactly_the_path_the_planner_is_told(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "claude-code", config, "L5", "implementation")
+        payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
+        plan_path = payload["steps"][0]["output"]["path"]
+        self.assertIn(f"Edit(/{plan_path})", payload["steps"][0]["command"])
+        self.assertEqual(plan_path, str(Path(plan_path).resolve()))
+        self.assertIn(plan_path, payload["steps"][0]["command"][-1])
+
+    def test_a_plan_rule_for_another_path_is_rejected(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "claude-code", config, "L5", "implementation")
+        payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
+        command = payload["steps"][0]["command"]
+        command[command.index(next(a for a in command if a.startswith("Edit(//")))] = "Edit(///etc/passwd)"
+        with self.assertRaises(ValueError):
+            router.validated_commands(payload)
+
+    def test_legacy_routes_keep_the_agent_flag_but_not_permission_flags(self):
+        router.validate_argv("claude-code", ["claude", "--agent", "level-3-standard", "--model", "opus", "-p", "task"], model="opus", legacy=True)
+        router.validate_argv("antigravity", ["agy", "--agent", "level-3-standard", "--model", "Gemini 3.1 Pro (High)", "--prompt", "task"], legacy=True)
+        with self.assertRaises(ValueError):
+            router.validate_argv("claude-code", ["claude", "-p", "--model", "opus", "--permission-mode", "acceptEdits", "--", "task"], model="opus", legacy=True)
+        with self.assertRaises(ValueError):
+            router.validate_argv("antigravity", ["agy", "--agent", "x", "--model", "Gemini 3.1 Pro (High)", "--prompt", "task"])
 
     def test_replaying_a_route_with_an_injected_flag_is_refused(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
         result = router.route("t", "claude-code", config, "L2", "implementation")
         payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
         payload["steps"][0]["command"].insert(-2, "--dangerously-skip-permissions")
-        with tempfile.TemporaryDirectory() as tmp:
-            route_file = Path(tmp) / "route.json"
-            route_file.write_text(json.dumps(payload), encoding="utf-8")
-            with contextlib.redirect_stderr(io.StringIO()) as err:
-                self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
-                self.assertEqual(pipeline.main(["--route-file", str(route_file)]), 2)
-            self.assertIn("router-generated", err.getvalue())
+        route_file = self.dir / "route.json"
+        route_file.write_text(json.dumps(payload), encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
+            self.assertEqual(pipeline.main(["--route-file", str(route_file)]), 2)
+        self.assertIn("router-generated", err.getvalue())
+
+    def test_a_multi_stage_route_cannot_use_interactive_steps(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "codex", config, "L5", "implementation")
+        commands = router.stage_commands(result, "t")
+        commands[1] = [c for c in commands[1] if c != "exec"]
+        payload = router.result_payload(result, commands, "t")
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
+
+    def test_commits_made_by_the_implementer_still_count_as_changes(self):
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        def git(*args):
+            subprocess.run(["git", *args], cwd=self.work, env=env, check=True, capture_output=True)
+        (self.work / "a.txt").write_text("a")
+        git("init", "-q"); git("add", "."); git("commit", "-qm", "init")
+        base = pipeline.git_head(str(self.work))
+        self.assertEqual(pipeline.git_diff(str(self.work), base)[1], False)
+        (self.work / "a.txt").write_text("changed")
+        git("commit", "-qam", "implementer commit")
+        diff, changed = pipeline.git_diff(str(self.work), base)
+        self.assertTrue(changed)
+        self.assertIn("changed", diff)
 
 
 class PipelinePlanTests(unittest.TestCase):

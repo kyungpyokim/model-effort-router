@@ -1085,7 +1085,8 @@ def route(
     pipeline = pipeline_plan(platform, task_type, level, mode, matrix, stages, tier_profile, available_models)
     plan_dir = None
     if mode == "two_stage":
-        plan_dir = str(Path(tempfile.gettempdir()) / f"codex-route-{uuid.uuid4().hex[:8]}")
+        # Resolved once (macOS /var -> /private/var) so the prompt, the Claude edit rule and the route agree.
+        plan_dir = str(Path(tempfile.gettempdir()).resolve() / f"codex-route-{uuid.uuid4().hex[:8]}")
         model = effort = None
     else:
         model, effort = stages[0]["model"], stages[0]["effort"]
@@ -1160,14 +1161,23 @@ def claude_access_flags(access: str, plan_path: str | None = None) -> list[str]:
     """Permission flags for a non-interactive Claude stage.
 
     ``edit`` (implement/fix) auto-approves file edits. ``plan`` may write only the plan file and
-    ``read`` may not write at all: dontAsk denies everything that would prompt, and a deny rule
-    on Edit keeps a project allow rule from re-opening writes for the reviewer."""
+    ``read`` may not write at all: dontAsk denies whatever would prompt, deny rules (which beat
+    project allow rules) close Bash, the edit tools and MCP servers."""
     if access == "edit":
         return ["--permission-mode", "acceptEdits"]
-    if access == "plan" and plan_path:
-        # Edit(//abs) is the absolute-path rule form and covers every built-in file-editing tool.
-        return ["--permission-mode", "dontAsk", "--allowedTools", *CLAUDE_READ_TOOLS, f"Edit(/{Path(plan_path).resolve()})"]
-    return ["--permission-mode", "dontAsk", "--allowedTools", *CLAUDE_READ_TOOLS, "--disallowedTools", "Edit"]
+    if access == "plan":
+        if not plan_path or not plan_path.startswith("/") or "(" in plan_path or ")" in plan_path:
+            raise ValueError("a plan stage needs an absolute plan path without parentheses")
+        # Edit(//abs) is the absolute-path rule form and covers every built-in file-editing tool;
+        # the Edit tool family cannot be denied here without denying the plan file itself.
+        return [
+            "--permission-mode", "dontAsk", "--allowedTools", *CLAUDE_READ_TOOLS, f"Edit(/{plan_path})",
+            "--disallowedTools", "Bash", "NotebookEdit", "--strict-mcp-config",
+        ]
+    return [
+        "--permission-mode", "dontAsk", "--allowedTools", *CLAUDE_READ_TOOLS,
+        "--disallowedTools", "Edit", "Write", "NotebookEdit", "Bash", "--strict-mcp-config",
+    ]
 
 
 def _claude_print_command(model: str, effort: str | None, prompt: str, access: str = "read", plan_path: str | None = None) -> list[str]:
@@ -1252,31 +1262,41 @@ def command_model(command: list[str], option: str) -> str | None:
     return models[0] if len(models) == 1 else None
 
 
-MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._()/:\-]*$")
-CLAUDE_TOOL_RE = re.compile(r"^(Read|Grep|Glob|Edit|Edit\(//[^()\s]+\))$")
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\-]*$")  # Codex and Claude ids
+AGY_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._()/:\-]*$")  # display names like "Gemini 3.1 Pro (High)"
+AGENT_NAME_RE = re.compile(r"^[a-z0-9-]+$")
 CODEX_CONFIG_KEYS = ("model_reasoning_effort", "developer_instructions")
 
 
-def validate_argv(platform: str, command: list[str]) -> None:
-    """Accept only the argv shapes this router generates; reject any other flag or override.
+def model_ok(platform: str, model: object) -> bool:
+    return isinstance(model, str) and bool((AGY_MODEL_RE if platform == "antigravity" else MODEL_RE).match(model))
 
-    The last element is the prompt. Everything before it must match the platform grammar, so a
-    route file cannot smuggle sandbox, permission-bypass, or config overrides into a stage."""
-    head, options, i = command[0], command[1:-1], 0
+
+def validate_argv(
+    platform: str, command: list[str], *, model: str | None = None, effort: str | None = None,
+    access: str | None = None, plan_path: str | None = None, legacy: bool = False,
+) -> None:
+    """Accept only argv shapes this router generates; refuse every other flag or override.
+
+    The last element is the prompt. Claude commands of a v6 route must equal the generated
+    argv for the step's model, effort and access level (permission flags included); routes
+    older than v6 predate permission flags and may only carry the old ``--agent`` form."""
+    options, i = command[1:-1], 0
+
     def fail(reason: str):
         raise ValueError(f"route file command is not a router-generated {platform} command ({reason})")
+
     if platform == "codex":
         if options[:1] == ["exec"]:
             options = options[1:]
         models = 0
         while i < len(options):
             flag, value = options[i], options[i + 1] if i + 1 < len(options) else None
-            if flag == "-m" and value is not None and MODEL_RE.match(value):
+            key, sep, setting = (value or "").partition("=")
+            if flag == "-m" and model_ok(platform, value):
                 models += 1
-            elif flag == "-c" and value is not None and value.partition("=")[0] in CODEX_CONFIG_KEYS:
-                key, _, setting = value.partition("=")
-                if key == "model_reasoning_effort" and setting not in EFFORT_ORDER:
-                    fail("bad effort")
+            elif flag == "-c" and sep and key in CODEX_CONFIG_KEYS and (key != "model_reasoning_effort" or setting in EFFORT_ORDER):
+                pass
             else:
                 fail(f"unexpected option {flag}")
             i += 2
@@ -1284,27 +1304,34 @@ def validate_argv(platform: str, command: list[str]) -> None:
             fail("expected exactly one model")
         return
     if platform == "antigravity":
-        if len(options) != 3 or options[0] != "--model" or not MODEL_RE.match(options[1]) or options[2] not in ("--prompt", "--prompt-interactive"):
+        if legacy and options[:1] == ["--agent"] and len(options) > 1 and AGENT_NAME_RE.match(options[1]):
+            options = options[2:]
+        if len(options) != 3 or options[0] != "--model" or not model_ok(platform, options[1]) or options[2] not in ("--prompt", "--prompt-interactive"):
             fail("unexpected option")
+        return
+    if not model_ok(platform, model):
+        fail("bad model")
+    tail = [*(["--effort", effort] if effort else [])]
+    if not legacy:
+        try:
+            expected = [["claude", "-p", "--model", model, *tail, *claude_access_flags(access or "read", plan_path), "--"], ["claude", "--model", model, *tail]]
+        except ValueError as exc:
+            fail(str(exc))
+        if command[:-1] not in expected:
+            fail("flags differ from the generated command")
         return
     seen_model = False
     while i < len(options):
         flag = options[i]
-        if flag in ("-p", "--print", "--"):
+        if flag in ("-p", "--print"):
             i += 1
-        elif flag == "--model" and i + 1 < len(options) and MODEL_RE.match(options[i + 1]) and not seen_model:
+        elif flag == "--agent" and i + 1 < len(options) and AGENT_NAME_RE.match(options[i + 1]):
+            i += 2
+        elif flag == "--model" and i + 1 < len(options) and options[i + 1] == model and not seen_model:
             seen_model = True
             i += 2
         elif flag == "--effort" and i + 1 < len(options) and options[i + 1] in EFFORT_ORDER:
             i += 2
-        elif flag == "--permission-mode" and i + 1 < len(options) and options[i + 1] in ("acceptEdits", "dontAsk"):
-            i += 2
-        elif flag in ("--allowedTools", "--disallowedTools"):
-            i += 1
-            while i < len(options) and not options[i].startswith("-"):
-                if not CLAUDE_TOOL_RE.match(options[i]):
-                    fail(f"unexpected tool {options[i]}")
-                i += 1
         else:
             fail(f"unexpected option {flag}")
     if not seen_model:
@@ -1326,24 +1353,32 @@ def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:
     steps = payload.get("steps")
     if not isinstance(steps, list) or not steps:
         raise ValueError("route file must contain at least one execution step")
-    commands: list[list[str]] = []
-    for step in steps:
-        command = step.get("command") if isinstance(step, dict) else None
-        if not isinstance(command, list) or not command or command[0] != executable or not all(isinstance(arg, str) and arg for arg in command):
-            raise ValueError("route file contains an invalid platform command")
-        validate_argv(platform, command)
-        if not isinstance(step.get("model"), str) or step["model"] != command_model(command, model_option):
-            raise ValueError("route file step model does not match its command")
-        commands.append(command)
-    if payload.get("mode") == "single" and len(commands) == 1:
-        return commands, None
-    if payload.get("mode") == "two_stage" and len(commands) == 2:
+    mode = payload.get("mode")
+    plan_path = None
+    if mode == "two_stage" and len(steps) == 2:
         plan = steps[0].get("output") if isinstance(steps[0], dict) else None
         plan_path = plan.get("path") if isinstance(plan, dict) else None
         if not isinstance(plan_path, str) or not plan_path:
             raise ValueError("two-stage route file must declare its plan output")
-        return commands, plan_path
-    raise ValueError("route file mode does not match its execution steps")
+    elif not (mode == "single" and len(steps) == 1):
+        raise ValueError("route file mode does not match its execution steps")
+    commands: list[list[str]] = []
+    for index, step in enumerate(steps):
+        command = step.get("command") if isinstance(step, dict) else None
+        if not isinstance(command, list) or not command or command[0] != executable or not all(isinstance(arg, str) and arg for arg in command):
+            raise ValueError("route file contains an invalid platform command")
+        if not isinstance(step.get("model"), str) or step["model"] != command_model(command, model_option):
+            raise ValueError("route file step model does not match its command")
+        if plan_path is not None:
+            access = "plan" if index == 0 else "edit"
+        else:
+            access = "edit" if payload.get("task_type") in CODE_CHANGE_TASK_TYPES else "read"
+        validate_argv(
+            platform, command, model=step["model"], effort=step.get("effort"), access=access,
+            plan_path=plan_path if index == 0 else None, legacy=payload["schema_version"] < 6,
+        )
+        commands.append(command)
+    return commands, plan_path
 
 
 def command_chain_from_payload(payload: object, cleanup_plan_dir: bool = False) -> str:
