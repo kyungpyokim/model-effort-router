@@ -37,7 +37,7 @@ class GeneratedInstructionTests(unittest.TestCase):
     def test_interactive_forms_and_migration_or_api_flags_validate(self):
         for platform in PLATFORMS:
             with self.subTest(platform=platform):
-                router.validated_commands(payload_for(platform, "L3", interactive=True))
+                router.validated_commands(payload_for(platform, "L3", task_type="design", interactive=True))
                 payload = payload_for(platform, "L4", extra_flags=("data_migration", "public_api_change"))
                 self.assertIn("migration_safety", json.dumps(payload["steps"]))
                 router.validated_commands(payload)

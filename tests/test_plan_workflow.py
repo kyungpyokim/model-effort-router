@@ -1,3 +1,5 @@
+import contextlib
+import io
 import sys
 import unittest
 from pathlib import Path
@@ -81,3 +83,49 @@ class PlanWorkflowTests(unittest.TestCase):
                         if result.mode == "two_stage":
                             planner, implementer = result.stages
                             self.assertNotEqual(profile(planner), profile(implementer))
+
+
+class InteractiveIsSingleStageOnlyTests(unittest.TestCase):
+    def cli(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = router.main(["x", *args])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_interactive_two_stage_routes_are_refused_on_every_platform(self):
+        for platform in ("codex", "claude-code", "antigravity"):
+            for fmt in ("command", "json"):
+                with self.subTest(platform=platform, fmt=fmt):
+                    code, out, err = self.cli(
+                        "--platform", platform, "--task-type", "implementation", "--level", "L3",
+                        "--format", fmt, "--interactive", "--no-prompt",
+                    )
+                    self.assertEqual(code, 2)
+                    self.assertEqual(out, "")
+                    self.assertIn("single-stage only", err)
+                    self.assertIn("without --interactive", err)
+
+    def test_stage_commands_refuses_interactive_for_two_stage_results(self):
+        result = routed("claude-code", level="L3")
+        self.assertEqual(result.mode, "two_stage")
+        with self.assertRaisesRegex(ValueError, "single-stage only"):
+            router.stage_commands(result, "t", interactive=True)
+        with self.assertRaisesRegex(ValueError, "single-stage only"):
+            router.command_chain(result, "t", interactive=True)
+
+    def test_interactive_single_stage_and_non_interactive_two_stage_are_unchanged(self):
+        for platform in ("codex", "claude-code"):
+            with self.subTest(platform=platform):
+                code, out, _ = self.cli(
+                    "--platform", platform, "--task-type", "implementation", "--level", "L1",
+                    "--format", "command", "--interactive", "--no-prompt",
+                )
+                self.assertEqual(code, 0)
+                self.assertNotIn(" exec ", out)
+                self.assertNotIn(" -p ", out)
+                code, out, _ = self.cli(
+                    "--platform", platform, "--task-type", "implementation", "--level", "L3",
+                    "--format", "command", "--no-prompt",
+                )
+                self.assertEqual(code, 0)
+                self.assertIn("mkdir -p", out)
