@@ -23,15 +23,16 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 
 `scripts/router.py`에 정의된 `DIFFICULTY_RULES`가 이 팩트들을 바탕으로 최종 난이도 레벨을 결정합니다. 일치하는 가장 높은 규칙이 적용되며, 라우트 JSON의 `matched_rules`에 해당 규칙 이름이 기록됩니다.
 
-L4 이상을 결정하는 핵심 팩트가 `unknown`(불명확) 상태인 경우, 라우터는 저장소 컨텍스트를 읽을 수 있는 분류기로 1회 에스컬레이션(재분석)합니다.
+`unknown`은 난이도나 위험이 아니라 "지금 정보로는 yes/no를 판단할 근거가 부족하다"는 뜻입니다. unknown 팩트는 어떤 규칙에도 일치하지 않고, 레벨·티어·위험 플래그를 올리지 않으며, 더 강한 분류기를 호출하는 근거도 되지 않습니다. 분류기는 플랫폼당 하나의 모델이며, unknown은 다음 순서로 해결합니다.
 
-일부 `unknown`은 레벨을 올리지 않고 에스컬레이션만 요청합니다: `crosses_module_boundary`, `intermittent_or_concurrency`, `changes_trust_boundary`, `blast_radius`, `silent_failure_material_harm`. 에스컬레이션 후에도 `crosses_service_boundary`가 `unknown`이면 L4 바닥선을 유지하고, `irreversible_or_ledger_or_crypto`가 `unknown`이면 L5 바닥선을 적용하되 critical 티어는 발동하지 않습니다. 에스컬레이션된 분류기는 저장소 코드를 직접 읽었지만, 일부 안전 팩트만 그 응답으로 낮출 수 있습니다. 고정(sticky) 안전 팩트(보안/결제 변경, 영속 데이터, 퍼블릭 API, 비가역 변경, 신뢰 경계, 무음 피해)는 OR로 결합되어 에스컬레이션 응답이 무엇이든 낮아지지 않습니다. 교정 가능한(correctable) 안전 팩트(치명적 보안 영역, 보안 검토, 넓은 영향 반경)는 키워드 기반 1차 분류기가 일반적인 검토 작업에서 가장 자주 오탐하는 지점으로, 에스컬레이션 응답이 `unknown`이 아닌 명시적 답을 준 경우에만 교정될 수 있습니다: no/narrow로 명시하면 그 값이 우선하고, `none`이면 그 값이 우선하며, 서로 다른 보안 영역을 명시한 경우에는 우선순위(payment > crypto > auth > permissions > pii > secrets)상 더 치명적인 쪽이 유지됩니다.
+1. **읽기 전용 조회 최대 1회**: 같은 모델이 아직 unknown인 팩트를 확정하는 데 필요한 부분만 읽고 답합니다. 조회는 unknown이던 팩트만 채우며, 1차 응답이 이미 답한 팩트는 바꾸지 않습니다. `--repo-aware`에서는 1차 분류가 이미 저장소를 읽으므로 두 번째 호출이 없습니다.
+2. **사용자에게 질문**: 그래도 남은 unknown(요구사항·의도·컨텍스트 부족)은 사용자에게 묻습니다. 라우트 JSON에 `unresolved_facts`와 `questions`가 담기고, 라우터는 종료 코드 `3`으로 끝나 런처가 멈추며, 터미널에서는 직접 질문합니다. `--answer FACT=VALUE`(반복 가능)로 답하면 아직 unknown인 팩트만 채워집니다. 선택 팩트 `requires_code_understanding`은 조회하지만 질문하지 않으며, unknown이면 저렴한 구현 모델이 유지됩니다.
 
-플랫폼별 에스컬레이션 모델:
+플랫폼별 분류 모델(에스컬레이션 모델은 없습니다):
 
-- **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
-- **Claude Code**: `claude-sonnet-5` (medium) → `claude-sonnet-5` (medium)
-- **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
+- **Codex**: `gpt-5.6-luna` (medium)
+- **Claude Code**: `claude-sonnet-5` (medium)
+- **Antigravity**: `Gemini 3.8 Flash (Medium)`
 
 각 사전 분류는 격리된 임시 디렉토리에서 실행되며 구조화된 JSON(`task_type`, `facts`, `delegability`, `evidence`, `reason`)을 검증한 뒤 프로필을 선택합니다. 읽기 전용인 `design` 및 `review` 작업의 경우 `files_touched`가 `0`으로 처리됩니다. Claude Code 또는 Codex 세션 내에서는 라우트 스킬이 인세션 `difficulty-assessor` 에이전트를 통해 동일한 프롬프트를 실행하고 `--classification-file`로 JSON을 전달합니다. 저장소 컨텍스트가 필요한 경우 `primary`/`escalated` JSON 엔벨로프를 전달하여 라우터가 두 응답을 결합한 뒤 경로를 선택합니다.
 
@@ -69,7 +70,7 @@ plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort
 
 작업 스레드마다 `MODEL_EFFORT_ROUTER_SESSION=<key>`(또는 `router.py --session <key>`)를 지정하면 첫 작업만 분류해 저장하고, 같은 워크스페이스의 후속 작업은 분류기 호출 없이 그 라우트를 재사용합니다. 워크스페이스 변경, 4시간 경과, 실행 중 재계획/실패, 새 작업의 작업 종류 변경·범위 확대·새 리스크 근거가 있으면 다시 분류합니다. `--no-reuse`는 강제로 새로 분류합니다.
 
-라우트 JSON은 스키마 v6를 출력합니다. 이전 점수 필드 대신 `facts`, `matched_rules`, `needs_context`, `evidence`가 사용되며, 레벨 옆에 `risk_tier`(`standard` / `elevated` / `critical`)가 기록됩니다. 또한 `execution_strategy: "direct"`와 `orchestration_eligible`을 분리하여 기록합니다. 오케스트레이션 적격성(`orchestration_eligible`)은 Codex 오케스트레이션 인계 후보일 뿐이며 실행 요청이 아닙니다. `scripts/astra_adapter.py`는 변경되지 않은 오케스트레이션 어댑터로, 호출자가 직접 호출하는 로컬 격리 워커 경계입니다(제공된 라우트 및 매니페스트 다이제스트 검증, 시도별 워커 입력 복사본 재검증, 시도 후 검증된 원본 아티팩트 보존). 직접 v2-v6 라우트 파일 재생 시에는 이 어댑터를 호출하지 않습니다.
+라우트 JSON은 스키마 v6를 출력합니다. 이전 점수 필드 대신 `facts`, `matched_rules`, `unresolved_facts`, `questions`, `evidence`가 사용되며, 레벨 옆에 `risk_tier`(`standard` / `elevated` / `critical`)가 기록됩니다. 또한 `execution_strategy: "direct"`와 `orchestration_eligible`을 분리하여 기록합니다. 오케스트레이션 적격성(`orchestration_eligible`)은 Codex 오케스트레이션 인계 후보일 뿐이며 실행 요청이 아닙니다. `scripts/astra_adapter.py`는 변경되지 않은 오케스트레이션 어댑터로, 호출자가 직접 호출하는 로컬 격리 워커 경계입니다(제공된 라우트 및 매니페스트 다이제스트 검증, 시도별 워커 입력 복사본 재검증, 시도 후 검증된 원본 아티팩트 보존). 직접 v2-v6 라우트 파일 재생 시에는 이 어댑터를 호출하지 않습니다.
 
 `delegability`(위임 가능성)는 난이도 규칙과 독립적입니다.
 - `0`: 공유 상태, 순서 의존성, 위험 작업 또는 강하게 결합된 작업

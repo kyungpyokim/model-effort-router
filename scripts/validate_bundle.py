@@ -42,15 +42,12 @@ def main() -> int:
     router = load_router(root)
     model_map = read_json(root / "config" / "model-map.json")
     classifiers = model_map["classifiers"]
-    # antigravity is excluded here: its model-map fallback patterns have long since
-    # drifted from router.FALLBACK_CLASSIFIER_CONFIG (predates this change, a
-    # separate pre-existing bug -- not asserted on until that drift is resolved).
+    # Only one classifier class exists: unknown facts are settled by one bounded lookup or a question,
+    # never by a stronger classifier. antigravity's patterns are not asserted (they follow the detected models).
+    assert all(set(entry) == {"primary"} for entry in classifiers.values()), "model-map classifiers must only define a primary"
     for platform in ("codex", "claude-code"):
         assert classifiers[platform]["primary"] == router.PRIMARY_CLASSIFIER_CONFIG[platform], (
             f"model-map classifiers.{platform}.primary does not match router.PRIMARY_CLASSIFIER_CONFIG"
-        )
-        assert classifiers[platform]["fallback"] == router.FALLBACK_CLASSIFIER_CONFIG[platform], (
-            f"model-map classifiers.{platform}.fallback does not match router.FALLBACK_CLASSIFIER_CONFIG"
         )
 
     assert tuple(model_map["levels"]) == router.LEVELS, "model-map levels must match router.LEVELS"
@@ -100,7 +97,8 @@ def main() -> int:
     assert "at most 6 tool calls" in (claude / "agents" / "difficulty-assessor.md").read_text(encoding="utf-8")
     claude_skill_text = (claude / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
     assert "`model` `sonnet`" in claude_skill_text, "primary classification step must stay on sonnet"
-    assert "`model` `opus`" in claude_skill_text, "escalation step must use a stronger model than the primary (opus)"
+    assert "`model` `opus`" not in claude_skill_text, "unknown facts are never settled by a stronger classifier"
+    assert "unresolved_facts" in claude_skill_text, "the route skill must ask the user about unresolved facts"
     # The route skill delegates through the Agent tool, which cannot set effort,
     # so each matrix effort needs an agent that pins it.
     for effort in ("none", "low", "medium", "high", "xhigh", "max"):

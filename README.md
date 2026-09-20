@@ -17,7 +17,7 @@ already-decided work on the cheapest sufficient model. Codex: **Sol thinks and
 verifies, Luna and Terra implement.** Claude Code: **Opus thinks and verifies,
 Haiku and Sonnet implement.** See [Execution roles and pipeline](#execution-roles-and-pipeline).
 
-## Cascading preflight classifier
+## Preflight classifier
 
 The classifier never scores difficulty. It answers seventeen bounded facts about
 the work (files touched, module or service boundaries, whether the result is known,
@@ -25,35 +25,36 @@ new structure, security/payment logic changed or reviewed, the security domain,
 public API, persisted data, irreversible changes, trust-boundary changes, blast
 radius, silent material harm), and `DIFFICULTY_RULES` in
 `scripts/router.py` turn those facts into the level. The highest matching rule wins; `matched_rules` in the route JSON names it.
-When a fact that decides L4 or above is `unknown`, the router escalates once to a
-repository-aware classifier. Some unknowns only ask for that escalation without raising
-the level: `crosses_module_boundary`, `intermittent_or_concurrency`,
-`changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm`. A
-`crosses_service_boundary` still unknown after escalation keeps the L4 floor, and an
-unknown `irreversible_or_ledger_or_crypto` floors at L5 but never triggers the critical
-tier. The escalated classifier read the repository, but only some safety facts may
-be lowered by it. A sticky safety fact the first reply affirmed (security/payment
-change, persisted data, public API, irreversible, trust boundary, silent harm) is
-OR-aggregated and can never be lowered by the escalated reply. A correctable safety
-fact (critical security domain, security review, broad blast radius) — where a
-keyword-driven primary produces most of its false positives — may be corrected once
-the escalated reply gives an explicit, non-`unknown` answer: an explicit no/narrow
-wins, `none` wins, and a differing named domain keeps whichever of the two is more
-critical by priority (payment > crypto > auth > permissions > pii > secrets).
+`unknown` means the classifier lacks the information to answer yes or no. It is not
+difficulty and not risk: an unknown fact never matches a rule, never raises the level, tier
+or risk flags, and never triggers a stronger classifier. The classifier is one model per
+platform, and an unknown fact is settled in this order:
 
-Escalation models by platform:
+1. **One bounded read-only lookup** by the same model: the router asks it to read only what
+   settles the still-unknown facts and folds the reply in. The lookup may fill an unknown
+   fact; it never changes a fact the first pass already answered. It runs once. With
+   `--repo-aware` the first pass already reads the repository, so there is no second call.
+2. **A question to the user** for what is still unknown (missing intent, requirement, or
+   context). The route JSON lists `unresolved_facts` and `questions`, the router exits `3`
+   so a launcher stops, and on a terminal it asks the questions directly. Answer with
+   `--answer FACT=VALUE` (repeatable); an answer only fills a fact that is still unknown.
+   The optional `requires_code_understanding` is looked up but never asked: unknown there
+   just keeps the cheaper implementer.
 
-- **Codex**: `gpt-5.6-luna` (medium) → `gpt-5.6-terra` (medium)
-- **Claude Code**: `claude-sonnet-5` (medium) → `claude-sonnet-5` (medium)
-- **Antigravity**: `Gemini 3.8 Flash (Medium)` → `Gemini 3.1 Pro (High)`
+Classifier models by platform (no escalation model exists):
+
+- **Codex**: `gpt-5.6-luna` (medium)
+- **Claude Code**: `claude-sonnet-5` (medium)
+- **Antigravity**: `Gemini 3.8 Flash (Medium)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
 (task_type, facts, delegability, evidence, reason) before selecting a profile. `files_touched`
 accepts `0` for read-only design and review work. In a Claude Code
 or Codex session the route skill runs the same prompt through an in-session
-`difficulty-assessor` agent instead and passes its JSON with `--classification-file`. When
-repository context is needed, it passes a `primary`/`escalated` JSON envelope so the router
-combines both replies before selecting the route.
+`difficulty-assessor` agent instead and passes its JSON with `--classification-file`. The
+route skill reads the repository in that single pass (`--repo-aware`), and asks the user about
+`unresolved_facts` instead of calling another model. A `{"primary", "lookup"}` envelope on
+`--classification-file` folds one same-model lookup into the first reply.
 
 A non-zero preflight exit is retried once; a timeout is not. If it
 still fails, cannot start, or returns invalid JSON:
@@ -102,7 +103,7 @@ is, `state.json`) stay separate. Details: `references/routing-policy.md`.
 
 ### Live classifier benchmark
 
-`scripts/eval_router_performance.py --live-classifier --platform codex|claude-code|antigravity [--case NAME ...] [--limit N]` sends the labelled corpus to the real classifier and reports routing accuracy (task type, level, tier, `needs_context`), model+effort profile agreement (so a Luna medium vs Luna high or Haiku vs Sonnet low miss is visible), labelled-fact accuracy per fact, the `requires_code_understanding` confusion counts, unknown transitions, classifier fallbacks, calls and seconds. It spends real model usage, so it is opt-in. A case that does not label `requires_code_understanding` is graded on the classifier's own answer for that fact when comparing profiles.
+`scripts/eval_router_performance.py --live-classifier --platform codex|claude-code|antigravity [--case NAME ...] [--limit N]` sends the labelled corpus to the real classifier and reports routing accuracy (level, tier, unresolved facts) and task-type accuracy, model+effort profile agreement (so a Luna medium vs Luna high or Haiku vs Sonnet low miss is visible), labelled-fact accuracy per fact, the `requires_code_understanding` confusion counts, unknown transitions, classifier fallbacks, calls and seconds. It spends real model usage, so it is opt-in. A case that does not label `requires_code_understanding` is graded on the classifier's own answer for that fact when comparing profiles.
 
 ### Route reuse
 
@@ -111,7 +112,7 @@ task is classified and stored; follow-ups in the same workspace reuse that route
 classifier, until the workspace changes, 4 hours pass, a run re-plans or fails, or the new task shows a
 different operation, wider scope, or new risk evidence. `--no-reuse` forces a fresh classification.
 
-Route JSON emits schema v6: `facts`, `matched_rules`, `needs_context`, and
+Route JSON emits schema v6: `facts`, `matched_rules`, `unresolved_facts`, `questions`, and
 `evidence` replace the old score fields, and `risk_tier` (`standard`, `elevated`,
 `critical`) is recorded next to the level. It records `execution_strategy: "direct"` and
 `orchestration_eligible` separately: eligibility is only a Codex orchestration handoff

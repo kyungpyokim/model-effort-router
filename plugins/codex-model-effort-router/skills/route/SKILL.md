@@ -28,20 +28,14 @@ worker classifies instead.
    <worker reply>
    FACTS_JSON
    ```
-3. If the route JSON has `needs_context: true`, classify once more with `gpt-5.6-terra` /
-   `medium` and the same prompt, then rerun step 2 with this JSON envelope on stdin. The
-   repository-aware reply read the code. It combines the primary and repository-aware facts
-   before routing: a primary irreversible, security/payment, persisted-data, public-API,
-   trust-boundary, or silent-failure "yes" is always kept (sticky), while `security_domain`,
-   `reviews_security_sensitive_code`, and `blast_radius` are correctable and may be lowered
-   once the repository-aware reply gives an explicit, non-`unknown` answer.
-
-   ```json
-   {"primary": <first classifier reply>, "escalated": <repository-aware classifier reply>}
-   ```
-
-   Escalate at most once. If the second worker fails, keep the first route.
-   If the router exits non-zero, the classification JSON was invalid. Classify once more; if it
+3. If the router exits `3`, the route JSON lists `unresolved_facts` and `questions`: facts the task
+   and the worker's repository reads could not settle. `unknown` is missing information, not risk,
+   so never classify again with a stronger model to settle it, and never treat it as `yes`. Ask the
+   user each question in `questions[]` (the `question` text, with its `options`), then rerun step 2
+   with the same worker reply and one `--answer FACT=VALUE` per answer. An answer only fills a fact
+   that is still unknown. If the user cannot answer, stop and report which information is missing;
+   do not delegate the route.
+   If the router exits with any other non-zero code, the classification JSON was invalid. Classify once more; if it
    still fails, do not guess a route and do not delegate. Report the failure, ask the user for
    `task_type` and `level`, and rerun step 2 with `--task-type` and `--level`.
    Never run the router in this flow without `--classification-file`:
