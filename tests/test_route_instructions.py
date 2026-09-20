@@ -102,8 +102,10 @@ class TamperedInstructionTests(unittest.TestCase):
     def test_a_missing_agent_profile_is_reported_as_unverifiable_not_tampered(self):
         for platform, target in (("codex", "codex_agent_instructions"), ("claude-code", "markdown_agent_instructions"), ("antigravity", "markdown_agent_instructions")):
             with self.subTest(platform=platform):
-                payload = payload_for(platform, "L4")
-                with mock.patch.object(router, target, side_effect=FileNotFoundError("agents/level-4")):
+                # Only single-stage routes embed a per-level agent profile; L2+ code changes are two-stage now, so use L1.
+                payload = payload_for(platform, "L1")
+                self.assertEqual(payload["mode"], "single")
+                with mock.patch.object(router, target, side_effect=FileNotFoundError("agents/level-1")):
                     with self.assertRaises(ValueError) as caught:
                         router.validated_commands(payload)
                 self.assertIn("cannot be verified", str(caught.exception))

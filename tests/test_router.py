@@ -1112,21 +1112,21 @@ AGY_SONNET = ("Claude Sonnet 4.6 (Thinking)", None)
 class MatrixTests(unittest.TestCase):
     EXPECTED_SINGLE = {
         "codex": {
-            **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, CODEX_IMPL)},
+            # L2+ code changes are two-stage (judge plan + this cheap implementer); see EXPECTED_STAGES.
+            **{(kind, "L1"): CODEX_IMPL[0] for kind in ("implementation", "local_refactoring")},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CODEX_JUDGE)},
             ("architectural_refactoring", "L1"): ("gpt-5.6-luna", "medium"),
             ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
         },
         "claude-code": {
-            **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, CLAUDE_IMPL)},
+            **{(kind, "L1"): CLAUDE_IMPL[0] for kind in ("implementation", "local_refactoring")},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CLAUDE_JUDGE)},
             ("architectural_refactoring", "L1"): ("claude-haiku-4-5", None),
             ("architectural_refactoring", "L2"): ("claude-opus-5", "high"),
         },
         "antigravity": {
-            **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, (
-                AGY_FLASH, AGY_FLASH, AGY_FLASH, AGY_SONNET,
-            ))},
+            # The Flash L2 implementer equals the Flash design planner, so L2 keeps a single stage.
+            **{(kind, level): AGY_FLASH for kind in ("implementation", "local_refactoring") for level in ("L1", "L2")},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
                 AGY_FLASH, AGY_FLASH, AGY_PRO, AGY_PRO, AGY_PRO,
             ))},
@@ -1136,6 +1136,8 @@ class MatrixTests(unittest.TestCase):
     }
     EXPECTED_STAGES = {
         "codex": {
+            **{(kind, level): [("planner", "gpt-5.6-sol", "high"), ("implementer", *impl)]
+               for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS[1:], CODEX_IMPL[1:])},
             ("implementation", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
             ("local_refactoring", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
             ("architectural_refactoring", "L3"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "medium")],
@@ -1143,6 +1145,8 @@ class MatrixTests(unittest.TestCase):
             ("architectural_refactoring", "L5"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
         },
         "claude-code": {
+            **{(kind, level): [("planner", "claude-opus-5", "high"), ("implementer", *impl)]
+               for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS[1:], CLAUDE_IMPL[1:])},
             ("implementation", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
             ("local_refactoring", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
             ("architectural_refactoring", "L3"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "medium")],
@@ -1150,6 +1154,8 @@ class MatrixTests(unittest.TestCase):
             ("architectural_refactoring", "L5"): [("planner", "claude-opus-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
         },
         "antigravity": {
+            **{(kind, level): [("planner", *AGY_PRO), ("implementer", *impl)]
+               for kind in ("implementation", "local_refactoring") for level, impl in (("L3", AGY_FLASH), ("L4", AGY_SONNET))},
             ("implementation", "L5"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
             ("local_refactoring", "L5"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
             ("architectural_refactoring", "L3"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Gemini 3.8 Flash (High)", None)],
@@ -1334,7 +1340,8 @@ class RoutingTests(unittest.TestCase):
         result = routed(explicit_task_type="implementation", classifier=spy)
         spy.assert_called_once()
         self.assertEqual(result.task_type, "implementation")
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-luna", "medium"))
+        # L2 implementation is judge-planned; its implementer stage keeps the cheap Luna rung.
+        self.assertEqual((result.stages[-1]["model"], result.stages[-1]["effort"]), ("gpt-5.6-luna", "medium"))
 
     def test_explicit_l5_with_explicit_type_bypasses_the_classifier(self):
         classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
@@ -1621,6 +1628,11 @@ class CommandAndLauncherTests(unittest.TestCase):
                     "else:\n"
                     f"    with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
                     "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n"
+                    # L3 is now reviewed by the judge; let the review pass so the run can finish.
+                    # Answer it first: its prompt embeds the repo diff, which can mention the plan marker.
+                    "    if 'merged verification' in ' '.join(sys.argv[1:]):\n"
+                    "        print('VERDICT: PASS')\n"
+                    "        sys.exit(0)\n"
                     "    import re\n"
                     "    plan = re.search(r'exactly: (\\S+)', ' '.join(sys.argv[1:]))\n"
                     "    if plan:\n"
@@ -1652,6 +1664,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn("planning stage", calls.read_text())
                 self.assertIn("execution stage", calls.read_text())
+                self.assertIn("merged verification", calls.read_text())
                 self.assertEqual(list(temp_dir.iterdir()), [], f"leaked temp entries: {list(temp_dir.iterdir())}")
 
     def test_launchers_request_plan_dir_cleanup_only_for_the_route_file_they_generate(self):
@@ -1717,6 +1730,10 @@ class CommandAndLauncherTests(unittest.TestCase):
                     f"#!{sys.executable}\nimport json, pathlib, sys\n"
                     f"with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
                     "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                    # L3 is now reviewed by the judge (its prompt quotes the plan stage too); let it pass.
+                    "if 'merged verification' in sys.argv[-1]:\n"
+                    "    print('VERDICT: PASS')\n"
+                    "    raise SystemExit(0)\n"
                     "if 'You are the planning stage' in sys.argv[-1]:\n"
                     f"    if {planner_status} == 0:\n"
                     f"        pathlib.Path({str(directory / 'plan' / 'plan.json')!r}).write_text('{{}}')\n"
@@ -1730,33 +1747,47 @@ class CommandAndLauncherTests(unittest.TestCase):
                 proc = subprocess.run([str(ROOT / self.LAUNCHERS["agy-route"]), "--route-file", str(route_file)], capture_output=True, text=True, timeout=10, env=env)
                 self.assertEqual(proc.returncode, planner_status, proc.stderr)
                 expected = commands if planner_status == 0 else commands[:1]
-                self.assertEqual([json.loads(line) for line in calls.read_text().splitlines()], [command[1:] for command in expected])
+                seen = [json.loads(line) for line in calls.read_text().splitlines()]
+                self.assertEqual(seen[:len(expected)], [command[1:] for command in expected])
+                # A passing plan runs the executor and then one judge review; a failed plan runs nothing else.
+                self.assertEqual(len(seen), len(expected) + (1 if planner_status == 0 else 0))
                 self.assertTrue(Path(result.plan_dir).is_dir())
 
-    def test_single_stage_codex_command_pins_model_and_effort(self):
+    def test_implementer_codex_command_pins_model_and_effort(self):
+        # L1 stays single-stage; from L2 the implementer is the last stage after the judge plan.
+        l1 = routed(classifier=lambda _: classification("implementation", "L1"))
+        self.assertEqual((l1.mode, l1.model, l1.effort), ("single", "gpt-5.6-luna", "low"))
+        l1_command = router.stage_commands(l1, "task")[0]
+        self.assertIn("model_reasoning_effort=low", l1_command)
+        # A single stage embeds the level agent's instructions; a two-stage implementer embeds the plan contract.
+        self.assertIn(router.codex_agent_instructions("L1"), " ".join(l1_command).replace("\\n", "\n"))
         result = routed(classifier=lambda _: classification("implementation", "L3"))
-        command = router.stage_commands(result, "task")[0]
+        command = router.stage_commands(result, "task")[-1]
         self.assertEqual(command[:2], ["codex", "exec"])
-        self.assertIn("-m gpt-5.6-terra", " ".join(command[:command.index("task")]))
+        self.assertEqual(command[command.index("-m") + 1], "gpt-5.6-terra")
         self.assertIn("model_reasoning_effort=medium", command)
-        self.assertIn("Investigate dependencies and failure paths before editing.", " ".join(command))
+        self.assertIn("You are the execution stage of a two-stage plan-and-implement pipeline.", " ".join(command))
+        self.assertIn(str(Path(result.plan_dir) / "plan.json"), " ".join(command))
 
-    def test_single_stage_commands_include_verification_handoff(self):
+    def test_implementing_commands_include_verification_handoff(self):
+        # L1 is single-stage; from L2 the last stage is the implementer. Both carry the handoff.
         for platform in ("codex", "claude-code", "antigravity"):
-            result = routed(
-                platform=platform,
-                classifier=lambda _: classification("implementation", "L3"),
-            )
-            command_text = " ".join(router.stage_commands(result, "implement feature")[0])
-            self.assertIn(
-                "- focused_tests: Code changes need focused regression coverage.",
-                command_text,
-            )
-            self.assertIn(
-                "Report each recommended check's result or why it was not run.",
-                command_text,
-            )
-            self.assertIn("Do not report an unrun check as passed", command_text)
+            for level in ("L1", "L3"):
+                result = routed(
+                    platform=platform,
+                    classifier=lambda _, lv=level: classification("implementation", lv),
+                )
+                command_text = " ".join(router.stage_commands(result, "implement feature")[-1])
+                with self.subTest(platform=platform, level=level):
+                    self.assertIn(
+                        "- focused_tests: Code changes need focused regression coverage.",
+                        command_text,
+                    )
+                    self.assertIn(
+                        "Report each recommended check's result or why it was not run.",
+                        command_text,
+                    )
+                    self.assertIn("Do not report an unrun check as passed", command_text)
 
     def test_two_stage_only_executor_receives_verification_handoff(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
@@ -1840,9 +1871,11 @@ class CommandAndLauncherTests(unittest.TestCase):
 
     def test_claude_payload_names_the_agent_tool_delegation_per_step(self):
         # The Agent tool cannot set effort, so the subagent is chosen by the matrix effort.
-        single = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L3"))
-        step = router.result_payload(single, router.stage_commands(single, "task"))["steps"][0]
-        self.assertEqual(step["agent"], {"subagent_type": "model-effort:effort-medium", "model": "sonnet"})
+        # L3 code changes are two-stage: the judge plans, the Sonnet implementer keeps its own effort.
+        planned = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L3"))
+        steps = router.result_payload(planned, router.stage_commands(planned, "task"))["steps"]
+        self.assertEqual(steps[0]["agent"], {"subagent_type": "model-effort:effort-high", "model": "opus"})
+        self.assertEqual(steps[-1]["agent"], {"subagent_type": "model-effort:effort-medium", "model": "sonnet"})
 
         haiku = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L1"))
         step = router.result_payload(haiku, router.stage_commands(haiku, "task"))["steps"][0]
@@ -2112,10 +2145,16 @@ class CommandAndLauncherTests(unittest.TestCase):
         command_l1 = router.shell_command(result_l1, "task", False)
         self.assertNotIn("--effort", command_l1)
 
+        # L2+ code changes are two-stage: the implementer is the last stage and owns the effort rule.
+        result_l2 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L2"))
+        implementer_l2 = result_l2.stages[-1]
+        self.assertEqual((implementer_l2["role"], implementer_l2["model"], implementer_l2["effort"]), ("implementer", "claude-haiku-4-5", None))
+        self.assertNotIn("--effort", router.stage_commands(result_l2, "task")[-1])
+
         result_l3 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L3"))
-        self.assertEqual(result_l3.model, "claude-sonnet-5")
-        self.assertEqual(result_l3.effort, "medium")
-        command_l3 = router.shell_command(result_l3, "task", False)
+        implementer_l3 = result_l3.stages[-1]
+        self.assertEqual((implementer_l3["model"], implementer_l3["effort"]), ("claude-sonnet-5", "medium"))
+        command_l3 = router.stage_commands(result_l3, "task")[-1]
         self.assertIn("--effort", command_l3)
         self.assertEqual(command_l3[command_l3.index("--effort") + 1], "medium")
 

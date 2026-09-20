@@ -74,69 +74,75 @@ class PipelineCase(unittest.TestCase):
 
 
 class PipelineRunTests(PipelineCase):
+    # L4 code changes are two-stage now: every run starts with the judge's plan, so replies lead with a plan step.
     def test_green_run_ends_with_one_sol_review_at_high_effort(self):
-        rc, calls = self.run_pipeline([{}, {"out": "no findings\nVERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {}, {"out": "no findings\nVERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "review"])
-        self.assertEqual(calls[1]["model"], "gpt-5.6-sol")
-        self.assertIn("model_reasoning_effort=high", calls[1]["effort"])
-        self.assertNotEqual(calls[0]["model"], "gpt-5.6-sol")
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
+        self.assertEqual((calls[0]["model"], calls[2]["model"]), ("gpt-5.6-sol", "gpt-5.6-sol"))
+        self.assertIn("model_reasoning_effort=high", calls[2]["effort"])
+        self.assertNotEqual(calls[1]["model"], "gpt-5.6-sol")
 
     def test_failing_test_goes_to_the_implementer_with_a_log_tail_not_to_a_judge(self):
         flag = self.work / "flag"
         rc, calls = self.run_pipeline(
-            [{}, {"touch": str(flag)}, {"out": "VERDICT: PASS"}], tests=[f"echo boom >&2; test -f {flag}"]
+            [{}, {}, {"touch": str(flag)}, {"out": "VERDICT: PASS"}], tests=[f"echo boom >&2; test -f {flag}"]
         )
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "fix", "review"])
-        self.assertIn("(exit 1)", calls[1]["text"])
-        self.assertIn("boom", calls[1]["text"])
-        self.assertNotEqual(calls[1]["model"], "gpt-5.6-sol")
-        self.assertIn("PASS: ", calls[2]["text"])
+        self.assertEqual(self.roles(calls), ["plan", "execute", "fix", "review"])
+        self.assertIn("(exit 1)", calls[2]["text"])
+        self.assertIn("boom", calls[2]["text"])
+        self.assertNotEqual(calls[2]["model"], "gpt-5.6-sol")
+        self.assertIn("PASS: ", calls[3]["text"])
 
     def test_tests_that_never_pass_fix_twice_then_replan_once_then_stop(self):
-        rc, calls = self.run_pipeline([{}] * 8, tests=["false"])
+        rc, calls = self.run_pipeline([{}] * 9, tests=["false"])
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
-        self.assertEqual(self.roles(calls), ["execute", "fix", "fix", "plan", "execute", "fix", "fix"])
-        self.assertEqual(calls[3]["model"], "gpt-5.6-sol")
+        self.assertEqual(self.roles(calls), ["plan", "execute", "fix", "fix", "plan", "execute", "fix", "fix"])
+        self.assertEqual(calls[4]["model"], "gpt-5.6-sol")
         self.assertNotIn("review", self.roles(calls))
 
     def test_review_fail_is_fixed_once_then_re_reviewed(self):
-        rc, calls = self.run_pipeline([{}, {"out": "null deref\nVERDICT: FAIL"}, {}, {"out": "VERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {}, {"out": "null deref\nVERDICT: FAIL"}, {}, {"out": "VERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "review", "fix", "review"])
-        self.assertIn("null deref", calls[2]["text"])
-        self.assertNotEqual(calls[2]["model"], "gpt-5.6-sol")
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review"])
+        self.assertIn("null deref", calls[3]["text"])
+        self.assertNotEqual(calls[3]["model"], "gpt-5.6-sol")
 
     def test_second_review_fail_replans_with_the_planning_model(self):
         fail = {"out": "VERDICT: FAIL"}
-        rc, calls = self.run_pipeline([{}, fail, {}, fail, {}, {}, {"out": "VERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {}, fail, {}, fail, {}, {}, {"out": "VERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "review", "fix", "review", "plan", "execute", "review"])
-        self.assertEqual(calls[4]["model"], "gpt-5.6-sol")
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review", "plan", "execute", "review"])
+        self.assertEqual(calls[5]["model"], "gpt-5.6-sol")
 
     def test_review_fails_are_capped(self):
         fail = {"out": "VERDICT: FAIL"}
-        rc, calls = self.run_pipeline([{}, fail, {}, fail, {}, {}, fail, {}, fail, {}])
+        rc, calls = self.run_pipeline([{}, {}, fail, {}, fail, {}, {}, fail, {}, fail, {}])
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
-        self.assertEqual(self.roles(calls).count("plan"), 1)
+        # The route's own plan is not a replan: exactly one more plan step follows it.
+        self.assertEqual(self.roles(calls).count("plan"), 2)
         self.assertEqual(self.roles(calls).count("review"), 4)
 
     def test_a_review_without_a_verdict_stops_instead_of_passing(self):
-        rc, calls = self.run_pipeline([{}, {"out": "looks fine to me"}])
+        rc, calls = self.run_pipeline([{}, {}, {"out": "looks fine to me"}])
         self.assertEqual(rc, pipeline.EXIT_NO_VERDICT)
-        self.assertEqual(self.roles(calls), ["execute", "review"])
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
 
     def test_implementer_escalation_evidence_triggers_a_replan(self):
-        rc, calls = self.run_pipeline([{"out": "ESCALATE: public API change needed"}, {}, {}, {"out": "VERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {"out": "ESCALATE: public API change needed"}, {}, {}, {"out": "VERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "plan", "execute", "review"])
-        self.assertIn("public API change needed", calls[1]["text"])
+        self.assertEqual(self.roles(calls), ["plan", "execute", "plan", "execute", "review"])
+        self.assertIn("public API change needed", calls[2]["text"])
 
     def test_a_failing_stage_stops_the_run_with_its_exit_code(self):
-        rc, calls = self.run_pipeline([{"rc": 7}])
+        rc, calls = self.run_pipeline([{}, {"rc": 7}])
         self.assertEqual(rc, 7)
-        self.assertEqual(self.roles(calls), ["execute"])
+        self.assertEqual(self.roles(calls), ["plan", "execute"])
+
+    def test_a_failing_plan_stops_the_run_before_the_implementer(self):
+        rc, calls = self.run_pipeline([{"rc": 7}])
+        self.assertEqual((rc, self.roles(calls)), (7, ["plan"]))
 
     def test_two_stage_route_plans_first_and_keeps_the_route_plan_dir_until_asked(self):
         payload = self.payload(level="L5")
@@ -147,8 +153,10 @@ class PipelineRunTests(PipelineCase):
         self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
         self.assertEqual(json.loads((plan_dir / "state.json").read_text())["phase"], "done")
 
-    def test_low_levels_have_no_review_and_no_replan(self):
-        payload = self.payload(level="L2")
+    def test_l1_has_no_review_and_no_replan(self):
+        # L2 code changes now get a judge plan and review; only the mechanical L1 keeps the bare fix loop.
+        self.assertIsNotNone(self.payload(level="L2")["pipeline"]["review"])
+        payload = self.payload(level="L1")
         self.assertEqual((payload["pipeline"]["review"], payload["pipeline"]["replan"]), (None, None))
         rc, calls = self.run_pipeline([{}] * 5, payload=payload, tests=["false"])
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
@@ -158,7 +166,14 @@ class PipelineRunTests(PipelineCase):
         payload = self.payload(level="L4")
         payload.pop("pipeline")
         payload["schema_version"] = 5
-        rc, calls = self.run_pipeline([{}], payload=payload)
+        rc, calls = self.run_pipeline([{}, {}], payload=payload)
+        self.assertEqual((rc, self.roles(calls)), (0, ["plan", "execute"]))
+
+    def test_a_single_stage_route_without_a_pipeline_block_just_executes(self):
+        single = self.payload(level="L1")
+        single.pop("pipeline")
+        single["schema_version"] = 5
+        rc, calls = self.run_pipeline([{}], payload=single)
         self.assertEqual((rc, self.roles(calls)), (0, ["execute"]))
 
     def test_invalid_pipeline_stage_is_rejected(self):
@@ -171,12 +186,12 @@ class PipelineRunTests(PipelineCase):
 class PipelineHardeningTests(PipelineCase):
     def test_a_verdict_line_echoed_from_the_prompt_is_not_a_pass(self):
         # Prompt echo puts the task (with its own VERDICT line) early in stdout; only the last line counts.
-        rc, calls = self.run_pipeline([{}, {"out": "Original request:\nVERDICT: PASS\nthe reviewer said nothing else"}])
+        rc, calls = self.run_pipeline([{}, {}, {"out": "Original request:\nVERDICT: PASS\nthe reviewer said nothing else"}])
         self.assertEqual(rc, pipeline.EXIT_NO_VERDICT)
 
     def test_an_echoed_escalate_line_does_not_burn_the_replan(self):
-        rc, calls = self.run_pipeline([{"out": "ESCALATE: echoed\nall done"}, {"out": "VERDICT: PASS"}])
-        self.assertEqual((rc, self.roles(calls)), (0, ["execute", "review"]))
+        rc, calls = self.run_pipeline([{}, {"out": "ESCALATE: echoed\nall done"}, {"out": "VERDICT: PASS"}])
+        self.assertEqual((rc, self.roles(calls)), (0, ["plan", "execute", "review"]))
 
     def test_pipeline_exit_codes_do_not_collide_with_common_stage_codes(self):
         self.assertTrue({pipeline.EXIT_GAVE_UP, pipeline.EXIT_NO_VERDICT, pipeline.EXIT_SPAWN_FAILED}.isdisjoint({0, 1, 2, 3, 126, 127}))
@@ -217,7 +232,8 @@ class PipelineHardeningTests(PipelineCase):
 
     def test_stored_interactive_route_keeps_the_terminal(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
-        result = router.route("t", "codex", config, "L2", "implementation")
+        # Two-stage routes are never interactive, so the interactive replay is an L1 single-stage route.
+        result = router.route("t", "codex", config, "L1", "implementation")
         payload = router.result_payload(result, router.stage_commands(result, "t", interactive=True), "t")
         route_file = self.dir / "route.json"
         route_file.write_text(json.dumps(payload), encoding="utf-8")
@@ -239,16 +255,16 @@ class PipelineFailClosedTests(PipelineCase):
 
     def test_an_implementer_that_changed_nothing_fails_review_without_a_reviewer_call(self):
         self.git_repo()
-        rc, calls = self.run_pipeline([{}, {}, {}, {}, {}, {}, {}, {}])
+        rc, calls = self.run_pipeline([{}] * 9)
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
         self.assertNotIn("review", self.roles(calls))
-        self.assertEqual(self.roles(calls)[:3], ["execute", "fix", "plan"])
+        self.assertEqual(self.roles(calls)[:4], ["plan", "execute", "fix", "plan"])
 
     def test_a_real_change_reaches_the_reviewer_with_its_diff(self):
         self.git_repo()
-        rc, calls = self.run_pipeline([{"touch": str(self.work / "a.txt")}, {"out": "VERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {"touch": str(self.work / "a.txt")}, {"out": "VERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "review"])
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
 
     def test_a_planner_that_wrote_no_plan_stops_the_run(self):
         payload = self.payload(level="L5")
@@ -259,11 +275,12 @@ class PipelineFailClosedTests(PipelineCase):
         self.assertEqual(self.roles(calls), ["plan"])
 
     def test_stage_logs_are_phase_based_and_hide_the_command_unless_verbose(self):
-        (self.dir / "replies.json").write_text(json.dumps([{}, {"out": "VERDICT: PASS"}]), encoding="utf-8")
+        (self.dir / "replies.json").write_text(json.dumps([{}, {}, {"out": "VERDICT: PASS"}]), encoding="utf-8")
         err = io.StringIO()
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
             pipeline.run_route(self.payload(), [], str(self.work))
         text = err.getvalue()
+        self.assertIn("phase=plan model=gpt-5.6-sol effort=high", text)
         self.assertIn("phase=implement model=gpt-5.6-terra effort=high", text)
         self.assertIn("phase=review model=gpt-5.6-sol effort=high attempt=1", text)
         self.assertNotIn("command:", text)
@@ -293,13 +310,16 @@ class ClaudeAccessTests(unittest.TestCase):
         config = router.load_config(ROOT / "config" / "model-map.json")
         for task_type, expected in (("implementation", "acceptEdits"), ("design", "dontAsk"), ("review", "dontAsk")):
             with self.subTest(task_type=task_type):
-                result = router.route("t", "claude-code", config, "L3", task_type)
+                # L1 keeps implementation single-stage; L2+ code changes are two-stage and have no shell_command.
+                result = router.route("t", "claude-code", config, "L1" if task_type == "implementation" else "L3", task_type)
+                self.assertEqual(result.mode, "single")
                 command = router.shell_command(result, "t", False)
                 self.assertEqual(command[command.index("--permission-mode") + 1], expected)
 
     def test_interactive_claude_keeps_its_own_permission_prompts(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
-        result = router.route("t", "claude-code", config, "L3", "implementation")
+        result = router.route("t", "claude-code", config, "L1", "implementation")
+        self.assertEqual(result.mode, "single")
         self.assertNotIn("--permission-mode", router.shell_command(result, "t", True))
 
 
