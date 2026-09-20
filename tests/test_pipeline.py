@@ -1,7 +1,9 @@
 import contextlib
+import dataclasses
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -30,6 +32,10 @@ replies = json.loads((directory / "replies.json").read_text())
 reply = replies[index] if index < len(replies) else {{}}
 if reply.get("touch"):
     pathlib.Path(reply["touch"]).write_text("x")
+if role == "plan" and not reply.get("no_plan"):
+    import re
+    plan = re.search(r"exactly: (\\S+)", text)
+    pathlib.Path(plan.group(1)).write_text("{{}}")
 print(reply.get("out", ""))
 sys.exit(reply.get("rc", 0))
 """
@@ -190,11 +196,13 @@ class PipelineHardeningTests(PipelineCase):
             pipeline.Pipeline.validate(payload)
 
     def test_cleanup_only_removes_the_routers_own_plan_dir(self):
-        payload = self.payload(level="L5")
         foreign = self.dir / "user-files"
         foreign.mkdir()
-        payload["steps"][0]["output"]["path"] = str(foreign / "plan.json")
-        self.run_pipeline([{}, {}, {"out": "VERDICT: PASS"}], payload=payload)
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = dataclasses.replace(router.route("t", "codex", config, "L5", "implementation"), plan_dir=str(foreign))
+        payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
+        rc, _ = self.run_pipeline([{}, {}, {"out": "VERDICT: PASS"}], payload=payload)
+        self.assertEqual(rc, 0)
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             pipeline.run_route(payload, [], str(self.work), cleanup=True)
         self.assertTrue(foreign.exists())
@@ -220,6 +228,132 @@ class PipelineHardeningTests(PipelineCase):
         calls = [json.loads(line) for line in (self.dir / "calls.jsonl").read_text().splitlines()]
         self.assertEqual(len(calls), 1)
         self.assertFalse((self.work / "state.json").exists())
+
+
+class PipelineFailClosedTests(PipelineCase):
+    def git_repo(self):
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        (self.work / "a.txt").write_text("a")
+        for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "init"]):
+            subprocess.run(["git", *args], cwd=self.work, env=env, check=True, capture_output=True)
+
+    def test_an_implementer_that_changed_nothing_fails_review_without_a_reviewer_call(self):
+        self.git_repo()
+        rc, calls = self.run_pipeline([{}, {}, {}, {}, {}, {}, {}, {}])
+        self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
+        self.assertNotIn("review", self.roles(calls))
+        self.assertEqual(self.roles(calls)[:3], ["execute", "fix", "plan"])
+
+    def test_a_real_change_reaches_the_reviewer_with_its_diff(self):
+        self.git_repo()
+        rc, calls = self.run_pipeline([{"touch": str(self.work / "a.txt")}, {"out": "VERDICT: PASS"}])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.roles(calls), ["execute", "review"])
+
+    def test_a_planner_that_wrote_no_plan_stops_the_run(self):
+        payload = self.payload(level="L5")
+        plan_dir = Path(payload["steps"][0]["output"]["path"]).parent
+        self.addCleanup(lambda: __import__("shutil").rmtree(plan_dir, ignore_errors=True))
+        rc, calls = self.run_pipeline([{"no_plan": True}], payload=payload)
+        self.assertEqual(rc, pipeline.EXIT_NO_PLAN)
+        self.assertEqual(self.roles(calls), ["plan"])
+
+    def test_stage_logs_are_phase_based_and_hide_the_command_unless_verbose(self):
+        (self.dir / "replies.json").write_text(json.dumps([{}, {"out": "VERDICT: PASS"}]), encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            pipeline.run_route(self.payload(), [], str(self.work))
+        text = err.getvalue()
+        self.assertIn("phase=implement model=gpt-5.6-terra effort=high", text)
+        self.assertIn("phase=review model=gpt-5.6-sol effort=high attempt=1", text)
+        self.assertNotIn("command:", text)
+
+
+class ClaudeAccessTests(unittest.TestCase):
+    def commands(self, level="L5", critical=False):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "claude-code", config, level, "implementation", critical=critical)
+        return router.stage_commands(result, "t")
+
+    def test_only_implement_and_fix_stages_may_edit(self):
+        planner, implementer = self.commands()
+        self.assertIn("acceptEdits", implementer)
+        self.assertNotIn("acceptEdits", planner)
+        self.assertEqual(planner[planner.index("--permission-mode") + 1], "dontAsk")
+        self.assertTrue(any(arg.startswith("Edit(//") and arg.endswith("plan.json)") for arg in planner))
+        review = router.stage_command("claude-code", {"model": "claude-opus-5", "effort": "high"}, "i", "p", "read")
+        self.assertEqual(review[review.index("--permission-mode") + 1], "dontAsk")
+        self.assertEqual(review[review.index("--disallowedTools") + 1], "Edit")
+        self.assertNotIn("acceptEdits", review)
+        for command in (planner, implementer, review):
+            self.assertEqual(command[-2], "--")
+            self.assertNotIn("--dangerously-skip-permissions", command)
+
+    def test_single_stage_judges_are_read_only_and_implementers_edit(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        for task_type, expected in (("implementation", "acceptEdits"), ("design", "dontAsk"), ("review", "dontAsk")):
+            with self.subTest(task_type=task_type):
+                result = router.route("t", "claude-code", config, "L3", task_type)
+                command = router.shell_command(result, "t", False)
+                self.assertEqual(command[command.index("--permission-mode") + 1], expected)
+
+    def test_interactive_claude_keeps_its_own_permission_prompts(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "claude-code", config, "L3", "implementation")
+        self.assertNotIn("--permission-mode", router.shell_command(result, "t", True))
+
+
+class RouteFileArgvGrammarTests(unittest.TestCase):
+    def test_every_generated_command_passes_the_grammar(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        for platform in ("codex", "claude-code", "antigravity"):
+            for level in router.LEVELS:
+                for task_type in router.TASK_TYPES:
+                    result = router.route("t", platform, config, level, task_type)
+                    for interactive in (False, True):
+                        if interactive and result.mode == "two_stage":
+                            continue
+                        for command in router.stage_commands(result, "t", interactive):
+                            router.validate_argv(platform, command)
+
+    def test_smuggled_flags_are_rejected(self):
+        bad = {
+            "codex": (
+                ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "sandbox_mode=danger-full-access", "task"],
+                ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "task"],
+                ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=turbo", "task"],
+                ["codex", "exec", "task"],
+            ),
+            "claude-code": (
+                ["claude", "-p", "--model", "claude-opus-5", "--dangerously-skip-permissions", "--", "task"],
+                ["claude", "-p", "--model", "claude-opus-5", "--permission-mode", "bypassPermissions", "--", "task"],
+                ["claude", "-p", "--model", "claude-opus-5", "--allowedTools", "Bash", "--", "task"],
+                ["claude", "-p", "--model", "claude-opus-5", "--allowedTools", "Edit(/etc/passwd)", "--", "task"],
+                ["claude", "-p", "--model", "claude-opus-5", "--add-dir", "/", "--", "task"],
+                ["claude", "-p", "--", "task"],
+            ),
+            "antigravity": (
+                ["agy", "--model", "Gemini 3.1 Pro (High)", "--yolo", "--prompt", "task"],
+                ["agy", "--model", "Gemini 3.1 Pro (High)", "--prompt"],
+            ),
+        }
+        for platform, commands in bad.items():
+            for command in commands:
+                with self.subTest(command=command), self.assertRaises(ValueError):
+                    router.validate_argv(platform, command)
+
+    def test_replaying_a_route_with_an_injected_flag_is_refused(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "claude-code", config, "L2", "implementation")
+        payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
+        payload["steps"][0]["command"].insert(-2, "--dangerously-skip-permissions")
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
+                self.assertEqual(pipeline.main(["--route-file", str(route_file)]), 2)
+            self.assertIn("router-generated", err.getvalue())
 
 
 class PipelinePlanTests(unittest.TestCase):

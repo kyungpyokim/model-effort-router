@@ -2003,7 +2003,11 @@ class CommandAndLauncherTests(unittest.TestCase):
                     f"    print({classifier_reply!r})\n"
                     "else:\n"
                     f"    with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
-                    "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n",
+                    "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n"
+                    "    import re\n"
+                    "    plan = re.search(r'exactly: (\\S+)', ' '.join(sys.argv[1:]))\n"
+                    "    if plan:\n"
+                    "        pathlib.Path(plan.group(1)).write_text('{}')\n",
                     encoding="utf-8",
                 )
                 fake.chmod(0o755)
@@ -2097,6 +2101,8 @@ class CommandAndLauncherTests(unittest.TestCase):
                     f"with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
                     "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
                     "if 'You are the planning stage' in sys.argv[-1]:\n"
+                    f"    if {planner_status} == 0:\n"
+                    f"        pathlib.Path({str(directory / 'plan' / 'plan.json')!r}).write_text('{{}}')\n"
                     f"    raise SystemExit({planner_status})\n",
                     encoding="utf-8",
                 )
@@ -2466,13 +2472,13 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env={**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1"},
             )
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("claude --model claude-opus-5", proc.stderr)
+        self.assertIn("claude -p --model claude-opus-5", proc.stderr)
         self.assertNotIn("--agent", proc.stderr)
 
     def test_claude_and_antigravity_embed_level_instructions_without_installed_agents(self):
         # `--agent` needs the plugin installed: claude exits "not found", agy silently ignores it.
         for platform, instruction_flag, snippet in (
-            ("claude-code", "-p", "Analyse module boundaries"),
+            ("claude-code", "--", "Analyse module boundaries"),
             ("antigravity", "--prompt", "Analyse dependencies"),
         ):
             with self.subTest(platform=platform):

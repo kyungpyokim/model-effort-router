@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,7 @@ import router  # noqa: E402
 EXIT_GAVE_UP = 10
 EXIT_NO_VERDICT = 11
 EXIT_SPAWN_FAILED = 12
+EXIT_NO_PLAN = 13
 STAGE_TIMEOUT_SECONDS = 3600.0
 TEST_TIMEOUT_SECONDS = 1800.0
 MAX_LOG_LINES = 80
@@ -34,6 +36,8 @@ MAX_LOG_CHARS = 6000
 MAX_DIFF_CHARS = 60000
 MAX_PLAN_CHARS = 20000
 TEST_COMMAND_ENV = "MODEL_EFFORT_ROUTER_TEST_CMD"
+VERBOSE_ENV = "MODEL_EFFORT_ROUTER_VERBOSE"
+VERBOSE_PROMPT_CHARS = 120
 
 VERDICT_RE = re.compile(r"^VERDICT: (PASS|FAIL)$")
 ESCALATE_RE = re.compile(r"^ESCALATE: (.+)$")
@@ -109,16 +113,22 @@ def run_tests(commands: list[str], cwd: str) -> str | None:
     return None
 
 
-def git_diff(cwd: str) -> str:
+def git_diff(cwd: str) -> tuple[str, bool | None]:
+    """The diff to review and whether the run changed anything (None when that cannot be told)."""
     # ponytail: diffs against HEAD, so uncommitted work from before the run shows up too.
-    def git(*args: str) -> str:
+    def git(*args: str) -> str | None:
         proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, errors="replace", check=False)
-        return proc.stdout if proc.returncode == 0 else ""
+        return proc.stdout if proc.returncode == 0 else None
 
+    if git("rev-parse", "--git-dir") is None:
+        return "(not a git repository; no diff available)", None
     diff = git("diff", "HEAD")
-    untracked = git("ls-files", "--others", "--exclude-standard")
+    if diff is None:  # no commits yet
+        diff = git("diff") or ""
+    untracked = git("ls-files", "--others", "--exclude-standard") or ""
     body = diff[:MAX_DIFF_CHARS] + ("\n... diff truncated ..." if len(diff) > MAX_DIFF_CHARS else "")
-    return body + (f"\nUntracked files:\n{untracked}" if untracked else "") or "(no diff: not a git repository or no changes)"
+    changed = bool(diff.strip() or untracked.strip())
+    return (body + (f"\nUntracked files:\n{untracked}" if untracked else "") if changed else "(no changes)"), changed
 
 
 def escalation(output: str) -> tuple[str, str] | None:
@@ -129,7 +139,7 @@ def escalation(output: str) -> tuple[str, str] | None:
 def validated_stage(value: object, name: str) -> dict | None:
     if value is None:
         return None
-    if not isinstance(value, dict) or not isinstance(value.get("model"), str) or not value["model"]:
+    if not isinstance(value, dict) or not isinstance(value.get("model"), str) or not router.MODEL_RE.match(value["model"]):
         raise ValueError(f"pipeline {name} stage needs a model")
     if value.get("effort") is not None and value["effort"] not in router.EFFORT_ORDER:
         raise ValueError(f"pipeline {name} stage has an invalid effort")
@@ -161,6 +171,8 @@ class Pipeline:
         self.replans = 0
         self.reviews = 0
         self.tests_passed: list[str] = []
+        self.verbose = bool(os.environ.get(VERBOSE_ENV))
+        self.plan_step = payload["steps"][0]
 
     @staticmethod
     def validate(payload: dict) -> None:
@@ -172,13 +184,20 @@ class Pipeline:
         if plan_path is not None and not Path(plan_path).is_absolute():
             raise ValueError("route plan path must be absolute")
 
-    def state(self, phase: str) -> None:
+    def state(self, phase: str, who: dict | None = None, attempt: int | None = None) -> None:
         state = {"phase": phase, "test_fixes": self.counts["test"], "review_fixes": self.counts["review"], "reviews": self.reviews, "replans": self.replans}
         (self.workdir / "state.json").write_text(json.dumps(state), encoding="utf-8")
-        log(f"phase {phase}")
+        parts = [f"phase={phase}"]
+        if who:
+            parts += [f"model={who['model']}", f"effort={who.get('effort') or 'none'}"]
+        if attempt:
+            parts.append(f"attempt={attempt}")
+        log(" ".join(parts))
 
-    def stage(self, phase: str, argv: list[str]) -> tuple[int, str]:
-        self.state(phase)
+    def stage(self, phase: str, argv: list[str], who: dict | None = None, attempt: int | None = None) -> tuple[int, str]:
+        self.state(phase, who, attempt)
+        if self.verbose:
+            log("command: " + shlex.join([*argv[:-1], argv[-1][:VERBOSE_PROMPT_CHARS] + "..."]))
         return run_capture(argv, self.cwd)
 
     def plan_text(self) -> str:
@@ -192,8 +211,8 @@ class Pipeline:
             f"Fix a failed {kind} check.\nOriginal request:\n{self.task}\n\n"
             f"Plan file (read first when it exists): {self.plan_file}\n\nFailure:\n{detail}\n"
         )
-        argv = router.stage_command(self.platform, self.implementer, FIX_INSTRUCTIONS + self.scope_guard, prompt)
-        return self.stage(f"fix-{kind}", argv)
+        argv = router.stage_command(self.platform, self.implementer, FIX_INSTRUCTIONS + self.scope_guard, prompt, "edit")
+        return self.stage("fix", argv, self.implementer, self.counts[kind])
 
     def replan(self, kind: str, detail: str) -> tuple[int, str]:
         assert self.planner is not None
@@ -203,12 +222,17 @@ class Pipeline:
             f"Write the plan JSON to exactly: {self.plan_file}\n"
         )
         instructions = router.PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=self.plan_file) + self.scope_guard
-        rc, _ = self.stage("replan", router.stage_command(self.platform, self.planner, instructions, plan_prompt))
+        argv = router.stage_command(self.platform, self.planner, instructions, plan_prompt, "plan", str(self.plan_file))
+        rc, _ = self.stage("replan", argv, self.planner, self.replans)
         if rc:
             return rc, ""
+        if not self.plan_file.exists():
+            log("the re-planner wrote no plan file")
+            return EXIT_NO_PLAN, ""
         execute_prompt = f"{router.IMPLEMENTER_PROMPT_PREFIX}{self.task}\n\nPlan file to read first: {self.plan_file}\n"
         instructions = router.IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=self.plan_file) + self.scope_guard
-        return self.stage("execute", router.stage_command(self.platform, self.implementer, instructions, execute_prompt))
+        argv = router.stage_command(self.platform, self.implementer, instructions, execute_prompt, "edit")
+        return self.stage("implement", argv, self.implementer, self.replans)
 
     def review(self) -> tuple[str, str] | int | None:
         """None on PASS, a failure on FAIL, or an exit code when the review itself broke."""
@@ -216,12 +240,19 @@ class Pipeline:
         tests = "\n".join(f"PASS: {command}" for command in self.tests_passed) or (
             "No deterministic test command was configured; rely on the implementer's reported checks."
         )
+        diff, changed = git_diff(self.cwd)
+        if changed is False:
+            # Fail closed without spending a review: an implementer that changed nothing did not finish.
+            log("no changes in the working tree after implementation")
+            self.reviews += 1
+            return ("review", "The implementer finished without changing any file. Make the requested change.")
         prompt = (
             f"Original request:\n{self.task}\n\nPlan:\n{self.plan_text()}\n\n"
-            f"Test results:\n{tests}\n\nDiff:\n{git_diff(self.cwd)}\n"
+            f"Test results:\n{tests}\n\nDiff:\n{diff}\n"
         )
         self.reviews += 1
-        rc, output = self.stage("review", router.stage_command(self.platform, self.reviewer, REVIEW_INSTRUCTIONS, prompt))
+        argv = router.stage_command(self.platform, self.reviewer, REVIEW_INSTRUCTIONS, prompt, "read")
+        rc, output = self.stage("review", argv, self.reviewer, self.reviews)
         if rc:
             return rc
         verdict = VERDICT_RE.match(last_line(output))
@@ -232,6 +263,8 @@ class Pipeline:
 
     def check(self) -> tuple[str, str] | int | None:
         self.tests_passed = []
+        if self.test_commands:
+            self.state("test")
         failure = run_tests(self.test_commands, self.cwd)
         if failure:
             return ("test", failure)
@@ -240,10 +273,13 @@ class Pipeline:
 
     def run(self) -> int:
         if self.route_plan_path:
-            rc, _ = self.stage("plan", self.commands[0])
+            rc, _ = self.stage("plan", self.commands[0], self.plan_step)
             if rc:
                 return rc
-        rc, output = self.stage("execute", self.commands[-1])
+            if not self.plan_file.exists():
+                log("the planner wrote no plan file")
+                return EXIT_NO_PLAN
+        rc, output = self.stage("implement", self.commands[-1], self.implementer)
         if rc:
             return rc
         failure: tuple[str, str] | int | None = escalation(output)
@@ -291,8 +327,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--route-file", type=Path, required=True)
     parser.add_argument("--test-cmd", action="append", default=[], metavar="CMD", help=f"Deterministic check run without a model (repeatable; also {TEST_COMMAND_ENV})")
+    parser.add_argument("--verbose", action="store_true", help=f"Log each stage command (also {VERBOSE_ENV})")
     parser.add_argument("--cleanup-plan-dir", action="store_true", help="Remove the route's plan directory afterwards")
     args = parser.parse_args(argv)
+    if args.verbose:
+        os.environ[VERBOSE_ENV] = "1"
     test_commands = [*args.test_cmd, *([os.environ[TEST_COMMAND_ENV]] if os.environ.get(TEST_COMMAND_ENV) else [])]
     try:
         payload = json.loads(args.route_file.read_text(encoding="utf-8"))

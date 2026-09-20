@@ -97,7 +97,7 @@ Non-interactive launcher runs (`codex-route`, `claude-route`, `agy-route`) execu
 Tests run in the launcher without a model call: set `MODEL_EFFORT_ROUTER_TEST_CMD` (or pass
 `--test-cmd` to `pipeline.py`). Only a failure sends a truncated log to the implementer.
 L4+ code changes get the review at the risk tier's effort; a review FAIL is fixed once, the next
-failure re-plans once, and then the run stops. Route (who) and execution state (where the run
+failure re-plans once, and then the run stops. Claude implement/fix stages run with `acceptEdits`; plan and review stages cannot edit code. Route files may only carry router-generated argv shapes. The launcher logs one `phase=...` line per stage (`MODEL_EFFORT_ROUTER_VERBOSE=1` adds the commands). Route (who) and execution state (where the run
 is, `state.json`) stay separate. Details: `references/routing-policy.md`.
 
 Route JSON emits schema v6: `facts`, `matched_rules`, `needs_context`, and

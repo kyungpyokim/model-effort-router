@@ -1130,10 +1130,13 @@ def shell_command(result: RouteResult, task: str, interactive: bool) -> list[str
     # Instructions lead the prompt so the Agent tool path (which reuses the prompt) keeps them.
     prompt = f"{markdown_agent_instructions(result.platform, result.level)}\n\n{task}"
     if result.platform == "claude-code":
+        if not interactive:
+            access = "edit" if result.task_type in CODE_CHANGE_TASK_TYPES else "read"
+            return _claude_print_command(result.model, result.effort, prompt, access)
         base = ["claude", "--model", result.model]
         if result.effort:
             base += ["--effort", str(result.effort)]
-        return base + ([prompt] if interactive else ["-p", prompt])
+        return base + [prompt]
     return ["agy", "--model", result.model, *(["--prompt-interactive", prompt] if interactive else ["--prompt", prompt])]
 
 
@@ -1150,11 +1153,29 @@ def _codex_exec_command(model: str, effort: str, instructions: str, prompt: str,
     return ["codex", *options, prompt] if interactive else ["codex", "exec", *options, prompt]
 
 
-def _claude_print_command(model: str, effort: str | None, prompt: str) -> list[str]:
+CLAUDE_READ_TOOLS = ("Read", "Grep", "Glob")
+
+
+def claude_access_flags(access: str, plan_path: str | None = None) -> list[str]:
+    """Permission flags for a non-interactive Claude stage.
+
+    ``edit`` (implement/fix) auto-approves file edits. ``plan`` may write only the plan file and
+    ``read`` may not write at all: dontAsk denies everything that would prompt, and a deny rule
+    on Edit keeps a project allow rule from re-opening writes for the reviewer."""
+    if access == "edit":
+        return ["--permission-mode", "acceptEdits"]
+    if access == "plan" and plan_path:
+        # Edit(//abs) is the absolute-path rule form and covers every built-in file-editing tool.
+        return ["--permission-mode", "dontAsk", "--allowedTools", *CLAUDE_READ_TOOLS, f"Edit(/{Path(plan_path).resolve()})"]
+    return ["--permission-mode", "dontAsk", "--allowedTools", *CLAUDE_READ_TOOLS, "--disallowedTools", "Edit"]
+
+
+def _claude_print_command(model: str, effort: str | None, prompt: str, access: str = "read", plan_path: str | None = None) -> list[str]:
     command = ["claude", "-p", "--model", model]
     if effort:
         command += ["--effort", effort]
-    return [*command, prompt]
+    # `--` ends the variadic tool lists so the prompt is never read as a tool name.
+    return [*command, *claude_access_flags(access, plan_path), "--", prompt]
 
 
 def _agy_prompt_command(model: str, prompt: str) -> list[str]:
@@ -1174,12 +1195,15 @@ def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> 
     return shell_command(result, prompt, interactive)
 
 
-def stage_command(platform: str, stage: dict, instructions: str, prompt: str) -> list[str]:
-    """One non-interactive exec/print argv for a stage with explicit instructions."""
+def stage_command(platform: str, stage: dict, instructions: str, prompt: str, access: str = "read", plan_path: str | None = None) -> list[str]:
+    """One non-interactive exec/print argv for a stage with explicit instructions.
+
+    ``access`` (read / plan / edit) is enforced by Claude Code's permission flags; Codex and
+    Antigravity keep their own sandboxing."""
     if platform == "codex":
         return _codex_exec_command(stage["model"], stage["effort"], instructions, prompt, interactive=False)
     if platform == "claude-code":
-        return _claude_print_command(stage["model"], stage["effort"], f"{instructions}\n\n{prompt}")
+        return _claude_print_command(stage["model"], stage["effort"], f"{instructions}\n\n{prompt}", access, plan_path)
     return _agy_prompt_command(stage["model"], f"{instructions}\n\n{prompt}")
 
 
@@ -1200,8 +1224,8 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
     execute_instructions = f"{execute_instructions}\n\n{verification_handoff_instructions(result)}"
     execute_prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
     return [
-        stage_command(result.platform, planner, instructions, plan_prompt),
-        stage_command(result.platform, implementer, execute_instructions, execute_prompt),
+        stage_command(result.platform, planner, instructions, plan_prompt, "plan", plan_path),
+        stage_command(result.platform, implementer, execute_instructions, execute_prompt, "edit"),
     ]
 
 
@@ -1228,6 +1252,65 @@ def command_model(command: list[str], option: str) -> str | None:
     return models[0] if len(models) == 1 else None
 
 
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._()/:\-]*$")
+CLAUDE_TOOL_RE = re.compile(r"^(Read|Grep|Glob|Edit|Edit\(//[^()\s]+\))$")
+CODEX_CONFIG_KEYS = ("model_reasoning_effort", "developer_instructions")
+
+
+def validate_argv(platform: str, command: list[str]) -> None:
+    """Accept only the argv shapes this router generates; reject any other flag or override.
+
+    The last element is the prompt. Everything before it must match the platform grammar, so a
+    route file cannot smuggle sandbox, permission-bypass, or config overrides into a stage."""
+    head, options, i = command[0], command[1:-1], 0
+    def fail(reason: str):
+        raise ValueError(f"route file command is not a router-generated {platform} command ({reason})")
+    if platform == "codex":
+        if options[:1] == ["exec"]:
+            options = options[1:]
+        models = 0
+        while i < len(options):
+            flag, value = options[i], options[i + 1] if i + 1 < len(options) else None
+            if flag == "-m" and value is not None and MODEL_RE.match(value):
+                models += 1
+            elif flag == "-c" and value is not None and value.partition("=")[0] in CODEX_CONFIG_KEYS:
+                key, _, setting = value.partition("=")
+                if key == "model_reasoning_effort" and setting not in EFFORT_ORDER:
+                    fail("bad effort")
+            else:
+                fail(f"unexpected option {flag}")
+            i += 2
+        if models != 1:
+            fail("expected exactly one model")
+        return
+    if platform == "antigravity":
+        if len(options) != 3 or options[0] != "--model" or not MODEL_RE.match(options[1]) or options[2] not in ("--prompt", "--prompt-interactive"):
+            fail("unexpected option")
+        return
+    seen_model = False
+    while i < len(options):
+        flag = options[i]
+        if flag in ("-p", "--print", "--"):
+            i += 1
+        elif flag == "--model" and i + 1 < len(options) and MODEL_RE.match(options[i + 1]) and not seen_model:
+            seen_model = True
+            i += 2
+        elif flag == "--effort" and i + 1 < len(options) and options[i + 1] in EFFORT_ORDER:
+            i += 2
+        elif flag == "--permission-mode" and i + 1 < len(options) and options[i + 1] in ("acceptEdits", "dontAsk"):
+            i += 2
+        elif flag in ("--allowedTools", "--disallowedTools"):
+            i += 1
+            while i < len(options) and not options[i].startswith("-"):
+                if not CLAUDE_TOOL_RE.match(options[i]):
+                    fail(f"unexpected tool {options[i]}")
+                i += 1
+        else:
+            fail(f"unexpected option {flag}")
+    if not seen_model:
+        fail("expected a model")
+
+
 def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:
     """Validate a route JSON payload; return its execution-step argvs and the plan file path (two-stage only)."""
     if not isinstance(payload, dict) or payload.get("schema_version") not in SUPPORTED_ROUTE_SCHEMA_VERSIONS:
@@ -1248,6 +1331,7 @@ def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:
         command = step.get("command") if isinstance(step, dict) else None
         if not isinstance(command, list) or not command or command[0] != executable or not all(isinstance(arg, str) and arg for arg in command):
             raise ValueError("route file contains an invalid platform command")
+        validate_argv(platform, command)
         if not isinstance(step.get("model"), str) or step["model"] != command_model(command, model_option):
             raise ValueError("route file step model does not match its command")
         commands.append(command)
