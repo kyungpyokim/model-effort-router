@@ -130,7 +130,8 @@ recommended checks and reports each result or why it was not run. Route-file
 replay ignores the JSON object and reuses only the stored execution steps.
 
 Schema v7 is current. Schema v6 remains legacy and replay-compatible under the pre-v7 native
-permission grammar; it records `facts`, `matched_rules`, `needs_context`, `evidence`, `risk_tier`, and
+permission grammar; v7 records `facts`, `matched_rules`, `evidence`, and `risk_tier`,
+while legacy v6 records `unresolved_facts` and `questions`.
 `execution_strategy: "direct"` with
 `orchestration_eligible` separately. `scripts/astra_adapter.py` is the unchanged
 orchestration adapter, a caller-invoked isolated-worker boundary that revalidates worker
