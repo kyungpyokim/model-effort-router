@@ -38,7 +38,8 @@
         "irreversible_or_ledger_or_crypto",
         "changes_trust_boundary",
         "blast_radius",
-        "silent_failure_material_harm"
+        "silent_failure_material_harm",
+        "requires_code_understanding"
       ],
       "properties": {
         "mechanical_only": {
@@ -166,6 +167,14 @@
           ]
         },
         "silent_failure_material_harm": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "requires_code_understanding": {
           "type": "string",
           "enum": [
             "yes",

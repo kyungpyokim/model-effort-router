@@ -118,7 +118,11 @@ FACTS = {
     "changes_trust_boundary": YES_NO_UNKNOWN,
     "blast_radius": ("narrow", "broad", "unknown"),
     "silent_failure_material_harm": YES_NO_UNKNOWN,
+    # Never changes the level: it only picks the implementer rung inside L2 (see refinements in the config).
+    "requires_code_understanding": YES_NO_UNKNOWN,
 }
+# Facts an older classifier reply or stored classification may omit; they default here.
+OPTIONAL_FACT_DEFAULTS = {"requires_code_understanding": "unknown"}
 # Sticky safety facts: fact -> its affirmative values. A primary affirmative here is
 # OR-aggregated into the cascade result and the repository-aware escalation may never
 # lower it, no matter what it answers. These guard the changes where under-routing is
@@ -230,6 +234,7 @@ Authorization or permissions, in the three facts above, is decided by access con
 - changes_trust_boundary: yes when the work designs, changes, or decides where trust is established or delegated between components, services, tenants, or principals (service-to-service authentication, token propagation, permission delegation, isolation boundaries), including deciding whether to move such a boundary. Reviewing existing boundary code without redesigning it is no here (covered by reviews_security_sensitive_code); moving code inside one trust zone is no.
 - blast_radius: broad when a wrong result would affect many services, all users or tenants, production data at large, external API consumers, or money or credentials system-wide; narrow when it stays within one component, feature, or a recoverable subset; unknown when the text and your reads cannot settle it.
 - silent_failure_material_harm: yes when a mistake could go unnoticed (no error, alert, or failing test) while causing material harm such as data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency.
+- requires_code_understanding: yes when doing the work right depends on reading and understanding existing code beyond the edit site (following callers or callees, existing behaviour, invariants, how state flows); no when the edit is self-contained and evident from the task text (a new standalone helper, adding a field or parameter, a clear one-line change, a test for stated behaviour); unknown when neither is evident. It never changes difficulty; it only picks the implementer for simple work.
 Answer no when neither the task text nor the repository you read mentions or implies that area (for example a pagination fix says nothing about payment, persisted data, or public APIs, so those are no). Answer unknown only when the area is plausibly involved but the text and your reads cannot settle it; never answer yes just to be safe.
 Set delegability separately: 0 for shared mutable state, order-dependent work, security/auth/payment/data migration/risky operations, or one tightly coupled deep problem; 1 only when analysis can be split but dependencies or artifact ownership remain coupled; 2 only when subtasks can run independently with explicit file/artifact ownership and independently verifiable results.
 List up to five short evidence strings (task phrases or file paths) behind the facts. Keep reason to one short sentence. Return the requested JSON only.
@@ -444,6 +449,8 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
         raise ValueError(f"response must contain exactly {', '.join(required)}")
     task_type = normalise_task_type(payload["task_type"])
     facts, delegability, evidence, reason = payload["facts"], payload["delegability"], payload["evidence"], payload["reason"]
+    if isinstance(facts, dict):
+        facts = {**OPTIONAL_FACT_DEFAULTS, **facts}
     if not isinstance(facts, dict) or set(facts) != set(FACTS):
         raise ValueError(f"facts must contain exactly {', '.join(FACTS)}")
     for name, values in FACTS.items():
@@ -1069,6 +1076,47 @@ def apply_tier(
     return [stage, *stages[1:]]
 
 
+def load_refinements(config: dict, platform: str) -> list[dict]:
+    """The platform's optional implementer refinements, validated."""
+    refinements = config.get("platforms", {}).get(platform, {}).get("refinements", [])
+    if not isinstance(refinements, list):
+        raise ValueError(f"config platforms.{platform}.refinements must be a list")
+    for ref in refinements:
+        valid = (
+            isinstance(ref, dict)
+            and isinstance(ref.get("task_types"), list) and set(ref["task_types"]) <= set(CODE_CHANGE_TASK_TYPES)
+            and ref.get("level") in LEVELS
+            and isinstance(ref.get("when"), dict) and ref["when"] and set(ref["when"]) <= set(FACTS)
+            and all(value in FACTS[fact] for fact, value in ref["when"].items())
+            and isinstance(ref.get("stage"), dict) and _valid_matrix_entry(ref["stage"])
+        )
+        if not valid:
+            raise ValueError(f"invalid refinement in config platforms.{platform}.refinements")
+    return refinements
+
+
+def apply_refinement(
+    config: dict, platform: str, task_type: str, level: str, facts: dict[str, str], raw_stages: list[dict], mode: str,
+) -> tuple[list[dict], str | None]:
+    """Swap a single-stage implementer for a matching refinement (a fact that picks the rung inside a level)."""
+    refinements = load_refinements(config, platform)  # validated on every route, not only single-stage ones
+    if mode != "single":
+        return raw_stages, None
+    for ref in refinements:
+        if task_type in ref["task_types"] and level == ref["level"] and all(
+            facts.get(fact, OPTIONAL_FACT_DEFAULTS.get(fact, "unknown")) == value for fact, value in ref["when"].items()
+        ):
+            base, refined = raw_stages[0], ref["stage"]
+            if (
+                base.get("model") == refined.get("model") and base.get("effort") in EFFORT_ORDER and refined.get("effort") in EFFORT_ORDER
+                and EFFORT_ORDER.index(refined["effort"]) < EFFORT_ORDER.index(base["effort"])
+            ):
+                raise ValueError(f"refinement lowers the {platform} {level} matrix effort; a refinement may only raise the rung")
+            label = ", ".join(f"{fact}={value}" for fact, value in ref["when"].items())
+            return [{"role": raw_stages[0].get("role", "executor"), **ref["stage"]}], label
+    return raw_stages, None
+
+
 def pipeline_plan(
     platform: str, task_type: str, level: str, mode: str, matrix: dict, stages: list[dict],
     profile: dict | None, available_models: list[str] | None,
@@ -1134,6 +1182,9 @@ def route(
     matrix = load_matrix(config, platform)
     tier_profile = load_tier_profile(config, platform, risk_tier) if risk_tier != "standard" else None
     raw_stages, mode = resolve_stages(matrix, task_type, level)
+    raw_stages, refined_by = apply_refinement(config, platform, task_type, level, classification.facts, raw_stages, mode)
+    if refined_by:
+        rationale.append(f"{level} implementer refined by {refined_by}")
     stages = apply_tier(platform, materialise_stages(platform, raw_stages, mode, available_models), tier_profile, available_models)
     pipeline = pipeline_plan(platform, task_type, level, mode, matrix, stages, tier_profile, available_models)
     plan_dir = None

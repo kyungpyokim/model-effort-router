@@ -798,9 +798,9 @@ class SecurityReviewFloorTests(unittest.TestCase):
         for text in (policy, readme):
             self.assertIn("reviews_security_sensitive_code", text)
             self.assertIn("security_domain", text)
-        self.assertIn("sixteen bounded facts", readme)
+        self.assertIn("seventeen bounded facts", readme)
         self.assertNotIn("13 facts", policy)
-        self.assertIn("16 facts", policy)
+        self.assertIn("17 facts", policy)
 
 
 class ImpactFloorTests(unittest.TestCase):
@@ -921,7 +921,7 @@ class ImpactFloorTests(unittest.TestCase):
             "blast_radius": ["narrow", "broad", "unknown"],
             "silent_failure_material_harm": ["yes", "no", "unknown"],
         }
-        self.assertEqual(len(router.FACTS), 16)
+        self.assertEqual(len(router.FACTS), 17)
         for fact, values in expected.items():
             with self.subTest(fact=fact):
                 self.assertIn(fact, facts_schema["required"])
@@ -981,7 +981,7 @@ class ImpactFloorTests(unittest.TestCase):
             self.assertIn("unless the cached or read value decides the amount charged", text)
         # The precedence text and the fact set stay as they are.
         self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
-        self.assertEqual(len(router.FACTS), 16)
+        self.assertEqual(len(router.FACTS), 17)
 
     def test_prompt_and_policy_count_tenant_and_customer_data_isolation_as_permissions(self):
         # A wrong per-customer cache key exposes one customer's data to another: that

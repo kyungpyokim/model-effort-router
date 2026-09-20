@@ -139,7 +139,7 @@ python3 scripts/router.py --platform codex --task-type architectural_refactoring
 - **리뷰 FAIL 시** 리뷰어는 직접 고치지 않습니다. 수정 작업을 위 표대로 다시 분류하고 최종 Sol/Opus 리뷰를 받습니다.
 - **에스컬레이션은 근거 기반**입니다. 구현 모델이 계획 밖의 문제를 발견하면 멈추고 근거(범위 확대, 아키텍처 변경, 퍼블릭 API 변경, DB 마이그레이션, 보안 경계 변경, 계획과 코드 구조 불일치)를 반환합니다. "어렵다", "확신이 없다"만으로는 유효한 사유가 아닙니다.
 - **후속 질문은 저장된 라우트를 재사용**합니다. 작업 유형이 바뀌거나(예: INSPECT -> MODIFY), 범위가 크게 늘거나, 새로운 위험 증거가 나오거나, 승인된 설계를 구현할 수 없다는 사실이 드러날 때만 다시 분류합니다.
-- **Effort 상한**: Luna는 Low/Medium/High(Luna High로 부족하면 Luna XHigh가 아니라 Terra로), Terra는 Medium/High, Sol은 High/XHigh/Max. Claude Code는 Haiku(단순), Sonnet(일반~복잡 구현), Opus(계획/설계/검증/리뷰). 현재 매트릭스는 Luna High나 Sonnet Low를 레벨 단계로 쓰지 않습니다(명확한 소규모 구현은 L2 = Luna Medium). 이들은 여유 공간이지 라우팅되는 프로필이 아닙니다.
+- **Effort 상한**: Luna는 Low/Medium/High(Luna High로 부족하면 Luna XHigh가 아니라 Terra로), Terra는 Medium/High, Sol은 High/XHigh/Max. Claude Code는 Haiku(단순), Sonnet(일반~복잡 구현), Opus(계획/설계/검증/리뷰). Luna High와 Sonnet Low는 L2 세분화로만 라우팅됩니다: 단순 구현이지만 기존 코드 이해가 필요하면(`requires_code_understanding` = yes) Luna High / Sonnet Low, 아니면 L2는 Luna Medium / Haiku 그대로입니다.
 - **토큰 절약**: Sol/Opus는 판단에만 사용, 코딩은 위임, 검증+리뷰는 상위 모델 1회 호출로 통합, 같은 범위는 재분류하지 않음, 큰 출력을 다시 보내지 않음(요구사항+계획+diff+테스트 결과+핵심 코드만), 단순한 불확실성이 아니라 새로운 증거가 있을 때만 재분류.
 
 전체 규칙과 매트릭스는 [references/routing-policy.md](references/routing-policy.md)를 참고하세요.

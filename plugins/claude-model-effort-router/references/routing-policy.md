@@ -13,7 +13,7 @@ and no self-reported confidence.
 User Request
      │
 Classifier (Luna Med / Sonnet 5 Med / Gemini 3.8 Flash Med, or the in-session difficulty-assessor agent)
-  -> task_type + 16 facts (yes / no / unknown, plus a security domain and blast radius) + evidence
+  -> task_type + 17 facts (yes / no / unknown, plus a security domain and blast radius) + evidence
      │
 DIFFICULTY_RULES (scripts/router.py)
   ├─ Base L2 (L1 when mechanical_only = yes)
@@ -96,6 +96,7 @@ Mixed tasks classify by their primary purpose. Design with sample code is `desig
 | `changes_trust_boundary` | yes / no / unknown | Designs, changes, or decides where trust is established or delegated between components, services, tenants, or principals (service-to-service auth, token propagation, permission delegation, isolation), including whether to move it; reviewing existing boundary code or moving code within one trust zone is no |
 | `blast_radius` | narrow / broad / unknown | broad: a wrong result affects many services, all users or tenants, production data at large, external API consumers, or money/credentials system-wide; narrow: one component, feature, or a recoverable subset |
 | `silent_failure_material_harm` | yes / no / unknown | A mistake could go unnoticed (no error, alert, or failing test) while causing data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency |
+| `requires_code_understanding` | yes / no / unknown | Doing the work right depends on reading and understanding existing code beyond the edit site (callers, callees, existing behaviour, invariants, state flow); no for a self-contained edit evident from the task text (a new standalone helper, an added field or parameter, a clear one-line change, a test for stated behaviour). It never changes the level: it only picks the L2 implementer (below). A classifier reply or stored classification that omits it defaults to `unknown` |
 
 Payment, in `changes_security_or_payment_logic`, `reviews_security_sensitive_code`, and `security_domain`, is decided by monetary consequence, not by a module or file named billing or order: moving money; determining the amount charged (price, discount, or tax calculation); authorizing, capturing, cancelling, or refunding payments, including an order cancellation that decides a refund; ledger or settlement correctness; or creating or changing a monetary obligation. Not payment: an order list UI, billing address edits, displaying an invoice PDF, order status strings, order creation that charges nothing, or code that merely lives in a billing or order module. Caching or reading billing or order data is not payment unless the cached or read value decides the amount charged.
 
@@ -163,20 +164,20 @@ payment              data_migration      public_api_change
 
 | task_type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation | luna low | luna med | terra med | terra high | sol high → terra high |
+| implementation | luna low | luna med (luna high with `requires_code_understanding`) | terra med | terra high | sol high → terra high |
 | design | luna med | sol high | sol high | sol high | sol high |
 | review | luna med | sol high | sol high | sol high | sol high |
-| local_refactoring | luna low | luna med | terra med | terra high | sol high → terra high |
+| local_refactoring | luna low | luna med (luna high with `requires_code_understanding`) | terra med | terra high | sol high → terra high |
 | architectural_refactoring | luna med | sol high | sol high → terra med | sol xhigh → terra high | sol xhigh → terra high |
 
 ### Claude Code Matrix
 
 | task_type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation | haiku | haiku | sonnet med | sonnet high | opus high → sonnet high |
+| implementation | haiku | haiku (sonnet low with `requires_code_understanding`) | sonnet med | sonnet high | opus high → sonnet high |
 | design | haiku | opus high | opus high | opus high | opus high |
 | review | haiku | opus high | opus high | opus high | opus high |
-| local_refactoring | haiku | haiku | sonnet med | sonnet high | opus high → sonnet high |
+| local_refactoring | haiku | haiku (sonnet low with `requires_code_understanding`) | sonnet med | sonnet high | opus high → sonnet high |
 | architectural_refactoring | haiku | opus high | opus high → sonnet med | opus xhigh → sonnet high | opus xhigh → sonnet high |
 
 ### Antigravity Matrix
@@ -204,7 +205,7 @@ Risk tiers modify these rows at the planning/judging stage only (the planner of 
 - `Claude Opus Thinking` on Antigravity resolves availability-driven: `Claude Opus 5 .*(Thinking)` → `Claude Opus .*(Thinking)` → `Opus.*Thinking` → `Claude Opus 4.6 (Thinking)` (fallback).
 - `Pro High` on Antigravity resolves availability-driven: preferred `Gemini 3.1 Pro (High)` → `Gemini .* Pro (High)` → `Claude Sonnet .* (Thinking)`.
 - On Claude Code, `sonnet` is `claude-sonnet-5` (medium at L3, high at L4), `haiku` is `claude-haiku-4-5` without an effort parameter, and `opus` is `claude-opus-5`. On Codex, `luna`, `terra`, and `sol` are `gpt-5.6-luna`, `gpt-5.6-terra`, and `gpt-5.6-sol`.
-- Effort ceilings: Luna low/medium/high (a task that needs more than Luna high moves to Terra, never to Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). The matrix does not currently use Luna high or Sonnet low as a level rung: a clear small implementation is L2 (Luna medium). They are headroom, not routed profiles.
+- Effort ceilings: Luna low/medium/high (a task that needs more than Luna high moves to Terra, never to Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Luna high and Sonnet low are routed only through the L2 refinement (`refinements` in the config, applied after the matrix lookup to single-stage `implementation` and `local_refactoring` routes at L2): `requires_code_understanding` = yes -> Luna high (Codex) / Sonnet low (Claude Code); no or unknown -> the matrix profile, Luna medium / Haiku. `unknown` is missing information, not evidence, so it keeps the cheaper profile; a failing test gate or the fix loop covers a wrong guess. L3 stays Terra medium / Sonnet medium and higher levels are unchanged. Antigravity defines no refinement. Reused session routes keep the stored fact. A refinement is keyed on the post-escalation level, so an explicit `--level L2` on a mechanical task can reach it. It replaces the whole matrix entry, so a refinement stage must carry its own `fallback_model` or `candidates` if the entry it replaces had them, and a refinement that lowers the same model's effort is refused.
 
 ## Execution roles and pipeline
 

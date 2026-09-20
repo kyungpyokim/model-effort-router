@@ -291,6 +291,16 @@ class ReviewHardeningTests(ReuseCase):
         self.assertIsNone(route_reuse.load_record("mine")["blocked"])
 
 
+class RefinementReuseTests(ReuseCase):
+    def test_a_reused_l2_route_keeps_the_stored_code_understanding_rung(self):
+        refined = router.Classification(**{**classification(level="L2").__dict__, "facts": {"requires_code_understanding": "yes"}})
+        first, _ = self.route("fix the parser bug", classified=refined)
+        second, calls = self.route("also handle empty input")
+        self.assertEqual(calls, 0)
+        self.assertEqual([(s["model"], s["effort"]) for s in second["steps"]], [("gpt-5.6-luna", "high")])
+        self.assertEqual([(s["model"], s["effort"]) for s in first["steps"]], [(s["model"], s["effort"]) for s in second["steps"]])
+
+
 class OutcomeTests(ReuseCase):
     def test_a_run_that_replanned_or_failed_invalidates_the_stored_route(self):
         for replans, code, expected in ((0, 0, None), (1, 0, "re-planned"), (0, 10, "exit 10")):
