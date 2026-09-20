@@ -36,7 +36,7 @@ LEVEL_NAMES = {
 RISK_TIERS = ("standard", "elevated", "critical")
 TIER_LEVEL = "L5"
 EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max")
-TASK_TYPES = ("implementation", "design", "review", "local_refactoring", "architectural_refactoring")
+TASK_TYPES = ("implementation", "design", "review", "inspect", "local_refactoring", "architectural_refactoring")
 RISK_FLAGS = (
     "security_sensitive",
     "authentication",
@@ -164,11 +164,13 @@ Choose exactly one task_type:
 - implementation: build or change code directly (features, APIs, UI work, bug fixes, tests).
 - design: decide structure or direction without editing code (architecture, API or data-model design, technology choice, implementation planning).
 - review: analyse existing code or plans to find problems (code, PR, security, performance, or design review).
+- inspect: read-only lookup or explanation that needs no judgement of correctness, safety or design (find where something is defined, explain what code does, check a setting or whether something is wired up, summarise a diff or log). If the work judges quality, correctness or safety choose review; if it decides structure choose design; if code must change choose an implementation type.
 - local_refactoring: clean up internals while preserving behaviour and module boundaries (extract functions, renames, deduplication, simplification within one module).
 - architectural_refactoring: change module boundaries or system structure AND carry out the resulting edits (module splits, dependency inversion, state-management changes, data-layer redesign, moving responsibilities between services). If only a design is wanted, choose design instead.
+Classify only what the user asked for: a request to look at, check or explain something is inspect even when a problem is visible; never widen it into a fix.
 Answer each fact about the work the task requires. Do not assign a level or score; the router derives difficulty from these facts with fixed rules.
 - mechanical_only: yes only for typos, renames, formatting, imports, comments, or documentation with no behaviour change.
-- files_touched: how many files the work changes, including new and test files; files only read for context do not count: 0, 1, 2-5, 6+, or unknown. Read-only design and review work is 0.
+- files_touched: how many files the work changes, including new and test files; files only read for context do not count: 0, 1, 2-5, 6+, or unknown. Read-only design, review and inspect work is 0.
 - crosses_module_boundary: the work spans more than one module or package, or moves responsibilities between them.
 - crosses_service_boundary: the work or its diagnosis spans more than one service, process, or repository.
 - fix_or_result_known: yes when the expected result or the place to change is stated or evident, including choosing between explicitly named options; no when the goal or candidate solutions must still be investigated or invented.
@@ -436,8 +438,8 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
     for name, values in FACTS.items():
         if facts[name] not in values:
             raise ValueError(f"fact {name} must be one of {', '.join(values)}; got {facts[name]!r}")
-    if facts["files_touched"] == "0" and task_type not in {"design", "review"}:
-        raise ValueError("files_touched '0' is only valid for design or review")
+    if facts["files_touched"] == "0" and task_type not in {"design", "review", "inspect"}:
+        raise ValueError("files_touched '0' is only valid for design, review or inspect")
     if isinstance(delegability, bool) or not isinstance(delegability, int) or delegability not in (0, 1, 2):
         raise ValueError("delegability must be 0, 1, or 2")
     if not isinstance(evidence, list) or len(evidence) > 5 or not all(isinstance(item, str) for item in evidence):
@@ -688,8 +690,8 @@ def with_facts(classification: Classification, facts: dict[str, str]) -> Classif
 
 
 def settleable(classification: Classification, name: str, value: str) -> bool:
-    """The cross-field rule validate_classifier_output enforces: '0' files is only read-only design or review work."""
-    return not (name == "files_touched" and value == "0" and classification.task_type not in {"design", "review"})
+    """The cross-field rule validate_classifier_output enforces: '0' files is only read-only design, review or inspect work."""
+    return not (name == "files_touched" and value == "0" and classification.task_type not in {"design", "review", "inspect"})
 
 
 def merge_lookup(primary: Classification, lookup: Classification) -> Classification:

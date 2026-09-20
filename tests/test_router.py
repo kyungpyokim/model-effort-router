@@ -466,7 +466,7 @@ class DifficultyRuleTests(unittest.TestCase):
     def test_zero_files_touched_is_rejected_for_code_changing_task_types(self):
         for task_type in ("implementation", "local_refactoring", "architectural_refactoring"):
             with self.subTest(task_type=task_type):
-                with self.assertRaisesRegex(ValueError, "only valid for design or review"):
+                with self.assertRaisesRegex(ValueError, "only valid for design, review or inspect"):
                     router.validate_classifier_output(
                         classifier_output(task_type=task_type, files_touched="0", raw=False)
                     )
@@ -1127,12 +1127,14 @@ class MatrixTests(unittest.TestCase):
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CODEX_JUDGE)},
             ("architectural_refactoring", "L1"): ("gpt-5.6-luna", "medium"),
             ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
+            **{("inspect", level): ("gpt-5.6-luna", "low") for level in router.LEVELS},
         },
         "claude-code": {
             **{(kind, "L1"): CLAUDE_IMPL[0] for kind in ("implementation", "local_refactoring")},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CLAUDE_JUDGE)},
             ("architectural_refactoring", "L1"): ("claude-haiku-4-5", None),
             ("architectural_refactoring", "L2"): ("claude-opus-5", "high"),
+            **{("inspect", level): ("claude-haiku-4-5", None) for level in router.LEVELS},
         },
         "antigravity": {
             # The Flash L2 implementer equals the Flash design planner, so L2 keeps a single stage.
@@ -1142,6 +1144,7 @@ class MatrixTests(unittest.TestCase):
             ))},
             ("architectural_refactoring", "L1"): AGY_FLASH,
             ("architectural_refactoring", "L2"): AGY_FLASH,
+            **{("inspect", level): AGY_FLASH for level in router.LEVELS},
         },
     }
     EXPECTED_STAGES = {
