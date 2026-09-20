@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import json
 import math
+import os
 import re
 import shlex
 import subprocess
@@ -17,6 +18,10 @@ import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
+
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+import route_reuse  # noqa: E402
 
 LEVELS = ("L1", "L2", "L3", "L4", "L5")
 LEVEL_NAMES = {
@@ -821,6 +826,54 @@ def pinned_classification(task_type: str, level: str) -> Classification:
         reason="Semantic preflight skipped because both task_type and level were pinned explicitly",
         source="manual",
     )
+
+
+def load_reused_classification(
+    session: str, cwd: str, task: str, explicit_task_type: str | None = None,
+) -> tuple[Classification | None, dict | None, str]:
+    """The stored session classification when no blocker fires, else ``None`` and why not."""
+    record = route_reuse.load_record(session)
+    if record is None:
+        return None, None, "no stored route for this session"
+    try:
+        task_type, level, tier = record["task_type"], record["level"], record["risk_tier"]
+        flags, facts, rules = record["risk_flags"], record["facts"], record["matched_rules"]
+        if task_type not in TASK_TYPES or level not in LEVELS or tier not in RISK_TIERS:
+            raise ValueError("unknown route values")
+        if not isinstance(flags, dict) or set(flags) != set(RISK_FLAGS) or not all(isinstance(v, bool) for v in flags.values()):
+            raise ValueError("bad risk flags")
+        if not isinstance(facts, dict) or not isinstance(rules, list) or not isinstance(record.get("evidence", []), list):
+            raise ValueError("bad facts")
+        delegability, reuses = record.get("delegability", 0), record.get("reuses", 0)
+        if delegability not in (0, 1, 2) or isinstance(reuses, bool) or not isinstance(reuses, int):
+            raise ValueError("bad counters")
+        if not isinstance(record["saved_at"], (int, float)) or isinstance(record["saved_at"], bool):
+            raise ValueError("bad timestamp")
+        blockers = route_reuse.reuse_blockers(
+            record, cwd, task, task_type in CODE_CHANGE_TASK_TYPES,
+            explicit_task_type=normalise_task_type(explicit_task_type) if explicit_task_type else None,
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None, None, "stored route is invalid"
+    if blockers:
+        return None, record, "; ".join(blockers)
+    classification = Classification(
+        task_type=task_type, level=level, risk_flags=dict(flags),
+        reason=f"route reused from the session (reuse {reuses + 1}); the classifier was not called",
+        source="reused", facts={str(k): str(v) for k, v in facts.items()}, matched_rules=tuple(str(r) for r in rules),
+        risk_tier=tier, needs_context=bool(record.get("needs_context", False)),
+        evidence=tuple(str(e) for e in record.get("evidence", [])), delegability=delegability,
+    )
+    return classification, record, ""
+
+
+def session_record(result: RouteResult, delegability: int) -> dict:
+    return {
+        "task_type": result.task_type, "level": result.level, "risk_tier": result.risk_tier,
+        "risk_flags": dict(result.risk_flags), "facts": dict(result.facts),
+        "matched_rules": list(result.matched_rules), "needs_context": result.needs_context,
+        "evidence": list(result.evidence), "delegability": delegability,
+    }
 
 
 SINGLE_ENTRY_KEYS = (
@@ -1645,6 +1698,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Route from externally produced classifier JSON (a path, or - for stdin) instead of "
         "spawning a classifier; a primary/escalated envelope combines one repository-aware retry",
     )
+    parser.add_argument(
+        "--session", default=None, metavar="KEY",
+        help=f"Reuse this session's stored classification for follow-up tasks (also {route_reuse.SESSION_ENV}); "
+        "a workspace change, expiry, an earlier re-plan, or a new operation, scope or risk reclassifies",
+    )
+    parser.add_argument("--no-reuse", action="store_true", help="Classify again even when the session has a reusable route")
     parser.add_argument("--critical", action="store_true", help="Force the critical risk tier (L5 with maximum planning/judging effort)")
     parser.add_argument("--classifier-timeout", type=positive_finite_float, default=CLASSIFIER_TIMEOUT_SECONDS)
     parser.add_argument("--detect-antigravity-models", action="store_true")
@@ -1669,7 +1728,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "--platform", "--config", "--level", "--task-type", "--keep-plan",
             "--classifier-timeout", "--detect-antigravity-models", "--detect-timeout",
             "--available-models-file", "--format", "--interactive", "--no-prompt", "--repo-aware", "--critical",
-            "--print-classifier-prompt", "--classification-file",
+            "--print-classifier-prompt", "--classification-file", "--session", "--no-reuse",
         }
         if args.task or any(option in argv for option in task_options):
             parser.error("--route-file cannot be combined with task-routing options")
@@ -1719,6 +1778,14 @@ def main(argv: list[str] | None = None) -> int:
     manual_bypass = explicit_task_type is not None and (args.critical or args.level is not None)
 
     classification = external
+    session = args.session or os.environ.get(route_reuse.SESSION_ENV)
+    reuse_info = None
+    stored = None
+    if session and not manual_bypass and classification is None and not args.no_reuse:
+        classification, stored, why = load_reused_classification(session, os.getcwd(), args.task, explicit_task_type)
+        reuse_info = {"session": session, "reused": classification is not None, **({"reason": why} if why else {})}
+    elif session:
+        reuse_info = {"session": session, "reused": False, "reason": "reuse skipped (explicit classification, pins, or --no-reuse)"}
     prompted_critical = False
     if not manual_bypass and classification is None:
         classification = classify_task(
@@ -1746,6 +1813,13 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"routing failed: {exc}", file=sys.stderr)
         return 2
+    if session and result.source not in ("fallback", "manual"):
+        delegability = classification.delegability if classification is not None else 0
+        route_reuse.save_record(
+            session, os.getcwd(), session_record(result, delegability),
+            saved_at=stored.get("saved_at") if reuse_info and reuse_info["reused"] else None,
+            reuses=int(stored.get("reuses", 0)) + 1 if reuse_info and reuse_info["reused"] else 0,
+        )
     if result.source == "fallback":
         print(
             "Semantic preflight failed; safe fallback applied "
@@ -1753,7 +1827,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     if args.format == "json":
-        print(json.dumps(result_payload(result, stage_commands(result, args.task, args.interactive), args.task), ensure_ascii=False, indent=2))
+        payload = result_payload(result, stage_commands(result, args.task, args.interactive), args.task)
+        if reuse_info:
+            payload["reuse"] = reuse_info
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     elif args.format == "command":
         chain = command_chain(result, args.task, keep_plan=args.keep_plan, interactive=args.interactive)
         print(chain if chain is not None else shlex.join(shell_command(result, args.task, args.interactive)))
@@ -1767,6 +1844,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"stages: {stages_text}")
         print("rules: " + (", ".join(result.matched_rules) or "none (base level)"))
         print("risk flags: " + (", ".join(active_flags) if active_flags else "none"))
+        if reuse_info:
+            print("route reuse: " + ("reused" if reuse_info["reused"] else f"reclassified ({reuse_info.get('reason', '')})"))
         if result.needs_context:
             print("needs context: a deciding fact is unknown; classify again with repository access")
         print("reason: " + "; ".join(result.rationale))

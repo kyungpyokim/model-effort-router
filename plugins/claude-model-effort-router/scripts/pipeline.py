@@ -22,6 +22,7 @@ import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import route_reuse  # noqa: E402
 import router  # noqa: E402
 
 # Pipeline-owned outcomes sit above the usual 0-9 range so a stage's own exit code is not mistaken for them.
@@ -154,6 +155,16 @@ def validated_stage(value: object, name: str, platform: str) -> dict | None:
     return {"model": value["model"], "effort": value.get("effort")}
 
 
+def reuse_session(payload: dict) -> str | None:
+    reuse = payload.get("reuse")
+    if reuse is None:
+        return None
+    session = reuse.get("session") if isinstance(reuse, dict) else None
+    if not isinstance(session, str) or not session:
+        raise ValueError("route reuse session must be a non-empty string")
+    return session
+
+
 def validated_limits(pipe: dict) -> dict[str, int]:
     limits = {**router.PIPELINE_LIMITS, **(pipe.get("limits") or {})}
     for key in router.PIPELINE_LIMITS:
@@ -189,6 +200,7 @@ class Pipeline:
         validated_limits(pipe)
         validated_stage(pipe.get("review"), "review", payload["platform"])
         validated_stage(pipe.get("replan"), "replan", payload["platform"])
+        reuse_session(payload)
         commands, plan_path = router.validated_commands(payload)
         if plan_path is not None and not Path(plan_path).is_absolute():
             raise ValueError("route plan path must be absolute")
@@ -319,13 +331,19 @@ class Pipeline:
             failure = escalation(output)
 
 
-def run_route(payload: object, test_commands: list[str], cwd: str, cleanup: bool = False) -> int:
+def run_route(payload: object, test_commands: list[str], cwd: str, cleanup: bool = False, own_session: str | None = None) -> int:
     _, plan_path = router.validated_commands(payload)
     workdir = Path(plan_path).parent if plan_path else Path(tempfile.mkdtemp(prefix="model-effort-pipeline-")).resolve()
     workdir.mkdir(parents=True, exist_ok=True)
     plan_file = Path(plan_path) if plan_path else workdir / "plan.json"
     try:
-        return Pipeline(payload, test_commands, cwd, workdir, plan_file).run()
+        runner = Pipeline(payload, test_commands, cwd, workdir, plan_file)
+        exit_code = runner.run()
+        session = reuse_session(payload)
+        # Only the runner's own session may be marked: a shared route file must not write other sessions' records.
+        if session and session == (own_session or os.environ.get(route_reuse.SESSION_ENV)):
+            route_reuse.mark_outcome(session, runner.replans, exit_code)
+        return exit_code
     finally:
         # A directory this runner made is always removed; a route's own plan dir only when asked,
         # and only when it is the router's own codex-route-* directory.
@@ -337,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--route-file", type=Path, required=True)
     parser.add_argument("--test-cmd", action="append", default=[], metavar="CMD", help=f"Deterministic check run without a model (repeatable; also {TEST_COMMAND_ENV})")
+    parser.add_argument("--session", default=None, metavar="KEY", help=f"Session whose stored route this run may invalidate (default {route_reuse.SESSION_ENV})")
     parser.add_argument("--verbose", action="store_true", help=f"Log each stage command (also {VERBOSE_ENV})")
     parser.add_argument("--cleanup-plan-dir", action="store_true", help="Remove the route's plan directory afterwards")
     args = parser.parse_args(argv)
@@ -354,7 +373,7 @@ def main(argv: list[str] | None = None) -> int:
     if len(commands) == 1 and is_interactive(commands[0]):
         # An interactive session needs the terminal: hand off without capturing anything.
         return subprocess.call(commands[0])
-    return run_route(payload, test_commands, os.getcwd(), args.cleanup_plan_dir)
+    return run_route(payload, test_commands, os.getcwd(), args.cleanup_plan_dir, args.session)
 
 
 if __name__ == "__main__":
