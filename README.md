@@ -99,7 +99,10 @@ Tests run in the launcher without a model call: set `MODEL_EFFORT_ROUTER_TEST_CM
 `--test-cmd` to `pipeline.py`). Only a failure sends a truncated log to the implementer.
 L4+ code changes get the review at the risk tier's effort; a review FAIL is fixed once, the next
 failure re-plans once, and then the run stops. Claude implement/fix stages run with `acceptEdits`; plan and review stages cannot edit code. Route files may only carry router-generated argv shapes. The launcher logs one `phase=...` line per stage (`MODEL_EFFORT_ROUTER_VERBOSE=1` adds the commands). Route (who) and execution state (where the run
-is, `state.json`) stay separate. Details: `references/routing-policy.md`.
+is, `state.json`) stay separate. `router.py --format command` prints a command that runs the same pipeline
+(`pipeline.py --route-file <saved route>`, with `--session` when set so a failed run invalidates the stored
+route), so it no longer bypasses the test, review and fix stages; an `--interactive` single-stage route stays a bare
+hand-off, and `--keep-plan` keeps the route file and the plan directory. Details: `references/routing-policy.md`.
 
 ### Live classifier benchmark
 
@@ -172,14 +175,13 @@ always reported on stderr.
 ## Two-stage routes
 
 On every platform, `architectural_refactoring` at L3+ and
-`implementation` / `local_refactoring` at L5 run as a success-dependent shell
-chain: the planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
+`implementation` / `local_refactoring` at L5 run as a plan -> implement
+sequence: the planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
 into a temporary run directory, then the implementer (`luna`/`terra`, or
 `sonnet`) reads the plan plus the repository and implements it with the plan's
 validation commands. The implementer does not make new design decisions: it stops
 and returns escalation evidence for the planner instead. The run directory is
-removed on success and preserved on any failure (`--keep-plan` forces
-preservation).
+removed after the run, on success and on failure alike, like the launchers do (`--keep-plan` keeps it).
 
 ```bash
 python3 scripts/router.py --platform codex --task-type architectural_refactoring --level L5 "모듈 경계 재분리" --format command

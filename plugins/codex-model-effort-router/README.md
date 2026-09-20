@@ -102,15 +102,15 @@ Example single-stage output:
 codex exec -m gpt-5.6-luna -c model_reasoning_effort=medium -c 'developer_instructions="..."' '<task>'
 ```
 
-Example two-stage output (`architectural_refactoring` L3+, or `implementation` / `local_refactoring` at L5):
+Example output (`--format command`), for every route including two-stage ones (`architectural_refactoring` L3+, or `implementation` / `local_refactoring` at L5):
 
 ```bash
-mkdir -p /tmp/codex-route-<run-id> && codex exec -m gpt-5.6-sol ... '<plan>' && codex exec -m gpt-5.6-luna ... '<execute>' && rm -rf /tmp/codex-route-<run-id>
+(python3 <plugin>/scripts/pipeline.py --route-file /tmp/model-effort-route.<id>.json --cleanup-plan-dir; rc=$?; rm -f /tmp/model-effort-route.<id>.json; exit $rc)
 ```
 
-The chain is success-dependent: the executor never runs after a failed plan
-stage, and the run directory survives any failure for inspection. `--keep-plan`
-preserves it even on success.
+The command runs the same pipeline as `codex-route`: plan -> implement -> deterministic test -> review, and the
+executor never runs after a failed plan stage. The route file and the run directory are removed afterwards,
+on success and on failure; `--keep-plan` keeps them. A route with unresolved facts prints no command (exit `3`).
 
 The CLI launcher starts a new process because a plugin cannot reliably replace the model of an already-running parent turn on every Codex surface. Codex CLI does not expose `--agent`, so this fallback applies the selected model and effort while the plugin skill handles named-agent delegation where available.
 

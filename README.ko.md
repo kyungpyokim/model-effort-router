@@ -64,7 +64,7 @@ plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort
 
 ### 체이닝 파이프라인
 
-비대화형 런처(`codex-route`, `claude-route`, `agy-route`) 실행은 `scripts/pipeline.py`를 거칩니다: 계획 -> 구현 -> 결정적 테스트 -> Sol/Opus 통합 리뷰 1회. 테스트는 모델 호출 없이 런처가 직접 실행하며(`MODEL_EFFORT_ROUTER_TEST_CMD` 또는 `pipeline.py --test-cmd`), 실패했을 때만 잘라낸 로그를 구현 모델에 넘깁니다. L4 이상 코드 변경은 리스크 티어 effort로 리뷰를 받고, 리뷰 FAIL은 1회 수정, 다음 실패는 1회 재계획, 그 뒤에는 중단합니다. Claude 구현/수정 단계만 `acceptEdits`로 실행되고 계획/리뷰 단계는 코드를 수정할 수 없습니다. 라우트 파일에는 라우터가 생성한 argv 형태만 허용됩니다. 런처는 단계마다 `phase=...` 한 줄을 남깁니다(`MODEL_EFFORT_ROUTER_VERBOSE=1`이면 명령도 출력). 라우트(누가)와 실행 상태(어디까지, `state.json`)는 분리됩니다. 자세한 내용: `references/routing-policy.md`.
+비대화형 런처(`codex-route`, `claude-route`, `agy-route`) 실행은 `scripts/pipeline.py`를 거칩니다: 계획 -> 구현 -> 결정적 테스트 -> Sol/Opus 통합 리뷰 1회. 테스트는 모델 호출 없이 런처가 직접 실행하며(`MODEL_EFFORT_ROUTER_TEST_CMD` 또는 `pipeline.py --test-cmd`), 실패했을 때만 잘라낸 로그를 구현 모델에 넘깁니다. L4 이상 코드 변경은 리스크 티어 effort로 리뷰를 받고, 리뷰 FAIL은 1회 수정, 다음 실패는 1회 재계획, 그 뒤에는 중단합니다. Claude 구현/수정 단계만 `acceptEdits`로 실행되고 계획/리뷰 단계는 코드를 수정할 수 없습니다. 라우트 파일에는 라우터가 생성한 argv 형태만 허용됩니다. 런처는 단계마다 `phase=...` 한 줄을 남깁니다(`MODEL_EFFORT_ROUTER_VERBOSE=1`이면 명령도 출력). 라우트(누가)와 실행 상태(어디까지, `state.json`)는 분리됩니다. `router.py --format command`도 같은 파이프라인을 실행하는 명령(`pipeline.py --route-file <저장된 라우트>`, `--session`이 있으면 함께 전달해 실패 시 저장된 라우트를 무효화)을 출력하므로 테스트·리뷰·수정 단계를 우회하지 않습니다. `--interactive` 단일 단계 라우트는 그대로 단순 인계이며, `--keep-plan`은 라우트 파일과 계획 디렉터리를 남깁니다. 자세한 내용: `references/routing-policy.md`.
 
 ### 라우트 재사용
 
@@ -111,7 +111,7 @@ python3 scripts/router.py --platform antigravity --detect-antigravity-models --f
 1. 계획 모델(Codex `sol`, Claude Code `opus`, Antigravity Pro)이 임시 실행 디렉토리에 구조화된 계획 JSON을 작성합니다.
 2. 구현 모델(`luna`/`terra` 또는 `sonnet`)이 계획서와 저장소를 읽고 계획의 검증 명령과 함께 구현을 진행합니다. 구현 모델은 새로운 설계 결정을 내리지 않으며, 계획 밖의 문제를 발견하면 멈추고 계획 모델을 위한 에스컬레이션 근거를 반환합니다.
 
-임시 실행 디렉토리는 성공 시 자동 삭제되며, 실패 시에는 분석을 위해 보존됩니다 (`--keep-plan` 옵션으로 강제 보존 가능).
+임시 실행 디렉토리는 런처와 마찬가지로 실행이 끝나면 성공·실패와 관계없이 삭제됩니다 (`--keep-plan` 옵션으로 보존 가능).
 
 ```bash
 python3 scripts/router.py --platform codex --task-type architectural_refactoring --level L5 "모듈 경계 재분리" --format command
