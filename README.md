@@ -99,7 +99,10 @@ Tests run in the launcher without a model call: set `MODEL_EFFORT_ROUTER_TEST_CM
 `--test-cmd` to `pipeline.py`). Only a failure sends a truncated log to the implementer.
 L4+ code changes get the review at the risk tier's effort; a review FAIL is fixed once, the next
 failure re-plans once, and then the run stops. Claude implement/fix stages run with `acceptEdits`; plan and review stages cannot edit code. Route files may only carry router-generated argv shapes. The launcher logs one `phase=...` line per stage (`MODEL_EFFORT_ROUTER_VERBOSE=1` adds the commands). Route (who) and execution state (where the run
-is, `state.json`) stay separate. Details: `references/routing-policy.md`.
+is, `state.json`) stay separate. `router.py --format command` prints a command that runs the same pipeline
+(`pipeline.py --route-file <saved route>`, with `--session` when set so a failed run invalidates the stored
+route), so it no longer bypasses the test, review and fix stages; an `--interactive` single-stage route stays a bare
+hand-off, and `--keep-plan` keeps the route file and the plan directory. Details: `references/routing-policy.md`.
 
 ### Live classifier benchmark
 

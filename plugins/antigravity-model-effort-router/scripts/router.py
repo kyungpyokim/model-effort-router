@@ -1279,15 +1279,25 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
     ]
 
 
-def command_chain(result: RouteResult, task: str, keep_plan: bool = False, interactive: bool = False) -> str | None:
-    """Assemble a success-dependent shell chain. Returns None when nothing to print."""
-    commands = stage_commands(result, task, interactive)
-    parts = [shlex.join(command) for command in commands]
-    if result.mode != "two_stage":
-        return parts[0]
-    prefix = f"mkdir -p {shlex.quote(str(result.plan_dir))}"
-    cleanup = "" if keep_plan else f" && rm -rf {shlex.quote(str(result.plan_dir))}"
-    return f"{prefix} && {' && '.join(parts)}{cleanup}"
+def pipeline_command(payload: dict, session: str | None, keep_plan: bool = False) -> str:
+    """The shell command that runs a route through scripts/pipeline.py (plan -> implement -> test -> review).
+
+    The route JSON is written to a private temp file the command reads; unless ``keep_plan`` the command removes
+    that file and the two-stage plan directory afterwards, like the launchers do. ``session`` lets the run
+    invalidate the stored route on a failure or re-plan."""
+    fd, route_file = tempfile.mkstemp(prefix="model-effort-route.", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        json.dump(payload, stream, ensure_ascii=False)
+    pipeline = Path(__file__).resolve().with_name("pipeline.py")
+    parts = ["python3", str(pipeline), "--route-file", route_file]
+    if session:
+        parts += ["--session", session]
+    if not keep_plan:
+        parts.append("--cleanup-plan-dir")
+    command = shlex.join(parts)
+    if keep_plan:
+        return command
+    return f"({command}; rc=$?; rm -f {shlex.quote(route_file)}; exit $rc)"
 
 
 def command_model(command: list[str], option: str) -> str | None:
@@ -1690,7 +1700,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="auto",
         help="Override automatic task-type classification (auto still classifies level and risk)",
     )
-    parser.add_argument("--keep-plan", action="store_true", help="Preserve the two-stage plan directory on success")
+    parser.add_argument("--keep-plan", action="store_true", help="With --format command: keep the route file and the two-stage plan directory after the run")
     parser.add_argument("--repo-aware", action="store_true", help="Let the classifier read the repository in its one pass (the same model, no stronger classifier)")
     parser.add_argument(
         "--print-classifier-prompt",
@@ -1852,8 +1862,15 @@ def main(argv: list[str] | None = None) -> int:
             payload["reuse"] = reuse_info
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     elif args.format == "command":
-        chain = command_chain(result, args.task, keep_plan=args.keep_plan, interactive=args.interactive)
-        print(chain if chain is not None else shlex.join(shell_command(result, args.task, args.interactive)))
+        commands = stage_commands(result, args.task, args.interactive)
+        if args.interactive and result.mode != "two_stage":
+            # An interactive session needs the terminal, so it stays a single hand-off (nothing to chain).
+            print(shlex.join(commands[0]))
+        else:
+            payload = result_payload(result, commands, args.task)
+            if reuse_info:
+                payload["reuse"] = reuse_info
+            print(pipeline_command(payload, session, keep_plan=args.keep_plan))
     else:
         stages_text = " -> ".join(
             f"{stage['role']}={stage['model']}/{stage['effort'] or ('embedded' if result.platform == 'antigravity' else 'none')}"
