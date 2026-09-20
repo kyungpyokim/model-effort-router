@@ -339,6 +339,20 @@ git commit -m "docs: document the plan-implement-review workflow and sync plugin
 
 ---
 
+### Task 6: SessionStart 훅 정책 문구를 새 워크플로우에 맞춘다
+
+Task 5 리뷰에서 발견: `plugins/{claude,codex}-model-effort-router/scripts/routing_policy_hook.py`의 `POLICY`가 매 세션에 주입되는데 여전히 “Agent tool로 step 위임”, “L1-L3 single-agent fast path”, “tests 후 Opus/Sol 병합 리뷰”를 지시한다. 새 워크플로우(코드 변경 route는 `pipeline.py`가 plan→implement→test→review를 강제, Agent-tool/worker 위임은 `pipeline == null` route만)와 모순이고 테스트가 그 모순을 고정하고 있다.
+
+**Files:**
+- Modify: `plugins/claude-model-effort-router/scripts/routing_policy_hook.py`, `plugins/codex-model-effort-router/scripts/routing_policy_hook.py` (`POLICY` 문자열만; 훅 파일은 플랫폼 전용이라 sync 대상 아님)
+- Modify: `tests/test_claude_policy_hook.py`, `tests/test_codex_policy_hook.py`
+
+**Requirements:**
+- `POLICY`는 간결(기존 길이 수준)하고 non-blocking을 유지한다. 새 사실만 담는다: 코드 변경 route(JSON `pipeline` 블록이 non-null)는 `pipeline.py --route-file`로 실행하고 부모가 직접 구현하거나 step을 Agent tool/worker로 직접 실행하지 않는다; `pipeline`이 null인 route(design/review)만 Agent tool(Claude)/worker(Codex)로 위임; “L1-L3 single-agent fast path” 삭제(L1 코드 변경만 single-stage이며 계획/리뷰 없음); 검증·리뷰·수정 루프는 launcher가 수행하므로 “tests 후 병합 Opus/Sol 리뷰를 직접 호출” 문구 삭제. 재사용/재분류/classification-only/executor no-reroute/fallback 문구와 “Show task_type, level, model/effort, source before delegating”은 유지.
+- Phase 2 이후 기능(Fast Path inspect/trivial 등)을 존재하는 것처럼 쓰지 않는다.
+- 테스트는 새 문구의 실제 내용을 고정한다(`pipeline.py`, `pipeline` null 분기, fast-path 문구 부재 `assertNotIn`); 기존의 나머지 계약(non-blocking, SessionStart만, casual chat skip 등) 검증은 유지·약화 금지. Task 5 테스트 `test_code_change_workflow_is_stated_consistently_across_skills`(tests/test_router.py)가 훅에 `assertIn("single-agent fast path")`를 요구하면 훅과 skill이 일치하도록 함께 정리한다.
+- 커밋: `fix: align the session policy hooks with the pipeline workflow` + blank line + `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`. 전체 pytest는 clean tree에서 0 failed.
+
 ## Task 1 결과에서 확정된 이월 사항
 
 - 레벨 agent 프로필(`agents/level-N-*`) 지시문은 two-stage 경로에 전달되지 않는다 (L5는 원래 그랬고 이제 L2~L4도). two-stage 템플릿은 schema v6에 고정돼 있어 지금 바꾸면 저장된 route가 무효가 되므로 **Phase 4(launcher가 role별 지시문 생성)로 이월**.
