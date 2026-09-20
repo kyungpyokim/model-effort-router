@@ -1,12 +1,12 @@
 # claude-task-router
 
 Four native Claude Code subagents — `research` (haiku, low), `coding` (sonnet,
-medium), `review` (opus, high), `complex` (fable, xhigh) — replacing the old
+medium), `review` (opus, high), `complex` (opus, xhigh) — replacing the old
 `model-effort-router` bundle's subprocess launcher for Claude.
 
 Claude Code supports an `effort` field in subagent frontmatter. It applies while
 that agent is active, subject to an environment override or configured effort cap.
-The frontmatter-effort guarantee for Fable and affected Opus models requires
+The frontmatter-effort guarantee for affected Opus models requires
 Claude Code 2.1.267+; on older versions, a saved effort hold can override the
 agent's configured effort.
 

@@ -53,13 +53,17 @@ def main() -> int:
             f"model-map classifiers.{platform}.fallback does not match router.FALLBACK_CLASSIFIER_CONFIG"
         )
 
+    assert tuple(model_map["levels"]) == router.LEVELS, "model-map levels must match router.LEVELS"
+    for tier in router.RISK_TIERS[1:]:
+        assert set(model_map["tiers"][tier]) == set(classifiers), f"model-map tiers.{tier} must cover every platform"
+
     codex = root / "plugins" / "codex-model-effort-router"
     claude = root / "plugins" / "claude-model-effort-router"
     agy = root / "plugins" / "antigravity-model-effort-router"
 
     c_manifest = read_json(codex / ".codex-plugin" / "plugin.json")
     assert c_manifest["name"] == "model-effort"
-    assert c_manifest["version"] == "2.5.0"
+    assert c_manifest["version"] == "3.0.0"
     require(codex / "skills" / "route" / "SKILL.md")
     require(codex / "hooks" / "hooks.json")
     require(codex / "scripts" / "routing_policy_hook.py")
@@ -75,7 +79,7 @@ def main() -> int:
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
     assert a_manifest["name"] == "model-effort"
-    assert a_manifest["version"] == "2.5.0"
+    assert a_manifest["version"] == "3.0.0"
     require(claude / "skills" / "route" / "SKILL.md")
     require(claude / "scripts" / "routing_policy_hook.py")
     claude_hooks = read_json(claude / "hooks" / "hooks.json")["hooks"]
@@ -121,7 +125,7 @@ def main() -> int:
         "complex": "workspace-write",
         "research": "read-only",
     }
-    valid_models = {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-6-astra"}
+    valid_models = {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"}
     codex_agents = {path.stem: path for path in (codex_task_router / "agents").glob("*.toml")}
     assert set(codex_agents) == set(expected_sandbox_modes)
     for name, path in codex_agents.items():
@@ -133,7 +137,7 @@ def main() -> int:
 
     g_manifest = read_json(agy / "gemini-extension.json")
     assert g_manifest["name"] == "model-effort"
-    assert g_manifest["version"] == "2.5.0"
+    assert g_manifest["version"] == "3.0.0"
     require(agy / "skills" / "route" / "SKILL.md")
     require(agy / "GEMINI.md")
     require(agy / "commands" / "route.toml")

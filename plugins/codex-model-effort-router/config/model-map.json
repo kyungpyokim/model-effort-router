@@ -15,41 +15,6 @@
     },
     "L5": {
       "name": "advanced"
-    },
-    "L6": {
-      "name": "expert"
-    },
-    "L7": {
-      "name": "frontier"
-    }
-  },
-  "critical": {
-    "name": "critical",
-    "codex": {
-      "model": "gpt-6-astra",
-      "effort": "max"
-    },
-    "claude-code": {
-      "candidates": [
-        {
-          "model": "claude-fable-5-1",
-          "effort": "max"
-        },
-        {
-          "model": "claude-opus-5",
-          "effort": "max"
-        }
-      ]
-    },
-    "antigravity": {
-      "patterns": [
-        "Claude Fable .*\\(Thinking\\)",
-        "Claude Fable .*",
-        "Claude Opus 5 .*\\(Thinking\\)",
-        "Claude Opus .*\\(Thinking\\)",
-        "Opus.*Thinking"
-      ],
-      "fallback": "Claude Opus 4.6 (Thinking)"
     }
   },
   "classifiers": {
@@ -100,9 +65,7 @@
     "codex": {
       "enabled": false,
       "eligible_levels": [
-        "L5",
-        "L6",
-        "L7"
+        "L5"
       ],
       "minimum_delegability": 2
     }
@@ -129,16 +92,18 @@
             "effort": "high"
           },
           "L5": {
-            "model": "gpt-5.6-sol",
-            "effort": "high"
-          },
-          "L6": {
-            "model": "gpt-5.6-sol",
-            "effort": "xhigh"
-          },
-          "L7": {
-            "model": "gpt-6-astra",
-            "effort": "xhigh"
+            "stages": [
+              {
+                "role": "planner",
+                "model": "gpt-5.6-sol",
+                "effort": "high"
+              },
+              {
+                "role": "implementer",
+                "model": "gpt-5.6-terra",
+                "effort": "high"
+              }
+            ]
           }
         },
         "design": {
@@ -148,11 +113,11 @@
           },
           "L2": {
             "model": "gpt-5.6-sol",
-            "effort": "low"
+            "effort": "high"
           },
           "L3": {
             "model": "gpt-5.6-sol",
-            "effort": "medium"
+            "effort": "high"
           },
           "L4": {
             "model": "gpt-5.6-sol",
@@ -161,14 +126,6 @@
           "L5": {
             "model": "gpt-5.6-sol",
             "effort": "high"
-          },
-          "L6": {
-            "model": "gpt-5.6-sol",
-            "effort": "xhigh"
-          },
-          "L7": {
-            "model": "gpt-6-astra",
-            "effort": "xhigh"
           }
         },
         "review": {
@@ -178,11 +135,11 @@
           },
           "L2": {
             "model": "gpt-5.6-sol",
-            "effort": "low"
+            "effort": "high"
           },
           "L3": {
             "model": "gpt-5.6-sol",
-            "effort": "medium"
+            "effort": "high"
           },
           "L4": {
             "model": "gpt-5.6-sol",
@@ -191,14 +148,6 @@
           "L5": {
             "model": "gpt-5.6-sol",
             "effort": "high"
-          },
-          "L6": {
-            "model": "gpt-5.6-sol",
-            "effort": "xhigh"
-          },
-          "L7": {
-            "model": "gpt-6-astra",
-            "effort": "xhigh"
           }
         },
         "local_refactoring": {
@@ -219,16 +168,18 @@
             "effort": "high"
           },
           "L5": {
-            "model": "gpt-5.6-sol",
-            "effort": "high"
-          },
-          "L6": {
-            "model": "gpt-5.6-sol",
-            "effort": "xhigh"
-          },
-          "L7": {
-            "model": "gpt-6-astra",
-            "effort": "xhigh"
+            "stages": [
+              {
+                "role": "planner",
+                "model": "gpt-5.6-sol",
+                "effort": "high"
+              },
+              {
+                "role": "implementer",
+                "model": "gpt-5.6-terra",
+                "effort": "high"
+              }
+            ]
           }
         },
         "architectural_refactoring": {
@@ -238,7 +189,7 @@
           },
           "L2": {
             "model": "gpt-5.6-sol",
-            "effort": "medium"
+            "effort": "high"
           },
           "L3": {
             "stages": [
@@ -279,34 +230,6 @@
                 "role": "implementer",
                 "model": "gpt-5.6-terra",
                 "effort": "high"
-              }
-            ]
-          },
-          "L6": {
-            "stages": [
-              {
-                "role": "planner",
-                "model": "gpt-5.6-sol",
-                "effort": "xhigh"
-              },
-              {
-                "role": "implementer",
-                "model": "gpt-5.6-sol",
-                "effort": "xhigh"
-              }
-            ]
-          },
-          "L7": {
-            "stages": [
-              {
-                "role": "planner",
-                "model": "gpt-6-astra",
-                "effort": "xhigh"
-              },
-              {
-                "role": "implementer",
-                "model": "gpt-5.6-sol",
-                "effort": "xhigh"
               }
             ]
           }
@@ -334,38 +257,16 @@
             "effort": "high"
           },
           "L5": {
-            "candidates": [
+            "stages": [
               {
-                "model": "claude-fable-5-1",
-                "effort": "medium"
-              },
-              {
-                "model": "claude-opus-5",
-                "effort": "medium"
-              }
-            ]
-          },
-          "L6": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "high"
-              },
-              {
+                "role": "planner",
                 "model": "claude-opus-5",
                 "effort": "high"
-              }
-            ]
-          },
-          "L7": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "xhigh"
               },
               {
-                "model": "claude-opus-5",
-                "effort": "xhigh"
+                "role": "implementer",
+                "model": "claude-sonnet-5",
+                "effort": "high"
               }
             ]
           }
@@ -377,51 +278,19 @@
           },
           "L2": {
             "model": "claude-opus-5",
-            "effort": "low"
+            "effort": "high"
           },
           "L3": {
             "model": "claude-opus-5",
-            "effort": "medium"
+            "effort": "high"
           },
           "L4": {
             "model": "claude-opus-5",
             "effort": "high"
           },
           "L5": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "high"
-              },
-              {
-                "model": "claude-opus-5",
-                "effort": "high"
-              }
-            ]
-          },
-          "L6": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "xhigh"
-              },
-              {
-                "model": "claude-opus-5",
-                "effort": "xhigh"
-              }
-            ]
-          },
-          "L7": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "xhigh"
-              },
-              {
-                "model": "claude-opus-5",
-                "effort": "xhigh"
-              }
-            ]
+            "model": "claude-opus-5",
+            "effort": "high"
           }
         },
         "review": {
@@ -431,51 +300,19 @@
           },
           "L2": {
             "model": "claude-opus-5",
-            "effort": "low"
+            "effort": "high"
           },
           "L3": {
             "model": "claude-opus-5",
-            "effort": "medium"
+            "effort": "high"
           },
           "L4": {
             "model": "claude-opus-5",
             "effort": "high"
           },
           "L5": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "high"
-              },
-              {
-                "model": "claude-opus-5",
-                "effort": "high"
-              }
-            ]
-          },
-          "L6": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "xhigh"
-              },
-              {
-                "model": "claude-opus-5",
-                "effort": "xhigh"
-              }
-            ]
-          },
-          "L7": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "xhigh"
-              },
-              {
-                "model": "claude-opus-5",
-                "effort": "xhigh"
-              }
-            ]
+            "model": "claude-opus-5",
+            "effort": "high"
           }
         },
         "local_refactoring": {
@@ -496,38 +333,16 @@
             "effort": "high"
           },
           "L5": {
-            "candidates": [
+            "stages": [
               {
-                "model": "claude-fable-5-1",
-                "effort": "medium"
-              },
-              {
-                "model": "claude-opus-5",
-                "effort": "medium"
-              }
-            ]
-          },
-          "L6": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "high"
-              },
-              {
+                "role": "planner",
                 "model": "claude-opus-5",
                 "effort": "high"
-              }
-            ]
-          },
-          "L7": {
-            "candidates": [
-              {
-                "model": "claude-fable-5-1",
-                "effort": "xhigh"
               },
               {
-                "model": "claude-opus-5",
-                "effort": "xhigh"
+                "role": "implementer",
+                "model": "claude-sonnet-5",
+                "effort": "high"
               }
             ]
           }
@@ -539,22 +354,14 @@
           },
           "L2": {
             "model": "claude-opus-5",
-            "effort": "medium"
+            "effort": "high"
           },
           "L3": {
             "stages": [
               {
                 "role": "planner",
-                "candidates": [
-                  {
-                    "model": "claude-fable-5-1",
-                    "effort": "high"
-                  },
-                  {
-                    "model": "claude-opus-5",
-                    "effort": "high"
-                  }
-                ]
+                "model": "claude-opus-5",
+                "effort": "high"
               },
               {
                 "role": "implementer",
@@ -567,16 +374,8 @@
             "stages": [
               {
                 "role": "planner",
-                "candidates": [
-                  {
-                    "model": "claude-fable-5-1",
-                    "effort": "xhigh"
-                  },
-                  {
-                    "model": "claude-opus-5",
-                    "effort": "xhigh"
-                  }
-                ]
+                "model": "claude-opus-5",
+                "effort": "xhigh"
               },
               {
                 "role": "implementer",
@@ -589,81 +388,13 @@
             "stages": [
               {
                 "role": "planner",
-                "candidates": [
-                  {
-                    "model": "claude-fable-5-1",
-                    "effort": "xhigh"
-                  },
-                  {
-                    "model": "claude-opus-5",
-                    "effort": "xhigh"
-                  }
-                ]
+                "model": "claude-opus-5",
+                "effort": "xhigh"
               },
               {
                 "role": "implementer",
                 "model": "claude-sonnet-5",
                 "effort": "high"
-              }
-            ]
-          },
-          "L6": {
-            "stages": [
-              {
-                "role": "planner",
-                "candidates": [
-                  {
-                    "model": "claude-fable-5-1",
-                    "effort": "xhigh"
-                  },
-                  {
-                    "model": "claude-opus-5",
-                    "effort": "xhigh"
-                  }
-                ]
-              },
-              {
-                "role": "implementer",
-                "candidates": [
-                  {
-                    "model": "claude-fable-5-1",
-                    "effort": "high"
-                  },
-                  {
-                    "model": "claude-opus-5",
-                    "effort": "high"
-                  }
-                ]
-              }
-            ]
-          },
-          "L7": {
-            "stages": [
-              {
-                "role": "planner",
-                "candidates": [
-                  {
-                    "model": "claude-fable-5-1",
-                    "effort": "max"
-                  },
-                  {
-                    "model": "claude-opus-5",
-                    "effort": "max"
-                  }
-                ]
-              },
-              {
-                "role": "implementer",
-                "candidates": [
-                  {
-                    "model": "claude-fable-5-1",
-                    "effort": "xhigh"
-                  },
-                  {
-                    "model": "claude-opus-5",
-                    "effort": "xhigh"
-                  }
-                ]
               }
             ]
           }
@@ -712,34 +443,27 @@
             "fallback": "Claude Sonnet 4.6 (Thinking)"
           },
           "L5": {
-            "patterns": [
-              "Gemini 3\\.1 Pro \\(High\\)",
-              "Gemini .* Pro \\(High\\)",
-              "Claude Sonnet .*\\(Thinking\\)",
-              "Sonnet.*Thinking",
-              "Pro.*High"
-            ],
-            "fallback": "Gemini 3.1 Pro (High)"
-          },
-          "L6": {
-            "patterns": [
-              "Claude Fable .*\\(Thinking\\)",
-              "Claude Fable .*",
-              "Claude Opus 5 .*\\(Thinking\\)",
-              "Claude Opus .*\\(Thinking\\)",
-              "Opus.*Thinking"
-            ],
-            "fallback": "Claude Opus 4.6 (Thinking)"
-          },
-          "L7": {
-            "patterns": [
-              "Claude Fable .*\\(Thinking\\)",
-              "Claude Fable .*",
-              "Claude Opus 5 .*\\(Thinking\\)",
-              "Claude Opus .*\\(Thinking\\)",
-              "Opus.*Thinking"
-            ],
-            "fallback": "Claude Opus 4.6 (Thinking)"
+            "stages": [
+              {
+                "role": "planner",
+                "patterns": [
+                  "Gemini 3\\.1 Pro \\(High\\)",
+                  "Gemini .* Pro \\(High\\)",
+                  "Claude Sonnet .*\\(Thinking\\)",
+                  "Sonnet.*Thinking",
+                  "Pro.*High"
+                ],
+                "fallback": "Gemini 3.1 Pro (High)"
+              },
+              {
+                "role": "implementer",
+                "patterns": [
+                  "Claude Sonnet .*\\(Thinking\\)",
+                  "Sonnet.*Thinking"
+                ],
+                "fallback": "Claude Sonnet 4.6 (Thinking)"
+              }
+            ]
           }
         },
         "design": {
@@ -792,26 +516,6 @@
               "Pro.*High"
             ],
             "fallback": "Gemini 3.1 Pro (High)"
-          },
-          "L6": {
-            "patterns": [
-              "Claude Fable .*\\(Thinking\\)",
-              "Claude Fable .*",
-              "Claude Opus 5 .*\\(Thinking\\)",
-              "Claude Opus .*\\(Thinking\\)",
-              "Opus.*Thinking"
-            ],
-            "fallback": "Claude Opus 4.6 (Thinking)"
-          },
-          "L7": {
-            "patterns": [
-              "Claude Fable .*\\(Thinking\\)",
-              "Claude Fable .*",
-              "Claude Opus 5 .*\\(Thinking\\)",
-              "Claude Opus .*\\(Thinking\\)",
-              "Opus.*Thinking"
-            ],
-            "fallback": "Claude Opus 4.6 (Thinking)"
           }
         },
         "review": {
@@ -864,26 +568,6 @@
               "Pro.*High"
             ],
             "fallback": "Gemini 3.1 Pro (High)"
-          },
-          "L6": {
-            "patterns": [
-              "Claude Fable .*\\(Thinking\\)",
-              "Claude Fable .*",
-              "Claude Opus 5 .*\\(Thinking\\)",
-              "Claude Opus .*\\(Thinking\\)",
-              "Opus.*Thinking"
-            ],
-            "fallback": "Claude Opus 4.6 (Thinking)"
-          },
-          "L7": {
-            "patterns": [
-              "Claude Fable .*\\(Thinking\\)",
-              "Claude Fable .*",
-              "Claude Opus 5 .*\\(Thinking\\)",
-              "Claude Opus .*\\(Thinking\\)",
-              "Opus.*Thinking"
-            ],
-            "fallback": "Claude Opus 4.6 (Thinking)"
           }
         },
         "local_refactoring": {
@@ -925,34 +609,27 @@
             "fallback": "Claude Sonnet 4.6 (Thinking)"
           },
           "L5": {
-            "patterns": [
-              "Gemini 3\\.1 Pro \\(High\\)",
-              "Gemini .* Pro \\(High\\)",
-              "Claude Sonnet .*\\(Thinking\\)",
-              "Sonnet.*Thinking",
-              "Pro.*High"
-            ],
-            "fallback": "Gemini 3.1 Pro (High)"
-          },
-          "L6": {
-            "patterns": [
-              "Claude Fable .*\\(Thinking\\)",
-              "Claude Fable .*",
-              "Claude Opus 5 .*\\(Thinking\\)",
-              "Claude Opus .*\\(Thinking\\)",
-              "Opus.*Thinking"
-            ],
-            "fallback": "Claude Opus 4.6 (Thinking)"
-          },
-          "L7": {
-            "patterns": [
-              "Claude Fable .*\\(Thinking\\)",
-              "Claude Fable .*",
-              "Claude Opus 5 .*\\(Thinking\\)",
-              "Claude Opus .*\\(Thinking\\)",
-              "Opus.*Thinking"
-            ],
-            "fallback": "Claude Opus 4.6 (Thinking)"
+            "stages": [
+              {
+                "role": "planner",
+                "patterns": [
+                  "Gemini 3\\.1 Pro \\(High\\)",
+                  "Gemini .* Pro \\(High\\)",
+                  "Claude Sonnet .*\\(Thinking\\)",
+                  "Sonnet.*Thinking",
+                  "Pro.*High"
+                ],
+                "fallback": "Gemini 3.1 Pro (High)"
+              },
+              {
+                "role": "implementer",
+                "patterns": [
+                  "Claude Sonnet .*\\(Thinking\\)",
+                  "Sonnet.*Thinking"
+                ],
+                "fallback": "Claude Sonnet 4.6 (Thinking)"
+              }
+            ]
           }
         },
         "architectural_refactoring": {
@@ -1047,60 +724,42 @@
                 "fallback": "Claude Sonnet 4.6 (Thinking)"
               }
             ]
-          },
-          "L6": {
-            "stages": [
-              {
-                "role": "planner",
-                "patterns": [
-                  "Claude Fable .*\\(Thinking\\)",
-                  "Claude Fable .*",
-                  "Claude Opus 5 .*\\(Thinking\\)",
-                  "Claude Opus .*\\(Thinking\\)",
-                  "Opus.*Thinking"
-                ],
-                "fallback": "Claude Opus 4.6 (Thinking)"
-              },
-              {
-                "role": "implementer",
-                "patterns": [
-                  "Claude Fable .*\\(Thinking\\)",
-                  "Claude Fable .*",
-                  "Claude Opus 5 .*\\(Thinking\\)",
-                  "Claude Opus .*\\(Thinking\\)",
-                  "Opus.*Thinking"
-                ],
-                "fallback": "Claude Opus 4.6 (Thinking)"
-              }
-            ]
-          },
-          "L7": {
-            "stages": [
-              {
-                "role": "planner",
-                "patterns": [
-                  "Claude Fable .*\\(Thinking\\)",
-                  "Claude Fable .*",
-                  "Claude Opus 5 .*\\(Thinking\\)",
-                  "Claude Opus .*\\(Thinking\\)",
-                  "Opus.*Thinking"
-                ],
-                "fallback": "Claude Opus 4.6 (Thinking)"
-              },
-              {
-                "role": "implementer",
-                "patterns": [
-                  "Claude Fable .*\\(Thinking\\)",
-                  "Claude Fable .*",
-                  "Claude Opus 5 .*\\(Thinking\\)",
-                  "Claude Opus .*\\(Thinking\\)",
-                  "Opus.*Thinking"
-                ],
-                "fallback": "Claude Opus 4.6 (Thinking)"
-              }
-            ]
           }
         }
+      }
+    }
+  },
+  "tiers": {
+    "elevated": {
+      "codex": {
+        "effort": "xhigh"
+      },
+      "claude-code": {
+        "effort": "xhigh"
+      },
+      "antigravity": {
+        "patterns": [
+          "Claude Opus 5 .*\\(Thinking\\)",
+          "Claude Opus .*\\(Thinking\\)",
+          "Opus.*Thinking"
+        ],
+        "fallback": "Claude Opus 4.6 (Thinking)"
+      }
+    },
+    "critical": {
+      "codex": {
+        "effort": "max"
+      },
+      "claude-code": {
+        "effort": "max"
+      },
+      "antigravity": {
+        "patterns": [
+          "Claude Opus 5 .*\\(Thinking\\)",
+          "Claude Opus .*\\(Thinking\\)",
+          "Opus.*Thinking"
+        ],
+        "fallback": "Claude Opus 4.6 (Thinking)"
       }
     }
   }

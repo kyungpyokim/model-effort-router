@@ -22,7 +22,7 @@ agy plugin install https://github.com/<owner>/<repo>
 
 This classifies and explains the route, but it does not pretend to replace the model of the already-running session.
 
-The plugin includes L1-L7 and Critical agents under `agents/`. `agy-route` starts a new
+The plugin includes L1-L5 level agents under `agents/`. `agy-route` starts a new
 session with the account-available model and embeds the matching agent's
 instructions in the prompt, so it works without the extension installed.
 
@@ -56,12 +56,34 @@ before classification and starts the selected profile. Classifier failures
 safely select L3.
 In Antigravity, effort is represented in names such as `Gemini ... Flash (Low)` or `Claude ... (Thinking)` rather than a separate `--effort` flag.
 
-Route-file replay accepts v2-v4 payloads. Schema v4 records `facts`,
-`matched_rules`, `needs_context`, `evidence`, direct-only `execution_strategy`,
-and future Astra `orchestration_eligible` metadata; it
-does not enable orchestration on Antigravity. `scripts/astra_adapter.py` is a
-caller-invoked boundary that revalidates worker inputs and preserves original
-verified artifacts; direct v2-v4 route-file replay never invokes it.
+Levels are L1-L5. A separate risk tier (`elevated` for security/payment logic changes
+and similar, `critical` for irreversible/ledger/crypto work or `--critical`) implies L5
+and, because Antigravity has no effort setting, swaps the planning/judging stage
+(the planner of a two-stage route, otherwise the single stage) to
+`Claude Opus Thinking`; the implementer stage keeps its matrix model. `--level` accepts
+`L1`-`L5` only.
+
+Route-file replay accepts v2-v5 payloads. Schema v5 records `facts`,
+`matched_rules`, `needs_context`, `evidence`, `risk_tier`, direct-only `execution_strategy`,
+and future orchestration `orchestration_eligible` metadata; it
+does not enable orchestration on Antigravity. `scripts/astra_adapter.py` is the unchanged
+caller-invoked orchestration adapter that revalidates worker inputs and preserves original
+verified artifacts; direct v2-v5 route-file replay never invokes it.
+
+## Execution roles and pipeline
+
+Spend top-model tokens on important judgement and run already-decided work on the
+cheapest sufficient model: the strongest available model (Pro High / Opus Thinking)
+plans, designs, verifies, and reviews; Flash and Sonnet Thinking implement, fix, and
+run tests. Reuse the stored route for same-task follow-ups (re-classify only on a
+task-type change, large scope growth, new risk evidence, or a fact that shows the
+approved design cannot be implemented). Do not call the strong model after each step:
+after steps 1..N and the tests, make one merged verification + review call sent only
+the requirement, approved plan, git diff, test results, and key code. On review FAIL
+re-classify the fix instead of having the reviewer fix it. An implementer that finds
+something outside the plan (scope expansion, architecture or public API change, DB
+migration, security boundary change, plan/code mismatch) stops and returns evidence;
+"hard" or "unsure" alone is not evidence. See `references/routing-policy.md`.
 
 ## Customize
 

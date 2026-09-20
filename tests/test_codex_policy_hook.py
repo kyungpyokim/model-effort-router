@@ -92,7 +92,6 @@ class CodexPolicyHookTests(unittest.TestCase):
             "risk_flags",
             "security_review/migration_safety",
             "single mode",
-            "fable/astra",
             "delegates once",
             "at most 1 review",
             "no multi-agent chains",
@@ -127,7 +126,6 @@ class CodexPolicyHookTests(unittest.TestCase):
             "effective_level` L1-L3",
             "empty `risk_flags`",
             "`security_review` or `migration_safety`",
-            "no `fable`/`astra` model",
             "never means the parent implements the task itself",
         ):
             self.assertIn(expected, skill)
@@ -135,19 +133,19 @@ class CodexPolicyHookTests(unittest.TestCase):
 
     def test_codex_manifest_and_validator_include_only_the_codex_hook_release(self):
         manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], "2.5.0")
+        self.assertEqual(manifest["version"], "3.0.0")
         self.assertNotIn("hooks", manifest)
         validator = (ROOT / "scripts" / "validate_bundle.py").read_text(encoding="utf-8")
         self.assertIn('codex / "hooks" / "hooks.json"', validator)
         self.assertIn('claude / "hooks" / "hooks.json"', validator)
         self.assertNotIn('agy / "hooks"', validator)
 
-    def test_codex_manifest_describes_fact_based_l1_to_l7_routing(self):
+    def test_codex_manifest_describes_fact_based_l1_to_l5_routing(self):
         manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         interface = manifest["interface"]
         self.assertIn("facts", interface["longDescription"].lower())
         self.assertNotIn("scores", interface["longDescription"].lower())
-        self.assertIn("L1 to L7", interface["defaultPrompt"][1])
+        self.assertIn("L1 to L5", interface["defaultPrompt"][1])
 
 
 if __name__ == "__main__":

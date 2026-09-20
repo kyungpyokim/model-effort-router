@@ -1,8 +1,8 @@
-# Model Effort Router Policy (v4)
+# Model Effort Router Policy (v5)
 
 ## Overview
 
-The Model Effort Router classifies coding tasks by difficulty and risk, routing them to a matching model and reasoning-effort profile. The v4 route schema uses a 7-level scale (`L1` through `L7`) with a dedicated `Critical Override`, one repository-aware reclassification when an L4+ deciding fact is unknown, and deterministic Python mapping.
+The Model Effort Router classifies coding tasks by difficulty and risk, routing them to a matching model and reasoning-effort profile. The v5 route schema uses a 5-level scale (`L1` through `L5`) plus a separate **risk tier** (`standard`, `elevated`, `critical`; route JSON field `risk_tier`), one repository-aware reclassification when an L4+ deciding fact is unknown, and deterministic Python mapping. The former L6, L7, and Critical Override levels no longer exist: their intent lives on as the `elevated` and `critical` tiers, which imply L5 and raise the effort of the planning/judging stage only.
 
 ## Classification Architecture
 
@@ -17,13 +17,15 @@ Classifier (Luna Med / Sonnet 5 Med / Gemini 3.8 Flash Med, or the in-session di
      │
 DIFFICULTY_RULES (scripts/router.py)
   ├─ Base L2 (L1 when mechanical_only = yes)
-  ├─ Highest matching rule wins; Critical rule -> Critical Profile
+  ├─ Highest matching rule wins; an elevated/critical rule -> L5 + that risk tier
   └─ A rule >= L4 matched only through "unknown" -> needs_context
      │
 needs_context -> one repository-aware classifier (Terra Med / Sonnet 5 Med / Gemini 3.1 Pro High)
   whose reply is combined with the first answer (the first is kept if it fails)
      │
-Risk floors (Security/Payment change or critical-domain trust boundary -> L6, critical security domain -> L5, security review -> L4, Migration/Public API -> L4) -> Matrix lookup (task_type × level)
+Risk floors (Security/Payment change or critical-domain trust boundary -> elevated tier, critical security domain -> L5, security review -> L4, Migration/Public API -> L4) -> Matrix lookup (task_type × level)
+     │
+Apply risk tier: raise the planning/judging stage (elevated = xhigh, critical = max; Antigravity swaps to Claude Opus Thinking)
 ```
 
 The classifier returns structured JSON with `task_type`, `facts`, `delegability` (0–2), up to five `evidence` strings, and a one-sentence `reason`. The classifier applies a `readchk` reflex first: restating intent internally and resolving referents.
@@ -36,17 +38,18 @@ or a tightly coupled deep problem; `1` permits separable analysis but leaves
 dependencies or ownership coupled; `2` requires independent subtasks, explicit
 file/artifact ownership, and independently verifiable results.
 
-Schema v4 route files always retain `execution_strategy: "direct"` in this
+Schema v5 route files always retain `execution_strategy: "direct"` in this
 release. `orchestration_eligible: true` is only recorded for safe Codex
-single-stage L5–L7 routes with `delegability: 2` and no risk flags. Critical,
-two-stage, non-Codex, and any risky routes are ineligible. The local,
+single-stage L5 routes with `delegability: 2` and no risk flags
+(`orchestration.codex.eligible_levels` is `["L5"]`). Critical-tier, two-stage,
+non-Codex, and any risky routes are ineligible. The local,
 caller-invoked `scripts/astra_adapter.py` accepts only digest-verified route and
 manifest bytes, revalidates per-attempt worker inputs, and preserves the
-original verified artifacts after each attempt. It does not change direct
-execution. Direct v2-v4 route-file replay never invokes it.
+original verified artifacts after each attempt. It is the unchanged orchestration adapter and does not change direct
+execution. Direct v2-v5 route-file replay never invokes it.
 
-Replay accepts v2-v4 route files. v3 and v4 require the two orchestration
-fields; malformed v3/v4 files are rejected before execution.
+Replay accepts v2-v5 route files. v3 and later require the two orchestration
+fields; malformed v3+ files are rejected before execution.
 
 ### Classifiers by Platform
 
@@ -96,22 +99,19 @@ Mixed tasks classify by their primary purpose. Design with sample code is `desig
 
 Payment, in `changes_security_or_payment_logic`, `reviews_security_sensitive_code`, and `security_domain`, is decided by monetary consequence, not by a module or file named billing or order: moving money; determining the amount charged (price, discount, or tax calculation); authorizing, capturing, cancelling, or refunding payments, including an order cancellation that decides a refund; ledger or settlement correctness; or creating or changing a monetary obligation. Not payment: an order list UI, billing address edits, displaying an invoice PDF, order status strings, order creation that charges nothing, or code that merely lives in a billing or order module. Caching or reading billing or order data is not payment unless the cached or read value decides the amount charged.
 
-Authorization or permissions, in `changes_security_or_payment_logic`, `reviews_security_sensitive_code`, and `security_domain`, is decided by access control boundaries (user authentication, RBAC, ACL, privilege, tenant isolation, credentials, or customer data isolation). Two narrow carve-outs are NOT authorization, permissions, or security changes: cost/model-tier confirmations (approving an expensive model before it runs, e.g. this router's Fable/Astra approval gate and its `--approved` flag), and plain UX confirmations that do not decide whether an action is allowed. Everything else that decides whether an agent, tool, or command may run without the user's consent IS authorization/permissions: tool or command permission prompts, sandbox or allowlist rules for shell commands, production or deploy approval gates, and adding, removing, or bypassing any such gate.
+Authorization or permissions, in `changes_security_or_payment_logic`, `reviews_security_sensitive_code`, and `security_domain`, is decided by access control boundaries (user authentication, RBAC, ACL, privilege, tenant isolation, credentials, or customer data isolation). Two narrow carve-outs are NOT authorization, permissions, or security changes: cost/model-tier confirmations (approving an expensive model before it runs), and plain UX confirmations that do not decide whether an action is allowed. Everything else that decides whether an agent, tool, or command may run without the user's consent IS authorization/permissions: tool or command permission prompts, sandbox or allowlist rules for shell commands, production or deploy approval gates, and adding, removing, or bypassing any such gate.
 
 ### Difficulty Rules
 
-The level is the highest matching rule over a base of L2 (L1 when `mechanical_only` is yes).
+The level is the highest matching rule over a base of L2 (L1 when `mechanical_only` is yes). Rules named `elevated` or `critical` set the **risk tier** and imply L5; the levels themselves stop at L5.
 
-| Level | Rule (all conditions must hold) |
+| Level / tier | Rule (all conditions must hold) |
 |---|---|
-| **Critical** | `irreversible_or_ledger_or_crypto` = yes |
-| **L7** | `needs_new_structure` = yes, `security_domain` = payment, crypto, auth, permissions, or pii, `changes_trust_boundary` = yes |
-| **L7** | `needs_new_structure` = yes, `crosses_service_boundary` = yes, `fix_or_result_known` = no, `blast_radius` = broad |
-| **L7** | `needs_new_structure` = yes, `crosses_service_boundary` = yes, `fix_or_result_known` = no, `silent_failure_material_harm` = yes |
-| **L6** | `needs_new_structure` = yes, `crosses_service_boundary` = yes, `fix_or_result_known` = no |
-| **L6** | `security_domain` = payment, crypto, auth, permissions, or pii, `changes_trust_boundary` = yes |
-| **L6** | `changes_security_or_payment_logic` = yes |
-| **L6** | `intermittent_or_concurrency` = yes, `crosses_service_boundary` = yes |
+| **critical** tier (L5) | `irreversible_or_ledger_or_crypto` = yes |
+| **elevated** tier (L5) | `needs_new_structure` = yes, `crosses_service_boundary` = yes, `fix_or_result_known` = no (`new_structure_across_services_with_open_result`) |
+| **elevated** tier (L5) | `security_domain` = payment, crypto, auth, permissions, or pii, `changes_trust_boundary` = yes (`critical_domain_trust_boundary`) |
+| **elevated** tier (L5) | `changes_security_or_payment_logic` = yes |
+| **elevated** tier (L5) | `intermittent_or_concurrency` = yes, `crosses_service_boundary` = yes (`intermittent_across_services`) |
 | **L5** | `changes_security_or_payment_logic` = unknown |
 | **L5** | `irreversible_or_ledger_or_crypto` = unknown |
 | **L5** | `security_domain` = payment, crypto, auth, permissions, or pii |
@@ -126,11 +126,21 @@ The level is the highest matching rule over a base of L2 (L1 when `mechanical_on
 | **L3** | `files_touched` = 2-5 or unknown |
 | **L3** | `fix_or_result_known` = no |
 
-Security floors follow the impact of a wrong judgement, not whether code is edited: a review-only task in a security-sensitive area (`reviews_security_sensitive_code` = yes) floors at L4 independent of `task_type`, and a critical `security_domain` (payment, crypto, auth, permissions, pii) floors at L5. `secrets` alone has no floor of its own; it reaches L4 through the review fact or L6 through the change fact. These are floors: they never lower a higher matching rule or the Critical override.
+Security floors follow the impact of a wrong judgement, not whether code is edited: a review-only task in a security-sensitive area (`reviews_security_sensitive_code` = yes) floors at L4 independent of `task_type`, and a critical `security_domain` (payment, crypto, auth, permissions, pii) floors at L5. `secrets` alone has no floor of its own; it reaches L4 through the review fact or the elevated tier through the change fact. These are floors: they never lower a higher matching rule or the critical tier.
 
-L6/L7 follow the impact of a wrong judgement; `task_type` and whether code changes never lower a level. A critical `security_domain` whose trust boundary changes floors at L6. `needs_new_structure` is a design-difficulty signal, not an L7 signal by itself: a cross-service open design is L6, and reaches L7 only with a broad `blast_radius` or `silent_failure_material_harm` = yes, or when new structure is designed across a critical-domain trust boundary.
+The elevated and critical tiers follow the impact of a wrong judgement; `task_type` and whether code changes never lower them. A critical `security_domain` whose trust boundary changes is elevated. `needs_new_structure` is a design-difficulty signal, not a tier signal by itself: a new structure across services with an open result is elevated, while new structure alone is L5.
 
-Unknown policy: an unknown security/payment change fact or an unknown irreversible/ledger/crypto fact routes at the L5 floor (never the Critical override, which fires only on an explicit yes); an unknown review fact or security domain takes at most the L4 floor (an unknown-driven L5 floor over-routed in evaluation); other unknown deciding facts take their rule. `intermittent_or_concurrency` = unknown is a needs_context-only signal: it triggers one repository-aware reclassification without raising the level floor by itself. The same holds for `changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm` = unknown; unknown never matches their L6/L7 conditions. `crosses_module_boundary` = unknown is likewise needs_context-only (an unknown module boundary over-routed single-module tasks to L4); only an explicit yes takes the L4 module-boundary rule, while `crosses_service_boundary` = unknown keeps its L4 rule. In contrast to the module boundary, a service boundary that stays unknown after the reclassification keeps the L4 floor (never L5): a multi-service task must not fall to L3 only because the boundary could not be settled, while an escalated yes takes the normal L4 rule and an escalated no routes on the other facts alone. A rule at L4 or above that matched only through `unknown` sets `needs_context` and triggers one repository-aware reclassification. The escalated classifier read the repository, but only some safety facts may be lowered by it. A sticky primary affirmative — security/payment change, persisted-data, public-API, irreversible/ledger/crypto, trust-boundary change, or silent material harm — is OR-aggregated and can never be lowered by the escalated reply, because missing one of these under-routes a real irreversible or security change (`irreversible_or_ledger_or_crypto` = yes from the primary always keeps the Critical override, whatever escalated answers). A correctable primary affirmative — a critical `security_domain`, `reviews_security_sensitive_code`, or a broad `blast_radius` — is where a keyword-driven primary classifier produces most of its false positives on ordinary review-scope tasks, so the escalated reply may correct it once it gives an explicit, non-`unknown` answer: `reviews_security_sensitive_code` and `blast_radius` keep the primary's affirmative unless escalated explicitly answers `no` or `narrow`; `security_domain` keeps the primary's critical domain while escalated stays `unknown`, takes escalated's explicit `none`, and otherwise keeps whichever of the two named domains is more critical by priority (payment > crypto > auth > permissions > pii > secrets). An unrelated unknown elsewhere in the escalated reply still cannot lower a floor these facts do settle. A failed escalation (fallback) never replaces the primary, whose own facts and floors stand as classified.
+### Risk tiers
+
+| `risk_tier` | Level | Effect |
+|---|---|---|
+| `standard` | any | Matrix row unchanged |
+| `elevated` | L5 | Planning/judging stage effort raised to **xhigh** (Codex Sol, Claude Code Opus); Antigravity swaps that stage to Claude Opus Thinking |
+| `critical` | L5 | Same stage raised to **max**; Antigravity swaps to Claude Opus Thinking; never orchestration-eligible |
+
+The raised stage is the planner of a two-stage route, otherwise the only stage; the implementer keeps its matrix profile. Tiers only raise effort, never lower it. `--critical` forces the critical tier. `--level` accepts `L1`-`L5` only. Tier profiles live under `tiers` in `config/model-map.json`.
+
+Unknown policy: an unknown security/payment change fact or an unknown irreversible/ledger/crypto fact routes at the L5 floor (never the critical tier, which fires only on an explicit yes); an unknown review fact or security domain takes at most the L4 floor (an unknown-driven L5 floor over-routed in evaluation); other unknown deciding facts take their rule. `unknown` is missing information, not confirmed risk. `intermittent_or_concurrency` = unknown is a needs_context-only signal: it triggers one repository-aware reclassification without raising the level floor by itself. The same holds for `changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm` = unknown; unknown never matches their tier conditions. `crosses_module_boundary` = unknown is likewise needs_context-only (an unknown module boundary over-routed single-module tasks to L4); only an explicit yes takes the L4 module-boundary rule, while `crosses_service_boundary` = unknown keeps its L4 rule. In contrast to the module boundary, a service boundary that stays unknown after the reclassification keeps the L4 floor (never L5): a multi-service task must not fall to L3 only because the boundary could not be settled, while an escalated yes takes the normal L4 rule and an escalated no routes on the other facts alone. A rule at L4 or above that matched only through `unknown` sets `needs_context` and triggers one repository-aware reclassification. The escalated classifier read the repository, but only some safety facts may be lowered by it. A sticky primary affirmative — security/payment change, persisted-data, public-API, irreversible/ledger/crypto, trust-boundary change, or silent material harm — is OR-aggregated and can never be lowered by the escalated reply, because missing one of these under-routes a real irreversible or security change (`irreversible_or_ledger_or_crypto` = yes from the primary always keeps the critical tier, whatever escalated answers). A correctable primary affirmative — a critical `security_domain`, `reviews_security_sensitive_code`, or a broad `blast_radius` — is where a keyword-driven primary classifier produces most of its false positives on ordinary review-scope tasks, so the escalated reply may correct it once it gives an explicit, non-`unknown` answer: `reviews_security_sensitive_code` and `blast_radius` keep the primary's affirmative unless escalated explicitly answers `no` or `narrow`; `security_domain` keeps the primary's critical domain while escalated stays `unknown`, takes escalated's explicit `none`, and otherwise keeps whichever of the two named domains is more critical by priority (payment > crypto > auth > permissions > pii > secrets). An unrelated unknown elsewhere in the escalated reply still cannot lower a floor these facts do settle. A failed escalation (fallback) never replaces the primary, whose own facts and floors stand as classified.
 
 ### Risk Flags and Hard Floors
 
@@ -141,52 +151,94 @@ security_sensitive   authentication      authorization
 payment              data_migration      public_api_change
 ```
 
-- Any of `security_sensitive`, `authentication`, `authorization`, or `payment` (when involving actual code/behavior changes) forces a hard floor of **L6** and activates an Autobahn scope guard instruction. Non-security changes mentioning security terms (such as typo fixes or documentation edits) do not activate these flags and remain at their natural score (e.g. L1).
+- Any of `security_sensitive`, `authentication`, `authorization`, or `payment` (when involving actual code/behavior changes) forces the **elevated** risk tier (which implies L5) and activates an Autobahn scope guard instruction. Non-security changes mentioning security terms (such as typo fixes or documentation edits) do not activate these flags and remain at their natural level (e.g. L1).
 - An active `data_migration` or `public_api_change` forces a floor of **L4**. Floors do not stack: the risk factor already scores these risks.
-- Review-only security work sets no risk flag (the L6 change floor and the Autobahn scope guard belong to behaviour changes); its L4/L5 floors come from `DIFFICULTY_RULES` alone.
-- **Critical Override**: Irreversible data migration, mass production data deletion, financial ledger correctness, designing new cryptographic algorithms/protocols/key-management, or explicit `--critical` argument overrides the level directly to the **Critical Profile** (`GPT-6 Astra Max` / `Claude Opus Max`). Fires only on an explicit yes; an unknown never triggers it.
+- Review-only security work sets no risk flag (the elevated-tier change floor and the Autobahn scope guard belong to behaviour changes); its L4/L5 floors come from `DIFFICULTY_RULES` alone.
+- **Critical tier**: irreversible data migration, mass production data deletion, financial ledger correctness, designing new cryptographic algorithms/protocols/key-management (`irreversible_or_ledger_or_crypto` = yes), or the explicit `--critical` argument sets `risk_tier: critical` (L5 with maximum planning/judging effort: Codex Sol max, Claude Code Opus max, Antigravity Claude Opus Thinking). Fires only on an explicit yes; an unknown never triggers it.
+- Rules never drive difficulty on their own: the LLM classifies facts, and rules only guarantee a minimum for confirmed high-risk work. The keyword "security" alone never implies a level; `changes_security_or_payment_logic` = yes on a modifying task does. `unknown` != `yes`: unknown is missing information (it asks for one repository-aware reclassification), not confirmed risk.
 
 ## Default Execution Model Map
 
 ### Codex Matrix
 
-| task_type | L1 | L2 | L3 | L4 | L5 | L6 | L7 | Critical |
-|---|---|---|---|---|---|---|---|---|
-| implementation | luna low | luna med | terra med | terra high | sol high | sol xhigh | astra xhigh | astra max |
-| design | luna med | sol low | sol med | sol high | sol high | sol xhigh | astra xhigh | astra max |
-| review | luna med | sol low | sol med | sol high | sol high | sol xhigh | astra xhigh | astra max |
-| local_refactoring | luna low | luna med | terra med | terra high | sol high | sol xhigh | astra xhigh | astra max |
-| architectural_refactoring | luna med | sol med | sol high → terra med | sol xhigh → terra high | sol xhigh → terra high | sol xhigh → sol xhigh | astra xhigh → sol xhigh | astra max |
+| task_type | L1 | L2 | L3 | L4 | L5 |
+|---|---|---|---|---|---|
+| implementation | luna low | luna med | terra med | terra high | sol high → terra high |
+| design | luna med | sol high | sol high | sol high | sol high |
+| review | luna med | sol high | sol high | sol high | sol high |
+| local_refactoring | luna low | luna med | terra med | terra high | sol high → terra high |
+| architectural_refactoring | luna med | sol high | sol high → terra med | sol xhigh → terra high | sol xhigh → terra high |
 
 ### Claude Code Matrix
 
-Claude Code uses an ordered candidate list for L5~L7 and Critical: **Fable 5.1 primary with availability fallback to Opus 5** (`claude-fable-5-1` → `claude-opus-5`). When available models are provided, Fable is chosen if entitled/available, otherwise falling back to Opus 5.
-
-| task_type | L1 | L2 | L3 | L4 | L5 | L6 | L7 | Critical |
-|---|---|---|---|---|---|---|---|---|
-| implementation | haiku | haiku | sonnet med | sonnet high | fable med (opus med) | fable high (opus high) | fable xhigh (opus xhigh) | fable max (opus max) |
-| design | haiku | opus low | opus med | opus high | fable high (opus high) | fable xhigh (opus xhigh) | fable xhigh (opus xhigh) | fable max (opus max) |
-| review | haiku | opus low | opus med | opus high | fable high (opus high) | fable xhigh (opus xhigh) | fable xhigh (opus xhigh) | fable max (opus max) |
-| local_refactoring | haiku | haiku | sonnet med | sonnet high | fable med (opus med) | fable high (opus high) | fable xhigh (opus xhigh) | fable max (opus max) |
-| architectural_refactoring | haiku | opus med | fable high → sonnet med | fable xhigh → sonnet high | fable xhigh → sonnet high | fable xhigh → fable high | fable max → fable xhigh | fable max (opus max) |
+| task_type | L1 | L2 | L3 | L4 | L5 |
+|---|---|---|---|---|---|
+| implementation | haiku | haiku | sonnet med | sonnet high | opus high → sonnet high |
+| design | haiku | opus high | opus high | opus high | opus high |
+| review | haiku | opus high | opus high | opus high | opus high |
+| local_refactoring | haiku | haiku | sonnet med | sonnet high | opus high → sonnet high |
+| architectural_refactoring | haiku | opus high | opus high → sonnet med | opus xhigh → sonnet high | opus xhigh → sonnet high |
 
 ### Antigravity Matrix
 
 Antigravity uses `Gemini 3.8 Flash (High)` as its minimum execution floor:
 
-| task_type | L1 | L2 | L3 | L4 | L5 | L6 | L7 | Critical |
-|---|---|---|---|---|---|---|---|---|
-| implementation | Flash High | Flash High | Flash High | Sonnet Thinking | Pro High | Opus/Fable Thinking | Opus/Fable Thinking | Opus/Fable Thinking |
-| design | Flash High | Flash High | Pro High | Pro High | Pro High | Opus/Fable Thinking | Opus/Fable Thinking | Opus/Fable Thinking |
-| review | Flash High | Flash High | Pro High | Pro High | Pro High | Opus/Fable Thinking | Opus/Fable Thinking | Opus/Fable Thinking |
-| local_refactoring | Flash High | Flash High | Flash High | Sonnet Thinking | Pro High | Opus/Fable Thinking | Opus/Fable Thinking | Opus/Fable Thinking |
-| architectural_refactoring | Flash High | Flash High | Pro High → Flash High | Pro High → Sonnet Thinking | Pro High → Sonnet Thinking | Opus/Fable Thinking → Opus/Fable Thinking | Opus/Fable Thinking → Opus/Fable Thinking | Opus/Fable Thinking |
+| task_type | L1 | L2 | L3 | L4 | L5 |
+|---|---|---|---|---|---|
+| implementation | Flash High | Flash High | Flash High | Sonnet Thinking | Pro High → Sonnet Thinking |
+| design | Flash High | Flash High | Pro High | Pro High | Pro High |
+| review | Flash High | Flash High | Pro High | Pro High | Pro High |
+| local_refactoring | Flash High | Flash High | Flash High | Sonnet Thinking | Pro High → Sonnet Thinking |
+| architectural_refactoring | Flash High | Flash High | Pro High → Flash High | Pro High → Sonnet Thinking | Pro High → Sonnet Thinking |
 
-`A → B` marks two-stage architectural refactoring: stage A plans, stage B executes.
-- `Opus/Fable Thinking` on Antigravity resolves availability-driven: `Claude Fable .*(Thinking)` → `Claude Opus 5 .*(Thinking)` → `Claude Opus 4.6 (Thinking)` (fallback).
+`A → B` marks a two-stage route: stage A plans, stage B executes. On all three platforms, two-stage covers `architectural_refactoring` at L3+ and also `implementation` / `local_refactoring` at L5 (Sol/Opus/Pro plans, Terra/Sonnet implements), so the judging model never implements.
+
+Risk tiers modify these rows at the planning/judging stage only (the planner of a two-stage route, otherwise the single stage):
+
+| Platform | `elevated` | `critical` |
+|---|---|---|
+| Codex | that stage's effort raised to `xhigh` | `max` |
+| Claude Code | that stage's effort raised to `xhigh` | `max` |
+| Antigravity | that stage swaps to `Claude Opus Thinking` | same |
+
+- `Claude Opus Thinking` on Antigravity resolves availability-driven: `Claude Opus 5 .*(Thinking)` → `Claude Opus .*(Thinking)` → `Opus.*Thinking` → `Claude Opus 4.6 (Thinking)` (fallback).
 - `Pro High` on Antigravity resolves availability-driven: preferred `Gemini 3.1 Pro (High)` → `Gemini .* Pro (High)` → `Claude Sonnet .* (Thinking)`.
-- `sonnet` on Claude Code refers to `claude-sonnet-5` (with medium effort at L3 and high effort at L4); `haiku` refers to `claude-haiku-4-5` without effort parameter; `fable` refers to `claude-fable-5-1` and `opus` refers to `claude-opus-5`.
+- On Claude Code, `sonnet` is `claude-sonnet-5` (medium at L3, high at L4), `haiku` is `claude-haiku-4-5` without an effort parameter, and `opus` is `claude-opus-5`. On Codex, `luna`, `terra`, and `sol` are `gpt-5.6-luna`, `gpt-5.6-terra`, and `gpt-5.6-sol`.
+- Effort ceilings: Luna low/medium/high (a task that needs more than Luna high moves to Terra, never to Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). The matrix does not currently use Luna high or Sonnet low as a level rung: a clear small implementation is L2 (Luna medium). They are headroom, not routed profiles.
 
+## Execution roles and pipeline
+
+Goal: spend top-model tokens on important judgement, and run already-decided work on the cheapest sufficient model.
+
+- Codex: **Sol thinks, designs, verifies, and reviews; Luna and Terra implement, fix, and run tests.**
+- Claude Code: **Opus thinks, designs, verifies, and reviews; Haiku and Sonnet implement, fix, and run tests.**
+- Classification stays cheap (the configured classifiers above, unchanged).
+
+The model comes from role + difficulty + risk, not difficulty alone: the same L4 maps to Sol/Opus for design, review, or verification and to Terra high / Sonnet high for implementation. Role maps onto the existing task types: design = planning/architecture (`design`), review = verification/review (`review`), and `implementation`, `local_refactoring`, and `architectural_refactoring` = implementation (`architectural_refactoring` already plans with Sol/Opus and implements with Terra/Sonnet).
+
+```text
+request
+  -> cheap classifier (facts) -> route (task_type, level, risk_tier)
+  -> plan / design ........................ Sol / Opus            (once)
+  -> for each planned step: re-classify the step
+       conditional tweak / extra tests ..... Luna med / Haiku
+       ordinary logic / multi-file work .... Terra / Sonnet
+  -> implement steps 1..N + run tests ...... Luna / Terra / Haiku / Sonnet
+       new design problem found? STOP, return evidence -> Sol / Opus re-plan
+  -> ONE verification + code review ........ Sol / Opus  High (elevated: XHigh, critical: Max)
+       PASS -> done
+       FAIL -> re-classify the fix (below) -> fix -> tests -> final Sol / Opus review
+```
+
+Rules:
+
+- **Planning and implementation difficulty are separate.** A hard overall task (for example redesigning the router's security hard floor) is designed by Sol/Opus, then each resulting step is classified again: a conditional tweak goes to Luna medium / Sonnet, extra tests to Luna / Haiku, a multi-file refactor to Terra / Sonnet. The planner does not have to implement.
+- **Test execution** (pytest, lint, formatter, typecheck, build) is done by the cheap implementation models. The final verification ("does this satisfy the requirement?") is Sol/Opus.
+- **Review policy.** Do not call Sol/Opus after each step. Batch steps 1..N, run the tests, then make one Sol/Opus call that merges verification and code review. Send it only the original requirement, the approved plan, the git diff, the test results, and the key code, never the whole session. Default effort is High; the elevated tier uses XHigh and the critical tier Max.
+- **Review FAIL.** The reviewer does not fix the problem. Re-classify the fix: a simple one (for example null handling) goes to Luna medium / Haiku, an ordinary logic change to Terra / Sonnet, a design problem to Sol / Opus, followed by a final Sol/Opus review.
+- **Implementation escalation.** If the implementer finds something outside the plan it stops and returns evidence for a Sol/Opus re-plan instead of deciding structure itself. Valid evidence: scope expansion, architecture change, public API change, DB migration, security boundary change, or a plan that no longer matches the code structure. "It is hard" or "I am unsure" alone is not a valid reason.
+- **Follow-ups reuse the stored route** (no re-routing). Re-classify only when the task type changes (for example INSPECT to MODIFY), the scope grows a lot, new risk evidence appears, or a fact shows the approved design cannot be implemented.
+- **Token savings.** Limit Sol/Opus to judgement; delegate coding; merge verification and review into one high-tier call; never re-classify the same scope; do not resend large output (send requirement + plan + diff + test results + key code); re-classify on new evidence, not on mere uncertainty.
 
 ## Verification recommendations
 
@@ -199,4 +251,4 @@ Every JSON route includes a `verification` object with `recommended` and `skippe
 | `contract_review` | The task is `design` or `review`, or `public_api_change` is active |
 | `security_review` | A security, authentication, authorization, or payment flag is active |
 | `migration_safety` | `data_migration` is active |
-| `broad_regression` | The effective level is L5, L6, L7, or Critical |
+| `broad_regression` | The effective level is L5 |
