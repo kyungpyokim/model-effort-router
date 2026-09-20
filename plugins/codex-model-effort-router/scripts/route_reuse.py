@@ -99,7 +99,7 @@ def reuse_blockers(
         blockers.append(f"reused {MAX_REUSES} times already")
     if record.get("blocked"):
         blockers.append(f"an earlier run invalidated it ({record['blocked']})")
-    if record.get("unresolved"):
+    if record.get("unresolved") or record.get("needs_context"):  # needs_context: records written before the unknown policy
         blockers.append("the stored route still had unresolved facts")
     if explicit_task_type and explicit_task_type != record["task_type"]:
         blockers.append("task type pinned differently")

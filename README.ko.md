@@ -34,7 +34,7 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 - **Claude Code**: `claude-sonnet-5` (medium)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)`
 
-각 사전 분류는 격리된 임시 디렉토리에서 실행되며 구조화된 JSON(`task_type`, `facts`, `delegability`, `evidence`, `reason`)을 검증한 뒤 프로필을 선택합니다. 읽기 전용인 `design` 및 `review` 작업의 경우 `files_touched`가 `0`으로 처리됩니다. Claude Code 또는 Codex 세션 내에서는 라우트 스킬이 인세션 `difficulty-assessor` 에이전트를 통해 동일한 프롬프트를 실행하고 `--classification-file`로 JSON을 전달합니다. 저장소 컨텍스트가 필요한 경우 `primary`/`escalated` JSON 엔벨로프를 전달하여 라우터가 두 응답을 결합한 뒤 경로를 선택합니다.
+각 사전 분류는 격리된 임시 디렉토리에서 실행되며 구조화된 JSON(`task_type`, `facts`, `delegability`, `evidence`, `reason`)을 검증한 뒤 프로필을 선택합니다. 읽기 전용인 `design` 및 `review` 작업의 경우 `files_touched`가 `0`으로 처리됩니다. Claude Code 또는 Codex 세션 내에서는 라우트 스킬이 인세션 `difficulty-assessor` 에이전트를 통해 동일한 프롬프트를 실행하고 `--classification-file`로 JSON을 전달합니다. 라우트 스킬은 이 1회 분류에서 저장소를 읽고(`--repo-aware`), `unresolved_facts`가 남으면 다른 모델을 부르는 대신 사용자에게 묻습니다. `--classification-file`의 `{"primary", "lookup"}` 엔벨로프는 같은 모델의 조회 1회를 첫 응답에 합칩니다.
 
 사전 분류 프로세스가 0이 아닌 종료 코드로 끝나면 1회 재시도하며, 타임아웃 발생 시에는 재시도하지 않습니다. 재시도 후에도 실패하거나 실행할 수 없거나 잘못된 JSON을 반환하는 경우:
 

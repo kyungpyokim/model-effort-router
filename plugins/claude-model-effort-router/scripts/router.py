@@ -684,6 +684,11 @@ def with_facts(classification: Classification, facts: dict[str, str]) -> Classif
     )
 
 
+def settleable(classification: Classification, name: str, value: str) -> bool:
+    """The cross-field rule validate_classifier_output enforces: '0' files is only read-only design or review work."""
+    return not (name == "files_touched" and value == "0" and classification.task_type not in {"design", "review"})
+
+
 def merge_lookup(primary: Classification, lookup: Classification) -> Classification:
     """Fold the one bounded lookup into the first answer: it may only settle facts that were unknown.
 
@@ -692,7 +697,8 @@ def merge_lookup(primary: Classification, lookup: Classification) -> Classificat
     if lookup.source == "fallback":
         return primary
     settled = {
-        name: lookup.facts[name] for name in unknown_facts(primary.facts) if lookup.facts.get(name) not in (None, "unknown")
+        name: lookup.facts[name] for name in unknown_facts(primary.facts)
+        if lookup.facts.get(name) not in (None, "unknown") and settleable(primary, name, lookup.facts[name])
     }
     return with_facts(primary, {**primary.facts, **settled}) if settled else primary
 
@@ -702,7 +708,7 @@ def apply_answers(classification: Classification, answers: dict[str, str]) -> tu
 
     An answer only settles a fact that is still unknown: a fact the classifier already answered is not overridden."""
     unknown = unknown_facts(classification.facts)
-    applied = {name: value for name, value in answers.items() if name in unknown}
+    applied = {name: value for name, value in answers.items() if name in unknown and settleable(classification, name, value)}
     ignored = sorted(set(answers) - set(applied))
     if not applied:
         return classification, ignored
@@ -741,7 +747,7 @@ def classify_task(
         return result
 
     primary = run_single(repo_path if repo_aware else None)
-    if primary.source == "fallback" or repo_aware or not unknown_facts(primary.facts):
+    if primary.source == "fallback" or repo_aware or not unresolved_facts(primary.facts):
         return primary
     return merge_lookup(primary, run_single(repo_path, unknown_facts(primary.facts)))
 
@@ -1382,6 +1388,12 @@ def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:
     """Validate a route JSON payload; return its execution-step argvs and the plan file path (two-stage only)."""
     if not isinstance(payload, dict) or payload.get("schema_version") not in SUPPORTED_ROUTE_SCHEMA_VERSIONS:
         raise ValueError("route file must be a supported route JSON payload")
+    if payload.get("unresolved_facts"):
+        # An unresolved route is a question, not a decision: it must never run, however it reached the replay.
+        raise ValueError(
+            f"route has unresolved facts ({', '.join(str(f) for f in payload['unresolved_facts'])}); "
+            "answer them with --answer FACT=VALUE and route again"
+        )
     if payload["schema_version"] >= 3:
         if payload.get("execution_strategy") != "direct" or not isinstance(payload.get("orchestration_eligible"), bool):
             raise ValueError("v3 route file must declare direct strategy and orchestration eligibility")
@@ -1632,7 +1644,7 @@ def prompt_unresolved(classification: Classification) -> Classification:
     answers = {}
     for fact in classification.unresolved:
         sys.stderr.write(f"{FACT_QUESTIONS[fact]}\n")
-        answers[fact] = _prompt_axis(fact, tuple(value for value in FACTS[fact] if value != "unknown"))
+        answers[fact] = _prompt_axis(fact, tuple(v for v in FACTS[fact] if v != "unknown" and settleable(classification, fact, v)))
     return apply_answers(classification, answers)[0]
 
 

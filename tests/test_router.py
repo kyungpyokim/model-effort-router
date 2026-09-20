@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -989,6 +990,47 @@ class UnresolvedFactsTests(unittest.TestCase):
         with mock.patch.object(router.sys, "stdin", io.StringIO(envelope)), contextlib.redirect_stderr(io.StringIO()):
             code = router.main(["fix", "--platform", "codex", "--classification-file", "-"])
         self.assertEqual(code, 2)
+
+    def unresolved_payload(self):
+        first = router.validate_classifier_output(classifier_output(raw=False, **self.UNKNOWN), source="classification-file")
+        result = routed(classifier=lambda _: first)
+        return json.loads(json.dumps(router.result_payload(result, router.stage_commands(result, "task"), "task")))
+
+    def test_an_unresolved_route_is_refused_by_every_replay_path(self):
+        payload = self.unresolved_payload()
+        self.assertTrue(payload["unresolved_facts"])
+        with self.assertRaisesRegex(ValueError, "unresolved facts"):
+            router.validated_commands(payload)
+        with self.assertRaises(ValueError):
+            router.command_chain_from_payload(payload)
+        with tempfile.TemporaryDirectory() as tmp:
+            route_file = Path(tmp) / "route.json"
+            route_file.write_text(json.dumps(payload), encoding="utf-8")
+            with mock.patch.object(router.subprocess, "run") as run, contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
+            self.assertEqual(run.call_count, 0)
+            self.assertIn("unresolved facts", err.getvalue())
+        payload["unresolved_facts"] = []
+        router.validated_commands(payload)  # once answered, the same route replays
+
+    def test_the_lookup_never_runs_only_for_the_optional_fact(self):
+        output = classifier_output(requires_code_understanding="unknown")
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, output, "")) as run:
+            result = router.classify_task("add a helper")
+        self.assertEqual((run.call_count, result.unresolved), (1, ()))
+
+    def test_files_touched_zero_is_only_settleable_for_read_only_work(self):
+        first = router.validate_classifier_output(classifier_output(raw=False, files_touched="unknown"))
+        again, ignored = router.apply_answers(first, {"files_touched": "0"})
+        self.assertEqual((again.facts["files_touched"], ignored), ("unknown", ["files_touched"]))
+        review = router.validate_classifier_output(classifier_output(raw=False, task_type="review", files_touched="unknown"))
+        self.assertEqual(router.apply_answers(review, {"files_touched": "0"})[0].facts["files_touched"], "0")
+        lookup = router.validate_classifier_output(classifier_output(raw=False, files_touched="0", task_type="review"))
+        self.assertEqual(router.merge_lookup(first, lookup).facts["files_touched"], "unknown")
+
+    def test_an_old_session_record_with_needs_context_still_blocks_reuse(self):
+        record = {"workspace": "/w", "saved_at": time.time(), "task_type": "implementation", "risk_flags": {}, "needs_context": True}
+        self.assertIn("unresolved", " ".join(router.route_reuse.reuse_blockers(record, "/w", "also fix x", True)))
 
     def test_merge_lookup_and_apply_answers_are_pure(self):
         first = router.validate_classifier_output(classifier_output(raw=False, **self.UNKNOWN))
