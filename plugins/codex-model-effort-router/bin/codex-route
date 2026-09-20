@@ -41,13 +41,11 @@ ARGS=("${ROUTER}" "${TASK}" --platform codex --format json)
 if [[ "$INTERACTIVE" -eq 1 ]]; then ARGS+=(--interactive); fi
 python3 "${ARGS[@]}" > "${ROUTE_FILE}"
 ROUTE_ARGS=(--route-file "${ROUTE_FILE}" --cleanup-plan-dir)
-COMMAND="$(python3 "${ROUTER}" "${ROUTE_ARGS[@]}")"
-if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}${MODEL_EFFORT_ROUTER_VERBOSE:-}" ]]; then echo "[model-effort-router] ${COMMAND}" >&2; fi
-if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then exit 0; fi
-# Interactive sessions stay a single hand-off; everything else runs the chained
-# plan -> implement -> test -> review pipeline (MODEL_EFFORT_ROUTER_TEST_CMD sets the test gate).
-if [[ "$INTERACTIVE" -eq 1 ]]; then
-  bash -c "${COMMAND}"
-else
-  python3 "${ROOT_DIR}/scripts/pipeline.py" --route-file "${ROUTE_FILE}" --cleanup-plan-dir
+if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}${MODEL_EFFORT_ROUTER_VERBOSE:-}" ]]; then
+  COMMAND="$(python3 "${ROUTER}" "${ROUTE_ARGS[@]}")"
+  echo "[model-effort-router] ${COMMAND}" >&2
+  [[ -z "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]] || exit 0
 fi
+# The runner hands single-stage interactive routes straight to the terminal and
+# captures two-stage planners before it installs plan.json.
+python3 "${ROOT_DIR}/scripts/pipeline.py" --route-file "${ROUTE_FILE}" --cleanup-plan-dir

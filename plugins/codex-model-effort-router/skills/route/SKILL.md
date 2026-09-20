@@ -41,16 +41,14 @@ worker classifies instead.
    Never run the router in this flow without `--classification-file`:
    that spawns a nested `codex exec` that fails in the sandbox. Never delegate a route whose
    `source` is `fallback`; classification did not happen, so stop and report it.
-4. Delegate each entry in `steps` in order to a spawned worker whose `model` and
+4. For a `single` route, delegate its one stored step to a spawned worker whose `model` and
    `reasoning_effort` are set to that step's `model` and `effort`; never inherit the parent
    session model. The worker message is the `developer_instructions` value from that
    step's `command`, followed by the last element of `command`. Pass the complete generated
    route JSON along with the original task. The delegated executor must use every
    `verification.recommended` ID and reason to select applicable existing repository
    checks and report each result or why it was not run.
-5. For `two_stage` (`architectural_refactoring` L3+, or `implementation` / `local_refactoring` at L5), the planner step writes the plan
-   file, then the executor step reads it together with the repository and implements it.
-   Never run the executor after a failed plan stage.
+5. For `two_stage` (`architectural_refactoring` L3+, or `implementation` / `local_refactoring` at L5), do not directly delegate the planner or executor with Agent. Save the complete route JSON and run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the same working directory. The parent pipeline captures planner stdout, validates it, atomically writes the shared `plan.json`, and preserves the generated read/edit stage permissions before it runs the executor. Never run the executor after a failed plan stage.
 6. Do not describe the parent session's model, effort, or inability to change models.
 7. The classification-only worker classifies only. An executor that received the
    complete route JSON executes its assigned work and does not invoke this router again.
@@ -64,10 +62,10 @@ worker classifies instead.
 
 When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the same working directory. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
 
-Schema v6 records facts, `risk_tier`, and `orchestration_eligible` as handoff metadata only. The local
+Schema v7 is current. Schema v6 remains legacy and replay-compatible under the pre-v7 native permission grammar. It records facts, `risk_tier`, and `orchestration_eligible` as handoff metadata only. The local
 `scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
-`execution_strategy: direct` because direct v2-v6 route-file replay never invokes it.
+`execution_strategy: direct` because direct v2-v7 route-file replay never invokes it.
 
 Pipeline guidance (Sol thinks and verifies, Luna and Terra implement):
 

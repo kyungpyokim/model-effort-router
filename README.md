@@ -99,7 +99,10 @@ Tests run in the launcher without a model call: set `MODEL_EFFORT_ROUTER_TEST_CM
 `--test-cmd` to `pipeline.py`). Only a failure sends a truncated log to the implementer.
 L4+ code changes get the review at the risk tier's effort; a review FAIL is fixed once, the next
 failure re-plans once, and then the run stops. Claude implement/fix stages run with `acceptEdits`; plan and review stages cannot edit code. Route files may only carry router-generated argv shapes. The launcher logs one `phase=...` line per stage (`MODEL_EFFORT_ROUTER_VERBOSE=1` adds the commands). Route (who) and execution state (where the run
-is, `state.json`) stay separate. Details: `references/routing-policy.md`.
+is, `state.json`) stay separate. `router.py --format command` prints a command that runs the same pipeline
+(`pipeline.py --route-file <saved route>`, with `--session` when set so a failed run invalidates the stored
+route), so it no longer bypasses the test, review and fix stages; an `--interactive` single-stage route stays a bare
+hand-off, and `--keep-plan` keeps the route file and the plan directory. Details: `references/routing-policy.md`.
 
 ### Live classifier benchmark
 
@@ -112,15 +115,16 @@ task is classified and stored; follow-ups in the same workspace reuse that route
 classifier, until the workspace changes, 4 hours pass, a run re-plans or fails, or the new task shows a
 different operation, wider scope, or new risk evidence. `--no-reuse` forces a fresh classification.
 
-Route JSON emits schema v6: `facts`, `matched_rules`, `unresolved_facts`, `questions`, and
+Route JSON emits schema v7: `facts`, `matched_rules`, `unresolved_facts`, `questions`, and
 `evidence` replace the old score fields, and `risk_tier` (`standard`, `elevated`,
 `critical`) is recorded next to the level. It records `execution_strategy: "direct"` and
 `orchestration_eligible` separately: eligibility is only a Codex orchestration handoff
 candidate, never an execution request. `scripts/astra_adapter.py` is the unchanged
 local, caller-invoked orchestration adapter (an isolated-worker boundary that requires
 supplied route and manifest digests, revalidates worker input copies, and preserves the
-original verified artifacts after each attempt). Direct v2-v6 route-file replay never
+original verified artifacts after each attempt). Direct v2-v7 route-file replay never
 invokes it.
+Schema v6 remains a legacy, replay-compatible format under the pre-v7 native permission grammar.
 
 `delegability` is independent of the difficulty rules: `0` is shared
 state, sequence-dependent, risky, or tightly coupled work; `1` remains coupled;
@@ -172,9 +176,9 @@ always reported on stderr.
 ## Two-stage routes
 
 On every platform, `architectural_refactoring` at L3+ and
-`implementation` / `local_refactoring` at L5 run as a success-dependent shell
-chain: the planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
-into a temporary run directory, then the implementer (`luna`/`terra`, or
+`implementation` / `local_refactoring` at L5 run through the parent pipeline:
+the planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) returns a structured plan JSON,
+which the parent validates and atomically writes into a temporary run directory before the implementer (`luna`/`terra`, or
 `sonnet`) reads the plan plus the repository and implements it with the plan's
 validation commands. The implementer does not make new design decisions: it stops
 and returns escalation evidence for the planner instead. The run directory is

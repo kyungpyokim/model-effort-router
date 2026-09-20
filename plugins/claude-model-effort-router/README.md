@@ -55,23 +55,26 @@ to `xhigh` / `max`; `--critical` forces the critical tier and `--level` accepts
 `L1`-`L5` only. Rules never drive difficulty on their own: the keyword "security"
 alone implies no level, and `unknown` is missing information, not confirmed risk.
 
-Inside a session, the route skill delegates each stored step with the Agent tool
+Inside a session, the route skill delegates a stored `single` step with the Agent tool
 (`steps[].agent.subagent_type` + `steps[].agent.model`), so the executor keeps the
-session's working directory and edit permissions. The Agent tool cannot set effort, so
+session's working directory and edit permissions. Two-stage routes run through the parent
+pipeline, which captures and validates planner stdout before the executor runs with its generated permissions. The Agent tool cannot set effort, so
 the subagent is an `effort-*` agent whose frontmatter pins the matrix effort; the level
 instructions travel at the top of the prompt.
 
 From a terminal, `bin/claude-route` starts an interactive session with the selected
 model/effort and puts the matching level agent's instructions at the top of the prompt,
-so it works without the plugin installed. `--print` forces `claude -p`, which runs with
-default permissions and cannot edit files unless your settings allow it.
+so it works without the plugin installed. `--print` forces `claude -p`; generated
+implement/fix stages use `acceptEdits`, while plan/review stages deny file edits.
 
-Route-file replay accepts v2-v6 payloads. Schema v6 records `facts`,
-`matched_rules`, `unresolved_facts`, `questions`, `evidence`, and `risk_tier` alongside direct-only
+Route-file replay accepts v2-v7 payloads. Schema v7 is current; schema v6 remains legacy and
+replay-compatible under the pre-v7 native permission grammar. Schema v7 records `facts`,
+`matched_rules`, `evidence`, and `risk_tier`; legacy v6 records
+`unresolved_facts` and `questions` alongside direct-only
 `execution_strategy` and future orchestration `orchestration_eligible` metadata; it
 does not enable orchestration on Claude Code. `scripts/astra_adapter.py` is the unchanged
 caller-invoked orchestration adapter that revalidates worker inputs and preserves original
-verified artifacts; direct v2-v6 route-file replay never invokes it.
+verified artifacts; direct v2-v7 route-file replay never invokes it.
 
 ## Execution roles and pipeline
 

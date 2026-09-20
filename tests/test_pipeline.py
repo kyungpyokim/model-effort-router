@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,11 +33,15 @@ replies = json.loads((directory / "replies.json").read_text())
 reply = replies[index] if index < len(replies) else {{}}
 if reply.get("touch"):
     pathlib.Path(reply["touch"]).write_text("x")
-if role == "plan" and not reply.get("no_plan"):
-    import re
-    plan = re.search(r"exactly: (\\S+)", text)
-    pathlib.Path(plan.group(1)).write_text("{{}}")
-print(reply.get("out", ""))
+if role == "plan":
+    print(reply.get("out", json.dumps({{
+        "schema_version": 1,
+        "analysis": {{"current_structure": [], "constraints": [], "affected_areas": [], "risks": []}},
+        "implementation_plan": {{"steps": [], "expected_files": [], "compatibility_requirements": []}},
+        "validation": {{"commands": [], "acceptance_criteria": [], "rollback_notes": []}},
+    }})))
+else:
+    print(reply.get("out", ""))
 sys.exit(reply.get("rc", 0))
 """
 
@@ -147,6 +152,21 @@ class PipelineRunTests(PipelineCase):
         self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
         self.assertEqual(json.loads((plan_dir / "state.json").read_text())["phase"], "done")
 
+    def test_planner_stdout_is_validated_and_written_by_the_parent(self):
+        payload = self.payload(level="L5")
+        plan_file = Path(payload["steps"][0]["output"]["path"])
+        self.addCleanup(lambda: __import__("shutil").rmtree(plan_file.parent, ignore_errors=True))
+        plan = {
+            "schema_version": 1,
+            "analysis": {"current_structure": [], "constraints": [], "affected_areas": [], "risks": []},
+            "implementation_plan": {"steps": [], "expected_files": [], "compatibility_requirements": []},
+            "validation": {"commands": [], "acceptance_criteria": [], "rollback_notes": []},
+        }
+        rc, calls = self.run_pipeline([{"out": json.dumps(plan)}, {}, {"out": "VERDICT: PASS"}], payload=payload)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
+        self.assertEqual(json.loads(plan_file.read_text(encoding="utf-8")), plan)
+
     def test_low_levels_have_no_review_and_no_replan(self):
         payload = self.payload(level="L2")
         self.assertEqual((payload["pipeline"]["review"], payload["pipeline"]["replan"]), (None, None))
@@ -189,9 +209,43 @@ class PipelineHardeningTests(PipelineCase):
         payload["pipeline"]["limits"] = {"max_replans": 0, "max_test_fixes": 0, "review_fixes_before_replan": 0}
         pipeline.Pipeline.validate(payload)
 
-    def test_relative_plan_path_is_rejected(self):
+    def test_two_stage_plan_path_must_be_router_owned(self):
         payload = self.payload(level="L5")
         payload["steps"][0]["output"]["path"] = "plan.json"
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
+
+        payload = self.payload(level="L5")
+        payload["steps"][0]["output"]["path"] = str(self.dir / "codex-route-12345678" / "plan.json")
+        payload["steps"][1]["input"]["path"] = payload["steps"][0]["output"]["path"]
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
+
+        payload = self.payload(level="L5")
+        marker = Path(payload["steps"][0]["output"]["path"]).parent / router.ROUTER_PLAN_MARKER
+        marker.unlink()
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
+
+        payload = self.payload(level="L5")
+        plan_dir = Path(payload["steps"][0]["output"]["path"]).parent
+        alias = plan_dir.parent / f"codex-route-{uuid.uuid4().hex[:8]}"
+        alias.symlink_to(plan_dir, target_is_directory=True)
+        payload["steps"][0]["output"]["path"] = str(alias / "plan.json")
+        payload["steps"][1]["input"]["path"] = payload["steps"][0]["output"]["path"]
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
+
+        plan_file = plan_dir / "plan.json"
+        plan_file.symlink_to(plan_dir / "outside.json")
+        payload = self.payload(level="L5")
+        payload["steps"][0]["output"]["path"] = str(plan_file)
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
+
+    def test_two_stage_plan_output_and_input_must_be_the_same_plan_file(self):
+        payload = self.payload(level="L5")
+        payload["steps"][1]["input"]["path"] = str(Path(payload["steps"][0]["output"]["path"]).with_name("other.json"))
         with self.assertRaises(ValueError):
             pipeline.Pipeline.validate(payload)
 
@@ -201,9 +255,7 @@ class PipelineHardeningTests(PipelineCase):
         config = router.load_config(ROOT / "config" / "model-map.json")
         result = dataclasses.replace(router.route("t", "codex", config, "L5", "implementation"), plan_dir=str(foreign))
         payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
-        rc, _ = self.run_pipeline([{}, {}, {"out": "VERDICT: PASS"}], payload=payload)
-        self.assertEqual(rc, 0)
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        with self.assertRaises(ValueError):
             pipeline.run_route(payload, [], str(self.work), cleanup=True)
         self.assertTrue(foreign.exists())
 
@@ -250,13 +302,17 @@ class PipelineFailClosedTests(PipelineCase):
         self.assertEqual(rc, 0)
         self.assertEqual(self.roles(calls), ["execute", "review"])
 
-    def test_a_planner_that_wrote_no_plan_stops_the_run(self):
+    def test_invalid_planner_stdout_does_not_overwrite_an_existing_plan(self):
         payload = self.payload(level="L5")
-        plan_dir = Path(payload["steps"][0]["output"]["path"]).parent
+        plan_file = Path(payload["steps"][0]["output"]["path"])
+        plan_dir = plan_file.parent
         self.addCleanup(lambda: __import__("shutil").rmtree(plan_dir, ignore_errors=True))
-        rc, calls = self.run_pipeline([{"no_plan": True}], payload=payload)
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        plan_file.write_text('{"previous": true}', encoding="utf-8")
+        rc, calls = self.run_pipeline([{"out": "not JSON"}], payload=payload)
         self.assertEqual(rc, pipeline.EXIT_NO_PLAN)
         self.assertEqual(self.roles(calls), ["plan"])
+        self.assertEqual(plan_file.read_text(encoding="utf-8"), '{"previous": true}')
 
     def test_stage_logs_are_phase_based_and_hide_the_command_unless_verbose(self):
         (self.dir / "replies.json").write_text(json.dumps([{}, {"out": "VERDICT: PASS"}]), encoding="utf-8")
@@ -280,7 +336,8 @@ class ClaudeAccessTests(unittest.TestCase):
         self.assertIn("acceptEdits", implementer)
         self.assertNotIn("acceptEdits", planner)
         self.assertEqual(planner[planner.index("--permission-mode") + 1], "dontAsk")
-        self.assertTrue(any(arg.startswith("Edit(//") and arg.endswith("plan.json)") for arg in planner))
+        self.assertEqual(planner[planner.index("--disallowedTools") + 1], "Edit")
+        self.assertNotIn("Edit(", " ".join(planner))
         review = router.stage_command("claude-code", {"model": "claude-opus-5", "effort": "high"}, "i", "p", "read")
         self.assertEqual(review[review.index("--permission-mode") + 1], "dontAsk")
         self.assertEqual(review[review.index("--disallowedTools") + 1], "Edit")
@@ -297,10 +354,72 @@ class ClaudeAccessTests(unittest.TestCase):
                 command = router.shell_command(result, "t", False)
                 self.assertEqual(command[command.index("--permission-mode") + 1], expected)
 
-    def test_interactive_claude_keeps_its_own_permission_prompts(self):
+    def test_interactive_claude_keeps_terminal_access_flags(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
         result = router.route("t", "claude-code", config, "L3", "implementation")
-        self.assertNotIn("--permission-mode", router.shell_command(result, "t", True))
+        command = router.shell_command(result, "t", True)
+        self.assertNotIn("-p", command)
+        self.assertEqual(command[command.index("--permission-mode") + 1], "acceptEdits")
+
+
+class NativeAccessTests(unittest.TestCase):
+    STAGE = {"model": "gpt-5.6-sol", "effort": "high"}
+    AGY_STAGE = {"model": "Gemini 3.1 Pro (High)", "effort": None}
+
+    def test_stage_commands_use_native_sandboxes_by_access(self):
+        for access, sandbox, mode in (
+            ("read", "read-only", "plan"),
+            ("edit", "workspace-write", "accept-edits"),
+        ):
+            with self.subTest(access=access):
+                codex = router.stage_command("codex", self.STAGE, "i", "p", access)
+                self.assertEqual(codex[:6], ["codex", "exec", "--sandbox", sandbox, "--ask-for-approval", "never"])
+                router.validate_argv("codex", codex, model=self.STAGE["model"], effort="high", access=access)
+
+                agy = router.stage_command("antigravity", self.AGY_STAGE, "i", "p", access)
+                self.assertEqual(agy[:4], ["agy", "--mode", mode, "--sandbox"])
+                router.validate_argv("antigravity", agy, model=self.AGY_STAGE["model"], access=access)
+
+    def test_native_stage_commands_reject_invalid_or_tampered_access(self):
+        for platform, stage in (("codex", self.STAGE), ("antigravity", self.AGY_STAGE)):
+            with self.subTest(platform=platform), self.assertRaises(ValueError):
+                router.stage_command(platform, stage, "i", "p", "admin")
+
+        command = router.stage_command("codex", self.STAGE, "i", "p", "read")
+        command[command.index("read-only")] = "workspace-write"
+        with self.assertRaises(ValueError):
+            router.validate_argv("codex", command, model=self.STAGE["model"], effort="high", access="read")
+
+        command = router.stage_command("codex", self.STAGE, "i", "p", "read")
+        approval = command.index("--ask-for-approval")
+        del command[approval:approval + 2]
+        with self.assertRaises(ValueError):
+            router.validate_argv("codex", command, model=self.STAGE["model"], effort="high", access="read")
+
+        command = router.stage_command("codex", self.STAGE, "i", "p", "read")
+        command[command.index("never")] = "on-request"
+        with self.assertRaises(ValueError):
+            router.validate_argv("codex", command, model=self.STAGE["model"], effort="high", access="read")
+
+    def test_interactive_commands_keep_and_validate_native_access_flags(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        for platform in ("codex", "claude-code", "antigravity"):
+            with self.subTest(platform=platform):
+                result = router.route("t", platform, config, "L3", "implementation")
+                command = router.stage_commands(result, "t", interactive=True)[0]
+                payload = router.result_payload(result, [command], "t")
+                router.validated_commands(payload)
+                if platform == "codex":
+                    self.assertEqual(command[1:5], ["--sandbox", "workspace-write", "--ask-for-approval", "never"])
+                    del payload["steps"][0]["command"][3:5]
+                elif platform == "claude-code":
+                    self.assertIn("--permission-mode", command)
+                    payload["steps"][0]["command"].remove("acceptEdits")
+                else:
+                    self.assertEqual(command[1:4], ["--mode", "accept-edits", "--sandbox"])
+                    del payload["steps"][0]["command"][1:4]
+                with self.assertRaises(ValueError):
+                    router.validated_commands(payload)
 
 
 class RouteFileArgvGrammarTests(PipelineCase):
@@ -342,32 +461,27 @@ class RouteFileArgvGrammarTests(PipelineCase):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 router.validate_argv(platform, command, **kwargs)
 
-    def test_reader_stages_cannot_run_shell_or_write_and_the_planner_writes_only_its_plan(self):
+    def test_reader_stages_cannot_run_shell_or_write(self):
         review = router.claude_access_flags("read")
         self.assertEqual(review[review.index("--disallowedTools") + 1:review.index("--strict-mcp-config")], ["Edit", "Write", "NotebookEdit", "Bash"])
-        plan = router.claude_access_flags("plan", "/tmp/codex-route-x/plan.json")
-        self.assertIn("Edit(//tmp/codex-route-x/plan.json)", plan)
-        self.assertIn("Bash", plan)
-        self.assertNotIn("Edit", plan[plan.index("--disallowedTools"):])
-        for path in (None, "relative/plan.json", "/tmp/a (b)/plan.json"):
-            with self.subTest(path=path), self.assertRaises(ValueError):
-                router.claude_access_flags("plan", path)
+        with self.assertRaises(ValueError):
+            router.claude_access_flags("plan")
 
-    def test_the_plan_rule_names_exactly_the_path_the_planner_is_told(self):
-        config = router.load_config(ROOT / "config" / "model-map.json")
-        result = router.route("t", "claude-code", config, "L5", "implementation")
-        payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
-        plan_path = payload["steps"][0]["output"]["path"]
-        self.assertIn(f"Edit(/{plan_path})", payload["steps"][0]["command"])
-        self.assertEqual(plan_path, str(Path(plan_path).resolve()))
-        self.assertIn(plan_path, payload["steps"][0]["command"][-1])
-
-    def test_a_plan_rule_for_another_path_is_rejected(self):
+    def test_the_planner_is_read_only_and_returns_stdout(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
         result = router.route("t", "claude-code", config, "L5", "implementation")
         payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
         command = payload["steps"][0]["command"]
-        command[command.index(next(a for a in command if a.startswith("Edit(//")))] = "Edit(///etc/passwd)"
+        self.assertEqual(command[command.index("--disallowedTools") + 1], "Edit")
+        self.assertNotIn("Edit(", " ".join(command))
+        self.assertIn("Return only the plan JSON on stdout", command[-1])
+
+    def test_a_planner_write_permission_is_rejected(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "claude-code", config, "L5", "implementation")
+        payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
+        command = payload["steps"][0]["command"]
+        command[command.index("Edit")] = "Edit(/tmp/plan.json)"
         with self.assertRaises(ValueError):
             router.validated_commands(payload)
 
@@ -378,6 +492,20 @@ class RouteFileArgvGrammarTests(PipelineCase):
             router.validate_argv("claude-code", ["claude", "-p", "--model", "opus", "--permission-mode", "acceptEdits", "--", "task"], model="opus", legacy=True)
         with self.assertRaises(ValueError):
             router.validate_argv("antigravity", ["agy", "--agent", "x", "--model", "Gemini 3.1 Pro (High)", "--prompt", "task"])
+
+    def test_schema_v6_native_routes_without_access_flags_remain_accepted(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        for platform in ("codex", "antigravity"):
+            with self.subTest(platform=platform):
+                result = router.route("t", platform, config, "L3", "implementation")
+                payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
+                payload["schema_version"] = 6
+                command = payload["steps"][0]["command"]
+                if platform == "codex":
+                    del command[2:6]
+                else:
+                    del command[1:4]
+                router.validated_commands(payload)
 
     def test_replaying_a_route_with_an_injected_flag_is_refused(self):
         config = router.load_config(ROOT / "config" / "model-map.json")

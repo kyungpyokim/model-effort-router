@@ -63,12 +63,14 @@ and, because Antigravity has no effort setting, swaps the planning/judging stage
 `Claude Opus Thinking`; the implementer stage keeps its matrix model. `--level` accepts
 `L1`-`L5` only.
 
-Route-file replay accepts v2-v6 payloads. Schema v6 records `facts`,
-`matched_rules`, `unresolved_facts`, `questions`, `evidence`, `risk_tier`, direct-only `execution_strategy`,
+Route-file replay accepts v2-v7 payloads. Schema v7 is current; schema v6 remains legacy and
+replay-compatible under the pre-v7 native permission grammar. Schema v7 records `facts`,
+`matched_rules`, `evidence`, and `risk_tier`; legacy v6 records
+`unresolved_facts` and `questions`. Both carry direct-only `execution_strategy`,
 and future orchestration `orchestration_eligible` metadata; it
 does not enable orchestration on Antigravity. `scripts/astra_adapter.py` is the unchanged
 caller-invoked orchestration adapter that revalidates worker inputs and preserves original
-verified artifacts; direct v2-v6 route-file replay never invokes it.
+verified artifacts; direct v2-v7 route-file replay never invokes it.
 
 ## Execution roles and pipeline
 

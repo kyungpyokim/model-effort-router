@@ -22,6 +22,13 @@ sys.modules[SPEC.name] = router
 SPEC.loader.exec_module(router)
 CONFIG = router.load_config(ROOT / "config" / "model-map.json")
 
+PLAN_JSON = json.dumps({
+    "schema_version": 1,
+    "analysis": {"current_structure": [], "constraints": [], "affected_areas": [], "risks": []},
+    "implementation_plan": {"steps": [], "expected_files": [], "compatibility_requirements": []},
+    "validation": {"commands": [], "acceptance_criteria": [], "rollback_notes": []},
+})
+
 NO_FLAGS = {flag: False for flag in router.RISK_FLAGS}
 BASE_FACTS = {
     "mechanical_only": "no",
@@ -471,7 +478,7 @@ class DifficultyRuleTests(unittest.TestCase):
         classification_ = router.validate_classifier_output(classifier_output(changes_public_api_contract="yes", raw=False))
         result = routed(classifier=lambda _: classification_)
         payload = router.result_payload(result, router.stage_commands(result, "task"))
-        self.assertEqual(payload["schema_version"], 6)
+        self.assertEqual(payload["schema_version"], router.SCHEMA_VERSION)
         self.assertEqual(payload["risk_tier"], "standard")
         self.assertEqual(payload["facts"]["changes_public_api_contract"], "yes")
         self.assertEqual(payload["matched_rules"], ["L4:changes_public_api_contract"])
@@ -904,6 +911,72 @@ class ExternalClassificationTests(unittest.TestCase):
             code, out, _ = self.run_main(["fix", "--platform", "codex", "--format", "json", "--classification-file", "-"])
         payload = json.loads(out)
         self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L3", "classification-file"))
+
+
+class CommandFormatPipelineTests(unittest.TestCase):
+    """`--format command` prints a command that runs the route through pipeline.py, not a bare stage chain."""
+
+    def print_command(self, *extra, task_type="implementation", level="L2"):
+        stdout = io.StringIO()
+        argv = ["fix the parser", "--platform", "codex", "--format", "command", "--task-type", task_type, "--level", level, *extra]
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(router.main(argv), 0)
+        command = stdout.getvalue().strip()
+        route_file = next(part for part in router.shlex.split(command.strip("()").split(";")[0]) if part.endswith(".json"))
+        self.addCleanup(Path(route_file).unlink, missing_ok=True)
+        return command, route_file
+
+    def test_the_printed_command_runs_pipeline_py_on_a_valid_route_file(self):
+        command, route_file = self.print_command()
+        argv = router.shlex.split(command.strip("()").split(";")[0])
+        self.assertEqual(argv[:2], ["python3", str(ROOT / "scripts" / "pipeline.py")])
+        self.assertIn("--cleanup-plan-dir", argv)
+        payload = json.loads(Path(route_file).read_text(encoding="utf-8"))
+        self.assertEqual(payload["schema_version"], router.SCHEMA_VERSION)
+        self.assertIn("pipeline", payload)
+        self.assertEqual(Path(route_file).stat().st_mode & 0o777, 0o600)
+        self.assertIn(f"rm -f {route_file}", command)  # the route file removes itself unless --keep-plan
+
+    def test_keep_plan_keeps_the_route_file_and_the_plan_directory(self):
+        command, route_file = self.print_command("--keep-plan", task_type="architectural_refactoring", level="L3")
+        self.assertNotIn("--cleanup-plan-dir", command)
+        self.assertNotIn("rm -f", command)
+        self.assertTrue(Path(route_file).exists())
+
+    def test_a_session_is_passed_through_so_a_failed_run_can_invalidate_the_stored_route(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {router.route_reuse.STATE_DIR_ENV: tmp}):
+            command, route_file = self.print_command("--session", "s-1")
+            self.assertIn("--session s-1", command)
+            self.assertEqual(json.loads(Path(route_file).read_text(encoding="utf-8"))["reuse"]["session"], "s-1")
+
+    def test_executing_the_printed_command_runs_the_pipeline_and_a_failure_blocks_reuse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            fake = directory / "codex"
+            fake.write_text(f"#!{sys.executable}\nimport sys\nsys.exit(7)\n", encoding="utf-8")
+            fake.chmod(0o755)
+            state = directory / "state"
+            env = {**os.environ, router.route_reuse.STATE_DIR_ENV: str(state), "PATH": f"{directory}{os.pathsep}{os.environ['PATH']}"}
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "router.py"), "fix the parser", "--platform", "codex", "--format", "command",
+                 "--session", "s-2", "--classification-file", "-"],
+                input=classifier_output(level="L2"), capture_output=True, text=True, timeout=30, env=env, cwd=directory,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            route_file = next(part for part in router.shlex.split(proc.stdout.strip().strip("()").split(";")[0]) if part.endswith(".json"))
+            run = subprocess.run(["bash", "-c", proc.stdout.strip()], capture_output=True, text=True, timeout=30, env=env, cwd=directory)
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("phase=", run.stderr + run.stdout)  # the pipeline ran (it logs one phase line per stage)
+            record = json.loads(next(state.glob("session-*.json")).read_text(encoding="utf-8"))
+            self.assertTrue(record["blocked"])
+            self.assertFalse(Path(route_file).exists())  # cleaned up after the run
+
+    def test_an_interactive_single_stage_route_stays_a_bare_hand_off(self):
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+            router.main(["task", "--platform", "claude-code", "--task-type", "design", "--level", "L5", "--interactive", "--format", "command"])
+        self.assertNotIn("pipeline.py", stdout.getvalue())
+        self.assertEqual(router.shlex.split(stdout.getvalue())[0], "claude")
 
 
 class UnresolvedFactsTests(unittest.TestCase):
@@ -1423,7 +1496,8 @@ class RoutingTests(unittest.TestCase):
         self.assertIn("safe fallback applied", stderr.getvalue())
         self.assertIn("implementation / L3", stderr.getvalue())
         # The fallback route is still emitted so a human can use it deliberately.
-        self.assertIn("codex", stdout.getvalue())
+        self.assertIn("pipeline.py --route-file", stdout.getvalue())
+        self.addCleanup(lambda: [Path(part).unlink(missing_ok=True) for part in router.shlex.split(stdout.getvalue().strip("()\n ").split(";")[0]) if part.endswith(".json")])
 
     def test_main_never_prompts_when_no_prompt_is_set(self):
         fallback = router.fallback_classification("timed out", "timeout")
@@ -1567,7 +1641,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertEqual(classifier_calls.read_text(), "1")
                 self.assertTrue(marker.exists())
-                self.assertEqual(list(temp_dir.iterdir()), [])
+                self.assertEqual([path for path in temp_dir.iterdir() if path.name != "xcrun_db"], [])
 
     def test_print_only_env_prints_the_replayed_command_without_executing(self):
         for launcher, executable, platform in (
@@ -1595,7 +1669,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     capture_output=True, text=True, timeout=10, env=env,
                 )
                 self.assertEqual(saved.returncode, 0, saved.stderr)
-                self.assertIn(result.stages[0]["model"], saved.stderr)
+                self.assertIn("scripts/pipeline.py", saved.stderr)
                 self.assertFalse(marker.exists())
 
     def test_direct_two_stage_launchers_leave_no_plan_dir_behind(self):
@@ -1621,10 +1695,8 @@ class CommandAndLauncherTests(unittest.TestCase):
                     "else:\n"
                     f"    with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
                     "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n"
-                    "    import re\n"
-                    "    plan = re.search(r'exactly: (\\S+)', ' '.join(sys.argv[1:]))\n"
-                    "    if plan:\n"
-                    "        pathlib.Path(plan.group(1)).write_text('{}')\n",
+                    "    if 'planning stage' in ' '.join(sys.argv[1:]):\n"
+                    f"        print({PLAN_JSON!r})\n",
                     encoding="utf-8",
                 )
                 fake.chmod(0o755)
@@ -1652,7 +1724,8 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn("planning stage", calls.read_text())
                 self.assertIn("execution stage", calls.read_text())
-                self.assertEqual(list(temp_dir.iterdir()), [], f"leaked temp entries: {list(temp_dir.iterdir())}")
+                leaked = [path for path in temp_dir.iterdir() if path.name != "xcrun_db"]
+                self.assertEqual(leaked, [], f"leaked temp entries: {leaked}")
 
     def test_launchers_request_plan_dir_cleanup_only_for_the_route_file_they_generate(self):
         # Static guard for the launcher scripts themselves: the route file a launcher
@@ -1667,13 +1740,14 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertIsNotNone(user_supplied, "user-supplied --route-file branch changed shape")
                 self.assertIsNotNone(generated, "direct-run generated route file must pass --cleanup-plan-dir")
 
-    def test_launchers_run_non_interactive_routes_through_the_pipeline_runner(self):
+    def test_launchers_run_every_generated_route_through_the_pipeline_runner(self):
         for launcher in self.LAUNCHERS.values():
             text = (ROOT / launcher).read_text(encoding="utf-8")
             with self.subTest(launcher=launcher):
                 self.assertEqual(text.count('scripts/pipeline.py" --route-file'), 2)
                 self.assertRegex(text, r'pipeline\.py" --route-file "\$2"')
                 self.assertRegex(text, r'pipeline\.py" --route-file "\$\{ROUTE_FILE\}" --cleanup-plan-dir')
+                self.assertNotIn('bash -c "${COMMAND}"', text)
 
     def test_antigravity_launcher_executes_stored_route_without_reclassification(self):
         result = routed(platform="antigravity", classifier=lambda _: classification("review", "L3"))
@@ -1707,7 +1781,7 @@ class CommandAndLauncherTests(unittest.TestCase):
             with self.subTest(planner_status=planner_status), tempfile.TemporaryDirectory() as tmp:
                 directory = Path(tmp)
                 result = routed(platform="antigravity", classifier=lambda _: classification("architectural_refactoring", "L3"))
-                result = dataclasses.replace(result, plan_dir=str(directory / "plan"))
+                self.addCleanup(lambda path=Path(result.plan_dir): __import__("shutil").rmtree(path, ignore_errors=True))
                 commands = router.stage_commands(result, "restructure modules")
                 route_file = directory / "route.json"
                 route_file.write_text(json.dumps(router.result_payload(result, commands)), encoding="utf-8")
@@ -1719,7 +1793,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
                     "if 'You are the planning stage' in sys.argv[-1]:\n"
                     f"    if {planner_status} == 0:\n"
-                    f"        pathlib.Path({str(directory / 'plan' / 'plan.json')!r}).write_text('{{}}')\n"
+                    f"        print({PLAN_JSON!r})\n"
                     f"    raise SystemExit({planner_status})\n",
                     encoding="utf-8",
                 )
@@ -1797,17 +1871,17 @@ class CommandAndLauncherTests(unittest.TestCase):
         ):
             self.assertIn(recommendation, command_text)
 
-    def test_two_stage_chain_is_success_dependent_and_cleans_up(self):
+    def route_payload(self, result, task="restructure modules"):
+        return json.loads(json.dumps(router.result_payload(result, router.stage_commands(result, task), task)))
+
+    def test_two_stage_chain_runs_through_the_parent_pipeline(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
-        chain = router.command_chain(result, "restructure modules")
-        self.assertIn("mkdir -p ", chain)
-        self.assertIn(" && ", chain)
-        self.assertIn("-m gpt-5.6-sol", chain)
-        self.assertIn("-m gpt-5.6-terra", chain)
-        self.assertIn(str(Path(result.plan_dir) / "plan.json"), chain)
-        self.assertIn(f"rm -rf {shlex_quote(str(result.plan_dir))}", chain)
-        kept = router.command_chain(result, "restructure modules", keep_plan=True)
-        self.assertNotIn("rm -rf", kept)
+        chain = router.command_chain_from_payload(self.route_payload(result), cleanup_plan_dir=True)
+        self.assertIn("scripts/pipeline.py", chain)
+        self.assertIn("--cleanup-plan-dir", chain)
+        self.assertNotIn("rm -rf", chain)
+        kept = router.command_chain_from_payload(self.route_payload(result))
+        self.assertNotIn("--cleanup-plan-dir", kept)
 
     def test_two_stage_stage_commands_reference_the_plan_file_twice(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L4"))
@@ -1817,7 +1891,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertEqual(implementer[implementer.index("-m") + 1], "gpt-5.6-terra")
         joined_planner = " ".join(planner)
         joined_implementer = " ".join(implementer)
-        self.assertEqual(joined_planner.count(plan_path), 2)
+        self.assertNotIn(plan_path, joined_planner)
         self.assertGreaterEqual(joined_implementer.count(plan_path), 1)
         self.assertIn("planning stage", joined_planner)
         self.assertIn("execution stage", joined_implementer)
@@ -1912,8 +1986,8 @@ class CommandAndLauncherTests(unittest.TestCase):
             with mock.patch.object(router, "classify_task", side_effect=AssertionError("must not reclassify")):
                 with contextlib.redirect_stdout(output):
                     self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
-        self.assertIn("codex exec", output.getvalue())
-        self.assertIn("gpt-5.6-sol", output.getvalue())
+        self.assertIn("scripts/pipeline.py", output.getvalue())
+        self.assertIn("--route-file", output.getvalue())
 
     def test_route_file_replays_v2_without_orchestration_fields(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
@@ -1933,12 +2007,11 @@ class CommandAndLauncherTests(unittest.TestCase):
         # but a stored/user route file replayed WITHOUT --cleanup-plan-dir (the
         # launchers' explicit `--route-file <path>` mode) must never have its plan
         # dir deleted out from under the user.
-        result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
         for should_fail in (False, True):
             with self.subTest(should_fail=should_fail), tempfile.TemporaryDirectory() as tmp:
                 directory = Path(tmp)
-                plan_dir = directory / "plan"
-                run_result = dataclasses.replace(result, plan_dir=str(plan_dir))
+                run_result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
+                plan_dir = Path(run_result.plan_dir)
                 payload = router.result_payload(run_result, router.stage_commands(run_result, "restructure modules"))
                 route_file = directory / "route.json"
                 route_file.write_text(json.dumps(payload), encoding="utf-8")
@@ -1946,6 +2019,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 fake_codex = directory / "codex"
                 fake_codex.write_text(
                     f"#!{sys.executable}\nimport sys\n"
+                    f"if 'planning stage' in ' '.join(sys.argv[1:]): print({PLAN_JSON!r})\n"
                     f"if 'execution stage' in ' '.join(sys.argv[1:]) and {should_fail}:\n"
                     "    raise SystemExit(9)\n",
                     encoding="utf-8",
@@ -1958,7 +2032,8 @@ class CommandAndLauncherTests(unittest.TestCase):
                     with contextlib.redirect_stdout(output):
                         self.assertEqual(router.main(["--route-file", str(route_file), "--cleanup-plan-dir"]), 0)
                 chain = output.getvalue().strip()
-                self.assertIn("rm -rf", chain)
+                self.assertIn("scripts/pipeline.py", chain)
+                self.assertIn("--cleanup-plan-dir", chain)
 
                 proc = subprocess.run(["bash", "-c", chain], capture_output=True, text=True, timeout=10, env=env)
                 self.assertEqual(proc.returncode, 9 if should_fail else 0, proc.stderr)
@@ -1966,13 +2041,13 @@ class CommandAndLauncherTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
-            plan_dir = directory / "plan"
-            run_result = dataclasses.replace(result, plan_dir=str(plan_dir))
+            run_result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
+            plan_dir = Path(run_result.plan_dir)
             payload = router.result_payload(run_result, router.stage_commands(run_result, "restructure modules"))
             route_file = directory / "route.json"
             route_file.write_text(json.dumps(payload), encoding="utf-8")
             fake_codex = directory / "codex"
-            fake_codex.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+            fake_codex.write_text(f"#!{sys.executable}\nprint({PLAN_JSON!r})\n", encoding="utf-8")
             fake_codex.chmod(0o755)
             env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
 
@@ -1984,6 +2059,7 @@ class CommandAndLauncherTests(unittest.TestCase):
 
             subprocess.run(["bash", "-c", chain], capture_output=True, text=True, timeout=10, env=env, check=True)
             self.assertTrue(plan_dir.is_dir(), "stored route file's plan dir must be preserved")
+            __import__("shutil").rmtree(plan_dir, ignore_errors=True)
 
     def test_v2_and_v3_direct_replay_never_invokes_the_astra_adapter(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
@@ -2025,7 +2101,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                             with mock.patch("builtins.input", side_effect=AssertionError("replay must not request approval")):
                                 with contextlib.redirect_stdout(output):
                                     self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
-                        self.assertIn(result.stages[0]["model"], output.getvalue())
+                        self.assertIn("scripts/pipeline.py", output.getvalue())
 
     def test_route_file_rejects_tampered_model_metadata(self):
         for task_type in ("implementation", "architectural_refactoring"):
@@ -2073,7 +2149,7 @@ class CommandAndLauncherTests(unittest.TestCase):
             )
             self.assertFalse(marker.exists())
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("gpt-5.6-sol", proc.stderr)
+        self.assertIn("scripts/pipeline.py", proc.stderr)
 
     def test_claude_launcher_replays_route_file_without_calling_claude(self):
         result = routed(platform="claude-code", classifier=lambda _: classification("review", "L3"))
@@ -2089,7 +2165,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env={**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1"},
             )
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("claude -p --model claude-opus-5", proc.stderr)
+        self.assertIn("scripts/pipeline.py", proc.stderr)
         self.assertNotIn("--agent", proc.stderr)
 
     def test_claude_and_antigravity_embed_level_instructions_without_installed_agents(self):
@@ -2122,18 +2198,18 @@ class CommandAndLauncherTests(unittest.TestCase):
     def test_two_stage_commands_are_platform_native(self):
         for platform, expected_head in (
             ("claude-code", ["claude", "-p", "--model", "claude-opus-5"]),
-            ("antigravity", ["agy", "--model", "Gemini 3.1 Pro (High)"]),
+            ("antigravity", ["agy", "--mode", "plan", "--sandbox", "--model", "Gemini 3.1 Pro (High)"]),
         ):
             with self.subTest(platform=platform):
                 result = routed(platform=platform, classifier=lambda _: classification("architectural_refactoring", "L4"))
                 planner, implementer = router.stage_commands(result, "task")
                 plan_path = str(Path(result.plan_dir) / "plan.json")
                 self.assertEqual(planner[:len(expected_head)], expected_head)
-                self.assertGreaterEqual(" ".join(planner).count(plan_path), 1)
+                self.assertEqual(" ".join(planner).count(plan_path), 0)
                 self.assertGreaterEqual(" ".join(implementer).count(plan_path), 1)
-                chain = router.command_chain(result, "task")
-                self.assertTrue(chain.startswith("mkdir -p "))
-                self.assertIn("rm -rf ", chain)
+                chain = router.command_chain_from_payload(self.route_payload(result, "task"), cleanup_plan_dir=True)
+                self.assertIn("scripts/pipeline.py", chain)
+                self.assertIn("--cleanup-plan-dir", chain)
 
     def _run_via_symlink(self, name: str, extra_env: dict[str, str] | None = None):
         source = ROOT / self.LAUNCHERS[name]
@@ -2167,7 +2243,7 @@ class CommandAndLauncherTests(unittest.TestCase):
             models.write_text("Gemini 3.8 Flash (High)\n", encoding="utf-8")
             proc = self._run_via_symlink("agy-route", {"MODEL_EFFORT_ROUTER_MODELS_FILE": str(models)})
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("Gemini 3.8 Flash (High)", proc.stderr)
+        self.assertIn("scripts/pipeline.py", proc.stderr)
 
     def test_launcher_reports_a_missing_bundle_clearly(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2216,16 +2292,16 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertIn("every `verification.recommended` ID and reason", primary)
                 self.assertIn("report each result or why it was not run", primary)
 
-    def test_claude_skill_delegates_stored_steps_through_the_agent_tool(self):
-        # Live run: a nested `claude -p` executor cannot edit files and inherits a stale Bash cwd.
+    def test_claude_skill_delegates_single_stage_routes_and_pipelines_two_stage_routes(self):
+        # Live run: a nested `claude -p` executor cannot safely preserve the two-stage artifact contract.
         primary = self._primary_section("claude")
         self.assertIn("Agent tool", primary)
         self.assertIn("steps[].agent.subagent_type", primary)
         self.assertIn("steps[].agent.model", primary)
         self.assertIn("last element of `steps[].command`", primary)
         self.assertIn("two_stage", primary)
-        self.assertIn("runs the executor only if the plan step succeeds", primary)
-        self.assertNotIn("claude-route", primary)
+        self.assertIn("parent pipeline captures planner stdout", primary)
+        self.assertIn("bin/claude-route --route-file", primary)
 
     def test_claude_skill_keeps_the_user_cwd_and_stops_on_fallback(self):
         # Live run: `cd` into the skill dir made the executor edit the plugin, not the user repo.
@@ -2338,7 +2414,18 @@ class RouteSkillContractTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("orchestration_eligible", text)
                 self.assertIn("execution_strategy", text)
-                self.assertIn("v2-v6", text)
+                self.assertIn("v2-v7", text)
+
+    def test_in_session_skills_keep_two_stage_runs_in_the_parent_pipeline(self):
+        for plugin in ("codex", "claude"):
+            text = (ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
+            with self.subTest(plugin=plugin):
+                self.assertIn("single", text)
+                self.assertIn("parent pipeline", text)
+                self.assertIn("captures planner stdout", text)
+                self.assertIn("stage permissions", text)
+                self.assertIn("Schema v7 is current", text)
+                self.assertIn("Schema v6 remains legacy", text)
 
     def test_runtime_docs_match_the_current_matrix_and_classifier_contract(self):
         claude_skill = (ROOT / "plugins" / "claude-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
