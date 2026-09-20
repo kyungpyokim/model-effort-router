@@ -42,8 +42,12 @@ RISK_FLAGS = (
 )
 SECURITY_FLOOR_FLAGS = ("security_sensitive", "authentication", "authorization", "payment")
 FALLBACK_TASK_TYPE = "implementation"
-SCHEMA_VERSION = 5
-SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, 3, 4, SCHEMA_VERSION)
+SCHEMA_VERSION = 6
+SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, 3, 4, 5, SCHEMA_VERSION)
+CODE_CHANGE_TASK_TYPES = ("implementation", "local_refactoring", "architectural_refactoring")
+# Below this level the cheap implementer's own checks are enough; no merged Sol/Opus review.
+REVIEW_MIN_LEVEL = "L4"
+PIPELINE_LIMITS = {"max_test_fixes": 2, "review_fixes_before_replan": 1, "max_replans": 1}
 SAFE_ORCHESTRATION_LEVELS = ("L5",)
 SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY = 2
 
@@ -243,7 +247,7 @@ A structured plan file is provided at: {plan_path}
 Read the plan together with the original request and the current repository state first.
 Apply re0 hygiene: leave the codebase cleaner than found, touch only what the plan requires, and remove scaffolding residue.
 If the repository conflicts with the plan, stop and report the difference instead of forcing the plan through.
-Do not make new design decisions yourself. Stop and return escalation evidence for the planner when you find a wider scope than planned, an architecture change, a public API change, a needed data migration, a security-boundary change, or a plan that no longer matches the code. Difficulty or uncertainty alone is not evidence.
+Do not make new design decisions yourself. Stop and return escalation evidence for the planner, as a final line that starts with ESCALATE and a colon, when you find a wider scope than planned, an architecture change, a public API change, a needed data migration, a security-boundary change, or a plan that no longer matches the code. Difficulty or uncertainty alone is not evidence.
 Execute the planned changes, run validation.commands, satisfy acceptance_criteria, and apply rollback_notes when validation fails.
 Do not blindly follow the plan when the repository state has moved on from what the planner saw.
 Do not invoke the model-effort router recursively."""
@@ -294,6 +298,8 @@ class RouteResult:
     source: str
     execution_strategy: str
     orchestration_eligible: bool
+    # Who reviews and re-plans after implementation; None for routes without a chained pipeline.
+    pipeline: dict | None = None
 
 
 def agent_name(level: str) -> str:
@@ -1010,6 +1016,26 @@ def apply_tier(
     return [stage, *stages[1:]]
 
 
+def pipeline_plan(
+    platform: str, task_type: str, level: str, mode: str, matrix: dict, stages: list[dict],
+    profile: dict | None, available_models: list[str] | None,
+) -> dict | None:
+    """Who reviews and re-plans a code change once the implementer is done.
+
+    The merged Sol/Opus review and re-plan stage run at L4+ and take the risk tier's effort;
+    lower levels keep only the deterministic test gate and the cheap fix loop."""
+    if task_type not in CODE_CHANGE_TASK_TYPES:
+        return None
+    review = replan = None
+    if LEVELS.index(level) >= LEVELS.index(REVIEW_MIN_LEVEL):
+        judge_raw, _ = resolve_stages(matrix, "review", level)
+        judge = apply_tier(platform, materialise_stages(platform, judge_raw, "single", available_models), profile, available_models)[0]
+        review = {**judge, "role": "reviewer"}
+        # A two-stage route already has its planner; a single-stage one re-plans with the judge.
+        replan = {**(stages[0] if mode == "two_stage" else judge), "role": "planner"}
+    return {"review": review, "replan": replan, "limits": dict(PIPELINE_LIMITS)}
+
+
 def route(
     task: str,
     platform: str,
@@ -1056,6 +1082,7 @@ def route(
     tier_profile = load_tier_profile(config, platform, risk_tier) if risk_tier != "standard" else None
     raw_stages, mode = resolve_stages(matrix, task_type, level)
     stages = apply_tier(platform, materialise_stages(platform, raw_stages, mode, available_models), tier_profile, available_models)
+    pipeline = pipeline_plan(platform, task_type, level, mode, matrix, stages, tier_profile, available_models)
     plan_dir = None
     if mode == "two_stage":
         plan_dir = str(Path(tempfile.gettempdir()) / f"codex-route-{uuid.uuid4().hex[:8]}")
@@ -1087,6 +1114,7 @@ def route(
         source=classification.source,
         execution_strategy="direct",
         orchestration_eligible=orchestration_eligible,
+        pipeline=pipeline,
     )
 
 
@@ -1146,6 +1174,15 @@ def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> 
     return shell_command(result, prompt, interactive)
 
 
+def stage_command(platform: str, stage: dict, instructions: str, prompt: str) -> list[str]:
+    """One non-interactive exec/print argv for a stage with explicit instructions."""
+    if platform == "codex":
+        return _codex_exec_command(stage["model"], stage["effort"], instructions, prompt, interactive=False)
+    if platform == "claude-code":
+        return _claude_print_command(stage["model"], stage["effort"], f"{instructions}\n\n{prompt}")
+    return _agy_prompt_command(stage["model"], f"{instructions}\n\n{prompt}")
+
+
 def stage_commands(result: RouteResult, task: str, interactive: bool = False) -> list[list[str]]:
     """Build one argv per execution stage. Two-stage runs are always exec/print sessions."""
     if result.mode != "two_stage":
@@ -1162,13 +1199,10 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
         execute_instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
     execute_instructions = f"{execute_instructions}\n\n{verification_handoff_instructions(result)}"
     execute_prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
-    builders = {
-        "codex": lambda stage, instr, prompt: _codex_exec_command(stage["model"], stage["effort"], instr, prompt, interactive=False),
-        "claude-code": lambda stage, instr, prompt: _claude_print_command(stage["model"], stage["effort"], f"{instr}\n\n{prompt}"),
-        "antigravity": lambda stage, instr, prompt: _agy_prompt_command(stage["model"], f"{instr}\n\n{prompt}"),
-    }
-    build = builders[result.platform]
-    return [build(planner, instructions, plan_prompt), build(implementer, execute_instructions, execute_prompt)]
+    return [
+        stage_command(result.platform, planner, instructions, plan_prompt),
+        stage_command(result.platform, implementer, execute_instructions, execute_prompt),
+    ]
 
 
 def command_chain(result: RouteResult, task: str, keep_plan: bool = False, interactive: bool = False) -> str | None:
@@ -1194,15 +1228,8 @@ def command_model(command: list[str], option: str) -> str | None:
     return models[0] if len(models) == 1 else None
 
 
-def command_chain_from_payload(payload: object, cleanup_plan_dir: bool = False) -> str:
-    """Return the already-classified platform command chain from a route JSON payload.
-
-    ``cleanup_plan_dir`` removes the two-stage plan directory after the chain runs,
-    on both success and failure. It must only be set by a caller that just generated
-    this route file for an immediate direct run (the plan dir was created for this
-    run alone) -- never for a stored/user-supplied route file replayed later, whose
-    plan artifacts the user may still want.
-    """
+def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:
+    """Validate a route JSON payload; return its execution-step argvs and the plan file path (two-stage only)."""
     if not isinstance(payload, dict) or payload.get("schema_version") not in SUPPORTED_ROUTE_SCHEMA_VERSIONS:
         raise ValueError("route file must be a supported route JSON payload")
     if payload["schema_version"] >= 3:
@@ -1225,20 +1252,38 @@ def command_chain_from_payload(payload: object, cleanup_plan_dir: bool = False) 
             raise ValueError("route file step model does not match its command")
         commands.append(command)
     if payload.get("mode") == "single" and len(commands) == 1:
-        return shlex.join(commands[0])
+        return commands, None
     if payload.get("mode") == "two_stage" and len(commands) == 2:
         plan = steps[0].get("output") if isinstance(steps[0], dict) else None
         plan_path = plan.get("path") if isinstance(plan, dict) else None
         if not isinstance(plan_path, str) or not plan_path:
             raise ValueError("two-stage route file must declare its plan output")
-        plan_dir = shlex.quote(str(Path(plan_path).parent))
-        stages = " && ".join(shlex.join(command) for command in commands)
-        if not cleanup_plan_dir:
-            return f"mkdir -p {plan_dir} && {stages}"
-        # Clean up on both success and failure (rc preserved) -- unlike a plain
-        # `&&` tail, this must not depend on every stage succeeding.
-        return f"mkdir -p {plan_dir} && ({stages}; rc=$?; rm -rf {plan_dir}; exit $rc)"
+        return commands, plan_path
     raise ValueError("route file mode does not match its execution steps")
+
+
+def command_chain_from_payload(payload: object, cleanup_plan_dir: bool = False) -> str:
+    """Return the already-classified plan/implement shell chain from a route JSON payload.
+
+    This is the printable, replayable core of a route; the test/review/fix stages of a
+    v6 ``pipeline`` block run only through scripts/pipeline.py.
+
+    ``cleanup_plan_dir`` removes the two-stage plan directory after the chain runs,
+    on both success and failure. It must only be set by a caller that just generated
+    this route file for an immediate direct run (the plan dir was created for this
+    run alone) -- never for a stored/user-supplied route file replayed later, whose
+    plan artifacts the user may still want.
+    """
+    commands, plan_path = validated_commands(payload)
+    if plan_path is None:
+        return shlex.join(commands[0])
+    plan_dir = shlex.quote(str(Path(plan_path).parent))
+    stages = " && ".join(shlex.join(command) for command in commands)
+    if not cleanup_plan_dir:
+        return f"mkdir -p {plan_dir} && {stages}"
+    # Clean up on both success and failure (rc preserved) -- unlike a plain
+    # `&&` tail, this must not depend on every stage succeeding.
+    return f"mkdir -p {plan_dir} && ({stages}; rc=$?; rm -rf {plan_dir}; exit $rc)"
 
 
 def verification_recommendations(task_type: str, level: str, risk_flags: dict[str, bool], mode: str) -> dict[str, list[dict[str, str]]]:
@@ -1314,7 +1359,19 @@ def claude_agent_delegation(effort: str | None, model: str) -> dict[str, str]:
     return {"subagent_type": f"model-effort:effort-{effort or 'none'}", "model": alias}
 
 
-def result_payload(result: RouteResult, commands: list[list[str]] | None = None) -> dict:
+def pipeline_payload(result: RouteResult, task: str | None) -> dict | None:
+    if result.pipeline is None:
+        return None
+    payload = {**result.pipeline, "task": task}
+    if result.platform == "claude-code":
+        for name in ("review", "replan"):
+            stage = payload[name]
+            if stage:
+                payload[name] = {**stage, "agent": claude_agent_delegation(stage["effort"], stage["model"])}
+    return payload
+
+
+def result_payload(result: RouteResult, commands: list[list[str]] | None = None, task: str | None = None) -> dict:
     steps: list[dict] = []
     ids = ["plan", "execute"] if result.mode == "two_stage" else ["execute"]
     for position, stage in enumerate(result.stages):
@@ -1356,6 +1413,7 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None)
         "verification": verification_recommendations(result.task_type, result.level, result.risk_flags, result.mode),
         "execution_strategy": result.execution_strategy,
         "orchestration_eligible": result.orchestration_eligible,
+        "pipeline": pipeline_payload(result, task),
     }
     if any(flag in SECURITY_FLOOR_FLAGS for flag in active_risk_flags):
         payload["scope_guard"] = {
@@ -1576,7 +1634,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     if args.format == "json":
-        print(json.dumps(result_payload(result, stage_commands(result, args.task, args.interactive)), ensure_ascii=False, indent=2))
+        print(json.dumps(result_payload(result, stage_commands(result, args.task, args.interactive), args.task), ensure_ascii=False, indent=2))
     elif args.format == "command":
         chain = command_chain(result, args.task, keep_plan=args.keep_plan, interactive=args.interactive)
         print(chain if chain is not None else shlex.join(shell_command(result, args.task, args.interactive)))

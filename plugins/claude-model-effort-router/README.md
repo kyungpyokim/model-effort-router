@@ -66,12 +66,12 @@ model/effort and puts the matching level agent's instructions at the top of the 
 so it works without the plugin installed. `--print` forces `claude -p`, which runs with
 default permissions and cannot edit files unless your settings allow it.
 
-Route-file replay accepts v2-v5 payloads. Schema v5 records `facts`,
+Route-file replay accepts v2-v6 payloads. Schema v6 records `facts`,
 `matched_rules`, `needs_context`, `evidence`, and `risk_tier` alongside direct-only
 `execution_strategy` and future orchestration `orchestration_eligible` metadata; it
 does not enable orchestration on Claude Code. `scripts/astra_adapter.py` is the unchanged
 caller-invoked orchestration adapter that revalidates worker inputs and preserves original
-verified artifacts; direct v2-v5 route-file replay never invokes it.
+verified artifacts; direct v2-v6 route-file replay never invokes it.
 
 ## Execution roles and pipeline
 

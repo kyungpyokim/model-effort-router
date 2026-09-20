@@ -61,7 +61,11 @@ plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort
 
 결과 JSON에는 `verification.recommended` 및 `verification.skipped` 항목도 포함됩니다. 이 항목들은 이유와 함께 저장소 독립적인 검증 권장 사항을 식별하며, 셸 명령이나 실제 실행 결과가 아닙니다. 선택된 실행기는 권장 검증을 수신하여 적용 가능한 기존 저장소 검증을 선택하고, 각 결과 또는 실행하지 않은 이유를 보고합니다. 라우트 파일 재생(replay) 시에는 이 JSON 안내를 무시하고 저장된 실행 단계만 재사용합니다.
 
-라우트 JSON은 스키마 v5를 출력합니다. 이전 점수 필드 대신 `facts`, `matched_rules`, `needs_context`, `evidence`가 사용되며, 레벨 옆에 `risk_tier`(`standard` / `elevated` / `critical`)가 기록됩니다. 또한 `execution_strategy: "direct"`와 `orchestration_eligible`을 분리하여 기록합니다. 오케스트레이션 적격성(`orchestration_eligible`)은 Codex 오케스트레이션 인계 후보일 뿐이며 실행 요청이 아닙니다. `scripts/astra_adapter.py`는 변경되지 않은 오케스트레이션 어댑터로, 호출자가 직접 호출하는 로컬 격리 워커 경계입니다(제공된 라우트 및 매니페스트 다이제스트 검증, 시도별 워커 입력 복사본 재검증, 시도 후 검증된 원본 아티팩트 보존). 직접 v2-v5 라우트 파일 재생 시에는 이 어댑터를 호출하지 않습니다.
+### 체이닝 파이프라인
+
+비대화형 런처(`codex-route`, `claude-route`, `agy-route`) 실행은 `scripts/pipeline.py`를 거칩니다: 계획 -> 구현 -> 결정적 테스트 -> Sol/Opus 통합 리뷰 1회. 테스트는 모델 호출 없이 런처가 직접 실행하며(`MODEL_EFFORT_ROUTER_TEST_CMD` 또는 `pipeline.py --test-cmd`), 실패했을 때만 잘라낸 로그를 구현 모델에 넘깁니다. L4 이상 코드 변경은 리스크 티어 effort로 리뷰를 받고, 리뷰 FAIL은 1회 수정, 다음 실패는 1회 재계획, 그 뒤에는 중단합니다. 라우트(누가)와 실행 상태(어디까지, `state.json`)는 분리됩니다. 자세한 내용: `references/routing-policy.md`.
+
+라우트 JSON은 스키마 v6를 출력합니다. 이전 점수 필드 대신 `facts`, `matched_rules`, `needs_context`, `evidence`가 사용되며, 레벨 옆에 `risk_tier`(`standard` / `elevated` / `critical`)가 기록됩니다. 또한 `execution_strategy: "direct"`와 `orchestration_eligible`을 분리하여 기록합니다. 오케스트레이션 적격성(`orchestration_eligible`)은 Codex 오케스트레이션 인계 후보일 뿐이며 실행 요청이 아닙니다. `scripts/astra_adapter.py`는 변경되지 않은 오케스트레이션 어댑터로, 호출자가 직접 호출하는 로컬 격리 워커 경계입니다(제공된 라우트 및 매니페스트 다이제스트 검증, 시도별 워커 입력 복사본 재검증, 시도 후 검증된 원본 아티팩트 보존). 직접 v2-v6 라우트 파일 재생 시에는 이 어댑터를 호출하지 않습니다.
 
 `delegability`(위임 가능성)는 난이도 규칙과 독립적입니다.
 - `0`: 공유 상태, 순서 의존성, 위험 작업 또는 강하게 결합된 작업

@@ -71,10 +71,10 @@ executor keeps normal edit permissions; `--route-file` replays stored `steps[].c
 without reclassifying. A non-interactive `-p` executor runs with default permissions and
 cannot edit files unless the user's settings allow it.
 
-Schema v5 records facts, `risk_tier`, and `orchestration_eligible` (future metadata only).
+Schema v6 records facts, `risk_tier`, and `orchestration_eligible` (future metadata only).
 `scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
-`execution_strategy: direct` because direct v2-v5 route-file replay never invokes it.
+`execution_strategy: direct` because direct v2-v6 route-file replay never invokes it.
 
 Pipeline guidance (Opus thinks and verifies, Haiku and Sonnet implement):
 
