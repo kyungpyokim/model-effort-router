@@ -19,10 +19,8 @@ if [[ ! -f "${ROUTER}" ]]; then
   exit 1
 fi
 
-# On a terminal, default to an interactive executor: `claude -p` cannot edit files
-# under default permissions. `--print` forces the non-interactive form.
+# `--interactive` opts into a single hand-off session that skips the test/review pipeline.
 INTERACTIVE=0
-if [[ -t 0 && -t 1 ]]; then INTERACTIVE=1; fi
 while [[ "${1:-}" == "--interactive" || "${1:-}" == "--print" ]]; do
   case "${1}" in
     --interactive) INTERACTIVE=1 ;;
