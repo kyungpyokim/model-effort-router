@@ -201,7 +201,8 @@ git commit -m "feat: route L2+ code changes through a judge plan and review"
 프로토타입 측정: 이 변경으로 기존 테스트 약 25개가 실패한다 (전부 “L2~L4 = single stage, L4 미만 review 없음” 가정). 동작 변경이 의도이므로 구현이 아니라 기대값을 고친다. 각 수정은 “왜 바뀌는지” 한 줄을 테스트 이름/주석에 유지한다.
 
 **Files:**
-- Modify: `tests/test_router.py`, `tests/test_pipeline.py`, `tests/test_l2_refinement.py`, `tests/test_route_reuse.py`, `tests/test_eval_performance.py`
+- Modify: `tests/test_router.py`, `tests/test_pipeline.py`, `tests/test_l2_refinement.py`, `tests/test_route_reuse.py`, `tests/test_eval_performance.py`, `tests/test_route_instructions.py` (실측 6개 파일, 실패 57건)
+- 참고 (Task 1 결정): 계획자 (model, effort)가 구현자와 같으면 계획 단계를 넣지 않는다 — codex/claude `architectural_refactoring` L2와 Antigravity L2 전 code-change는 single 유지. 해당 route의 기대값은 single로 둔다.
 - Modify (필요 시): `scripts/eval_router_performance.py` (기대 모델 계산이 `result.model`을 읽으면 `stages[-1]`로)
 
 - [ ] **Step 1: Run the suite and list failures**
@@ -294,7 +295,7 @@ git commit -m "docs: run code-change routes through pipeline.py from the route s
 **Files:**
 - Modify: `references/routing-policy.md`, `README.md`, `README.ko.md`, `SKILL.md`(번들 루트 Constraints 절)
 
-- [ ] **Step 1: 문서 갱신** — routing-policy에 “L2+ 코드 변경 = Plan(judge)→Implement→Test→Review(judge), L1 = 단일 stage”, PLAN/REVIEW_MIN_LEVEL, `design` 행이 planner의 모델 출처라는 점을 추가. README의 “Sol은 L5에서만 계획” 류 서술을 정정.
+- [ ] **Step 1: 문서 갱신** — (Task 1 재리뷰 지적: `plugins/*/references/routing-policy.md:199`, `README.md:272`의 “two-stage는 architectural_refactoring L3+ 및 L5” 서술을 “L2+ 코드 변경, 단 계획자=구현자인 행 제외”로 정정) routing-policy에 “L2+ 코드 변경 = Plan(judge)→Implement→Test→Review(judge), L1 = 단일 stage”, PLAN/REVIEW_MIN_LEVEL, `design` 행이 planner의 모델 출처라는 점을 추가. README의 “Sol은 L5에서만 계획” 류 서술을 정정.
 - [ ] **Step 2: Sync and validate**
 
 Run: `python3 scripts/sync_bundle.py && python3 scripts/validate_bundle.py && python3 -m pytest -q`
@@ -337,6 +338,11 @@ git commit -m "docs: document the plan-implement-review workflow and sync plugin
 - 지표: `pipeline.py`가 stage마다 `{phase, model, effort, seconds, exit}`를 `metrics.jsonl`에 기록, `scripts/eval_router_performance.py`가 Task당 모델별 호출 수·Sol/Opus 호출 수·Review 재시도·Route reuse 비율을 집계. 토큰 수는 CLI가 노출할 때만 (Codex/Claude 출력 형식 확인 후).
 
 ---
+
+## Task 1 결과에서 확정된 이월 사항
+
+- 레벨 agent 프로필(`agents/level-N-*`) 지시문은 two-stage 경로에 전달되지 않는다 (L5는 원래 그랬고 이제 L2~L4도). two-stage 템플릿은 schema v6에 고정돼 있어 지금 바꾸면 저장된 route가 무효가 되므로 **Phase 4(launcher가 role별 지시문 생성)로 이월**.
+- 단일 stage로 남은 계획자=구현자 행은 review도 같은 모델이다. Phase 3에서 review 모델 분리를 재검토.
 
 ## Self-Review
 
