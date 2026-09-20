@@ -36,7 +36,8 @@ MAX_LOG_LINES = 80
 MAX_LOG_CHARS = 6000
 MAX_DIFF_CHARS = 60000
 MAX_PLAN_CHARS = 20000
-TEST_COMMAND_ENV = "MODEL_EFFORT_ROUTER_TEST_CMD"
+TEST_COMMAND_ENV = router.TEST_COMMAND_ENV
+FAST_PATHS = (None, "inspect", "trivial_edit")
 VERBOSE_ENV = "MODEL_EFFORT_ROUTER_VERBOSE"
 VERBOSE_PROMPT_CHARS = 120
 
@@ -208,6 +209,11 @@ class Pipeline:
             raise ValueError("route plan path must be absolute")
         if len(commands) > 1 and any(is_interactive(command) for command in commands):
             raise ValueError("a multi-stage route cannot use interactive commands")
+        fast_path = payload.get("fast_path")
+        if fast_path not in FAST_PATHS:
+            raise ValueError("route fast_path must be null, inspect, or trivial_edit")
+        if fast_path == "trivial_edit" and (len(commands) != 1 or pipe.get("review") is not None or pipe.get("replan") is not None):
+            raise ValueError("a trivial-edit route must be a single stage without a review or re-plan")
 
     def state(self, phase: str, who: dict | None = None, attempt: int | None = None) -> None:
         state = {"phase": phase, "test_fixes": self.counts["test"], "review_fixes": self.counts["review"], "reviews": self.reviews, "replans": self.replans}
@@ -370,6 +376,14 @@ def main(argv: list[str] | None = None) -> int:
         Pipeline.validate(payload)
     except (OSError, json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
         print(f"invalid route file: {exc}", file=sys.stderr)
+        return 2
+    if payload.get("fast_path") == "trivial_edit" and not test_commands:
+        # Checked before the interactive hand-off so a terminal session cannot skip the only verification this route has.
+        print(
+            "invalid route: the trivial-edit fast path needs a deterministic check "
+            f"(--test-cmd or {TEST_COMMAND_ENV}); run without it through the regular workflow",
+            file=sys.stderr,
+        )
         return 2
     commands, _ = router.validated_commands(payload)
     if len(commands) == 1 and is_interactive(commands[0]):

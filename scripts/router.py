@@ -72,6 +72,8 @@ PRIMARY_CLASSIFIER_CONFIG = {
 }
 
 EXIT_NEEDS_ANSWER = 3
+# A deterministic check configured at route time is what lets a trivial edit skip plan and review; pipeline.py reads the same variable.
+TEST_COMMAND_ENV = "MODEL_EFFORT_ROUTER_TEST_CMD"
 CLASSIFIER_TIMEOUT_SECONDS = 90.0
 DETECT_TIMEOUT_SECONDS = 20.0
 
@@ -1962,6 +1964,7 @@ def main(argv: list[str] | None = None) -> int:
             classifier=(lambda _task: classification) if classification is not None else None,
             repo_aware=args.repo_aware,
             critical=args.critical or prompted_critical,
+            check_available=bool(os.environ.get(TEST_COMMAND_ENV)),
         )
         refuse_interactive_two_stage(result, args.interactive)
     except ValueError as exc:

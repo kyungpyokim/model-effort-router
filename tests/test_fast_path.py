@@ -1,3 +1,6 @@
+import contextlib
+import io
+import json
 import os
 import sys
 import tempfile
@@ -215,3 +218,68 @@ class InspectReuseTests(unittest.TestCase):
             blocked, _, reason = router.load_reused_classification("s", os.getcwd(), "fix the bug in the router")
             self.assertIsNone(blocked)
             self.assertIn("operation changed", reason)
+
+
+class RouterMainCheckAvailableTests(unittest.TestCase):
+    """router.main tells route() whether a deterministic check is configured (MODEL_EFFORT_ROUTER_TEST_CMD)."""
+
+    FACTS = {
+        "mechanical_only": "yes", "files_touched": "1", "crosses_module_boundary": "no",
+        "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no",
+        "needs_new_structure": "no", "changes_security_or_payment_logic": "no",
+        "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no",
+        "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no",
+        "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no",
+    }
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = Path(self._tmp.name)
+        patcher = mock.patch.dict(os.environ, {"MODEL_EFFORT_ROUTER_STATE_DIR": str(self.dir / "state")})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for name in ("MODEL_EFFORT_ROUTER_SESSION", router.TEST_COMMAND_ENV):
+            os.environ.pop(name, None)
+        payload = {
+            "task_type": "implementation", "facts": self.FACTS, "delegability": 0, "evidence": [],
+            "reason": "fix a typo",
+        }
+        self.classification_file = self.dir / "classification.json"
+        self.classification_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    def main(self, *extra, check_env=None):
+        env = {router.TEST_COMMAND_ENV: check_env} if check_env else {}
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, env), mock.patch.object(router, "route", wraps=router.route) as spy, \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            rc = router.main(["fix a typo", "--platform", "codex", "--format", "json", *extra])
+        self.assertEqual(rc, 0)
+        return json.loads(out.getvalue()), spy
+
+    def classified(self):
+        return ("--classification-file", str(self.classification_file))
+
+    def test_the_test_command_env_constant_is_the_shared_name(self):
+        self.assertEqual(router.TEST_COMMAND_ENV, "MODEL_EFFORT_ROUTER_TEST_CMD")
+        import pipeline  # noqa: E402
+        self.assertIs(pipeline.TEST_COMMAND_ENV, router.TEST_COMMAND_ENV)
+
+    def test_a_configured_check_makes_a_mechanical_edit_the_fast_path(self):
+        payload, spy = self.main(*self.classified(), check_env="pytest -q")
+        self.assertIs(spy.call_args.kwargs["check_available"], True)
+        self.assertEqual(payload["fast_path"], "trivial_edit")
+
+    def test_no_configured_check_keeps_the_regular_workflow(self):
+        payload, spy = self.main(*self.classified())
+        self.assertIs(spy.call_args.kwargs["check_available"], False)
+        self.assertIsNone(payload["fast_path"])
+        self.assertEqual(payload["mode"], "two_stage")
+
+    def test_a_reused_classification_applies_the_check_the_same_way(self):
+        first, _ = self.main(*self.classified(), "--session", "s")
+        self.assertIsNone(first["fast_path"])
+        payload, spy = self.main("--session", "s", check_env="pytest -q")
+        self.assertTrue(payload["reuse"]["reused"], payload["reuse"])
+        self.assertIs(spy.call_args.kwargs["check_available"], True)
+        self.assertEqual(payload["fast_path"], "trivial_edit")

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -85,6 +86,12 @@ class PipelineCase(unittest.TestCase):
 
     def roles(self, calls):
         return [call["role"] for call in calls]
+
+    def git_repo(self):
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        (self.work / "a.txt").write_text("a")
+        for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "init"]):
+            subprocess.run(["git", *args], cwd=self.work, env=env, check=True, capture_output=True)
 
 
 class PipelineRunTests(PipelineCase):
@@ -253,7 +260,7 @@ class PipelineHardeningTests(PipelineCase):
         route_file.write_text(json.dumps(payload), encoding="utf-8")
         (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            rc = pipeline.main(["--route-file", str(route_file)])
+            rc = pipeline.main(["--route-file", str(route_file), "--test-cmd", "true"])
         self.assertEqual(rc, 0)
         calls = [json.loads(line) for line in (self.dir / "calls.jsonl").read_text().splitlines()]
         self.assertEqual(len(calls), 1)
@@ -261,12 +268,6 @@ class PipelineHardeningTests(PipelineCase):
 
 
 class PipelineFailClosedTests(PipelineCase):
-    def git_repo(self):
-        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
-        (self.work / "a.txt").write_text("a")
-        for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "init"]):
-            subprocess.run(["git", *args], cwd=self.work, env=env, check=True, capture_output=True)
-
     def test_an_implementer_that_changed_nothing_fails_review_without_a_reviewer_call(self):
         self.git_repo()
         rc, calls = self.run_pipeline([{}] * 9)
@@ -485,3 +486,102 @@ class PipelinePlanTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TrivialEditCheckTests(PipelineCase):
+    """The trivial-edit fast path has no review, so the launcher must own a deterministic check."""
+
+    def setUp(self):
+        super().setUp()
+        self.git_repo()
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop(pipeline.TEST_COMMAND_ENV, None)
+        self.route_file = self.dir / "route.json"
+
+    def main(self, payload, *extra):
+        self.route_file.write_text(json.dumps(payload), encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = pipeline.main(["--route-file", str(self.route_file), *extra])
+        return rc, err.getvalue()
+
+    def calls(self):
+        path = self.dir / "calls.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def test_without_a_check_the_run_is_refused_before_any_model_runs(self):
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        rc, err = self.main(self.payload(fast=True))
+        self.assertEqual(rc, 2)
+        self.assertIn("deterministic check", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_an_interactive_hand_off_cannot_bypass_the_check(self):
+        result = fast_route("codex")
+        payload = router.result_payload(result, router.stage_commands(result, "t", interactive=True), "t")
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        rc, err = self.main(payload)
+        self.assertEqual(rc, 2)
+        self.assertIn("deterministic check", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_the_env_check_satisfies_the_guard_and_a_green_run_only_executes(self):
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        old = os.getcwd()
+        os.chdir(self.work)
+        self.addCleanup(os.chdir, old)
+        os.environ[pipeline.TEST_COMMAND_ENV] = "true"
+        rc, _ = self.main(self.payload(fast=True))
+        self.assertEqual((rc, self.roles(self.calls())), (0, ["execute"]))
+
+    def test_a_passing_check_runs_execute_only(self):
+        rc, calls = self.run_pipeline([{}], payload=self.payload(fast=True), tests=["true"])
+        self.assertEqual((rc, self.roles(calls)), (0, ["execute"]))
+
+    def test_a_check_that_keeps_failing_stops_after_two_fixes_without_promotion(self):
+        rc, calls = self.run_pipeline([{}] * 5, payload=self.payload(fast=True), tests=["false"])
+        self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
+        self.assertEqual(self.roles(calls), ["execute", "fix", "fix"])
+
+
+class FastPathValidationTests(PipelineCase):
+    def test_absent_and_known_values_are_valid(self):
+        payload = self.payload(fast=True)
+        pipeline.Pipeline.validate(payload)
+        payload.pop("fast_path")
+        pipeline.Pipeline.validate(payload)
+        inspect = router.route("look", "codex", router.load_config(ROOT / "config" / "model-map.json"), "L1", "inspect")
+        pipeline.Pipeline.validate(router.result_payload(inspect, router.stage_commands(inspect, "look"), "look"))
+
+    def test_an_unknown_fast_path_value_is_an_invalid_route(self):
+        for value in ("turbo", "", 1, True, ["trivial_edit"]):
+            payload = self.payload(fast=True)
+            payload["fast_path"] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                pipeline.Pipeline.validate(payload)
+
+    def test_a_trivial_edit_claim_with_a_plan_stage_is_inconsistent(self):
+        payload = self.payload(level="L4")
+        payload["fast_path"] = "trivial_edit"
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
+
+    def test_a_trivial_edit_claim_carrying_a_review_or_replan_is_inconsistent(self):
+        for key in ("review", "replan"):
+            payload = self.payload(fast=True)
+            payload["pipeline"][key] = self.payload(level="L4")["pipeline"][key]
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                pipeline.Pipeline.validate(payload)
+
+    def test_main_reports_an_invalid_fast_path_as_an_invalid_route(self):
+        payload = self.payload(fast=True)
+        payload["fast_path"] = "turbo"
+        route_file = self.dir / "route.json"
+        route_file.write_text(json.dumps(payload), encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = pipeline.main(["--route-file", str(route_file), "--test-cmd", "true"])
+        self.assertEqual(rc, 2)
+        self.assertIn("invalid route file", err.getvalue())
