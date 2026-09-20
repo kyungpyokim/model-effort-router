@@ -60,9 +60,13 @@ class PlanWorkflowTests(unittest.TestCase):
                     self.assertEqual(result.pipeline["review"]["effort"], effort)
                     self.assertNotEqual(result.stages[1]["model"], judge)
 
-    def test_l1_and_read_only_task_types_keep_their_single_stage(self):
-        l1 = routed("codex", mechanical_only="yes")
-        self.assertEqual((l1.level, l1.mode, l1.pipeline["review"]), ("L1", "single", None))
+    def test_the_fast_trivial_edit_and_read_only_task_types_keep_their_single_stage(self):
+        # L1 is single-stage without review only through the fast path (no understanding needed + a deterministic check).
+        fast = routed("codex", understanding="no", check_available=True, mechanical_only="yes")
+        self.assertEqual((fast.level, fast.mode, fast.pipeline["review"]), ("L1", "single", None))
+        regular = routed("codex", understanding="no", check_available=False, mechanical_only="yes")
+        self.assertEqual((regular.level, regular.mode), ("L1", "two_stage"))
+        self.assertIsNotNone(regular.pipeline["review"])
         for task_type in ("design", "review"):
             with self.subTest(task_type=task_type):
                 result = routed("codex", task_type, files_touched="2-5")
@@ -122,8 +126,9 @@ class InteractiveIsSingleStageOnlyTests(unittest.TestCase):
     def test_interactive_single_stage_and_non_interactive_two_stage_are_unchanged(self):
         for platform in ("codex", "claude-code"):
             with self.subTest(platform=platform):
+                # A pinned code change is never a fast edit (no facts), so the interactive single stage is a read-only type.
                 code, out, _ = self.cli(
-                    "--platform", platform, "--task-type", "implementation", "--level", "L1",
+                    "--platform", platform, "--task-type", "review", "--level", "L1",
                     "--format", "command", "--interactive", "--no-prompt",
                 )
                 self.assertEqual(code, 0)

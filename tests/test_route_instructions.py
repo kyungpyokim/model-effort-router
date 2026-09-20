@@ -16,13 +16,15 @@ CONFIG = router.load_config(ROOT / "config" / "model-map.json")
 PLATFORMS = ("codex", "claude-code", "antigravity")
 
 
-def payload_for(platform, level, secure=False, task="do the thing", task_type="implementation", extra_flags=(), interactive=False):
+def payload_for(platform, level, secure=False, task="do the thing", task_type="implementation", extra_flags=(), interactive=False, fast=False):
     flags = {flag: (secure and flag == "security_sensitive") or flag in extra_flags for flag in router.RISK_FLAGS}
     classification = router.Classification(
         task_type=task_type, level=level, risk_flags=flags, reason="r", source="primary",
         risk_tier="elevated" if secure else "standard",
+        # fast: the trivial-edit fast path (explicit no-understanding fact + a deterministic check) is a single-stage L1 route.
+        facts={"requires_code_understanding": "no"} if fast else {},
     )
-    result = router.route(task, platform, CONFIG, classifier=lambda _: classification)
+    result = router.route(task, platform, CONFIG, classifier=lambda _: classification, check_available=fast)
     return router.result_payload(result, router.stage_commands(result, task, interactive), task)
 
 
@@ -102,8 +104,8 @@ class TamperedInstructionTests(unittest.TestCase):
     def test_a_missing_agent_profile_is_reported_as_unverifiable_not_tampered(self):
         for platform, target in (("codex", "codex_agent_instructions"), ("claude-code", "markdown_agent_instructions"), ("antigravity", "markdown_agent_instructions")):
             with self.subTest(platform=platform):
-                # Only single-stage routes embed a per-level agent profile; L2+ code changes are two-stage now, so use L1.
-                payload = payload_for(platform, "L1")
+                # Only single-stage routes embed a per-level agent profile; regular code changes are two-stage, so use the fast L1 edit.
+                payload = payload_for(platform, "L1", fast=True)
                 self.assertEqual(payload["mode"], "single")
                 with mock.patch.object(router, target, side_effect=FileNotFoundError("agents/level-1")):
                     with self.assertRaises(ValueError) as caught:

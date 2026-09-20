@@ -41,6 +41,17 @@ sys.exit(reply.get("rc", 0))
 """
 
 
+def fast_route(platform="codex", task_type="implementation"):
+    """A genuinely single-stage L1 code-change route: the trivial-edit fast path (explicit no-understanding fact + a check)."""
+    config = router.load_config(ROOT / "config" / "model-map.json")
+    classification = dataclasses.replace(
+        router.pinned_classification(task_type, "L1"), facts={"requires_code_understanding": "no"}
+    )
+    result = router.route("t", platform, config, classifier=lambda _: classification, check_available=True)
+    assert (result.mode, result.fast_path) == ("single", "trivial_edit")
+    return result
+
+
 class PipelineCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -57,9 +68,12 @@ class PipelineCase(unittest.TestCase):
         self.addCleanup(os.environ.__setitem__, "PATH", old_path)
         self.addCleanup(lambda: os.environ.pop("FAKE_DIR") if old_dir is None else os.environ.__setitem__("FAKE_DIR", old_dir))
 
-    def payload(self, level="L4", task_type="implementation", platform="codex", critical=False):
+    def payload(self, level="L4", task_type="implementation", platform="codex", critical=False, fast=False):
         config = router.load_config(ROOT / "config" / "model-map.json")
-        result = router.route("do the thing", platform, config, level, task_type, critical=critical)
+        if fast:
+            result = fast_route(platform, task_type)
+        else:
+            result = router.route("do the thing", platform, config, level, task_type, critical=critical)
         return router.result_payload(result, router.stage_commands(result, "do the thing"), "do the thing")
 
     def run_pipeline(self, replies, payload=None, tests=()):
@@ -153,10 +167,11 @@ class PipelineRunTests(PipelineCase):
         self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
         self.assertEqual(json.loads((plan_dir / "state.json").read_text())["phase"], "done")
 
-    def test_l1_has_no_review_and_no_replan(self):
-        # L2 code changes now get a judge plan and review; only the mechanical L1 keeps the bare fix loop.
+    def test_a_fast_trivial_edit_has_no_review_and_no_replan(self):
+        # Every code change gets a judge plan and review (L1 too); only the fast trivial edit keeps the bare fix loop.
         self.assertIsNotNone(self.payload(level="L2")["pipeline"]["review"])
-        payload = self.payload(level="L1")
+        self.assertIsNotNone(self.payload(level="L1")["pipeline"]["review"])
+        payload = self.payload(fast=True)
         self.assertEqual((payload["pipeline"]["review"], payload["pipeline"]["replan"]), (None, None))
         rc, calls = self.run_pipeline([{}] * 5, payload=payload, tests=["false"])
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
@@ -170,7 +185,7 @@ class PipelineRunTests(PipelineCase):
         self.assertEqual((rc, self.roles(calls)), (0, ["plan", "execute"]))
 
     def test_a_single_stage_route_without_a_pipeline_block_just_executes(self):
-        single = self.payload(level="L1")
+        single = self.payload(fast=True)
         single.pop("pipeline")
         single["schema_version"] = 5
         rc, calls = self.run_pipeline([{}], payload=single)
@@ -231,9 +246,8 @@ class PipelineHardeningTests(PipelineCase):
         self.assertFalse(pipeline.is_interactive(["agy", "--model", "m", "--prompt", "t"]))
 
     def test_stored_interactive_route_keeps_the_terminal(self):
-        config = router.load_config(ROOT / "config" / "model-map.json")
-        # Two-stage routes are never interactive, so the interactive replay is an L1 single-stage route.
-        result = router.route("t", "codex", config, "L1", "implementation")
+        # Two-stage routes are never interactive, so the interactive replay is a fast single-stage route.
+        result = fast_route("codex")
         payload = router.result_payload(result, router.stage_commands(result, "t", interactive=True), "t")
         route_file = self.dir / "route.json"
         route_file.write_text(json.dumps(payload), encoding="utf-8")
@@ -310,15 +324,14 @@ class ClaudeAccessTests(unittest.TestCase):
         config = router.load_config(ROOT / "config" / "model-map.json")
         for task_type, expected in (("implementation", "acceptEdits"), ("design", "dontAsk"), ("review", "dontAsk")):
             with self.subTest(task_type=task_type):
-                # L1 keeps implementation single-stage; L2+ code changes are two-stage and have no shell_command.
-                result = router.route("t", "claude-code", config, "L1" if task_type == "implementation" else "L3", task_type)
+                # Only the fast trivial edit keeps implementation single-stage; other code changes are two-stage and have no shell_command.
+                result = fast_route("claude-code") if task_type == "implementation" else router.route("t", "claude-code", config, "L3", task_type)
                 self.assertEqual(result.mode, "single")
                 command = router.shell_command(result, "t", False)
                 self.assertEqual(command[command.index("--permission-mode") + 1], expected)
 
     def test_interactive_claude_keeps_its_own_permission_prompts(self):
-        config = router.load_config(ROOT / "config" / "model-map.json")
-        result = router.route("t", "claude-code", config, "L1", "implementation")
+        result = fast_route("claude-code")
         self.assertEqual(result.mode, "single")
         self.assertNotIn("--permission-mode", router.shell_command(result, "t", True))
 

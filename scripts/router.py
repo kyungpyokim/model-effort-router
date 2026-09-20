@@ -50,9 +50,8 @@ FALLBACK_TASK_TYPE = "implementation"
 SCHEMA_VERSION = 6
 SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, 3, 4, 5, SCHEMA_VERSION)
 CODE_CHANGE_TASK_TYPES = ("implementation", "local_refactoring", "architectural_refactoring")
-# Below these levels only the cheap implementer runs; a mechanical L1 edit needs no plan or review.
-PLAN_MIN_LEVEL = "L2"
-REVIEW_MIN_LEVEL = "L2"
+# Judge rows are never below L2; a route qualifies for the cheap path only through fast_path, not through its level.
+WORKFLOW_MIN_LEVEL = "L2"
 PIPELINE_LIMITS = {"max_test_fixes": 2, "review_fixes_before_replan": 1, "max_replans": 1}
 SAFE_ORCHESTRATION_LEVELS = ("L5",)
 SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY = 2
@@ -1068,21 +1067,22 @@ def apply_refinement(
 
 def pipeline_plan(
     platform: str, task_type: str, level: str, mode: str, matrix: dict, stages: list[dict],
-    profile: dict | None, available_models: list[str] | None,
+    profile: dict | None, available_models: list[str] | None, fast_path: str | None = None,
 ) -> dict | None:
     """Who reviews and re-plans a code change once the implementer is done.
 
-    The merged Sol/Opus review and re-plan stage run at L2+ and take the risk tier's effort;
-    L1 keeps only the deterministic test gate and the cheap fix loop."""
+    Every code change gets the merged Sol/Opus review and re-plan stage at the risk tier's effort, from the
+    ``review`` row of ``max(level, WORKFLOW_MIN_LEVEL)``; only the trivial-edit fast path keeps just the
+    deterministic test gate and the cheap fix loop."""
     if task_type not in CODE_CHANGE_TASK_TYPES:
         return None
-    review = replan = None
-    if LEVELS.index(level) >= LEVELS.index(REVIEW_MIN_LEVEL):
-        judge_raw, _ = resolve_stages(matrix, "review", level)
-        judge = apply_tier(platform, materialise_stages(platform, judge_raw, "single", available_models), profile, available_models)[0]
-        review = {**judge, "role": "reviewer"}
-        # A two-stage route already has its planner; a single-stage one re-plans with the judge.
-        replan = {**(stages[0] if mode == "two_stage" else judge), "role": "planner"}
+    if fast_path == "trivial_edit":
+        return {"review": None, "replan": None, "limits": dict(PIPELINE_LIMITS)}
+    judge_raw, _ = resolve_stages(matrix, "review", higher_level(level, WORKFLOW_MIN_LEVEL))
+    judge = apply_tier(platform, materialise_stages(platform, judge_raw, "single", available_models), profile, available_models)[0]
+    review = {**judge, "role": "reviewer"}
+    # A two-stage route already has its planner; a single-stage one re-plans with the judge.
+    replan = {**(stages[0] if mode == "two_stage" else judge), "role": "planner"}
     return {"review": review, "replan": replan, "limits": dict(PIPELINE_LIMITS)}
 
 
@@ -1094,7 +1094,10 @@ def fast_path_for(task_type: str, level: str, risk_tier: str, facts: dict[str, s
     """The cheap single-model path a route qualifies for, or None for the regular workflow.
 
     Only an explicit ``requires_code_understanding == "no"`` qualifies a code change: unknown is missing
-    information, so it keeps the regular workflow without raising anything."""
+    information, so it keeps the regular workflow without raising anything.
+
+    Precondition: ``"inspect"`` is only correct because ``route()`` has already promoted any risky or
+    high-level inspect to ``review``; a caller must apply the same promotion before asking."""
     if task_type == "inspect":
         return "inspect"
     if (
@@ -1159,16 +1162,17 @@ def route(
     if refined_by:
         rationale.append(f"{level} implementer refined by {refined_by}")
     stages = materialise_stages(platform, raw_stages, mode, available_models)
-    if mode == "single" and task_type in CODE_CHANGE_TASK_TYPES and LEVELS.index(level) >= LEVELS.index(PLAN_MIN_LEVEL):
-        # The planning judge is the platform's design row; the implementer keeps its matrix/refined rung.
-        planner_raw, _ = resolve_stages(matrix, "design", level)
+    fast_path = fast_path_for(task_type, level, risk_tier, classification.facts, check_available)
+    if mode == "single" and task_type in CODE_CHANGE_TASK_TYPES and fast_path != "trivial_edit":
+        # The planning judge is the design row of max(level, L2); the implementer keeps its real-level matrix/refined rung.
+        planner_raw, _ = resolve_stages(matrix, "design", higher_level(level, WORKFLOW_MIN_LEVEL))
         planner = materialise_stages(platform, planner_raw, "single", available_models)[0]
         # A planner identical to the implementer buys nothing, so that route stays single-stage.
         if (planner["model"], planner["effort"]) != (stages[0]["model"], stages[0]["effort"]):
             stages = [{**planner, "role": "planner"}, {**stages[0], "role": "implementer"}]
             mode = "two_stage"
     stages = apply_tier(platform, stages, tier_profile, available_models)
-    pipeline = pipeline_plan(platform, task_type, level, mode, matrix, stages, tier_profile, available_models)
+    pipeline = pipeline_plan(platform, task_type, level, mode, matrix, stages, tier_profile, available_models, fast_path)
     plan_dir = None
     if mode == "two_stage":
         # Resolved once (macOS /var -> /private/var) so the prompt, the Claude edit rule and the route agree.
@@ -1180,7 +1184,6 @@ def route(
     orchestration_eligible = is_orchestration_eligible(
         config, platform, level, mode, classification.risk_flags, risk_tier, classification.delegability
     )
-    fast_path = fast_path_for(task_type, level, risk_tier, classification.facts, check_available)
     return RouteResult(
         platform=platform,
         task_type=task_type,

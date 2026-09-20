@@ -82,8 +82,9 @@ def classifier_output(task_type="implementation", level="L2", flags=None, reason
     return json.dumps(payload) if raw else payload
 
 
-def classification(task_type="implementation", level="L2", flags=None, source="terra", delegability=0, risk_tier="standard"):
+def classification(task_type="implementation", level="L2", flags=None, source="terra", delegability=0, risk_tier="standard", facts=None):
     return router.Classification(
+        facts=dict(facts or {}),
         task_type=task_type,
         level=level,
         risk_flags={**NO_FLAGS, **(flags or {})},
@@ -104,7 +105,7 @@ def init_git_repo(path: Path) -> Path:
 
 
 def routed(task="task", platform="codex", explicit_level=None, explicit_task_type=None,
-           available_models=None, classifier=None, repo_aware=False, critical=False):
+           available_models=None, classifier=None, repo_aware=False, critical=False, check_available=False):
     return router.route(
         task, platform, CONFIG,
         explicit_level=explicit_level,
@@ -113,6 +114,20 @@ def routed(task="task", platform="codex", explicit_level=None, explicit_task_typ
         classifier=classifier or (lambda _: classification()),
         repo_aware=repo_aware,
         critical=critical,
+        check_available=check_available,
+    )
+
+
+# A trivial edit qualifies for the single-stage fast path only with this fact AND a deterministic check.
+FAST_FACTS = {"requires_code_understanding": "no"}
+
+
+def routed_fast_l1(platform="codex", task_type="implementation", flags=None):
+    """A genuinely single-stage L1 code-change route: the trivial-edit fast path."""
+    return routed(
+        platform=platform,
+        classifier=lambda _: classification(task_type, "L1", flags=flags, facts=FAST_FACTS),
+        check_available=True,
     )
 
 
@@ -1122,35 +1137,35 @@ AGY_SONNET = ("Claude Sonnet 4.6 (Thinking)", None)
 class MatrixTests(unittest.TestCase):
     EXPECTED_SINGLE = {
         "codex": {
-            # L2+ code changes are two-stage (judge plan + this cheap implementer); see EXPECTED_STAGES.
-            **{(kind, "L1"): CODEX_IMPL[0] for kind in ("implementation", "local_refactoring")},
+            # Every non-fast code change is two-stage (judge plan + this cheap implementer); see EXPECTED_STAGES.
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CODEX_JUDGE)},
-            ("architectural_refactoring", "L1"): ("gpt-5.6-luna", "medium"),
             ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
-            **{("inspect", level): ("gpt-5.6-luna", "low") for level in router.LEVELS},
+            # inspect above L2 is promoted to review (asserted in the test); the raw L3-L5 cells live in test_fast_path.
+            **{("inspect", level): ("gpt-5.6-luna", "low") for level in router.LEVELS[:2]},
         },
         "claude-code": {
-            **{(kind, "L1"): CLAUDE_IMPL[0] for kind in ("implementation", "local_refactoring")},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CLAUDE_JUDGE)},
-            ("architectural_refactoring", "L1"): ("claude-haiku-4-5", None),
             ("architectural_refactoring", "L2"): ("claude-opus-5", "high"),
-            **{("inspect", level): ("claude-haiku-4-5", None) for level in router.LEVELS},
+            **{("inspect", level): ("claude-haiku-4-5", None) for level in router.LEVELS[:2]},
         },
         "antigravity": {
             # The Flash L2 implementer equals the Flash design planner, so L2 keeps a single stage.
+            # The Flash L1 implementer equals the Flash design planner too.
             **{(kind, level): AGY_FLASH for kind in ("implementation", "local_refactoring") for level in ("L1", "L2")},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
                 AGY_FLASH, AGY_FLASH, AGY_PRO, AGY_PRO, AGY_PRO,
             ))},
             ("architectural_refactoring", "L1"): AGY_FLASH,
             ("architectural_refactoring", "L2"): AGY_FLASH,
-            **{("inspect", level): AGY_FLASH for level in router.LEVELS},
+            **{("inspect", level): AGY_FLASH for level in router.LEVELS[:2]},
         },
     }
     EXPECTED_STAGES = {
         "codex": {
             **{(kind, level): [("planner", "gpt-5.6-sol", "high"), ("implementer", *impl)]
-               for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS[1:], CODEX_IMPL[1:])},
+               for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS, CODEX_IMPL)},
+            # L1 is not fast here (no facts): the judge row is max(L1, L2) while the implementer keeps its L1 row.
+            ("architectural_refactoring", "L1"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-luna", "medium")],
             ("implementation", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
             ("local_refactoring", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
             ("architectural_refactoring", "L3"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "medium")],
@@ -1159,7 +1174,8 @@ class MatrixTests(unittest.TestCase):
         },
         "claude-code": {
             **{(kind, level): [("planner", "claude-opus-5", "high"), ("implementer", *impl)]
-               for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS[1:], CLAUDE_IMPL[1:])},
+               for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS, CLAUDE_IMPL)},
+            ("architectural_refactoring", "L1"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-haiku-4-5", None)],
             ("implementation", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
             ("local_refactoring", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
             ("architectural_refactoring", "L3"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "medium")],
@@ -1780,8 +1796,8 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertTrue(Path(result.plan_dir).is_dir())
 
     def test_implementer_codex_command_pins_model_and_effort(self):
-        # L1 stays single-stage; from L2 the implementer is the last stage after the judge plan.
-        l1 = routed(classifier=lambda _: classification("implementation", "L1"))
+        # A fast trivial-edit L1 stays single-stage; every other code change has the implementer last, after the judge plan.
+        l1 = routed_fast_l1("codex")
         self.assertEqual((l1.mode, l1.model, l1.effort), ("single", "gpt-5.6-luna", "low"))
         l1_command = router.stage_commands(l1, "task")[0]
         self.assertIn("model_reasoning_effort=low", l1_command)
@@ -1903,7 +1919,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertEqual(steps[0]["agent"], {"subagent_type": "model-effort:effort-high", "model": "opus"})
         self.assertEqual(steps[-1]["agent"], {"subagent_type": "model-effort:effort-medium", "model": "sonnet"})
 
-        haiku = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L1"))
+        haiku = routed_fast_l1("claude-code")
         step = router.result_payload(haiku, router.stage_commands(haiku, "task"))["steps"][0]
         self.assertEqual(step["agent"], {"subagent_type": "model-effort:effort-none", "model": "haiku"})
 
@@ -2165,7 +2181,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertNotIn("name: level-4-complex", " ".join(command))
 
     def test_claude_effort_omitted_for_haiku(self):
-        result_l1 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L1"))
+        result_l1 = routed_fast_l1("claude-code")
         self.assertEqual(result_l1.model, "claude-haiku-4-5")
         self.assertIsNone(result_l1.effort)
         command_l1 = router.shell_command(result_l1, "task", False)
@@ -2533,8 +2549,9 @@ class PaperthinIntegrationTests(unittest.TestCase):
         self.assertIn("leave the codebase cleaner than found", router.IMPLEMENTER_INSTRUCTIONS_TEMPLATE)
 
     def test_autobahn_scope_guard_injected_when_security_flags_active(self):
+        # An L1 security change is not a fast edit: the implementer is the last stage after the judge plan.
         result_sec = routed(classifier=lambda _: classification("implementation", "L1", flags={"security_sensitive": True}))
-        command = router.stage_commands(result_sec, "fix payment")[0]
+        command = router.stage_commands(result_sec, "fix payment")[-1]
         self.assertIn("Autobahn scope guard", " ".join(command))
 
         payload_sec = router.result_payload(result_sec, router.stage_commands(result_sec, "fix payment"))
@@ -2542,7 +2559,7 @@ class PaperthinIntegrationTests(unittest.TestCase):
         self.assertEqual(payload_sec["scope_guard"]["policy"], "autobahn_scope_carve")
         self.assertIn("security_sensitive", payload_sec["scope_guard"]["risk_flags"])
 
-        result_normal = routed(classifier=lambda _: classification("implementation", "L1"))
+        result_normal = routed_fast_l1("codex")
         command_normal = router.stage_commands(result_normal, "simple task")[0]
         self.assertNotIn("Autobahn scope guard", " ".join(command_normal))
         payload_normal = router.result_payload(result_normal, [command_normal])

@@ -150,6 +150,58 @@ class TrivialEditGateTests(unittest.TestCase):
                 self.assertEqual((result.model, result.effort), profile)
                 self.assertEqual(result.pipeline["review"], None)
                 self.assertEqual(result.pipeline["replan"], None)
+                # Discriminating: the identical classification without a check gets the regular workflow (see
+                # RegularWorkflowForNonFastL1Tests.test_the_same_classification_is_fast_only_with_a_deterministic_check).
+                self.assertIsNotNone(routed(platform, "implementation", "no", mechanical_only="yes").pipeline["review"])
+
+
+class RegularWorkflowForNonFastL1Tests(unittest.TestCase):
+    def test_a_mechanical_edit_that_is_not_fast_gets_the_full_workflow(self):
+        cases = (
+            dict(understanding="no", check_available=False),   # no deterministic check configured
+            dict(understanding="yes", check_available=True),   # needs code understanding
+            dict(understanding="unknown", check_available=True),
+            dict(understanding=None, check_available=True),
+        )
+        for platform, judge, implementer in (
+            ("codex", ("gpt-5.6-sol", "high"), LUNA),
+            ("claude-code", ("claude-opus-5", "high"), HAIKU),
+        ):
+            for case in cases:
+                with self.subTest(platform=platform, **case):
+                    result = routed(platform, "implementation", mechanical_only="yes", **case)
+                    self.assertEqual((result.level, result.mode, result.fast_path), ("L1", "two_stage", None))
+                    self.assertEqual([s["role"] for s in result.stages], ["planner", "implementer"])
+                    self.assertEqual((result.stages[0]["model"], result.stages[0]["effort"]), judge)
+                    self.assertEqual(result.stages[1]["model"], implementer)
+                    self.assertEqual(result.pipeline["review"]["model"], judge[0])
+                    self.assertEqual(result.pipeline["replan"]["model"], judge[0])
+
+    def test_the_regular_workflow_judge_row_never_drops_below_l2(self):
+        self.assertEqual(router.WORKFLOW_MIN_LEVEL, "L2")
+        self.assertFalse(hasattr(router, "REVIEW_MIN_LEVEL"))
+        self.assertFalse(hasattr(router, "PLAN_MIN_LEVEL"))
+
+    def test_read_only_types_still_have_no_pipeline(self):
+        for task_type in ("design", "review", "inspect"):
+            with self.subTest(task_type=task_type):
+                self.assertIsNone(routed("codex", task_type, None, files_touched="0").pipeline)
+
+    def test_the_same_classification_is_fast_only_with_a_deterministic_check(self):
+        for platform in ("codex", "claude-code"):
+            fast = routed(platform, "implementation", "no", check_available=True, mechanical_only="yes")
+            regular = routed(platform, "implementation", "no", check_available=False, mechanical_only="yes")
+            with self.subTest(platform=platform):
+                self.assertEqual((fast.fast_path, fast.mode, fast.pipeline["review"]), ("trivial_edit", "single", None))
+                self.assertIsNotNone(regular.pipeline["review"])
+                self.assertIsNotNone(regular.pipeline["replan"])
+                self.assertEqual(regular.mode, "two_stage")
+
+    def test_a_single_stage_l1_route_with_the_judge_as_implementer_still_reviews(self):
+        # Phase 1 exception: a planner equal to the implementer is not inserted, but the review still runs.
+        result = routed("codex", "architectural_refactoring", "no", level="L2")
+        self.assertEqual(result.mode, "single")
+        self.assertIsNotNone(result.pipeline["review"])
 
 
 class InspectReuseTests(unittest.TestCase):
