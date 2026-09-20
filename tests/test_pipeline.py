@@ -16,6 +16,38 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pipeline  # noqa: E402
 import router  # noqa: E402
 
+
+class RolePromptTests(unittest.TestCase):
+    def setUp(self):
+        self.config = router.load_config(ROOT / "config" / "model-map.json")
+
+    def test_role_prompts_are_specific_and_do_not_inflate_normal_changes(self):
+        result = router.route("fix a validation typo", "codex", self.config, "L3", "implementation")
+        planner, implementer = router.stage_commands(result, "fix a validation typo")
+
+        self.assertEqual(router.SCHEMA_VERSION, 7)
+        self.assertIn("PLAN\nProduce the minimum implementation plan needed for this task.", planner[-1])
+        self.assertIn("IMPLEMENT\nImplement the approved plan without expanding scope.", implementer[-1])
+        self.assertNotIn("architectural refactoring", planner[-1].lower())
+        self.assertNotIn("architectural refactoring", implementer[-1].lower())
+
+    def test_single_stage_design_and_review_prompts_name_their_roles(self):
+        for task_type, expected in (
+            ("design", "DESIGN\nProduce the architecture/design plan needed for this task."),
+            ("review", "REVIEW\nReview the implementation against the requirements and plan."),
+        ):
+            with self.subTest(task_type=task_type):
+                result = router.route("inspect the router", "codex", self.config, "L2", task_type)
+                command = router.stage_commands(result, "inspect the router")[0]
+                self.assertIn(expected, command[-1])
+
+    def test_runtime_reviewer_prompt_names_the_review_role(self):
+        self.assertIn(
+            "REVIEW\nReview the implementation against the requirements and plan.",
+            pipeline.REVIEW_INSTRUCTIONS,
+        )
+
+
 FAKE_CODEX = """#!{python}
 import json, os, pathlib, sys
 argv = sys.argv[1:]
@@ -46,7 +78,7 @@ def fast_route(platform="codex", task_type="implementation"):
     """A genuinely single-stage L1 code-change route: the trivial-edit fast path (explicit no-understanding fact + a check)."""
     config = router.load_config(ROOT / "config" / "model-map.json")
     classification = dataclasses.replace(
-        router.pinned_classification(task_type, "L1"), facts={"requires_code_understanding": "no"}
+        router.pinned_classification(task_type, "L1"), facts=dict(router.TRIVIAL_EDIT_FACTS)
     )
     result = router.route("t", platform, config, classifier=lambda _: classification, check_available=True)
     assert (result.mode, result.fast_path) == ("single", "trivial_edit")
@@ -77,7 +109,7 @@ class PipelineCase(unittest.TestCase):
             result = router.route("do the thing", platform, config, level, task_type, critical=critical)
         return router.result_payload(result, router.stage_commands(result, "do the thing"), "do the thing")
 
-    def run_pipeline(self, replies, payload=None, tests=()):
+    def run_pipeline(self, replies, payload=None, tests=("true",)):
         (self.dir / "replies.json").write_text(json.dumps(replies), encoding="utf-8")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             rc = pipeline.run_route(payload or self.payload(), list(tests), str(self.work))
@@ -241,7 +273,7 @@ class PipelineHardeningTests(PipelineCase):
         rc, _ = self.run_pipeline([{}, {}, {"out": "VERDICT: PASS"}], payload=payload)
         self.assertEqual(rc, 0)
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            pipeline.run_route(payload, [], str(self.work), cleanup=True)
+            pipeline.run_route(payload, ["true"], str(self.work), cleanup=True)
         self.assertTrue(foreign.exists())
 
     def test_interactive_shapes_are_detected(self):
@@ -293,7 +325,7 @@ class PipelineFailClosedTests(PipelineCase):
         (self.dir / "replies.json").write_text(json.dumps([{}, {}, {"out": "VERDICT: PASS"}]), encoding="utf-8")
         err = io.StringIO()
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
-            pipeline.run_route(self.payload(), [], str(self.work))
+            pipeline.run_route(self.payload(), ["true"], str(self.work))
         text = err.getvalue()
         self.assertIn("phase=plan model=gpt-5.6-sol effort=high", text)
         self.assertIn("phase=implement model=gpt-5.6-terra effort=high", text)
@@ -331,10 +363,17 @@ class ClaudeAccessTests(unittest.TestCase):
                 command = router.shell_command(result, "t", False)
                 self.assertEqual(command[command.index("--permission-mode") + 1], expected)
 
-    def test_interactive_claude_keeps_its_own_permission_prompts(self):
+    def test_interactive_claude_edits_keep_its_own_permission_prompts(self):
         result = fast_route("claude-code")
         self.assertEqual(result.mode, "single")
         self.assertNotIn("--permission-mode", router.shell_command(result, "t", True))
+
+    def test_interactive_claude_inspect_is_read_only(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "claude-code", config, "L1", "inspect")
+        command = router.shell_command(result, "t", True)
+        self.assertEqual(command[command.index("--permission-mode") + 1], "dontAsk")
+        self.assertIn("Bash", command)
 
 
 class RouteFileArgvGrammarTests(PipelineCase):
@@ -343,6 +382,8 @@ class RouteFileArgvGrammarTests(PipelineCase):
         for platform in ("codex", "claude-code", "antigravity"):
             for level in router.LEVELS:
                 for task_type in router.TASK_TYPES:
+                    if task_type == "inspect" and router.LEVELS.index(level) > router.LEVELS.index(router.INSPECT_MAX_LEVEL):
+                        continue
                     result = router.route("t", platform, config, level, task_type)
                     for interactive in (False, True):
                         if interactive and result.mode == "two_stage":
@@ -375,6 +416,11 @@ class RouteFileArgvGrammarTests(PipelineCase):
         for platform, command, kwargs in bad:
             with self.subTest(command=command), self.assertRaises(ValueError):
                 router.validate_argv(platform, command, **kwargs)
+
+    def test_codex_reader_cannot_drop_its_read_only_sandbox(self):
+        command = ["codex", "exec", "-m", "gpt-5.6-luna", "task"]
+        with self.assertRaises(ValueError):
+            router.validate_argv("codex", command, model="gpt-5.6-luna", access="read")
 
     def test_reader_stages_cannot_run_shell_or_write_and_the_planner_writes_only_its_plan(self):
         review = router.claude_access_flags("read")
@@ -518,6 +564,27 @@ class TrivialEditCheckTests(PipelineCase):
         self.assertIn("deterministic check", err)
         self.assertEqual(self.calls(), [])
 
+    def test_a_regular_code_change_without_a_check_is_refused_before_any_model_runs(self):
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        rc, err = self.main(self.payload())
+        self.assertEqual(rc, 2)
+        self.assertIn("deterministic check", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_a_blank_check_is_refused_before_any_model_runs(self):
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        rc, err = self.main(self.payload(fast=True), "--test-cmd", "   ")
+        self.assertEqual(rc, 2)
+        self.assertIn("deterministic check", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_an_inspect_never_runs_a_supplied_test_command(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("look", "codex", config, "L1", "inspect")
+        payload = router.result_payload(result, router.stage_commands(result, "look"), "look")
+        rc, calls = self.run_pipeline([{}], payload=payload, tests=["false"])
+        self.assertEqual((rc, self.roles(calls)), (0, ["execute"]))
+
     def test_an_interactive_hand_off_cannot_bypass_the_check(self):
         result = fast_route("codex")
         payload = router.result_payload(result, router.stage_commands(result, "t", interactive=True), "t")
@@ -525,6 +592,15 @@ class TrivialEditCheckTests(PipelineCase):
         rc, err = self.main(payload)
         self.assertEqual(rc, 2)
         self.assertIn("deterministic check", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_an_interactive_regular_code_change_is_refused(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "codex", config, "L2", "architectural_refactoring")
+        payload = router.result_payload(result, router.stage_commands(result, "t", interactive=True), "t")
+        rc, err = self.main(payload, "--test-cmd", "true")
+        self.assertEqual(rc, 2)
+        self.assertIn("trivial_edit", err)
         self.assertEqual(self.calls(), [])
 
     def test_the_env_check_satisfies_the_guard_and_a_green_run_only_executes(self):
@@ -567,6 +643,12 @@ class FastPathValidationTests(PipelineCase):
         payload["fast_path"] = "trivial_edit"
         with self.assertRaises(ValueError):
             pipeline.Pipeline.validate(payload)
+
+    def test_replayed_trivial_edit_rechecks_its_facts(self):
+        payload = self.payload(fast=True)
+        payload["facts"]["changes_trust_boundary"] = "yes"
+        with self.assertRaises(ValueError):
+            router.validated_commands(payload)
 
     def test_a_trivial_edit_claim_carrying_a_review_or_replan_is_inconsistent(self):
         for key in ("review", "replan"):

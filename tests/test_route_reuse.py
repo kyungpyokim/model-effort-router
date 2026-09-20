@@ -291,7 +291,7 @@ class ReviewHardeningTests(ReuseCase):
         exe.chmod(0o755)
         with mock.patch.dict(os.environ, {"PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            pipeline.run_route(payload, [], str(self.workspace), own_session="someone-else")
+            pipeline.run_route(payload, ["true"], str(self.workspace), own_session="someone-else")
         self.assertIsNone(route_reuse.load_record("mine")["blocked"])
 
 
@@ -326,7 +326,7 @@ class OutcomeTests(ReuseCase):
         exe.chmod(0o755)
         with mock.patch.dict(os.environ, {"PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            rc = pipeline.run_route(payload, [], str(self.workspace), own_session="s1")
+            rc = pipeline.run_route(payload, ["true"], str(self.workspace), own_session="s1")
         self.assertEqual(rc, 7)
         self.assertEqual(route_reuse.load_record("s1")["blocked"], "exit 7")
 

@@ -79,7 +79,7 @@ class InspectRoutingTests(unittest.TestCase):
                 self.assertIsNone(result.pipeline)
                 self.assertIsNone(result.plan_dir)
 
-    def test_inspect_is_promoted_to_review_when_it_turns_out_to_need_judgement(self):
+    def test_inspect_that_needs_judgement_is_rejected_instead_of_spending_a_judge_model(self):
         cases = (
             {"reviews_security_sensitive_code": "yes"},   # security review -> L4+
             {"fix_or_result_known": "no"},                # an open investigation -> L3
@@ -88,33 +88,29 @@ class InspectRoutingTests(unittest.TestCase):
         )
         for facts in cases:
             with self.subTest(facts=facts):
-                result = routed("codex", "inspect", None, files_touched="0", **facts)
-                self.assertEqual(result.task_type, "review")
-                self.assertIsNone(result.fast_path)
-                self.assertTrue(any("inspect" in line and "review" in line for line in result.rationale))
+                with self.assertRaisesRegex(ValueError, "classify judgement as review or design"):
+                    routed("codex", "inspect", None, files_touched="0", **facts)
 
-    def test_a_pinned_inspect_at_a_high_level_is_promoted_too(self):
-        result = routed("claude-code", "inspect", None, level="L4", files_touched="0")
-        self.assertEqual((result.task_type, result.fast_path), ("review", None))
+    def test_a_pinned_high_level_inspect_is_rejected_too(self):
+        with self.assertRaisesRegex(ValueError, "standard L1-L2"):
+            routed("claude-code", "inspect", None, level="L4", files_touched="0")
 
-    def test_a_critical_tier_inspect_becomes_a_judge_review_never_a_cheap_route_with_effort(self):
+    def test_a_critical_tier_inspect_is_rejected_never_promoted_to_a_judge_review(self):
         for platform in ("codex", "claude-code", "antigravity"):
-            judge = router.route("t", platform, CONFIG, explicit_task_type="review", critical=True)
-            by_flag = router.route("t", platform, CONFIG, explicit_task_type="inspect", critical=True)
-            by_fact = routed(platform, "inspect", None, files_touched="0", irreversible_or_ledger_or_crypto="yes")
-            for how, result in (("critical=True", by_flag), ("fact", by_fact)):
-                with self.subTest(platform=platform, how=how):
-                    self.assertEqual((result.task_type, result.risk_tier, result.fast_path), ("review", "critical", None))
-                    self.assertEqual(result.stages, judge.stages)
-                    self.assertEqual((result.model, result.effort), (judge.model, judge.effort))
-                    self.assertNotIn(HAIKU, {model for model, _ in profiles(result)})
-                    self.assertFalse(any(model == LUNA and effort is None for model, effort in profiles(result)))
+            for how, make_route in (
+                ("critical=True", lambda: router.route("t", platform, CONFIG, explicit_task_type="inspect", critical=True)),
+                ("fact", lambda: routed(platform, "inspect", None, files_touched="0", irreversible_or_ledger_or_crypto="yes")),
+            ):
+                with self.subTest(platform=platform, how=how), self.assertRaisesRegex(ValueError, "standard L1-L2"):
+                    make_route()
 
     def test_claude_haiku_never_carries_an_effort_on_any_route(self):
         for task_type in router.TASK_TYPES:
             for level in router.LEVELS:
                 for critical in (False, True):
                     with self.subTest(task_type=task_type, level=level, critical=critical):
+                        if task_type == "inspect" and (critical or router.LEVELS.index(level) > router.LEVELS.index(router.INSPECT_MAX_LEVEL)):
+                            continue
                         result = router.route(
                             "t", "claude-code", CONFIG, explicit_level=level, explicit_task_type=task_type, critical=critical
                         )
@@ -126,13 +122,13 @@ class InspectRoutingTests(unittest.TestCase):
         result = routed("codex", "inspect", None, files_touched="0")
         payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
         self.assertEqual(payload["fast_path"], "inspect")
-        self.assertEqual(payload["schema_version"], 6)
+        self.assertEqual(payload["schema_version"], router.SCHEMA_VERSION)
 
 
 class TrivialEditGateTests(unittest.TestCase):
     def test_fast_path_for_requires_every_condition(self):
         ok = dict(task_type="implementation", level="L1", risk_tier="standard",
-                  facts={"requires_code_understanding": "no"}, check_available=True)
+                  facts=dict(router.TRIVIAL_EDIT_FACTS), check_available=True)
         self.assertEqual(router.fast_path_for(**ok), "trivial_edit")
         for name, value in (
             ("task_type", "architectural_refactoring"), ("task_type", "design"), ("level", "L2"),
@@ -144,9 +140,14 @@ class TrivialEditGateTests(unittest.TestCase):
             with self.subTest(**{name: value}):
                 self.assertIsNone(router.fast_path_for(**{**ok, name: value}))
 
+        for fact, expected in router.TRIVIAL_EDIT_FACTS.items():
+            facts = dict(ok["facts"])
+            facts[fact] = "unknown" if expected == "no" else "no"
+            with self.subTest(fact=fact):
+                self.assertIsNone(router.fast_path_for(**{**ok, "facts": facts}))
+
     def test_a_mechanical_edit_with_a_check_is_fast_and_single_stage(self):
-        # Codex L1 becomes Luna Medium only in Task 5 (config change); until then it is Luna Low.
-        for platform, profile in (("codex", (LUNA, "low")), ("claude-code", (HAIKU, None))):
+        for platform, profile in (("codex", (LUNA, "medium")), ("claude-code", (HAIKU, None))):
             with self.subTest(platform=platform):
                 result = routed(platform, "implementation", "no", check_available=True, mechanical_only="yes")
                 self.assertEqual((result.level, result.mode, result.fast_path), ("L1", "single", "trivial_edit"))
@@ -275,6 +276,11 @@ class RouterMainCheckAvailableTests(unittest.TestCase):
         self.assertIs(spy.call_args.kwargs["check_available"], False)
         self.assertIsNone(payload["fast_path"])
         self.assertEqual(payload["mode"], "two_stage")
+
+    def test_a_blank_configured_check_does_not_qualify(self):
+        payload, spy = self.main(*self.classified(), check_env="   ")
+        self.assertIs(spy.call_args.kwargs["check_available"], False)
+        self.assertIsNone(payload["fast_path"])
 
     def test_a_reused_classification_applies_the_check_the_same_way(self):
         first, _ = self.main(*self.classified(), "--session", "s")

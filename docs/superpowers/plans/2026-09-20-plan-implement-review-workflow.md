@@ -320,7 +320,7 @@ git commit -m "docs: document the plan-implement-review workflow and sync plugin
 각 항목은 목표·핵심 결정·수용 기준만 확정하고, 코드 수준 단계는 Phase 1 결과(실제 route JSON 모양)를 본 뒤 작성한다.
 
 ### Phase 2 — Fast Path와 분류기 비용 (G4, G5, G6, G7, G13)
-- **Inspect**: 새 `task_type = "inspect"` (분류기 프롬프트·schema·matrix 행 추가). matrix는 전 레벨 Luna Low / Haiku. `risk_tier != standard` 또는 level > L2면 router가 `review`로 승격한다 (조회가 위험 영역을 건드리면 저비용 단독 처리 금지). `pipeline` 없음, 코드 수정 access 없음(`read`).
+- **Inspect**: 새 `task_type = "inspect"` (분류기 프롬프트·schema·matrix 행 추가). matrix는 전 레벨 Luna Low / Haiku. `risk_tier != standard` 또는 level > L2인 inspect 분류는 잘못된 단독 조회이므로 라우터가 거부한다. 호출자는 이를 `review` 또는 `design`으로 재분류해야 한다. `pipeline` 없음, 코드 수정 access 없음(`read`).
 - **Trivial Edit**: `mechanical_only=yes`이고 계획서 §3 조건을 fact로 매핑 (`files_touched=1`, crosses_* = no, `fix_or_result_known=yes`, `needs_new_structure=no`, security/API/persisted = no, `requires_code_understanding=no`, risk standard) + 결정적 검증 존재(테스트 명령 설정 또는 감지)일 때만 `mode="fast"`. 하나라도 불충족이면 Phase 1 정규 워크플로우. **unknown은 조건 충족으로 취급하지 않는다**(정규 경로로 간다 — 단 상향 재분류는 하지 않는다).
 - 분류기 모델 Luna Low / Haiku, Codex L1 = Luna Medium (`config/model-map.json` + `PRIMARY_CLASSIFIER_CONFIG` 동기화).
 - Route 재사용 레코드에 `operation`(inspect/modify) 저장, inspect→modify 전환은 재분류 blocker (`route_reuse.reuse_blockers`).

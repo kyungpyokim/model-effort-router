@@ -10,17 +10,17 @@ EVENTS = {"SessionStart"}
 POLICY = (
     "For implementation, design, review, refactoring, or debugging work, invoke "
     "model-effort:route first. Save the route JSON; replay without reclassifying. "
-    "A route whose JSON pipeline block is non-null (code changes) runs via "
-    "bin/codex-route --route-file (scripts/pipeline.py), which enforces plan, "
-    "implement, test, review and fix: never the parent implementing directly, "
-    "never those steps by hand with workers. Only pipeline-null routes "
-    "(design/review) are delegated to a worker with its model/effort. Reuse the "
-    "route for same-scope follow-ups. Re-route for a distinct task, a new review, materially "
-    "increased scope/risk. Skip casual chat or status-only questions. As "
-    "classification-only process, classify only. As executor given a complete "
-    "route, run only assigned work; return escalation evidence, not recursive "
-    "routing. Report fallback as fallback, not successful semantic routing. Show "
-    "task_type, level, model/effort, source before delegating."
+    "A pipeline block is non-null (code changes): bin/codex-route --route-file "
+    "(scripts/pipeline.py) enforces plan, implement, test, review and fix; never the "
+    "parent implementing directly. Only pipeline-null routes (design/review) are "
+    "delegated to a worker; inspect is read-only. Reuse same-scope follow-ups; re-route "
+    "for a distinct task, a new review, materially increased scope/risk. Export "
+    "MODEL_EFFORT_ROUTER_TEST_CMD before route generation and replay; trivial_edit "
+    "uses its deterministic check. Preserve scope; reclassify INSPECT to MODIFY. Skip "
+    "casual chat or status-only questions. As classification-only process, executor given "
+    "a complete route runs assigned work, not recursive routing. Report fallback as "
+    "fallback, not successful semantic routing. Show task_type, level, model/effort, "
+    "source before delegating."
 )
 
 

@@ -21,8 +21,8 @@ def payload_for(platform, level, secure=False, task="do the thing", task_type="i
     classification = router.Classification(
         task_type=task_type, level=level, risk_flags=flags, reason="r", source="primary",
         risk_tier="elevated" if secure else "standard",
-        # fast: the trivial-edit fast path (explicit no-understanding fact + a deterministic check) is a single-stage L1 route.
-        facts={"requires_code_understanding": "no"} if fast else {},
+        # fast: the trivial-edit fast path (all mechanical/local facts + a deterministic check) is a single-stage L1 route.
+        facts=dict(router.TRIVIAL_EDIT_FACTS) if fast else {},
     )
     result = router.route(task, platform, CONFIG, classifier=lambda _: classification, check_available=fast)
     return router.result_payload(result, router.stage_commands(result, task, interactive), task)
@@ -34,6 +34,8 @@ class GeneratedInstructionTests(unittest.TestCase):
             for level, secure in (("L1", False), ("L2", False), ("L3", False), ("L4", False), ("L5", False), ("L5", True), ("L4", True)):
                 for task_type in router.TASK_TYPES:
                     with self.subTest(platform=platform, level=level, secure=secure, task_type=task_type):
+                        if task_type == "inspect" and (secure or router.LEVELS.index(level) > router.LEVELS.index(router.INSPECT_MAX_LEVEL)):
+                            continue
                         router.validated_commands(payload_for(platform, level, secure, task_type=task_type))
 
     def test_interactive_forms_and_migration_or_api_flags_validate(self):

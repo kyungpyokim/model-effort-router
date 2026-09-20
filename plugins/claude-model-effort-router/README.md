@@ -31,7 +31,7 @@ Then invoke:
 /model-effort:route <task>
 ```
 
-The router preflights each task with native `claude-sonnet-5` / medium; facts that stay unknown get
+The router preflights each task with native `claude-haiku-4-5` (no effort parameter); facts that stay unknown get
 one bounded same-model lookup, then a question to the user (exit `3`), never a stronger model. Claude's JSON-schema output is
 read from its `structured_output` result field. Safe mode,
 no tools, plan permissions, no session persistence, and a temporary working
@@ -46,12 +46,11 @@ The v5 execution matrix (levels L1-L5, plus a separate risk tier) is:
 | design / review | haiku | opus high | opus high | opus high | opus high |
 | architectural_refactoring | haiku | opus high | opus high -> sonnet med | opus xhigh -> sonnet high | opus xhigh -> sonnet high |
 
-`A -> B` is the success-dependent planner-to-implementer chain. Every L2+ code change
+`A -> B` is the success-dependent planner-to-implementer chain. Every non-fast code change
 (`implementation`, `local_refactoring`, `architectural_refactoring`) gets its planner from the
 `design` row and a merged review from the `review` row; the exception is `architectural_refactoring`
 at L2, where the design row (opus high) equals the implementer, so no planner is inserted and
-the route stays single-stage. There the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). L1 code changes are single-stage with only the test gate
-(`PLAN_MIN_LEVEL` / `REVIEW_MIN_LEVEL` in `scripts/router.py`). At L2, `requires_code_understanding` = yes swaps the
+the route stays single-stage. There the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). A gated `trivial_edit` is single-stage with its deterministic test gate; otherwise L1 uses the regular workflow. At L2, `requires_code_understanding` = yes swaps the
 `haiku` implementer for `sonnet low`.
 Read-only design and review use `files_touched: 0`; files only read for context do not
 count. The `elevated` and `critical` risk tiers imply L5 and raise only the
@@ -70,23 +69,23 @@ is an `effort-*` agent whose frontmatter pins the matrix effort, and the level i
 travel at the top of the prompt.
 
 From a terminal, `bin/claude-route -- "<task>"` classifies and then runs the same
-`pipeline.py` launcher, so it works without the plugin installed. `--interactive` opts into a
-single hand-off `claude` session with the selected model/effort, which skips the test and
-review stages. `--print` is accepted and changes nothing.
+`pipeline.py` launcher, so it works without the plugin installed. `--interactive` is limited to
+read-only routes and gated `trivial_edit` routes; the latter still runs its deterministic test.
+`--print` is accepted and changes nothing.
 
-Route-file replay accepts v2-v6 payloads. Schema v6 records `facts`,
+Route-file replay accepts v2-v7 payloads. Schema v7 records `facts`,
 `matched_rules`, `unresolved_facts`, `questions`, `evidence`, and `risk_tier` alongside direct-only
 `execution_strategy` and future orchestration `orchestration_eligible` metadata; it
 does not enable orchestration on Claude Code. `scripts/astra_adapter.py` is the unchanged
 caller-invoked orchestration adapter that revalidates worker inputs and preserves original
-verified artifacts; direct v2-v6 route-file replay never invokes it.
+verified artifacts; direct v2-v7 route-file replay never invokes it.
 
 ## Execution roles and pipeline
 
 Goal: **Opus thinks and verifies, Haiku and Sonnet implement.** Opus designs,
 verifies, and reviews; Haiku/Sonnet implement and fix; the launcher runs the tests with no
 model; re-promote to Opus when the implementation hits a new design problem.
-Classification stays on Sonnet.
+Classification stays on Haiku.
 
 - Reuse the stored route for follow-up questions in the same task. Re-classify only
   when the task type changes, scope grows a lot, new risk evidence appears, or a
@@ -94,7 +93,7 @@ Classification stays on Sonnet.
 - Test execution (pytest, lint, typecheck, build) runs in the launcher with no model call
   (`MODEL_EFFORT_ROUTER_TEST_CMD` or `--test-cmd`); only a failing log goes to the implementer.
 - Do not call Opus after each step. After the implementation and the tests, make one Opus
-  verification + code review call at L2+ (High; elevated tier XHigh; critical tier Max),
+  verification + code review call for every non-fast code change (High; elevated tier XHigh; critical tier Max),
   sent only the requirement, approved plan, git diff, test results, and key code.
 - On review FAIL the reviewer does not fix it: the route's implementer fixes it (every fix
   uses the route's implementer today), then the review runs again; the next failure re-plans
@@ -126,8 +125,8 @@ For a single-stage route (for example `--task-type implementation --level L1`) t
 claude -p --model claude-haiku-4-5 --permission-mode acceptEdits -- '<level instructions> <task>'
 ```
 
-A model with an effort setting adds `--effort <e>` after `--model`. An L2+ code change prints the
-two-stage plan/implement chain instead; run it through `scripts/pipeline.py --route-file`
+A model with an effort setting adds `--effort <e>` after `--model`. A non-fast code change prints the
+plan/implement chain when its planner differs; run it through `scripts/pipeline.py --route-file`
 (what `bin/claude-route` does) to get the test gate and review.
 
 `--level` alone is a minimum; `--level` with an explicit `--task-type`

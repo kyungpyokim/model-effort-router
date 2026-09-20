@@ -43,8 +43,8 @@ platform, and an unknown fact is settled in this order:
 
 Classifier models by platform (no escalation model exists):
 
-- **Codex**: `gpt-5.6-luna` (medium)
-- **Claude Code**: `claude-sonnet-5` (medium)
+- **Codex**: `gpt-5.6-luna` (low)
+- **Claude Code**: `claude-haiku-4-5` (no effort parameter)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
@@ -96,10 +96,11 @@ reuses only the stored execution steps.
 Non-interactive launcher runs (`codex-route`, `claude-route`, `agy-route`) execute
 `scripts/pipeline.py`: plan -> implement -> deterministic test -> one merged Sol/Opus review.
 Tests run in the launcher without a model call: set `MODEL_EFFORT_ROUTER_TEST_CMD` (or pass
-`--test-cmd` to `pipeline.py`). Only a failure sends a truncated log to the implementer.
-Code changes at L2+ (`implementation`, `local_refactoring`, `architectural_refactoring`) get a
-planner from the platform's `design` row and the review at the risk tier's effort; L1 code changes
-stay single-stage with only the test gate. A review FAIL is fixed once by the route's implementer,
+`--test-cmd` to `pipeline.py`). The launcher refuses every code-change route without one; only a
+failure sends a truncated log to the implementer.
+Every code change except a gated `trivial_edit` (`implementation`, `local_refactoring`,
+`architectural_refactoring`) gets judge plan and review stages from `max(level, L2)`; a trivial edit
+skips only plan and review and still runs its required deterministic test gate. A review FAIL is fixed once by the route's implementer,
 the next failure re-plans once, and then the run stops. Claude implement/fix stages run with `acceptEdits`; plan and review stages cannot edit code. Route files may only carry router-generated argv shapes. The launcher logs one `phase=...` line per stage (`MODEL_EFFORT_ROUTER_VERBOSE=1` adds the commands). Route (who) and execution state (where the run
 is, `state.json`) stay separate. Details: `references/routing-policy.md`.
 
@@ -114,14 +115,14 @@ task is classified and stored; follow-ups in the same workspace reuse that route
 classifier, until the workspace changes, 4 hours pass, a run re-plans or fails, or the new task shows a
 different operation, wider scope, or new risk evidence. `--no-reuse` forces a fresh classification.
 
-Route JSON emits schema v6: `facts`, `matched_rules`, `unresolved_facts`, `questions`, and
+Route JSON emits schema v7: `facts`, `matched_rules`, `unresolved_facts`, `questions`, and
 `evidence` replace the old score fields, and `risk_tier` (`standard`, `elevated`,
 `critical`) is recorded next to the level. It records `execution_strategy: "direct"` and
 `orchestration_eligible` separately: eligibility is only a Codex orchestration handoff
 candidate, never an execution request. `scripts/astra_adapter.py` is the unchanged
 local, caller-invoked orchestration adapter (an isolated-worker boundary that requires
 supplied route and manifest digests, revalidates worker input copies, and preserves the
-original verified artifacts after each attempt). Direct v2-v6 route-file replay never
+original verified artifacts after each attempt). Direct v2-v7 route-file replay never
 invokes it.
 
 `delegability` is independent of the difficulty rules: `0` is shared
@@ -174,11 +175,11 @@ always reported on stderr.
 ## Two-stage routes
 
 On every platform, code changes (`implementation`, `local_refactoring`,
-`architectural_refactoring`) at L2+ run as a success-dependent shell
-chain, with the planner taken from the platform's `design` row at that level. The exception: when the
+`architectural_refactoring`) other than a gated `trivial_edit` run as a success-dependent shell
+chain, with plan and review judges taken from `max(level, L2)`. The exception: when the
 derived planner's model and effort equal the implementer's, no planner is inserted and the route
 stays single-stage (Codex and Claude Code `architectural_refactoring` at L2, and every
-Antigravity L2 code change). On those rows the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). L1 code changes are always single-stage. The planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
+Antigravity L2 code change). On those rows the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). A gated trivial edit is the only code-change fast path that skips plan and review. The planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
 into a temporary run directory, then the implementer (`luna`/`terra`, or
 `sonnet`) reads the plan plus the repository and implements it with the plan's
 validation commands. The implementer does not make new design decisions: it stops
@@ -197,15 +198,15 @@ fix, and test. Role + difficulty + risk decide the model and effort: the same L4
 maps to Sol/Opus for design, review, or verification and to Terra high / Sonnet
 high for implementation. Roles map onto the existing task types: design =
 `design`, review = `review`, implementation = `implementation`, `local_refactoring`,
-and `architectural_refactoring` (at L2+ planned by the `design` row and reviewed by the
-`review` row). Classification stays cheap.
+and `architectural_refactoring` (every non-fast code change is planned by the `design` row and reviewed by the
+`review` row at `max(level, L2)`). Classification stays cheap.
 
 ```text
-request -> classify (cheap) -> plan (L2+ code changes; design-row judge, Sol / Opus)
+request -> classify (cheap) -> plan (every non-fast code change; design-row judge at max(level, L2), Sol / Opus)
         -> implement (the route's implementer: Luna / Terra / Haiku / Sonnet)
              new design problem? stop -> evidence -> re-plan
         -> deterministic tests (launcher, no model)
-        -> ONE Sol / Opus verification + review at L2+
+        -> ONE Sol / Opus verification + review for every non-fast code change
              (High; elevated tier XHigh; critical tier Max)
         -> FAIL: the route's implementer fixes -> tests -> review again;
              the next failure re-plans once

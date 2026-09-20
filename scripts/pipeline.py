@@ -44,7 +44,8 @@ VERBOSE_PROMPT_CHARS = 120
 VERDICT_RE = re.compile(r"^VERDICT: (PASS|FAIL)$")
 ESCALATE_RE = re.compile(r"^ESCALATE: (.+)$")
 
-REVIEW_INSTRUCTIONS = """You are the single merged verification and code review stage of a plan-implement-test-review pipeline.
+REVIEW_INSTRUCTIONS = f"""{router.REVIEW_ROLE_PROMPT}
+You are the single merged verification and code review stage of a plan-implement-test-review pipeline.
 Judge whether the change satisfies the original request and the plan, and review the diff for correctness, security, regressions, and missing tests. The deterministic tests already ran; their result is given.
 Do not modify any file and do not fix anything yourself; report problems for the implementer.
 Do not invoke the model-effort router recursively.
@@ -113,6 +114,17 @@ def run_tests(commands: list[str], cwd: str) -> str | None:
         if proc.returncode:
             return f"$ {command}\n(exit {proc.returncode})\n{tail(proc.stdout + proc.stderr)}"
     return None
+
+
+def has_required_test_command(payload: object, test_commands: list[str]) -> bool:
+    if not isinstance(payload, dict) or payload.get("task_type") not in router.CODE_CHANGE_TASK_TYPES or any(command.strip() for command in test_commands):
+        return True
+    print(
+        "invalid route: a code-change route needs a deterministic check "
+        f"(--test-cmd or {TEST_COMMAND_ENV})",
+        file=sys.stderr,
+    )
+    return False
 
 
 def git_head(cwd: str) -> str | None:
@@ -188,7 +200,8 @@ class Pipeline:
         # Derived from the validated risk flags, not from the unvalidated top-level scope_guard block.
         secure = any(flag in router.SECURITY_FLOOR_FLAGS for flag in payload.get("risk_flags") or [])
         self.scope_guard = f"\n{router.AUTOBAHN_SCOPE_GUARD}" if secure else ""
-        self.test_commands, self.cwd, self.workdir, self.plan_file = test_commands, cwd, workdir, plan_file
+        self.test_commands = test_commands if payload["task_type"] in router.CODE_CHANGE_TASK_TYPES else []
+        self.cwd, self.workdir, self.plan_file = cwd, workdir, plan_file
         self.counts = {"test": 0, "review": 0}
         self.replans = 0
         self.reviews = 0
@@ -340,6 +353,9 @@ class Pipeline:
 
 
 def run_route(payload: object, test_commands: list[str], cwd: str, cleanup: bool = False, own_session: str | None = None) -> int:
+    test_commands = [command for command in test_commands if command.strip()]
+    if not has_required_test_command(payload, test_commands):
+        return 2
     _, plan_path = router.validated_commands(payload)
     workdir = Path(plan_path).parent if plan_path else Path(tempfile.mkdtemp(prefix="model-effort-pipeline-")).resolve()
     workdir.mkdir(parents=True, exist_ok=True)
@@ -369,7 +385,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.verbose:
         os.environ[VERBOSE_ENV] = "1"
-    test_commands = [*args.test_cmd, *([os.environ[TEST_COMMAND_ENV]] if os.environ.get(TEST_COMMAND_ENV) else [])]
+    test_commands = [command for command in [*args.test_cmd, os.environ.get(TEST_COMMAND_ENV, "")] if command.strip()]
     try:
         payload = json.loads(args.route_file.read_text(encoding="utf-8"))
         router.validated_commands(payload)
@@ -377,18 +393,18 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
         print(f"invalid route file: {exc}", file=sys.stderr)
         return 2
-    if payload.get("fast_path") == "trivial_edit" and not test_commands:
-        # Checked before the interactive hand-off so a terminal session cannot skip the only verification this route has.
-        print(
-            "invalid route: the trivial-edit fast path needs a deterministic check "
-            f"(--test-cmd or {TEST_COMMAND_ENV}); run without it through the regular workflow",
-            file=sys.stderr,
-        )
+    if not has_required_test_command(payload, test_commands):
         return 2
     commands, _ = router.validated_commands(payload)
     if len(commands) == 1 and is_interactive(commands[0]):
+        if payload.get("task_type") in router.CODE_CHANGE_TASK_TYPES and payload.get("fast_path") != "trivial_edit":
+            print("invalid route: interactive code-change routes require the trivial_edit fast path", file=sys.stderr)
+            return 2
         # An interactive session needs the terminal: hand off without capturing anything.
-        return subprocess.call(commands[0])
+        rc = subprocess.call(commands[0])
+        if rc or payload.get("task_type") not in router.CODE_CHANGE_TASK_TYPES:
+            return rc
+        return int(run_tests(test_commands, os.getcwd()) is not None)
     return run_route(payload, test_commands, os.getcwd(), args.cleanup_plan_dir, args.session)
 
 

@@ -10,17 +10,16 @@ EVENTS = {"SessionStart"}
 POLICY = (
     "For implementation, design, review, refactoring, or debugging work, invoke "
     "the model-effort:route skill first; do not continue in the parent session. "
-    "A route whose JSON pipeline block is non-null (code changes) runs via "
-    "scripts/pipeline.py --route-file, which enforces plan, implement, test, "
-    "review and fix: never the parent implementing directly, never those steps "
-    "by hand with the Agent tool. Only pipeline-null routes (design/review) are "
-    "delegated with the Agent tool using exact subagent_type and model. Reuse "
-    "the route for same-scope follow-ups. Re-route for a new task, review, or "
-    "materially increased scope/risk. Skip casual chat or status-only questions. "
-    "As classification-only process, classify only. As executor given a complete route, run only assigned work; "
-    "return escalation evidence, not recursive routing. A fallback-source route "
-    "is not real routing: do not delegate it. Show task_type, level, model/effort, "
-    "source before delegating."
+    "A pipeline block is non-null (code changes): scripts/pipeline.py --route-file "
+    "enforces plan, implement, test, review and fix; never the parent implementing "
+    "directly. Only pipeline-null routes (design/review) are delegated with the Agent "
+    "tool using exact subagent_type and model; inspect is read-only. Reuse same-scope "
+    "follow-ups; re-route a new task, review, or materially increased scope/risk. "
+    "Export MODEL_EFFORT_ROUTER_TEST_CMD before route generation and replay; trivial_edit "
+    "uses its deterministic check. Preserve scope; reclassify INSPECT to MODIFY. Skip "
+    "casual chat or status-only questions. executor given a complete route runs assigned "
+    "work. A fallback-source route is not real routing: do not delegate it. Show "
+    "task_type, level, model/effort, source before delegating."
 )
 
 

@@ -102,7 +102,7 @@ def main() -> int:
     assert int(assessor["maxTurns"]) >= 16, "the difficulty assessor needs turns to finish its JSON"
     assert "at most 6 tool calls" in (claude / "agents" / "difficulty-assessor.md").read_text(encoding="utf-8")
     claude_skill_text = (claude / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
-    assert "`model` `sonnet`" in claude_skill_text, "primary classification step must stay on sonnet"
+    assert "`model` `haiku`" in claude_skill_text, "primary classification step must stay on haiku"
     assert "`model` `opus`" not in claude_skill_text, "unknown facts are never settled by a stronger classifier"
     assert "unresolved_facts" in claude_skill_text, "the route skill must ask the user about unresolved facts"
     # The route skill delegates through the Agent tool, which cannot set effort,

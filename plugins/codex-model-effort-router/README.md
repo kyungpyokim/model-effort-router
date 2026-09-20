@@ -8,16 +8,15 @@ routes it through the v5 `task_type × level` matrix in `config/model-map.json`:
 
 | task type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation / local_refactoring | luna low | sol high -> luna med | sol high -> terra med | sol high -> terra high | sol high -> terra high |
+| implementation / local_refactoring | luna med | sol high -> luna med | sol high -> terra med | sol high -> terra high | sol high -> terra high |
 | design / review | luna med | sol high | sol high | sol high | sol high |
 | architectural_refactoring | luna med | sol high | sol high -> terra med | sol xhigh -> terra high | sol xhigh -> terra high |
 
-`A -> B` is the success-dependent planner-to-implementer chain. Every L2+ code change
+`A -> B` is the success-dependent planner-to-implementer chain. Every non-fast code change
 (`implementation`, `local_refactoring`, `architectural_refactoring`) gets its planner from the
 `design` row and a merged review from the `review` row; the exception is
 `architectural_refactoring` at L2, where the design row (sol high) equals the implementer, so no
-planner is inserted and the route stays single-stage. There the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). L1 code changes are single-stage with
-only the test gate (`PLAN_MIN_LEVEL` / `REVIEW_MIN_LEVEL` in `scripts/router.py`). At L2,
+planner is inserted and the route stays single-stage. There the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). A gated trivial edit skips only plan and review; every other L1 code change uses the regular workflow. At L2,
 `requires_code_understanding` = yes swaps `luna med` for `luna high`. The `elevated` and
 `critical` risk tiers imply L5 and raise only the planning and review stages to `xhigh` / `max`
 (the implementer keeps its matrix profile). Read-only
@@ -46,7 +45,7 @@ stays on Luna.
 - Test execution (pytest, lint, typecheck, build) runs in the launcher with no model call
   (`MODEL_EFFORT_ROUTER_TEST_CMD` or `--test-cmd`); only a failing log goes to the implementer.
 - Do not call Sol after each step. After the implementation and the tests, make one Sol
-  verification + code review call at L2+ (High; elevated tier XHigh; critical tier Max),
+  verification + code review call for every non-fast code change (High; elevated tier XHigh; critical tier Max),
   sent only the requirement, approved plan, git diff, test results, and key code.
 - On review FAIL the reviewer does not fix it: the route's implementer fixes it (every fix
   uses the route's implementer today), then the review runs again; the next failure re-plans
@@ -110,7 +109,7 @@ Example single-stage output (an L1 `implementation`):
 codex exec -m gpt-5.6-luna -c model_reasoning_effort=low -c 'developer_instructions="..."' '<task>'
 ```
 
-Example two-stage output (any L2+ code change except `architectural_refactoring` at L2):
+Example two-stage output (a non-fast code change whose planner differs from its implementer):
 
 ```bash
 mkdir -p /tmp/codex-route-<run-id> && codex exec -m gpt-5.6-sol ... '<plan>' && codex exec -m gpt-5.6-luna ... '<execute>' && rm -rf /tmp/codex-route-<run-id>
@@ -123,7 +122,7 @@ preserves it even on success.
 The CLI launcher starts a new process because a plugin cannot reliably replace the model of an already-running parent turn on every Codex surface. Codex CLI does not expose `--agent`, so this fallback applies the selected model and effort while the plugin skill handles named-agent delegation where available.
 
 Before selecting that process, the router runs the native Codex CLI with fixed
-`gpt-5.6-luna` / medium effort in a temporary read-only session and validates its JSON response.
+`gpt-5.6-luna` / low effort in a temporary read-only session and validates its JSON response.
 Timeouts, process failures, and invalid output safely route to implementation /
 L3. `--level` alone is a minimum; `--level` with an explicit `--task-type`
 pins both axes and bypasses the preflight.
@@ -136,11 +135,11 @@ reasons only; it does not execute checks. The selected executor receives its
 recommended checks and reports each result or why it was not run. Route-file
 replay ignores the JSON object and reuses only the stored execution steps.
 
-Schema v6 records `facts`, `matched_rules`, `unresolved_facts`, `questions`, `evidence`, `risk_tier`, and
+Schema v7 records `facts`, `matched_rules`, `unresolved_facts`, `questions`, `evidence`, `risk_tier`, and
 `execution_strategy: "direct"` with
 `orchestration_eligible` separately. `scripts/astra_adapter.py` is the unchanged
 orchestration adapter, a caller-invoked isolated-worker boundary that revalidates worker
-inputs and preserves original verified artifacts, not a launcher target. Direct v2-v6
+inputs and preserves original verified artifacts, not a launcher target. Direct v2-v7
 route-file replay never invokes it.
 
 ## Customize

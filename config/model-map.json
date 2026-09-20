@@ -21,13 +21,13 @@
     "codex": {
       "primary": {
         "model": "gpt-5.6-luna",
-        "effort": "medium"
+        "effort": "low"
       }
     },
     "claude-code": {
       "primary": {
-        "model": "claude-sonnet-5",
-        "effort": "medium"
+        "model": "claude-haiku-4-5",
+        "effort": null
       }
     },
     "antigravity": {
@@ -59,7 +59,7 @@
         "implementation": {
           "L1": {
             "model": "gpt-5.6-luna",
-            "effort": "low"
+            "effort": "medium"
           },
           "L2": {
             "model": "gpt-5.6-luna",
@@ -157,7 +157,7 @@
         "local_refactoring": {
           "L1": {
             "model": "gpt-5.6-luna",
-            "effort": "low"
+            "effort": "medium"
           },
           "L2": {
             "model": "gpt-5.6-luna",

@@ -29,7 +29,7 @@ instructions in the prompt, so it works without the extension installed.
 ## Execute with automatic model selection
 
 ```bash
-./bin/agy-route --interactive -- "<task>"
+./bin/agy-route --interactive -- "<read-only or gated trivial-edit task>"
 ```
 
 For one-shot mode:
@@ -64,12 +64,12 @@ and, because Antigravity has no effort setting, swaps the planning and review st
 `Claude Opus Thinking`; the implementer stage keeps its matrix model. `--level` accepts
 `L1`-`L5` only.
 
-Route-file replay accepts v2-v6 payloads. Schema v6 records `facts`,
+Route-file replay accepts v2-v7 payloads. Schema v7 records `facts`,
 `matched_rules`, `unresolved_facts`, `questions`, `evidence`, `risk_tier`, direct-only `execution_strategy`,
 and future orchestration `orchestration_eligible` metadata; it
 does not enable orchestration on Antigravity. `scripts/astra_adapter.py` is the unchanged
 caller-invoked orchestration adapter that revalidates worker inputs and preserves original
-verified artifacts; direct v2-v6 route-file replay never invokes it.
+verified artifacts; direct v2-v7 route-file replay never invokes it.
 
 ## Execution roles and pipeline
 
@@ -79,12 +79,11 @@ plans, designs, verifies, and reviews; Flash and Sonnet Thinking implement and f
 launcher runs the tests with no model. Reuse the stored route for same-task follow-ups (re-classify only on a
 task-type change, large scope growth, new risk evidence, or a fact that shows the
 approved design cannot be implemented). Do not call the strong model after each step:
-after the implementation and the tests, make one merged verification + review call (L2+)
+after the implementation and the tests, make one merged verification + review call for every non-fast code change
 sent only the requirement, approved plan, git diff, test results, and key code. On review
 FAIL the route's implementer fixes it (the reviewer does not); the next failure re-plans once.
-Code changes at L2+ get a planner from the `design` row, except that Antigravity L2 code
-changes stay single-stage (Flash High plans and implements alike, so the review is a self-review by the same Flash model until reviewer separation lands in Phase 3); L1 is single-stage with only the
-test gate. The router does not enforce per-stage permissions on Antigravity (planned). An implementer that finds
+Non-fast code changes get a planner from the `design` row at `max(level, L2)`, except that Antigravity L2 code
+changes stay single-stage (Flash High plans and implements alike, so the review is a self-review by the same Flash model until reviewer separation lands in Phase 3); only a gated `trivial_edit` skips plan and review. The router does not enforce per-stage permissions on Antigravity (planned). An implementer that finds
 something outside the plan (scope expansion, architecture or public API change, DB
 migration, security boundary change, plan/code mismatch) stops and returns evidence;
 "hard" or "unsure" alone is not evidence. See `references/routing-policy.md`.

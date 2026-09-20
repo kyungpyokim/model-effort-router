@@ -30,8 +30,8 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 
 플랫폼별 분류 모델(에스컬레이션 모델은 없습니다):
 
-- **Codex**: `gpt-5.6-luna` (medium)
-- **Claude Code**: `claude-sonnet-5` (medium)
+- **Codex**: `gpt-5.6-luna` (low)
+- **Claude Code**: `claude-haiku-4-5` (effort 없음)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)`
 
 각 사전 분류는 격리된 임시 디렉토리에서 실행되며 구조화된 JSON(`task_type`, `facts`, `delegability`, `evidence`, `reason`)을 검증한 뒤 프로필을 선택합니다. 읽기 전용인 `design` 및 `review` 작업의 경우 `files_touched`가 `0`으로 처리됩니다. Claude Code 또는 Codex 세션 내에서는 라우트 스킬이 인세션 `difficulty-assessor` 에이전트를 통해 동일한 프롬프트를 실행하고 `--classification-file`로 JSON을 전달합니다. 라우트 스킬은 이 1회 분류에서 저장소를 읽고(`--repo-aware`), `unresolved_facts`가 남으면 다른 모델을 부르는 대신 사용자에게 묻습니다. `--classification-file`의 `{"primary", "lookup"}` 엔벨로프는 같은 모델의 조회 1회를 첫 응답에 합칩니다.
@@ -64,13 +64,13 @@ plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort
 
 ### 체이닝 파이프라인
 
-비대화형 런처(`codex-route`, `claude-route`, `agy-route`) 실행은 `scripts/pipeline.py`를 거칩니다: 계획 -> 구현 -> 결정적 테스트 -> Sol/Opus 통합 리뷰 1회. 테스트는 모델 호출 없이 런처가 직접 실행하며(`MODEL_EFFORT_ROUTER_TEST_CMD` 또는 `pipeline.py --test-cmd`), 실패했을 때만 잘라낸 로그를 구현 모델에 넘깁니다. L2 이상 코드 변경(`implementation`, `local_refactoring`, `architectural_refactoring`)은 플랫폼의 `design` 행에서 가져온 계획자와 리스크 티어 effort의 리뷰를 받고, L1 코드 변경은 단일 stage로 테스트 게이트만 거칩니다. 리뷰 FAIL은 라우트의 구현 모델이 1회 수정하고, 다음 실패는 1회 재계획한 뒤 중단합니다. Claude 구현/수정 단계만 `acceptEdits`로 실행되고 계획/리뷰 단계는 코드를 수정할 수 없습니다. 라우트 파일에는 라우터가 생성한 argv 형태만 허용됩니다. 런처는 단계마다 `phase=...` 한 줄을 남깁니다(`MODEL_EFFORT_ROUTER_VERBOSE=1`이면 명령도 출력). 라우트(누가)와 실행 상태(어디까지, `state.json`)는 분리됩니다. 자세한 내용: `references/routing-policy.md`.
+비대화형 런처(`codex-route`, `claude-route`, `agy-route`) 실행은 `scripts/pipeline.py`를 거칩니다: 계획 -> 구현 -> 결정적 테스트 -> Sol/Opus 통합 리뷰 1회. 모든 코드 변경은 `MODEL_EFFORT_ROUTER_TEST_CMD` 또는 `pipeline.py --test-cmd`로 결정적 검사를 제공해야 하며, 없으면 모델 실행 전에 거부됩니다. `trivial_edit`만 계획과 리뷰를 건너뛰고 테스트는 항상 실행하며, 다른 코드 변경은 `max(level, L2)`의 계획·리뷰 행을 사용합니다. 리뷰 FAIL은 라우트의 구현 모델이 1회 수정하고, 다음 실패는 1회 재계획한 뒤 중단합니다. Claude 구현/수정 단계만 `acceptEdits`로 실행되고 계획/리뷰 단계는 코드를 수정할 수 없습니다. 라우트 파일에는 라우터가 생성한 argv 형태만 허용됩니다. 런처는 단계마다 `phase=...` 한 줄을 남깁니다(`MODEL_EFFORT_ROUTER_VERBOSE=1`이면 명령도 출력). 라우트(누가)와 실행 상태(어디까지, `state.json`)는 분리됩니다. 자세한 내용: `references/routing-policy.md`.
 
 ### 라우트 재사용
 
 작업 스레드마다 `MODEL_EFFORT_ROUTER_SESSION=<key>`(또는 `router.py --session <key>`)를 지정하면 첫 작업만 분류해 저장하고, 같은 워크스페이스의 후속 작업은 분류기 호출 없이 그 라우트를 재사용합니다. 워크스페이스 변경, 4시간 경과, 실행 중 재계획/실패, 새 작업의 작업 종류 변경·범위 확대·새 리스크 근거가 있으면 다시 분류합니다. `--no-reuse`는 강제로 새로 분류합니다.
 
-라우트 JSON은 스키마 v6를 출력합니다. 이전 점수 필드 대신 `facts`, `matched_rules`, `unresolved_facts`, `questions`, `evidence`가 사용되며, 레벨 옆에 `risk_tier`(`standard` / `elevated` / `critical`)가 기록됩니다. 또한 `execution_strategy: "direct"`와 `orchestration_eligible`을 분리하여 기록합니다. 오케스트레이션 적격성(`orchestration_eligible`)은 Codex 오케스트레이션 인계 후보일 뿐이며 실행 요청이 아닙니다. `scripts/astra_adapter.py`는 변경되지 않은 오케스트레이션 어댑터로, 호출자가 직접 호출하는 로컬 격리 워커 경계입니다(제공된 라우트 및 매니페스트 다이제스트 검증, 시도별 워커 입력 복사본 재검증, 시도 후 검증된 원본 아티팩트 보존). 직접 v2-v6 라우트 파일 재생 시에는 이 어댑터를 호출하지 않습니다.
+라우트 JSON은 스키마 v7를 출력합니다. 이전 점수 필드 대신 `facts`, `matched_rules`, `unresolved_facts`, `questions`, `evidence`가 사용되며, 레벨 옆에 `risk_tier`(`standard` / `elevated` / `critical`)가 기록됩니다. 또한 `execution_strategy: "direct"`와 `orchestration_eligible`을 분리하여 기록합니다. 오케스트레이션 적격성(`orchestration_eligible`)은 Codex 오케스트레이션 인계 후보일 뿐이며 실행 요청이 아닙니다. `scripts/astra_adapter.py`는 변경되지 않은 오케스트레이션 어댑터로, 호출자가 직접 호출하는 로컬 격리 워커 경계입니다(제공된 라우트 및 매니페스트 다이제스트 검증, 시도별 워커 입력 복사본 재검증, 시도 후 검증된 원본 아티팩트 보존). 직접 v2-v7 라우트 파일 재생 시에는 이 어댑터를 호출하지 않습니다.
 
 `delegability`(위임 가능성)는 난이도 규칙과 독립적입니다.
 - `0`: 공유 상태, 순서 의존성, 위험 작업 또는 강하게 결합된 작업
@@ -107,7 +107,7 @@ python3 scripts/router.py --platform antigravity --detect-antigravity-models --f
 
 ## 2단계 라우트 (Two-stage routes)
 
-모든 플랫폼에서 L2 이상의 코드 변경(`implementation`, `local_refactoring`, `architectural_refactoring`)은 성공 여부에 따라 체인 형태로 실행되며, 계획 모델은 해당 레벨의 플랫폼 `design` 행에서 가져옵니다. 예외: 파생된 계획자의 모델과 effort가 구현 모델과 같으면 계획 단계를 넣지 않고 단일 stage로 남습니다(Codex/Claude Code의 L2 `architectural_refactoring`, 그리고 Antigravity의 모든 L2 코드 변경). 이 행들은 review 판정 모델이 구현 모델과 같으므로, reviewer 분리(Phase 3)가 들어오기 전까지 review는 자기 검토(self-review)입니다. L1 코드 변경은 항상 단일 stage입니다.
+`trivial_edit` Fast Path를 통과한 경우를 제외한 모든 코드 변경(`implementation`, `local_refactoring`, `architectural_refactoring`)은 성공 여부에 따라 체인 형태로 실행되며, 계획·리뷰 판정 모델은 `max(level, L2)`의 플랫폼 행에서 가져옵니다. 예외: 파생된 계획자의 모델과 effort가 구현 모델과 같으면 계획 단계를 넣지 않고 단일 stage로 남습니다(Codex/Claude Code의 L2 `architectural_refactoring`, 그리고 Antigravity의 모든 L2 코드 변경). 이 행들은 review 판정 모델이 구현 모델과 같으므로, reviewer 분리(Phase 3)가 들어오기 전까지 review는 자기 검토(self-review)입니다. `trivial_edit`만 계획과 리뷰를 건너뜁니다.
 1. 계획 모델(Codex `sol`, Claude Code `opus`, Antigravity Pro)이 임시 실행 디렉토리에 구조화된 계획 JSON을 작성합니다.
 2. 구현 모델(`luna`/`terra` 또는 `sonnet`)이 계획서와 저장소를 읽고 계획의 검증 명령과 함께 구현을 진행합니다. 구현 모델은 새로운 설계 결정을 내리지 않으며, 계획 밖의 문제를 발견하면 멈추고 계획 모델을 위한 에스컬레이션 근거를 반환합니다.
 
@@ -121,14 +121,14 @@ python3 scripts/router.py --platform codex --task-type architectural_refactoring
 
 ## 실행 역할과 파이프라인
 
-계획·설계·검증·리뷰에는 강한 모델을, 구현·수정·테스트에는 저렴한 모델을 씁니다. 모델과 effort는 역할 + 난이도 + 리스크로 결정됩니다. 같은 L4라도 설계/리뷰/검증이면 Sol/Opus, 구현이면 Terra high / Sonnet high로 매핑됩니다. 역할은 기존 task_type에 대응합니다: 설계 = `design`, 리뷰 = `review`, 구현 = `implementation`, `local_refactoring`, `architectural_refactoring`(L2 이상에서 `design` 행이 계획하고 `review` 행이 리뷰). 분류 자체는 저렴한 모델이 계속 담당합니다.
+계획·설계·검증·리뷰에는 강한 모델을, 구현·수정·테스트에는 저렴한 모델을 씁니다. 모델과 effort는 역할 + 난이도 + 리스크로 결정됩니다. 같은 L4라도 설계/리뷰/검증이면 Sol/Opus, 구현이면 Terra high / Sonnet high로 매핑됩니다. 역할은 기존 task_type에 대응합니다: 설계 = `design`, 리뷰 = `review`, 구현 = `implementation`, `local_refactoring`, `architectural_refactoring`(Fast Path가 아닌 코드 변경에서 `design` 행이 계획하고 `review` 행이 리뷰). 분류 자체는 저렴한 모델이 계속 담당합니다.
 
 ```text
-요청 -> 분류(저렴) -> 계획 (L2+ 코드 변경, design 행 판단 모델: Sol / Opus)
+요청 -> 분류(저렴) -> 계획 (Fast Path가 아닌 코드 변경, max(level, L2)의 design 행 판단 모델: Sol / Opus)
      -> 구현 (라우트의 구현 모델: Luna / Terra / Haiku / Sonnet)
           새로운 설계 문제 발견? 중단 -> 근거 반환 -> 재계획
      -> 결정적 테스트 (런처, 모델 호출 없음)
-     -> L2 이상: Sol / Opus 검증+리뷰 1회
+     -> Fast Path가 아닌 코드 변경: Sol / Opus 검증+리뷰 1회
           (High, elevated 티어 XHigh, critical 티어 Max)
      -> FAIL: 라우트의 구현 모델이 수정 -> 테스트 -> 다시 리뷰, 다음 실패는 1회 재계획
 ```

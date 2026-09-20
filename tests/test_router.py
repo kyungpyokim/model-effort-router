@@ -118,8 +118,8 @@ def routed(task="task", platform="codex", explicit_level=None, explicit_task_typ
     )
 
 
-# A trivial edit qualifies for the single-stage fast path only with this fact AND a deterministic check.
-FAST_FACTS = {"requires_code_understanding": "no"}
+# A trivial edit qualifies for the single-stage fast path only with every mechanical/local fact AND a deterministic check.
+FAST_FACTS = dict(router.TRIVIAL_EDIT_FACTS)
 
 
 def routed_fast_l1(platform="codex", task_type="implementation", flags=None):
@@ -166,7 +166,7 @@ class PlatformClassifierTests(unittest.TestCase):
             set(router.CLASSIFIER_SCHEMA["properties"]),
         )
 
-    def test_uses_fixed_low_effort_terra_with_v2_schema(self):
+    def test_uses_fixed_low_effort_luna_with_v7_schema(self):
         completed = subprocess.CompletedProcess([], 0, classifier_output(), "")
         captured = {}
 
@@ -180,7 +180,7 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(command[0:2], ["codex", "exec"])
         self.assertIn("--ephemeral", command)
         self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-luna")
-        self.assertIn('model_reasoning_effort="medium"', command)
+        self.assertIn('model_reasoning_effort="low"', command)
         self.assertEqual(captured["schema"]["properties"]["task_type"]["enum"], list(router.TASK_TYPES))
         self.assertEqual(captured["schema"]["properties"]["facts"]["required"], list(router.FACTS))
         self.assertNotIn("hard_floor", captured["schema"]["properties"])
@@ -218,7 +218,7 @@ class PlatformClassifierTests(unittest.TestCase):
 
     def test_a_fact_the_lookup_cannot_settle_stays_unresolved_and_never_raises_the_route(self):
         for platform, models in (
-            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-sonnet-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
+            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-haiku-4-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
         ):
             with self.subTest(platform=platform):
                 calls = []
@@ -321,10 +321,10 @@ class PlatformClassifierTests(unittest.TestCase):
             result = router.classify_task("add a settings page", platform="claude-code", timeout=7)
         command = run.call_args.args[0]
         self.assertEqual(command[:2], ["claude", "-p"])
-        self.assertEqual(command[command.index("--model") + 1], "claude-sonnet-5")
-        self.assertEqual(command[command.index("--effort") + 1], "medium")
+        self.assertEqual(command[command.index("--model") + 1], "claude-haiku-4-5")
+        self.assertNotIn("--effort", command)
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
-        self.assertEqual(result.source, "claude-sonnet-5")
+        self.assertEqual(result.source, "claude-haiku-4-5")
         self.assertEqual(Path(run.call_args.kwargs["cwd"]), ROOT / "config")
 
     def test_antigravity_uses_isolated_structured_json_classifier(self):
@@ -496,7 +496,7 @@ class DifficultyRuleTests(unittest.TestCase):
         classification_ = router.validate_classifier_output(classifier_output(changes_public_api_contract="yes", raw=False))
         result = routed(classifier=lambda _: classification_)
         payload = router.result_payload(result, router.stage_commands(result, "task"))
-        self.assertEqual(payload["schema_version"], 6)
+        self.assertEqual(payload["schema_version"], router.SCHEMA_VERSION)
         self.assertEqual(payload["risk_tier"], "standard")
         self.assertEqual(payload["facts"]["changes_public_api_contract"], "yes")
         self.assertEqual(payload["matched_rules"], ["L4:changes_public_api_contract"])
@@ -580,6 +580,10 @@ class SecurityReviewFloorTests(unittest.TestCase):
             for task_type in router.TASK_TYPES:
                 with self.subTest(domain=domain, task_type=task_type):
                     output = classifier_output(task_type=task_type, raw=False, security_domain=domain)
+                    if task_type == "inspect":
+                        with self.assertRaisesRegex(ValueError, "standard L1-L2"):
+                            routed(classifier=lambda _: router.validate_classifier_output(output))
+                        continue
                     result = routed(classifier=lambda _: router.validate_classifier_output(output))
                     self.assertEqual(result.level, "L5")
 
@@ -1108,7 +1112,7 @@ class EscalationTests(unittest.TestCase):
 
 
 CODEX_IMPL = (
-    ("gpt-5.6-luna", "low"),
+    ("gpt-5.6-luna", "medium"),
     ("gpt-5.6-luna", "medium"),
     ("gpt-5.6-terra", "medium"),
     ("gpt-5.6-terra", "high"),
@@ -1140,7 +1144,7 @@ class MatrixTests(unittest.TestCase):
             # Every non-fast code change is two-stage (judge plan + this cheap implementer); see EXPECTED_STAGES.
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CODEX_JUDGE)},
             ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
-            # inspect above L2 is promoted to review (asserted in the test); the raw L3-L5 cells live in test_fast_path.
+            # inspect above L2 is rejected; the raw L3-L5 cells live in test_fast_path.
             **{("inspect", level): ("gpt-5.6-luna", "low") for level in router.LEVELS[:2]},
         },
         "claude-code": {
@@ -1198,11 +1202,11 @@ class MatrixTests(unittest.TestCase):
             for task_type in router.TASK_TYPES:
                 for level in router.LEVELS:
                     with self.subTest(cell=f"{platform}/{task_type}/{level}"):
-                        result = routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
                         if task_type == "inspect" and router.LEVELS.index(level) > router.LEVELS.index(router.INSPECT_MAX_LEVEL):
-                            # Unreachable matrix rows: route() promotes a high-level inspect to review.
-                            self.assertEqual((result.task_type, result.level), ("review", level))
+                            with self.assertRaisesRegex(ValueError, "standard L1-L2"):
+                                routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
                             continue
+                        result = routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
                         self.assertEqual(result.task_type, task_type)
                         self.assertEqual((result.level, result.risk_tier), (level, "standard"))
                         if (task_type, level) in self.EXPECTED_SINGLE[platform]:
@@ -1563,7 +1567,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         reply = self._elevated_review_reply()
         cases = (
             ("codex-route", "codex", "gpt-5.6-luna", reply),
-            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(reply)})),
+            ("claude-route", "claude", "claude-haiku-4-5", json.dumps({"structured_output": json.loads(reply)})),
             ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(reply)})),
         )
         for launcher, executable, classifier_model, classifier_reply in cases:
@@ -1588,6 +1592,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env = {
                     **os.environ,
                     "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                    "MODEL_EFFORT_ROUTER_TEST_CMD": "true",
                     "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
                     "TMPDIR": str(temp_dir),
                 }
@@ -1607,7 +1612,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertEqual(classifier_calls.read_text(), "1")
                 self.assertTrue(marker.exists())
-                self.assertEqual(list(temp_dir.iterdir()), [])
+                self.assertEqual([path.name for path in temp_dir.iterdir() if path.name != "xcrun_db"], [])
 
     def test_print_only_env_prints_the_replayed_command_without_executing(self):
         for launcher, executable, platform in (
@@ -1681,6 +1686,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env = {
                     **os.environ,
                     "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                    "MODEL_EFFORT_ROUTER_TEST_CMD": "true",
                     "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
                     "TMPDIR": str(temp_dir),
                 }
@@ -1703,7 +1709,8 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertIn("planning stage", calls.read_text())
                 self.assertIn("execution stage", calls.read_text())
                 self.assertIn("merged verification", calls.read_text())
-                self.assertEqual(list(temp_dir.iterdir()), [], f"leaked temp entries: {list(temp_dir.iterdir())}")
+                leaked = [path for path in temp_dir.iterdir() if path.name != "xcrun_db"]
+                self.assertEqual(leaked, [], f"leaked router temp entries: {leaked}")
 
     def test_launchers_request_plan_dir_cleanup_only_for_the_route_file_they_generate(self):
         # Static guard for the launcher scripts themselves: the route file a launcher
@@ -1745,7 +1752,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 fake_agy.chmod(0o755)
-                env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+                env = {**os.environ, "MODEL_EFFORT_ROUTER_TEST_CMD": "true", "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
                 env.pop("MODEL_EFFORT_ROUTER_PRINT_ONLY", None)
                 env.pop("MODEL_EFFORT_ROUTER_ROOT", None)
                 proc = subprocess.run([str(ROOT / self.LAUNCHERS["agy-route"]), "--route-file", str(route_file)], capture_output=True, text=True, timeout=10, env=env)
@@ -1782,7 +1789,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 fake_agy.chmod(0o755)
-                env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+                env = {**os.environ, "MODEL_EFFORT_ROUTER_TEST_CMD": "true", "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
                 env.pop("MODEL_EFFORT_ROUTER_PRINT_ONLY", None)
                 env.pop("MODEL_EFFORT_ROUTER_ROOT", None)
                 repo = init_git_repo(directory / "repo")
@@ -1798,9 +1805,9 @@ class CommandAndLauncherTests(unittest.TestCase):
     def test_implementer_codex_command_pins_model_and_effort(self):
         # A fast trivial-edit L1 stays single-stage; every other code change has the implementer last, after the judge plan.
         l1 = routed_fast_l1("codex")
-        self.assertEqual((l1.mode, l1.model, l1.effort), ("single", "gpt-5.6-luna", "low"))
+        self.assertEqual((l1.mode, l1.model, l1.effort), ("single", "gpt-5.6-luna", "medium"))
         l1_command = router.stage_commands(l1, "task")[0]
-        self.assertIn("model_reasoning_effort=low", l1_command)
+        self.assertIn("model_reasoning_effort=medium", l1_command)
         # A single stage embeds the level agent's instructions; a two-stage implementer embeds the plan contract.
         self.assertIn(router.codex_agent_instructions("L1"), " ".join(l1_command).replace("\\n", "\n"))
         result = routed(classifier=lambda _: classification("implementation", "L3"))
@@ -2296,8 +2303,7 @@ class RouteSkillContractTests(unittest.TestCase):
 
     def test_readme_documents_the_current_preflight_contract(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("claude-sonnet-5", readme)
-        self.assertNotIn("claude-haiku-4-5", readme)
+        self.assertIn("claude-haiku-4-5", readme)
         self.assertNotIn("claude-haiku-4.5", readme)
         self.assertIn("unresolved_facts", readme)
         self.assertIn("DIFFICULTY_RULES", readme)
@@ -2378,7 +2384,7 @@ class RouteSkillContractTests(unittest.TestCase):
 
     def test_claude_skill_never_calls_a_stronger_classifier_for_unknown_facts(self):
         primary = self._primary_section("claude")
-        self.assertIn("`model` `sonnet`", primary)
+        self.assertIn("`model` `haiku`", primary)
         self.assertNotIn("`model` `opus`", primary)
 
     def test_antigravity_skill_replays_stored_steps_for_both_modes(self):
@@ -2389,6 +2395,23 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("runs the executor only if the plan step succeeds", primary)
         self.assertIn("scripts/pipeline.py", primary)
         self.assertIn("MODEL_EFFORT_ROUTER_TEST_CMD", primary)
+
+    def test_route_skills_preserve_test_command_for_fast_path_before_replay(self):
+        for plugin in ("codex", "claude", "antigravity"):
+            text = (ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
+            with self.subTest(plugin=plugin):
+                export = text.find("export MODEL_EFFORT_ROUTER_TEST_CMD")
+                route = text.find("router.py")
+                replay = text.find("pipeline.py")
+                self.assertGreaterEqual(export, 0)
+                self.assertGreaterEqual(route, 0)
+                self.assertGreaterEqual(replay, 0)
+                self.assertLess(export, route)
+                self.assertLess(export, replay)
+                self.assertIn("trivial_edit", text)
+                self.assertIn("inspect", text.lower())
+                self.assertRegex(text.lower(), r"scope.{0,80}(preserv|expand|growth)")
+                self.assertRegex(text.lower(), r"inspect.{0,120}(modify|re-?classif)")
 
     def test_code_change_workflow_is_stated_consistently_across_skills(self):
         # The fast-path paragraph is gone: L1 code changes are single-stage with only the test gate,
@@ -2452,7 +2475,7 @@ class RouteSkillContractTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("orchestration_eligible", text)
                 self.assertIn("execution_strategy", text)
-                self.assertIn("v2-v6", text)
+                self.assertIn("v2-v7", text)
 
     def test_runtime_docs_match_the_current_matrix_and_classifier_contract(self):
         claude_skill = (ROOT / "plugins" / "claude-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
@@ -2481,9 +2504,9 @@ class RouteSkillContractTests(unittest.TestCase):
         claude = (ROOT / "plugins" / "claude-model-effort-router" / "README.md").read_text(encoding="utf-8")
         antigravity = (ROOT / "plugins" / "antigravity-model-effort-router" / "README.md").read_text(encoding="utf-8")
         self.assertIn("L1-L5", codex)
-        self.assertIn("gpt-5.6-luna` / medium", codex)
+        self.assertIn("gpt-5.6-luna` / low", codex)
         self.assertIn("elevated", codex)
-        self.assertIn("claude-sonnet-5` / medium", claude)
+        self.assertIn("claude-haiku-4-5` (no effort parameter)", claude)
         self.assertIn("Gemini 3.8 Flash (Medium)", antigravity)
         self.assertNotIn("gemini-3.6-flash-low", antigravity)
 
