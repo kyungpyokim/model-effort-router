@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,6 +25,24 @@ eval_effort = importlib.util.module_from_spec(eval_effort_spec)
 assert eval_effort_spec.loader is not None
 sys.modules[eval_effort_spec.name] = eval_effort
 eval_effort_spec.loader.exec_module(eval_effort)
+
+
+CASE_BY_TASK = {case.task: case for case in eval_perf.GOLDEN_BENCHMARK_CASES}
+assert len(CASE_BY_TASK) == len(eval_perf.GOLDEN_BENCHMARK_CASES), "benchmark tasks must be unique"
+
+
+def stub_classifier(facts_for, task_type_for=lambda case: case.task_type):
+    """A deterministic classifier answering from the corpus: facts_for(case) returns the fact dict to give back."""
+    def classify(task, platform):
+        case = CASE_BY_TASK[task]
+        return eval_perf.router.validate_classifier_output({
+            "task_type": task_type_for(case), "facts": facts_for(case), "delegability": 0, "evidence": [], "reason": "stub",
+        })
+    return classify
+
+
+def labelled_facts(case, **overrides):
+    return {**eval_perf._base_facts(), **case.facts, **overrides}
 
 
 class EvalRouterPerformanceTests(unittest.TestCase):
@@ -48,6 +67,124 @@ class EvalRouterPerformanceTests(unittest.TestCase):
     def test_main_cli_returns_zero(self):
         ret = eval_perf.main(["--json"])
         self.assertEqual(ret, 0)
+
+    def test_classifier_benchmark_scores_facts_and_unknown_transitions(self):
+        classifier = stub_classifier(labelled_facts)
+        summary = eval_perf.evaluate_classifier_benchmark(classifier=classifier)["summary"]
+        self.assertEqual((summary["total_benchmark_cases"], summary["graded_cases"]), (len(CASE_BY_TASK),) * 2)
+        self.assertEqual((summary["routing_accuracy_pct"], summary["task_type_accuracy_pct"], summary["labelled_fact_accuracy_pct"]), (100.0,) * 3)
+        self.assertGreater(summary["unknown_transitions"]["expected_unknown_to_unknown"], 0)
+
+        unknown_only = eval_perf.evaluate_classifier_benchmark(
+            classifier=classifier, case_names=("L3_unknown_module_boundary_needs_context",),
+        )
+        self.assertEqual([case["name"] for case in unknown_only["cases"]], ["L3_unknown_module_boundary_needs_context"])
+
+        biased = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(lambda case: eval_perf._base_facts()))["summary"]
+        self.assertLess(biased["labelled_fact_accuracy_pct"], biased["all_fact_agreement_pct"])
+
+    def test_a_classifier_that_omits_the_optional_fact_only_regresses_on_labelled_cases(self):
+        def omitting(case):
+            facts = labelled_facts(case)
+            del facts["requires_code_understanding"]
+            return facts
+
+        summary = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(omitting))["summary"]
+        labelled = sum("requires_code_understanding" in case.facts for case in eval_perf.GOLDEN_BENCHMARK_CASES)
+        self.assertEqual(summary["unknown_transitions"]["expected_known_to_unknown"], labelled)
+
+    def test_swapping_implementation_and_local_refactoring_does_not_fail_routing(self):
+        swap = {"implementation": "local_refactoring", "local_refactoring": "implementation"}
+        summary = eval_perf.evaluate_classifier_benchmark(
+            classifier=stub_classifier(labelled_facts, lambda case: swap.get(case.task_type, case.task_type)),
+        )["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (100.0, 100.0))
+        self.assertLess(summary["task_type_accuracy_pct"], 100.0)
+
+    def test_classifier_benchmark_measures_the_code_understanding_rung_end_to_end(self):
+        cases = [c for c in eval_perf.GOLDEN_BENCHMARK_CASES if "requires_code_understanding" in c.facts]
+        self.assertGreaterEqual(sum(c.facts["requires_code_understanding"] == "yes" for c in cases), 3)
+        self.assertGreaterEqual(sum(c.facts["requires_code_understanding"] == "no" for c in cases), 3)
+
+        def answering(value):
+            return stub_classifier(lambda case: labelled_facts(case, requires_code_understanding=value(case)))
+
+        for platform, refined in (("codex", ("gpt-5.6-luna", "high")), ("claude-code", ("claude-sonnet-5", "low"))):
+            with self.subTest(platform=platform):
+                perfect = eval_perf.evaluate_classifier_benchmark(platform, classifier=stub_classifier(labelled_facts))
+                summary = perfect["summary"]
+                self.assertEqual((summary["profile_accuracy_pct"], summary["routing_accuracy_pct"]), (100.0, 100.0))
+                self.assertTrue(summary["refinement_coverage"])
+                self.assertEqual(summary["per_fact_accuracy_pct"]["requires_code_understanding"], 100.0)
+                self.assertEqual(set(summary["code_understanding_confusion"]), {"yes->yes", "no->no"})
+                yes_case = next(c for c in perfect["cases"] if c["name"] == "L2U_pattern_following_validation")
+                self.assertEqual(yes_case["actual"]["profile"]["stages"], [refined])
+
+                always_no = eval_perf.evaluate_classifier_benchmark(platform, classifier=answering(lambda c: "no"))["summary"]
+                self.assertEqual(always_no["routing_accuracy_pct"], 100.0)  # the level never depends on this fact
+                self.assertLess(always_no["profile_accuracy_pct"], 100.0)   # the implementer rung does
+                self.assertIn("yes->no", always_no["code_understanding_confusion"])
+
+                always_unknown = eval_perf.evaluate_classifier_benchmark(platform, classifier=answering(lambda c: "unknown"))["summary"]
+                self.assertLess(always_unknown["profile_accuracy_pct"], 100.0)
+
+    def test_antigravity_has_no_refinements_so_its_profile_is_flagged_uninformative(self):
+        summary = eval_perf.evaluate_classifier_benchmark(
+            "antigravity", classifier=stub_classifier(lambda case: labelled_facts(case, requires_code_understanding="no")),
+        )["summary"]
+        self.assertFalse(summary["refinement_coverage"])
+
+    def test_a_routing_error_on_both_sides_is_a_profile_miss(self):
+        error = {"error": "broken config"}
+        with mock.patch.object(eval_perf, "_route_profile", return_value=error):
+            summary = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(labelled_facts), limit=3)["summary"]
+        self.assertEqual(summary["profile_accuracy_pct"], 0.0)
+
+    def test_classifier_fallbacks_are_reported_not_graded(self):
+        def failing(task, platform):
+            return eval_perf.router.fallback_classification("classifier down")
+
+        summary = eval_perf.evaluate_classifier_benchmark(classifier=failing, limit=3)["summary"]
+        self.assertEqual((summary["classifier_fallbacks"], summary["classifier_calls"], summary["graded_cases"]), (3, 3, 0))
+        self.assertEqual((summary["routing_accuracy_pct"], summary["unknown_transitions"]["expected_unknown_to_known"]), (0.0, 0))
+
+        good = stub_classifier(labelled_facts)
+        outage = eval_perf.evaluate_classifier_benchmark(
+            classifier=lambda task, platform: failing(task, platform) if CASE_BY_TASK[task].name == "L2_simple_bug_fix" else good(task, platform),
+        )
+        self.assertEqual(outage["summary"]["routing_accuracy_pct"], 100.0)  # graded cases are unaffected by the outage
+        self.assertEqual(outage["summary"]["classifier_fallbacks"], 1)
+
+    def test_live_exit_code_fails_on_a_miss_and_on_an_outage(self):
+        def run(**overrides):
+            summary = {
+                "routing_accuracy_pct": 100.0, "profile_accuracy_pct": 100.0, "refinement_coverage": True,
+                "classifier_fallbacks": 0, "task_type_accuracy_pct": 100.0, "graded_cases": 1, "passed_cases": 1,
+                "total_benchmark_cases": 1, "labelled_fact_accuracy_pct": 100.0, "classifier_calls": 1, "seconds": 0,
+                "code_understanding_confusion": {}, "platform": "codex",
+                "unknown_transitions": {"expected_unknown_to_unknown": 0, "expected_unknown_to_known": 0, "expected_known_to_unknown": 0},
+                **overrides,
+            }
+            with mock.patch.object(eval_perf, "evaluate_classifier_benchmark", return_value={"summary": summary, "cases": []}):
+                return eval_perf.main(["--live-classifier", "--json"])
+
+        with mock.patch("builtins.print"):
+            self.assertEqual(run(), 0)
+            self.assertEqual(run(routing_accuracy_pct=94.4), 1)
+            self.assertEqual(run(profile_accuracy_pct=94.4), 1)
+            self.assertEqual(run(classifier_fallbacks=2), 1)
+            self.assertEqual(run(profile_accuracy_pct=94.4, refinement_coverage=False), 0)
+
+    def test_cli_rejects_bad_limits_and_case_names(self):
+        for argv in (["--live-classifier", "--limit", "0"], ["--live-classifier", "--case", "nope"], ["--live-classifier", "--limit", "2", "--case", "L2_simple_bug_fix"]):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit):
+                eval_perf.main(argv)
+
+    def test_rules_benchmark_routes_carry_the_refined_rung(self):
+        data = eval_perf.evaluate_rules_benchmark()
+        by_name = {case["name"]: case for case in data["cases"]}
+        self.assertEqual(by_name["L2U_pattern_following_validation"]["platform_routes"]["codex"]["efforts"], ["high"])
+        self.assertEqual(by_name["L2U_add_optional_field"]["platform_routes"]["codex"]["efforts"], ["medium"])
 
 
 class EvalModelEffortTests(unittest.TestCase):

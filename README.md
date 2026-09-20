@@ -100,6 +100,10 @@ L4+ code changes get the review at the risk tier's effort; a review FAIL is fixe
 failure re-plans once, and then the run stops. Claude implement/fix stages run with `acceptEdits`; plan and review stages cannot edit code. Route files may only carry router-generated argv shapes. The launcher logs one `phase=...` line per stage (`MODEL_EFFORT_ROUTER_VERBOSE=1` adds the commands). Route (who) and execution state (where the run
 is, `state.json`) stay separate. Details: `references/routing-policy.md`.
 
+### Live classifier benchmark
+
+`scripts/eval_router_performance.py --live-classifier --platform codex|claude-code|antigravity [--case NAME ...] [--limit N]` sends the labelled corpus to the real classifier and reports routing accuracy (task type, level, tier, `needs_context`), model+effort profile agreement (so a Luna medium vs Luna high or Haiku vs Sonnet low miss is visible), labelled-fact accuracy per fact, the `requires_code_understanding` confusion counts, unknown transitions, classifier fallbacks, calls and seconds. It spends real model usage, so it is opt-in. A case that does not label `requires_code_understanding` is graded on the classifier's own answer for that fact when comparing profiles.
+
 ### Route reuse
 
 Set `MODEL_EFFORT_ROUTER_SESSION=<key>` (or `router.py --session <key>`) for a task thread. The first
