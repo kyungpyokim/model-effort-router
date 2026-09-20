@@ -70,10 +70,10 @@ worker classifies instead.
 
 When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the same working directory. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
 
-Schema v5 records facts, `risk_tier`, and `orchestration_eligible` as handoff metadata only. The local
+Schema v6 records facts, `risk_tier`, and `orchestration_eligible` as handoff metadata only. The local
 `scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
-`execution_strategy: direct` because direct v2-v5 route-file replay never invokes it.
+`execution_strategy: direct` because direct v2-v6 route-file replay never invokes it.
 
 Pipeline guidance (Sol thinks and verifies, Luna and Terra implement):
 

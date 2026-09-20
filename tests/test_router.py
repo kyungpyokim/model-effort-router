@@ -658,7 +658,7 @@ class DifficultyRuleTests(unittest.TestCase):
         classification_ = router.validate_classifier_output(classifier_output(changes_public_api_contract="yes", raw=False))
         result = routed(classifier=lambda _: classification_)
         payload = router.result_payload(result, router.stage_commands(result, "task"))
-        self.assertEqual(payload["schema_version"], 5)
+        self.assertEqual(payload["schema_version"], 6)
         self.assertEqual(payload["risk_tier"], "standard")
         self.assertEqual(payload["facts"]["changes_public_api_contract"], "yes")
         self.assertEqual(payload["matched_rules"], ["L4:changes_public_api_contract"])
@@ -2046,6 +2046,14 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertIsNotNone(user_supplied, "user-supplied --route-file branch changed shape")
                 self.assertIsNotNone(generated, "direct-run generated route file must pass --cleanup-plan-dir")
 
+    def test_launchers_run_non_interactive_routes_through_the_pipeline_runner(self):
+        for launcher in self.LAUNCHERS.values():
+            text = (ROOT / launcher).read_text(encoding="utf-8")
+            with self.subTest(launcher=launcher):
+                self.assertEqual(text.count('scripts/pipeline.py" --route-file'), 2)
+                self.assertRegex(text, r'pipeline\.py" --route-file "\$2"')
+                self.assertRegex(text, r'pipeline\.py" --route-file "\$\{ROUTE_FILE\}" --cleanup-plan-dir')
+
     def test_antigravity_launcher_executes_stored_route_without_reclassification(self):
         result = routed(platform="antigravity", classifier=lambda _: classification("review", "L3"))
         for interactive in (False, True):
@@ -2710,7 +2718,7 @@ class RouteSkillContractTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("orchestration_eligible", text)
                 self.assertIn("execution_strategy", text)
-                self.assertIn("v2-v5", text)
+                self.assertIn("v2-v6", text)
 
     def test_runtime_docs_match_the_current_matrix_and_classifier_contract(self):
         claude_skill = (ROOT / "plugins" / "claude-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")

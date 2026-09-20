@@ -90,14 +90,24 @@ checks, selects applicable existing repository checks, and reports each result
 or why it was not run. Route-file replay ignores this JSON guidance and
 reuses only the stored execution steps.
 
-Route JSON emits schema v5: `facts`, `matched_rules`, `needs_context`, and
+### Chained pipeline
+
+Non-interactive launcher runs (`codex-route`, `claude-route`, `agy-route`) execute
+`scripts/pipeline.py`: plan -> implement -> deterministic test -> one merged Sol/Opus review.
+Tests run in the launcher without a model call: set `MODEL_EFFORT_ROUTER_TEST_CMD` (or pass
+`--test-cmd` to `pipeline.py`). Only a failure sends a truncated log to the implementer.
+L4+ code changes get the review at the risk tier's effort; a review FAIL is fixed once, the next
+failure re-plans once, and then the run stops. Route (who) and execution state (where the run
+is, `state.json`) stay separate. Details: `references/routing-policy.md`.
+
+Route JSON emits schema v6: `facts`, `matched_rules`, `needs_context`, and
 `evidence` replace the old score fields, and `risk_tier` (`standard`, `elevated`,
 `critical`) is recorded next to the level. It records `execution_strategy: "direct"` and
 `orchestration_eligible` separately: eligibility is only a Codex orchestration handoff
 candidate, never an execution request. `scripts/astra_adapter.py` is the unchanged
 local, caller-invoked orchestration adapter (an isolated-worker boundary that requires
 supplied route and manifest digests, revalidates worker input copies, and preserves the
-original verified artifacts after each attempt). Direct v2-v5 route-file replay never
+original verified artifacts after each attempt). Direct v2-v6 route-file replay never
 invokes it.
 
 `delegability` is independent of the difficulty rules: `0` is shared

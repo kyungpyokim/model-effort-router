@@ -38,7 +38,7 @@ or a tightly coupled deep problem; `1` permits separable analysis but leaves
 dependencies or ownership coupled; `2` requires independent subtasks, explicit
 file/artifact ownership, and independently verifiable results.
 
-Schema v5 route files always retain `execution_strategy: "direct"` in this
+Schema v6 route files always retain `execution_strategy: "direct"` in this
 release. `orchestration_eligible: true` is only recorded for safe Codex
 single-stage L5 routes with `delegability: 2` and no risk flags
 (`orchestration.codex.eligible_levels` is `["L5"]`). Critical-tier, two-stage,
@@ -46,9 +46,9 @@ non-Codex, and any risky routes are ineligible. The local,
 caller-invoked `scripts/astra_adapter.py` accepts only digest-verified route and
 manifest bytes, revalidates per-attempt worker inputs, and preserves the
 original verified artifacts after each attempt. It is the unchanged orchestration adapter and does not change direct
-execution. Direct v2-v5 route-file replay never invokes it.
+execution. Direct v2-v6 route-file replay never invokes it.
 
-Replay accepts v2-v5 route files. v3 and later require the two orchestration
+Replay accepts v2-v6 route files. v3 and later require the two orchestration
 fields; malformed v3+ files are rejected before execution.
 
 ### Classifiers by Platform
@@ -234,8 +234,12 @@ Rules:
 
 - **Planning and implementation difficulty are separate.** A hard overall task (for example redesigning the router's security hard floor) is designed by Sol/Opus, then each resulting step is classified again: a conditional tweak goes to Luna medium / Sonnet, extra tests to Luna / Haiku, a multi-file refactor to Terra / Sonnet. The planner does not have to implement.
 - **Test execution** (pytest, lint, formatter, typecheck, build) is done by the cheap implementation models. The final verification ("does this satisfy the requirement?") is Sol/Opus.
+- **Runtime enforcement.** `scripts/pipeline.py` runs the chain (launchers call it for every non-interactive run; interactive sessions stay a single hand-off): plan -> implement -> deterministic test -> merged review. The route JSON (schema v6) holds only who does each role (`steps`, plus a `pipeline` block: `review`, `replan`, `limits`, `task`); where the run is (phase, fix and review counters) lives in `state.json` in the run's work directory, never in the route.
+- **Deterministic tests.** The runner executes the test commands itself, with no model call (`--test-cmd`, repeatable, or `MODEL_EFFORT_ROUTER_TEST_CMD`). A green run costs no tokens and moves to review; a failure sends only the failing command and a truncated log tail (80 lines / 6000 chars) to the cheap implementer. A stored interactive route is handed to the terminal untouched (no capture, no review). Test commands come from the caller, not from plan text: a plan cannot make the launcher run shell commands the model wrote.
+- **Review stage.** Code-change routes at L4 and above get the merged Sol/Opus verification + review after a green test run, at the risk tier's effort (High / XHigh / Max) - the same tier raise the planner gets; the implementer keeps its matrix profile. L1-L3 keep only the test gate. The reviewer's last line must be `VERDICT: PASS` or `VERDICT: FAIL` (only the final line counts, so an echoed prompt cannot force a pass); a missing verdict stops the run (exit 11) instead of passing. It receives the request, the plan, the test results, and the diff (capped), never the session.
+- **Fail loop caps.** A failed test is fixed by the implementer up to 2 times; a review FAIL is fixed once. The next failure re-plans once with the planning model (the route's planner, or the reviewing Sol/Opus for a single-stage route) and re-runs the implementer on the new plan, after which the counters reset. Still failing after the re-plan budget: the run stops (exit 10; a stage that fails to start is 12, any other stage failure passes its own exit code through). Route-file limits may only lower these caps, and every stage and test command has a timeout (1 hour / 30 minutes). An implementer whose last line is an `ESCALATE:` evidence line skips the fix budget and goes straight to the re-plan.
 - **Review policy.** Do not call Sol/Opus after each step. Batch steps 1..N, run the tests, then make one Sol/Opus call that merges verification and code review. Send it only the original requirement, the approved plan, the git diff, the test results, and the key code, never the whole session. Default effort is High; the elevated tier uses XHigh and the critical tier Max.
-- **Review FAIL.** The reviewer does not fix the problem. Re-classify the fix: a simple one (for example null handling) goes to Luna medium / Haiku, an ordinary logic change to Terra / Sonnet, a design problem to Sol / Opus, followed by a final Sol/Opus review.
+- **Review FAIL.** The reviewer does not fix the problem. Re-classify the fix: a simple one (for example null handling) goes to Luna medium / Haiku, an ordinary logic change to Terra / Sonnet, a design problem to Sol / Opus, followed by a final Sol/Opus review. The launcher runner does not re-classify: it reuses the route's implementer for the fix and re-plans on the second failure (Fail loop caps above).
 - **Implementation escalation.** If the implementer finds something outside the plan it stops and returns evidence for a Sol/Opus re-plan instead of deciding structure itself. Valid evidence: scope expansion, architecture change, public API change, DB migration, security boundary change, or a plan that no longer matches the code structure. "It is hard" or "I am unsure" alone is not a valid reason.
 - **Follow-ups reuse the stored route** (no re-routing). Re-classify only when the task type changes (for example INSPECT to MODIFY), the scope grows a lot, new risk evidence appears, or a fact shows the approved design cannot be implemented.
 - **Token savings.** Limit Sol/Opus to judgement; delegate coding; merge verification and review into one high-tier call; never re-classify the same scope; do not resend large output (send requirement + plan + diff + test results + key code); re-classify on new evidence, not on mere uncertainty.
