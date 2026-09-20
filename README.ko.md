@@ -65,6 +65,10 @@ plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort
 
 비대화형 런처(`codex-route`, `claude-route`, `agy-route`) 실행은 `scripts/pipeline.py`를 거칩니다: 계획 -> 구현 -> 결정적 테스트 -> Sol/Opus 통합 리뷰 1회. 테스트는 모델 호출 없이 런처가 직접 실행하며(`MODEL_EFFORT_ROUTER_TEST_CMD` 또는 `pipeline.py --test-cmd`), 실패했을 때만 잘라낸 로그를 구현 모델에 넘깁니다. L4 이상 코드 변경은 리스크 티어 effort로 리뷰를 받고, 리뷰 FAIL은 1회 수정, 다음 실패는 1회 재계획, 그 뒤에는 중단합니다. Claude 구현/수정 단계만 `acceptEdits`로 실행되고 계획/리뷰 단계는 코드를 수정할 수 없습니다. 라우트 파일에는 라우터가 생성한 argv 형태만 허용됩니다. 런처는 단계마다 `phase=...` 한 줄을 남깁니다(`MODEL_EFFORT_ROUTER_VERBOSE=1`이면 명령도 출력). 라우트(누가)와 실행 상태(어디까지, `state.json`)는 분리됩니다. 자세한 내용: `references/routing-policy.md`.
 
+### 라우트 재사용
+
+작업 스레드마다 `MODEL_EFFORT_ROUTER_SESSION=<key>`(또는 `router.py --session <key>`)를 지정하면 첫 작업만 분류해 저장하고, 같은 워크스페이스의 후속 작업은 분류기 호출 없이 그 라우트를 재사용합니다. 워크스페이스 변경, 4시간 경과, 실행 중 재계획/실패, 새 작업의 작업 종류 변경·범위 확대·새 리스크 근거가 있으면 다시 분류합니다. `--no-reuse`는 강제로 새로 분류합니다.
+
 라우트 JSON은 스키마 v6를 출력합니다. 이전 점수 필드 대신 `facts`, `matched_rules`, `needs_context`, `evidence`가 사용되며, 레벨 옆에 `risk_tier`(`standard` / `elevated` / `critical`)가 기록됩니다. 또한 `execution_strategy: "direct"`와 `orchestration_eligible`을 분리하여 기록합니다. 오케스트레이션 적격성(`orchestration_eligible`)은 Codex 오케스트레이션 인계 후보일 뿐이며 실행 요청이 아닙니다. `scripts/astra_adapter.py`는 변경되지 않은 오케스트레이션 어댑터로, 호출자가 직접 호출하는 로컬 격리 워커 경계입니다(제공된 라우트 및 매니페스트 다이제스트 검증, 시도별 워커 입력 복사본 재검증, 시도 후 검증된 원본 아티팩트 보존). 직접 v2-v6 라우트 파일 재생 시에는 이 어댑터를 호출하지 않습니다.
 
 `delegability`(위임 가능성)는 난이도 규칙과 독립적입니다.

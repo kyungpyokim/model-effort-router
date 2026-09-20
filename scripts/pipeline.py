@@ -22,6 +22,7 @@ import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import route_reuse  # noqa: E402
 import router  # noqa: E402
 
 # Pipeline-owned outcomes sit above the usual 0-9 range so a stage's own exit code is not mistaken for them.
@@ -189,6 +190,9 @@ class Pipeline:
         validated_limits(pipe)
         validated_stage(pipe.get("review"), "review", payload["platform"])
         validated_stage(pipe.get("replan"), "replan", payload["platform"])
+        session = (payload.get("reuse") or {}).get("session")
+        if session is not None and (not isinstance(session, str) or not session):
+            raise ValueError("route reuse session must be a non-empty string")
         commands, plan_path = router.validated_commands(payload)
         if plan_path is not None and not Path(plan_path).is_absolute():
             raise ValueError("route plan path must be absolute")
@@ -325,7 +329,12 @@ def run_route(payload: object, test_commands: list[str], cwd: str, cleanup: bool
     workdir.mkdir(parents=True, exist_ok=True)
     plan_file = Path(plan_path) if plan_path else workdir / "plan.json"
     try:
-        return Pipeline(payload, test_commands, cwd, workdir, plan_file).run()
+        runner = Pipeline(payload, test_commands, cwd, workdir, plan_file)
+        exit_code = runner.run()
+        session = (payload.get("reuse") or {}).get("session")
+        if session:
+            route_reuse.mark_outcome(session, runner.replans, exit_code)
+        return exit_code
     finally:
         # A directory this runner made is always removed; a route's own plan dir only when asked,
         # and only when it is the router's own codex-route-* directory.

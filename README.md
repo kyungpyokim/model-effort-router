@@ -100,6 +100,13 @@ L4+ code changes get the review at the risk tier's effort; a review FAIL is fixe
 failure re-plans once, and then the run stops. Claude implement/fix stages run with `acceptEdits`; plan and review stages cannot edit code. Route files may only carry router-generated argv shapes. The launcher logs one `phase=...` line per stage (`MODEL_EFFORT_ROUTER_VERBOSE=1` adds the commands). Route (who) and execution state (where the run
 is, `state.json`) stay separate. Details: `references/routing-policy.md`.
 
+### Route reuse
+
+Set `MODEL_EFFORT_ROUTER_SESSION=<key>` (or `router.py --session <key>`) for a task thread. The first
+task is classified and stored; follow-ups in the same workspace reuse that route without calling the
+classifier, until the workspace changes, 4 hours pass, a run re-plans or fails, or the new task shows a
+different operation, wider scope, or new risk evidence. `--no-reuse` forces a fresh classification.
+
 Route JSON emits schema v6: `facts`, `matched_rules`, `needs_context`, and
 `evidence` replace the old score fields, and `risk_tier` (`standard`, `elevated`,
 `critical`) is recorded next to the level. It records `execution_strategy: "direct"` and
