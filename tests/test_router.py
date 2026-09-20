@@ -93,6 +93,15 @@ def classification(task_type="implementation", level="L2", flags=None, source="t
     )
 
 
+def init_git_repo(path: Path) -> Path:
+    """A throwaway work tree with one commit, so a run's change detection never depends on the outer checkout."""
+    path.mkdir(parents=True, exist_ok=True)
+    git = ["git", "-c", "user.name=test", "-c", "user.email=test@example.invalid"]
+    for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "initial"]):
+        subprocess.run([*git, *args], cwd=path, check=True, capture_output=True)
+    return path
+
+
 def routed(task="task", platform="codex", explicit_level=None, explicit_task_type=None,
            available_models=None, classifier=None, repo_aware=False, critical=False):
     return router.route(
@@ -1636,7 +1645,10 @@ class CommandAndLauncherTests(unittest.TestCase):
                     "    import re\n"
                     "    plan = re.search(r'exactly: (\\S+)', ' '.join(sys.argv[1:]))\n"
                     "    if plan:\n"
-                    "        pathlib.Path(plan.group(1)).write_text('{}')\n",
+                    "        pathlib.Path(plan.group(1)).write_text('{}')\n"
+                    # The implement step edits the (hermetic) work tree so the pipeline sees a change.
+                    "    if 'You are the execution stage' in ' '.join(sys.argv[1:]):\n"
+                    "        pathlib.Path('implemented.txt').write_text('done')\n",
                     encoding="utf-8",
                 )
                 fake.chmod(0o755)
@@ -1653,6 +1665,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     models.write_text("Claude Fable 5.1 (Thinking)\n", encoding="utf-8")
                     env["MODEL_EFFORT_ROUTER_MODELS_FILE"] = str(models)
 
+                repo = init_git_repo(directory / "repo")
                 proc = subprocess.run(
                     [str(ROOT / self.LAUNCHERS[launcher]), "--", "split module boundaries"],
                     stdin=subprocess.DEVNULL,
@@ -1660,6 +1673,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     text=True,
                     timeout=10,
                     env=env,
+                    cwd=repo,
                 )
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn("planning stage", calls.read_text())
@@ -1737,14 +1751,18 @@ class CommandAndLauncherTests(unittest.TestCase):
                     "if 'You are the planning stage' in sys.argv[-1]:\n"
                     f"    if {planner_status} == 0:\n"
                     f"        pathlib.Path({str(directory / 'plan' / 'plan.json')!r}).write_text('{{}}')\n"
-                    f"    raise SystemExit({planner_status})\n",
+                    f"    raise SystemExit({planner_status})\n"
+                    # The implement step edits the (hermetic) work tree so the pipeline sees a change.
+                    "if 'You are the execution stage' in sys.argv[-1]:\n"
+                    "    pathlib.Path('implemented.txt').write_text('done')\n",
                     encoding="utf-8",
                 )
                 fake_agy.chmod(0o755)
                 env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
                 env.pop("MODEL_EFFORT_ROUTER_PRINT_ONLY", None)
                 env.pop("MODEL_EFFORT_ROUTER_ROOT", None)
-                proc = subprocess.run([str(ROOT / self.LAUNCHERS["agy-route"]), "--route-file", str(route_file)], capture_output=True, text=True, timeout=10, env=env)
+                repo = init_git_repo(directory / "repo")
+                proc = subprocess.run([str(ROOT / self.LAUNCHERS["agy-route"]), "--route-file", str(route_file)], capture_output=True, text=True, timeout=10, env=env, cwd=repo)
                 self.assertEqual(proc.returncode, planner_status, proc.stderr)
                 expected = commands if planner_status == 0 else commands[:1]
                 seen = [json.loads(line) for line in calls.read_text().splitlines()]
