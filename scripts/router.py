@@ -50,8 +50,9 @@ FALLBACK_TASK_TYPE = "implementation"
 SCHEMA_VERSION = 6
 SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, 3, 4, 5, SCHEMA_VERSION)
 CODE_CHANGE_TASK_TYPES = ("implementation", "local_refactoring", "architectural_refactoring")
-# Below this level the cheap implementer's own checks are enough; no merged Sol/Opus review.
-REVIEW_MIN_LEVEL = "L4"
+# Below these levels only the cheap implementer runs; a mechanical L1 edit needs no plan or review.
+PLAN_MIN_LEVEL = "L2"
+REVIEW_MIN_LEVEL = "L2"
 PIPELINE_LIMITS = {"max_test_fixes": 2, "review_fixes_before_replan": 1, "max_replans": 1}
 SAFE_ORCHESTRATION_LEVELS = ("L5",)
 SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY = 2
@@ -1129,7 +1130,14 @@ def route(
     raw_stages, refined_by = apply_refinement(config, platform, task_type, level, classification.facts, raw_stages, mode)
     if refined_by:
         rationale.append(f"{level} implementer refined by {refined_by}")
-    stages = apply_tier(platform, materialise_stages(platform, raw_stages, mode, available_models), tier_profile, available_models)
+    stages = materialise_stages(platform, raw_stages, mode, available_models)
+    if mode == "single" and task_type in CODE_CHANGE_TASK_TYPES and LEVELS.index(level) >= LEVELS.index(PLAN_MIN_LEVEL):
+        # The planning judge is the platform's design row; the implementer keeps its matrix/refined rung.
+        planner_raw, _ = resolve_stages(matrix, "design", level)
+        planner = materialise_stages(platform, planner_raw, "single", available_models)[0]
+        stages = [{**planner, "role": "planner"}, {**stages[0], "role": "implementer"}]
+        mode = "two_stage"
+    stages = apply_tier(platform, stages, tier_profile, available_models)
     pipeline = pipeline_plan(platform, task_type, level, mode, matrix, stages, tier_profile, available_models)
     plan_dir = None
     if mode == "two_stage":
