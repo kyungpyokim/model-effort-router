@@ -50,6 +50,12 @@ def main() -> int:
             f"model-map classifiers.{platform}.primary does not match router.PRIMARY_CLASSIFIER_CONFIG"
         )
 
+    # The cascade is gone: no shipped doc may still describe needs_context or an escalated classifier.
+    for doc in (
+        *(root / "plugins").glob("*/README.md"), *(root / "plugins").glob("*/references/routing-policy.md"),
+        root / "README.md", root / "README.ko.md", root / "references" / "routing-policy.md",
+    ):
+        assert "needs_context" not in doc.read_text(encoding="utf-8"), f"{doc.relative_to(root)} still describes needs_context"
     assert tuple(model_map["levels"]) == router.LEVELS, "model-map levels must match router.LEVELS"
     for tier in router.RISK_TIERS[1:]:
         assert set(model_map["tiers"][tier]) == set(classifiers), f"model-map tiers.{tier} must cover every platform"

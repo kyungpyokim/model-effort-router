@@ -31,8 +31,8 @@ Then invoke:
 /model-effort:route <task>
 ```
 
-The router preflights each task with native `claude-sonnet-5` / medium, then uses
-`claude-sonnet-5` / medium again once when `needs_context` is true. Claude's JSON-schema output is
+The router preflights each task with native `claude-sonnet-5` / medium; facts that stay unknown get
+one bounded same-model lookup, then a question to the user (exit `3`), never a stronger model. Claude's JSON-schema output is
 read from its `structured_output` result field. Safe mode,
 no tools, plan permissions, no session persistence, and a temporary working
 directory isolate the classifier. Failure safely selects L3. Each agent pins
@@ -67,7 +67,7 @@ so it works without the plugin installed. `--print` forces `claude -p`, which ru
 default permissions and cannot edit files unless your settings allow it.
 
 Route-file replay accepts v2-v6 payloads. Schema v6 records `facts`,
-`matched_rules`, `needs_context`, `evidence`, and `risk_tier` alongside direct-only
+`matched_rules`, `unresolved_facts`, `questions`, `evidence`, and `risk_tier` alongside direct-only
 `execution_strategy` and future orchestration `orchestration_eligible` metadata; it
 does not enable orchestration on Claude Code. `scripts/astra_adapter.py` is the unchanged
 caller-invoked orchestration adapter that revalidates worker inputs and preserves original
