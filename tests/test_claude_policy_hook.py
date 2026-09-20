@@ -66,7 +66,6 @@ class ClaudePolicyHookTests(unittest.TestCase):
             "risk_flags",
             "security_review/migration_safety",
             "single mode",
-            "fable/astra",
             "delegates once",
             "at most 1 review",
             "no multi-agent chains",

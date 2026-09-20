@@ -2,7 +2,7 @@
 name: complex
 description: Frontier-tier work — cross-cutting architecture, ambiguous or high-stakes problems, escalation from coding/review. Use for whole-system design or when a smaller agent flags something beyond its scope.
 tools: Read, Write, Edit, Bash, Grep, Glob, WebSearch, WebFetch
-model: fable
+model: opus
 effort: xhigh
 ---
 

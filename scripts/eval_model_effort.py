@@ -86,19 +86,20 @@ def collect_profiles(model_map: dict, target_platform: str | None = None) -> lis
                         )
                     )
 
-        # 2. Collect critical profile
-        crit_cfg = model_map.get("critical", {}).get(plat, {})
-        if crit_cfg:
-            crit_model, crit_effort = extract_model_and_effort(crit_cfg)
-            cases.append(
-                ProfileCase(
-                    platform=plat,
-                    level="critical",
-                    task_type="all",
-                    model=crit_model,
-                    effort=crit_effort,
+        # 2. Collect risk-tier profiles (applied to the planning/judging stage)
+        for tier, per_platform in model_map.get("tiers", {}).items():
+            tier_cfg = per_platform.get(plat)
+            if tier_cfg:
+                tier_model, tier_effort = extract_model_and_effort(tier_cfg)
+                cases.append(
+                    ProfileCase(
+                        platform=plat,
+                        level=tier,
+                        task_type="all",
+                        model=tier_model if tier_model != "unknown" else "(planning stage model)",
+                        effort=tier_effort,
+                    )
                 )
-            )
 
     return cases
 

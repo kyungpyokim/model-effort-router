@@ -54,11 +54,11 @@ class EvalModelEffortTests(unittest.TestCase):
     def test_collect_profiles_and_audit(self):
         data = eval_effort.evaluate_profiles()
 
-        self.assertGreater(data["total_profiles_defined"], 100)
-        self.assertGreaterEqual(data["unique_model_effort_combos"], 20)
-        self.assertGreaterEqual(data["plugin_agent_counts"]["antigravity"], 13)
-        self.assertGreaterEqual(data["plugin_agent_counts"]["claude"], 13)
-        self.assertGreaterEqual(data["plugin_agent_counts"]["codex"], 13)
+        self.assertGreater(data["total_profiles_defined"], 80)
+        self.assertGreaterEqual(data["unique_model_effort_combos"], 15)
+        self.assertGreaterEqual(data["plugin_agent_counts"]["antigravity"], 10)
+        self.assertGreaterEqual(data["plugin_agent_counts"]["claude"], 10)
+        self.assertGreaterEqual(data["plugin_agent_counts"]["codex"], 10)
 
     def test_platform_filter(self):
         data = eval_effort.evaluate_profiles(target_platform="antigravity")

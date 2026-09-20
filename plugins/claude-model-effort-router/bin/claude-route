@@ -22,29 +22,24 @@ fi
 # On a terminal, default to an interactive executor: `claude -p` cannot edit files
 # under default permissions. `--print` forces the non-interactive form.
 INTERACTIVE=0
-APPROVED=0
 if [[ -t 0 && -t 1 ]]; then INTERACTIVE=1; fi
-while [[ "${1:-}" == "--interactive" || "${1:-}" == "--print" || "${1:-}" == "--approved" ]]; do
+while [[ "${1:-}" == "--interactive" || "${1:-}" == "--print" ]]; do
   case "${1}" in
     --interactive) INTERACTIVE=1 ;;
     --print) INTERACTIVE=0 ;;
-    --approved) APPROVED=1 ;;
   esac
   shift
 done
 if [[ "${1:-}" == "--route-file" ]]; then
   [[ "$#" -eq 2 ]] || { echo "usage: claude-route --route-file <route.json>" >&2; exit 2; }
   ROUTE_ARGS=(--route-file "$2")
-  if [[ "$APPROVED" -eq 1 ]]; then ROUTE_ARGS+=(--approved); fi
-  if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then ROUTE_ARGS+=(--print-only); fi
   COMMAND="$(python3 "${ROUTER}" "${ROUTE_ARGS[@]}")"
   echo "[model-effort-router] ${COMMAND}" >&2
   if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then exit 0; fi
   exec bash -c "${COMMAND}"
 fi
-[[ "$APPROVED" -eq 0 ]] || { echo "--approved requires --route-file" >&2; exit 2; }
 if [[ "${1:-}" == "--" ]]; then shift; fi
-[[ "$#" -gt 0 ]] || { echo "usage: claude-route [--interactive] [--approved] -- <task>" >&2; exit 2; }
+[[ "$#" -gt 0 ]] || { echo "usage: claude-route [--interactive] -- <task>" >&2; exit 2; }
 TASK="$*"
 ROUTE_FILE="$(mktemp "${TMPDIR:-/tmp}/model-effort-route.XXXXXX")"
 trap 'rm -f "${ROUTE_FILE}"' EXIT
@@ -52,7 +47,6 @@ ARGS=("${ROUTER}" "${TASK}" --platform claude-code --format json)
 if [[ "$INTERACTIVE" -eq 1 ]]; then ARGS+=(--interactive); fi
 python3 "${ARGS[@]}" > "${ROUTE_FILE}"
 ROUTE_ARGS=(--route-file "${ROUTE_FILE}" --cleanup-plan-dir)
-if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then ROUTE_ARGS+=(--print-only); fi
 COMMAND="$(python3 "${ROUTER}" "${ROUTE_ARGS[@]}")"
 echo "[model-effort-router] ${COMMAND}" >&2
 if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then exit 0; fi

@@ -11,16 +11,17 @@ POLICY = (
     "For implementation, design, review, refactoring, or debugging work, invoke "
     "model-effort:route first. Save the route JSON; delegate with its model/effort; "
     "replay without reclassifying. Reuse the route for same-scope follow-ups. "
-    "Re-route for a distinct task, a new review, materially increased scope/risk, or "
-    "missing route. Skip casual chat or status-only questions. For bounded changes "
-    "(L1-L3, empty risk_flags, no security_review/migration_safety, single mode, no "
-    "fable/astra), a single-agent fast path delegates once to the routed executor: "
+    "Re-route for a distinct task, a new review, materially increased scope/risk. "
+    "Skip casual chat or status-only questions. For bounded changes "
+    "(L1-L3, empty risk_flags, no security_review/migration_safety, single mode), "
+    "a single-agent fast path delegates once to the routed executor: "
     "focused tests, at most 1 review, no multi-agent chains, re-route only on new "
-    "scope/risk; never the parent implementing directly. As classification-only "
+    "scope/risk; never the parent implementing directly. After the steps and tests, "
+    "run one merged Sol verification+review. As classification-only "
     "process, classify only. As executor given a complete route, run only assigned "
     "work; return escalation evidence, not recursive routing. Report fallback as "
     "fallback, not successful semantic routing. Show task_type, level, model/effort, "
-    "source before delegating. Follow higher-priority rules."
+    "source before delegating."
 )
 
 

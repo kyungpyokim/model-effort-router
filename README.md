@@ -1,4 +1,4 @@
-# Model Effort Router (v2.5.0)
+# Model Effort Router (v3.0.0)
 
 English | [한국어](README.ko.md)
 
@@ -7,9 +7,15 @@ profile for Codex, Claude Code, or Antigravity.
 
 All three platforms share the same two-dimensional routing: a `task_type` axis
 (implementation, design, review, local_refactoring, architectural_refactoring)
-and the difficulty level (L1–L7 plus Critical Override), mapped onto each platform's
-own models (Codex: luna/terra/sol/astra — Claude Code: haiku/sonnet/fable/opus —
-Antigravity: Flash/Pro/Sonnet Thinking/Opus Thinking).
+and the difficulty level (L1–L5), plus a separate risk tier (`standard`,
+`elevated`, `critical`) that raises the planning/judging effort for high-risk work.
+Both are mapped onto each platform's own models (Codex: luna/terra/sol —
+Claude Code: haiku/sonnet/opus — Antigravity: Flash/Pro/Sonnet Thinking/Opus Thinking).
+
+Overall principle: spend top-model tokens on important judgement, and run
+already-decided work on the cheapest sufficient model. Codex: **Sol thinks and
+verifies, Luna and Terra implement.** Claude Code: **Opus thinks and verifies,
+Haiku and Sonnet implement.** See [Execution roles and pipeline](#execution-roles-and-pipeline).
 
 ## Cascading preflight classifier
 
@@ -24,8 +30,8 @@ repository-aware classifier. Some unknowns only ask for that escalation without 
 the level: `crosses_module_boundary`, `intermittent_or_concurrency`,
 `changes_trust_boundary`, `blast_radius`, and `silent_failure_material_harm`. A
 `crosses_service_boundary` still unknown after escalation keeps the L4 floor, and an
-unknown `irreversible_or_ledger_or_crypto` floors at L5 but never triggers the Critical
-Override. The escalated classifier read the repository, but only some safety facts may
+unknown `irreversible_or_ledger_or_crypto` floors at L5 but never triggers the critical
+tier. The escalated classifier read the repository, but only some safety facts may
 be lowered by it. A sticky safety fact the first reply affirmed (security/payment
 change, persisted data, public API, irreversible, trust boundary, silent harm) is
 OR-aggregated and can never be lowered by the escalated reply. A correctable safety
@@ -84,28 +90,43 @@ checks, selects applicable existing repository checks, and reports each result
 or why it was not run. Route-file replay ignores this JSON guidance and
 reuses only the stored execution steps.
 
-Route JSON now emits schema v4: `facts`, `matched_rules`, `needs_context`, and
-`evidence` replace the old score fields. It records `execution_strategy: "direct"` and
-`orchestration_eligible` separately: eligibility is only a Codex Astra handoff
-candidate, never an execution request. `scripts/astra_adapter.py` is a local,
-caller-invoked isolated-worker boundary that requires supplied route and manifest
-digests, revalidates worker input copies, and preserves the original verified
-artifacts after each attempt. Direct v2-v4 route-file replay never invokes it.
+Route JSON emits schema v5: `facts`, `matched_rules`, `needs_context`, and
+`evidence` replace the old score fields, and `risk_tier` (`standard`, `elevated`,
+`critical`) is recorded next to the level. It records `execution_strategy: "direct"` and
+`orchestration_eligible` separately: eligibility is only a Codex orchestration handoff
+candidate, never an execution request. `scripts/astra_adapter.py` is the unchanged
+local, caller-invoked orchestration adapter (an isolated-worker boundary that requires
+supplied route and manifest digests, revalidates worker input copies, and preserves the
+original verified artifacts after each attempt). Direct v2-v5 route-file replay never
+invokes it.
 
 `delegability` is independent of the difficulty rules: `0` is shared
 state, sequence-dependent, risky, or tightly coupled work; `1` remains coupled;
 `2` requires independent subtasks with explicit ownership and verification. Only
-safe Codex single routes at L5–L7 with `delegability: 2` can be eligible.
+safe Codex single routes at L5 with `delegability: 2` (never the critical tier) can be eligible.
 
-Risk policy lives in code, not in prompts: security, authentication,
-authorization, or payment flags force an L6 floor with Autobahn scope guards;
-data migration and public API changes force an L4 floor. Review-only security
-work is floored by facts rather than flags: `reviews_security_sensitive_code`
-gives at least L4 and a critical `security_domain` (payment, crypto, auth,
-permissions, pii) at least L5, whatever the task type. L6/L7 follow the impact of
-a wrong judgement: a critical domain whose trust boundary changes floors at L6, and
-new structure alone never reaches L7 — it also needs that trust boundary, or a
-cross-service open design with a broad blast radius or silent material harm.
+Risk policy lives in code, not in prompts. The LLM classifies facts; rules only
+guarantee a minimum for confirmed high-risk work. The keyword "security" alone never
+implies a level, and `unknown` is missing information, not confirmed risk.
+
+- **Levels** are `L1`–`L5` only. Security, authentication, authorization, or payment
+  flags force the **elevated** risk tier (which implies L5) with Autobahn scope
+  guards; data migration and public API changes force an L4 floor. Review-only
+  security work is floored by facts rather than flags: `reviews_security_sensitive_code`
+  gives at least L4 and a critical `security_domain` (payment, crypto, auth,
+  permissions, pii) at least L5, whatever the task type.
+- **`elevated` tier** (L5): a security/payment logic change, a critical domain whose
+  trust boundary changes, an intermittent failure across services, or new structure
+  across services with an open result. It raises the planning/judging stage effort to
+  `xhigh` on Codex (Sol) and Claude Code (Opus); Antigravity, which has no effort
+  setting, swaps that stage to Claude Opus Thinking.
+- **`critical` tier** (L5): `irreversible_or_ledger_or_crypto` = yes (irreversible
+  production data, ledger correctness, new cryptography), or the `--critical` flag.
+  Same stage raised to `max` (Antigravity: Claude Opus Thinking). Only an explicit yes
+  fires it; an unknown never does.
+- The implementer stage of a two-stage route keeps its matrix profile; only the
+  planning/judging stage is raised. Tier profiles live under `tiers` in
+  `config/model-map.json`.
 
 Payment means monetary consequence: moving money, deciding the amount charged
 (price, discount, tax), authorizing, capturing, cancelling, or refunding, ledger or
@@ -120,22 +141,74 @@ For Antigravity, detect account-local models before printing its command:
 python3 scripts/router.py --platform antigravity --detect-antigravity-models --format command "간헐적인 멀티서비스 장애의 근본 원인 분석"
 ```
 
-`--level` alone is a minimum over the classified level. `--level` or `--critical`
-together with an explicit `--task-type` skips the preflight because both axes are
-pinned; the pinned level is used as is. Fallbacks are always reported on stderr.
+`--level` (`L1`–`L5`) alone is a minimum over the classified level. `--level` or
+`--critical` together with an explicit `--task-type` skips the preflight because both
+axes are pinned; the pinned level is used as is, and `--critical` pins L5 with the
+critical tier. `--level critical`, `L6`, and `L7` are no longer valid. Fallbacks are
+always reported on stderr.
 
-## Two-stage architectural refactoring
+## Two-stage routes
 
-On Codex, `architectural_refactoring` at L3+ runs as a success-dependent shell
-chain: `sol` writes a structured plan JSON into a temporary run directory,
-then the executor (`luna`/`terra`) reads the plan plus the repository and
-implements it with the plan's validation commands. The run directory is
+On every platform, `architectural_refactoring` at L3+ and
+`implementation` / `local_refactoring` at L5 run as a success-dependent shell
+chain: the planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
+into a temporary run directory, then the implementer (`luna`/`terra`, or
+`sonnet`) reads the plan plus the repository and implements it with the plan's
+validation commands. The implementer does not make new design decisions: it stops
+and returns escalation evidence for the planner instead. The run directory is
 removed on success and preserved on any failure (`--keep-plan` forces
 preservation).
 
 ```bash
 python3 scripts/router.py --platform codex --task-type architectural_refactoring --level L5 "모듈 경계 재분리" --format command
 ```
+
+## Execution roles and pipeline
+
+Use strong models for plan, design, verify, and review; cheap models for implement,
+fix, and test. Role + difficulty + risk decide the model and effort: the same L4
+maps to Sol/Opus for design, review, or verification and to Terra high / Sonnet
+high for implementation. Roles map onto the existing task types: design =
+`design`, review = `review`, implementation = `implementation`, `local_refactoring`,
+and `architectural_refactoring` (which already plans with Sol/Opus and implements with
+Terra/Sonnet). Classification stays cheap.
+
+```text
+request -> classify (cheap) -> plan/design (Sol / Opus)
+        -> per planned step: re-classify the step -> implement + run tests
+             (Luna med / Haiku for tweaks and tests, Terra / Sonnet for logic)
+             new design problem? stop -> evidence -> Sol / Opus re-plan
+        -> after steps 1..N: ONE Sol / Opus verification + review
+             (High; elevated tier XHigh; critical tier Max)
+        -> FAIL: re-classify the fix (simple -> Luna med / Haiku, ordinary logic ->
+             Terra / Sonnet, design problem -> Sol / Opus) -> final Sol / Opus review
+```
+
+- **Planning and implementation difficulty are separate.** A hard task (for example
+  redesigning the router's security hard floor) is designed by Sol/Opus; each resulting
+  step is classified again. The planner does not have to implement.
+- **Test execution** (pytest, lint, formatter, typecheck, build) runs on the cheap
+  implementation models; the final "does this satisfy the requirement?" verification is
+  Sol/Opus.
+- **One merged review.** Do not call Sol/Opus after every step. Batch steps 1..N, run
+  tests, then make one call that merges verification and code review, sent only the
+  original requirement, approved plan, git diff, test results, and key code (never
+  the whole session).
+- **Review FAIL:** the reviewer does not fix it; the fix is re-classified as above.
+- **Escalation is evidence-only.** An implementer that finds something outside the plan
+  stops and returns evidence: scope expansion, architecture change, public API change,
+  DB migration, security boundary change, or a plan that no longer matches the code.
+  "It's hard" or "I'm unsure" alone is not a valid reason.
+- **Follow-ups reuse the stored route.** Re-classify only when the task type changes
+  (for example INSPECT to MODIFY), the scope grows a lot, new risk evidence appears, or
+  a fact shows the approved design cannot be implemented.
+- **Effort ceilings.** Luna low/medium/high (beyond Luna high, move to Terra rather than
+  Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Claude Code: Haiku for simple work,
+  Sonnet for general-to-complex implementation, Opus for plan/design/verify/review. The
+  current matrix does not use Luna high or Sonnet low as a level rung (a clear small
+  implementation is L2 = Luna medium); they are headroom, not routed profiles.
+
+The full rule set and matrices are in [references/routing-policy.md](references/routing-policy.md).
 
 ## Bundle layout
 

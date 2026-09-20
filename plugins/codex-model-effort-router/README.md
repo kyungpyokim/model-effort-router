@@ -3,25 +3,53 @@
 ## What it does
 
 The skill classifies each task by `task_type` (implementation, design, review,
-local_refactoring, architectural_refactoring) and difficulty (L1-L7), then
-routes it through the v4 `task_type × level` matrix in `config/model-map.json`:
+local_refactoring, architectural_refactoring) and difficulty (L1-L5) plus a risk tier (`standard`, `elevated`, `critical`), then
+routes it through the v5 `task_type × level` matrix in `config/model-map.json`:
 
-| task type | L1 | L2 | L3 | L4 | L5 | L6 | L7 | Critical |
-|---|---|---|---|---|---|---|---|---|
-| implementation / local_refactoring | luna low | luna med | terra med | terra high | sol high | sol xhigh | astra xhigh | astra max |
-| design / review | luna med | sol low | sol med | sol high | sol high | sol xhigh | astra xhigh | astra max |
-| architectural_refactoring | luna med | sol med | sol high -> terra med | sol xhigh -> terra high | sol xhigh -> terra high | sol xhigh -> sol xhigh | astra xhigh -> sol xhigh | astra max |
+| task type | L1 | L2 | L3 | L4 | L5 |
+|---|---|---|---|---|---|
+| implementation / local_refactoring | luna low | luna med | terra med | terra high | sol high -> terra high |
+| design / review | luna med | sol high | sol high | sol high | sol high |
+| architectural_refactoring | luna med | sol high | sol high -> terra med | sol xhigh -> terra high | sol xhigh -> terra high |
 
-`A -> B` is the success-dependent planner-to-implementer chain. Read-only
+`A -> B` is the success-dependent planner-to-implementer chain (`architectural_refactoring`
+L3+, and `implementation` / `local_refactoring` at L5). The `elevated` and `critical`
+risk tiers imply L5 and raise only the planning/judging stage (the planner of a
+two-stage route, otherwise the single stage) to `xhigh` / `max`. Read-only
 design and review use `files_touched: 0`; files only read for context do not count.
 
 Security-related risk flags (security_sensitive, authentication,
-authorization, payment) force an L6 floor before the matrix lookup. Review-only
+authorization, payment) force the elevated tier (L5) before the matrix lookup. Review-only
 security work floors through facts instead: `reviews_security_sensitive_code`
 at L4 and a critical `security_domain` (payment, crypto, auth, permissions, pii)
-at L5, whatever the task type. A critical domain whose trust boundary changes
-floors at L6; L7 requires new structure plus that trust boundary, or a
-cross-service open design with a broad blast radius or silent material harm.
+at L5, whatever the task type. A critical domain whose trust boundary changes is
+elevated; `irreversible_or_ledger_or_crypto` = yes or `--critical` is the critical
+tier. Rules never drive difficulty on their own: the keyword "security" alone implies
+no level, and `unknown` is missing information, not confirmed risk. `--level`
+accepts `L1`-`L5` only.
+
+## Execution roles and pipeline
+
+Goal: **Sol thinks and verifies, Luna and Terra implement.** Sol designs,
+verifies, and reviews; Luna/Terra implement, fix, and run tests; re-promote to Sol
+when the implementation hits a new design problem. Classification stays on Luna.
+
+- Reuse the stored route for follow-up questions in the same task. Re-classify only
+  when the task type changes, scope grows a lot, new risk evidence appears, or a
+  fact shows the approved design cannot be implemented.
+- Classify each planned step again (tweak or tests -> Luna med, ordinary logic ->
+  Terra); test execution (pytest, lint, typecheck, build) belongs to the cheap models.
+- Do not call Sol after each step. After steps 1..N and the tests, make one Sol
+  verification + code review call (High; elevated tier XHigh; critical tier Max),
+  sent only the requirement, approved plan, git diff, test results, and key code.
+- On review FAIL the reviewer does not fix it: re-classify the fix (simple -> Luna
+  med, ordinary logic -> Terra, design problem -> Sol), then a final Sol review.
+- An implementer that finds something outside the plan stops and returns evidence
+  (scope expansion, architecture or public API change, DB migration, security
+  boundary change, plan/code mismatch) for a Sol re-plan; "hard" or "unsure" alone
+  is not evidence.
+
+See `references/routing-policy.md` for the full rules.
 
 ## Test locally
 
@@ -49,7 +77,7 @@ For a guaranteed new-session entry, use the launcher:
 plugins/codex-model-effort-router/bin/codex-route -- "<task>"
 ```
 
-The seven profiles under `agents/` are execution targets carrying per-level
+The level profiles under `agents/` are execution targets carrying per-level
 developer instructions only. Model and effort always come from the router and
 model map at runtime; direct agent calls fall back to the Codex default model.
 
@@ -74,7 +102,7 @@ Example single-stage output:
 codex exec -m gpt-5.6-luna -c model_reasoning_effort=medium -c 'developer_instructions="..."' '<task>'
 ```
 
-Example two-stage output (`architectural_refactoring` L3+):
+Example two-stage output (`architectural_refactoring` L3+, or `implementation` / `local_refactoring` at L5):
 
 ```bash
 mkdir -p /tmp/codex-route-<run-id> && codex exec -m gpt-5.6-sol ... '<plan>' && codex exec -m gpt-5.6-luna ... '<execute>' && rm -rf /tmp/codex-route-<run-id>
@@ -100,14 +128,14 @@ reasons only; it does not execute checks. The selected executor receives its
 recommended checks and reports each result or why it was not run. Route-file
 replay ignores the JSON object and reuses only the stored execution steps.
 
-Schema v4 records `facts`, `matched_rules`, `needs_context`, `evidence`, and
+Schema v5 records `facts`, `matched_rules`, `needs_context`, `evidence`, `risk_tier`, and
 `execution_strategy: "direct"` with
-`orchestration_eligible` separately. `scripts/astra_adapter.py` is available as
-a caller-invoked isolated-worker boundary that revalidates worker inputs and
-preserves original verified artifacts, not a launcher target. Direct v2-v4
+`orchestration_eligible` separately. `scripts/astra_adapter.py` is the unchanged
+orchestration adapter, a caller-invoked isolated-worker boundary that revalidates worker
+inputs and preserves original verified artifacts, not a launcher target. Direct v2-v5
 route-file replay never invokes it.
 
 ## Customize
 
 Edit `config/model-map.json`, run `python3 scripts/sync_bundle.py`, and keep
-per-level developer instructions in the seven files under `agents/`.
+per-level developer instructions in the files under `agents/`.

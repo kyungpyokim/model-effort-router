@@ -38,17 +38,22 @@ no tools, plan permissions, no session persistence, and a temporary working
 directory isolate the classifier. Failure safely selects L3. Each agent pins
 `model` and `effort` in frontmatter.
 
-The v4 execution matrix is:
+The v5 execution matrix (levels L1-L5, plus a separate risk tier) is:
 
-| task type | L1 | L2 | L3 | L4 | L5 | L6 | L7 | Critical |
-|---|---|---|---|---|---|---|---|---|
-| implementation / local_refactoring | haiku | haiku | sonnet med | sonnet high | fable med (opus med) | fable high (opus high) | fable xhigh (opus xhigh) | fable max (opus max) |
-| design / review | haiku | opus low | opus med | opus high | fable high (opus high) | fable xhigh (opus xhigh) | fable xhigh (opus xhigh) | fable max (opus max) |
-| architectural_refactoring | haiku | opus med | fable high -> sonnet med | fable xhigh -> sonnet high | fable xhigh -> sonnet high | fable xhigh -> fable high | fable max -> fable xhigh | fable max (opus max) |
+| task type | L1 | L2 | L3 | L4 | L5 |
+|---|---|---|---|---|---|
+| implementation / local_refactoring | haiku | haiku | sonnet med | sonnet high | opus high -> sonnet high |
+| design / review | haiku | opus high | opus high | opus high | opus high |
+| architectural_refactoring | haiku | opus high | opus high -> sonnet med | opus xhigh -> sonnet high | opus xhigh -> sonnet high |
 
-Fable is the primary candidate and Opus is its availability fallback; `A -> B`
-is the success-dependent planner-to-implementer chain. Read-only design and
-review use `files_touched: 0`; files only read for context do not count.
+`A -> B` is the success-dependent planner-to-implementer chain
+(`architectural_refactoring` L3+, and `implementation` / `local_refactoring` at L5).
+Read-only design and review use `files_touched: 0`; files only read for context do not
+count. The `elevated` and `critical` risk tiers imply L5 and raise only the
+planning/judging stage (the planner of a two-stage route, otherwise the single stage)
+to `xhigh` / `max`; `--critical` forces the critical tier and `--level` accepts
+`L1`-`L5` only. Rules never drive difficulty on their own: the keyword "security"
+alone implies no level, and `unknown` is missing information, not confirmed risk.
 
 Inside a session, the route skill delegates each stored step with the Agent tool
 (`steps[].agent.subagent_type` + `steps[].agent.model`), so the executor keeps the
@@ -61,12 +66,35 @@ model/effort and puts the matching level agent's instructions at the top of the 
 so it works without the plugin installed. `--print` forces `claude -p`, which runs with
 default permissions and cannot edit files unless your settings allow it.
 
-Route-file replay accepts v2-v4 payloads. Schema v4 adds `facts`,
-`matched_rules`, `needs_context`, and `evidence` alongside direct-only
-`execution_strategy` and future Astra `orchestration_eligible` metadata; it
-does not enable orchestration on Claude Code. `scripts/astra_adapter.py` is a
-caller-invoked boundary that revalidates worker inputs and preserves original
-verified artifacts; direct v2-v4 route-file replay never invokes it.
+Route-file replay accepts v2-v5 payloads. Schema v5 records `facts`,
+`matched_rules`, `needs_context`, `evidence`, and `risk_tier` alongside direct-only
+`execution_strategy` and future orchestration `orchestration_eligible` metadata; it
+does not enable orchestration on Claude Code. `scripts/astra_adapter.py` is the unchanged
+caller-invoked orchestration adapter that revalidates worker inputs and preserves original
+verified artifacts; direct v2-v5 route-file replay never invokes it.
+
+## Execution roles and pipeline
+
+Goal: **Opus thinks and verifies, Haiku and Sonnet implement.** Opus designs,
+verifies, and reviews; Haiku/Sonnet implement, fix, and run tests; re-promote to Opus
+when the implementation hits a new design problem. Classification stays on Sonnet.
+
+- Reuse the stored route for follow-up questions in the same task. Re-classify only
+  when the task type changes, scope grows a lot, new risk evidence appears, or a
+  fact shows the approved design cannot be implemented.
+- Classify each planned step again (tweak or tests -> Haiku, ordinary logic ->
+  Sonnet); test execution (pytest, lint, typecheck, build) belongs to the cheap models.
+- Do not call Opus after each step. After steps 1..N and the tests, make one Opus
+  verification + code review call (High; elevated tier XHigh; critical tier Max),
+  sent only the requirement, approved plan, git diff, test results, and key code.
+- On review FAIL the reviewer does not fix it: re-classify the fix (simple -> Haiku, ordinary logic -> Sonnet, design problem -> Opus), then a final Opus review.
+- An implementer that finds something outside the plan stops and returns evidence
+  (scope expansion, architecture or public API change, DB migration, security
+  boundary change, plan/code mismatch) for an Opus re-plan; "hard" or "unsure" alone
+  is not evidence.
+
+See `references/routing-policy.md` for the full rules.
+
 
 ## Validate
 

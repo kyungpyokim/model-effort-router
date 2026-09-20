@@ -1,6 +1,6 @@
 {
   "name": "model-effort",
-  "version": "2.5.0",
+  "version": "3.0.0",
   "description": "Routes coding tasks from task facts to a Codex model and reasoning-effort profile.",
   "author": {
     "name": "Model Effort Router contributors"
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "Model Effort Router",
     "shortDescription": "Fact-based Codex model and effort routing",
-    "longDescription": "Derives L1-L7 routing from task facts and fixed rules, then delegates to a Codex agent profile with a matching GPT-5.6 model and reasoning effort.",
+    "longDescription": "Derives L1-L5 routing (plus an elevated/critical risk tier) from task facts and fixed rules, then delegates to a Codex agent profile with a matching GPT-5.6 model and reasoning effort.",
     "developerName": "Model Effort Router contributors",
     "category": "developer-tools",
     "capabilities": [
@@ -27,7 +27,7 @@
     ],
     "defaultPrompt": [
       "Route this coding task to the right model and effort.",
-      "Classify this task from L1 to L7 before implementation."
+      "Classify this task from L1 to L5 before implementation."
     ],
     "brandColor": "#111827"
   }

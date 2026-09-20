@@ -47,8 +47,8 @@ LEVEL_FACTS = {
     "L3": {"files_touched": "2-5"},
     "L4": {"crosses_module_boundary": "yes"},
     "L5": {"needs_new_structure": "yes"},
-    "L6": {"intermittent_or_concurrency": "yes", "crosses_service_boundary": "yes"},
-    "L7": {"needs_new_structure": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "blast_radius": "broad"},
+    # The elevated risk tier: an L5 route whose planning/judging stage gets xhigh effort.
+    "ELEVATED": {"intermittent_or_concurrency": "yes", "crosses_service_boundary": "yes"},
 }
 FLAG_FACTS = {
     "security_sensitive": "changes_security_or_payment_logic",
@@ -79,7 +79,7 @@ def classifier_output(task_type="implementation", level="L2", flags=None, reason
     return json.dumps(payload) if raw else payload
 
 
-def classification(task_type="implementation", level="L2", flags=None, source="terra", delegability=0):
+def classification(task_type="implementation", level="L2", flags=None, source="terra", delegability=0, risk_tier="standard"):
     return router.Classification(
         task_type=task_type,
         level=level,
@@ -87,6 +87,7 @@ def classification(task_type="implementation", level="L2", flags=None, source="t
         reason="classified",
         source=source,
         delegability=delegability,
+        risk_tier=risk_tier,
     )
 
 
@@ -197,7 +198,7 @@ class PlatformClassifierTests(unittest.TestCase):
         with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
             result = router.classify_task("inspect an unclear module boundary around authentication")
 
-        self.assertEqual((result.source, result.level), ("gpt-5.6-terra", "L6"))
+        self.assertEqual((result.source, result.level, result.risk_tier), ("gpt-5.6-terra", "L5", "elevated"))
         self.assertEqual(result.facts["changes_security_or_payment_logic"], "yes")
         self.assertTrue(result.risk_flags["security_sensitive"])
         self.assertEqual(result.facts["crosses_module_boundary"], "no")
@@ -220,7 +221,7 @@ class PlatformClassifierTests(unittest.TestCase):
         with mock.patch.object(router.subprocess, "run", side_effect=fake_run):
             result = router.classify_task("inspect an unclear module boundary around authentication")
 
-        self.assertEqual((result.source, result.level), ("gpt-5.6-terra", "L6"))
+        self.assertEqual((result.source, result.level, result.risk_tier), ("gpt-5.6-terra", "L5", "elevated"))
         self.assertEqual(result.facts["changes_security_or_payment_logic"], "yes")
         self.assertTrue(result.risk_flags["security_sensitive"])
 
@@ -253,7 +254,7 @@ class PlatformClassifierTests(unittest.TestCase):
                 if risk_flag:
                     self.assertTrue(classification_.risk_flags[risk_flag])
                 if fact == "irreversible_or_ledger_or_crypto":
-                    self.assertTrue(classification_.critical)
+                    self.assertEqual(classification_.risk_tier, "critical")
 
     def test_escalation_corrects_review_scope_facts_on_an_explicit_escalated_answer(self):
         # Correctable facts (CORRECTABLE_SAFETY_FACTS) are where a keyword-driven
@@ -279,7 +280,7 @@ class PlatformClassifierTests(unittest.TestCase):
                 result = routed(classifier=lambda _: classification_)
                 self.assertEqual(result.level, "L2")
                 self.assertEqual(classification_.facts[fact], escalated_value)
-                self.assertFalse(classification_.critical)
+                self.assertNotEqual(classification_.risk_tier, "critical")
 
     def test_known_facts_do_not_escalate(self):
         output = classifier_output(level="L5", files_touched="unknown")
@@ -524,34 +525,36 @@ class DifficultyRuleTests(unittest.TestCase):
     def test_each_level_has_a_minimal_fact_set(self):
         for level, facts in LEVEL_FACTS.items():
             with self.subTest(level=level):
-                self.assertEqual(self.level_of(**facts)[0], level)
+                expected = ("L5", "elevated") if level == "ELEVATED" else (level, "standard")
+                self.assertEqual(self.level_of(**facts)[:2], expected)
 
     def test_live_sample_tasks_route_by_rule(self):
         cases = (
-            ("README typo", {"mechanical_only": "yes"}, "L1"),
-            ("calc add bug", {}, "L2"),
-            ("list pagination", {"files_touched": "2-5", "changes_public_api_contract": "yes"}, "L4"),
-            ("session token expiry", {"files_touched": "2-5", "changes_security_or_payment_logic": "yes"}, "L6"),
-            ("order/payment timeout", {"crosses_service_boundary": "yes", "intermittent_or_concurrency": "yes", "fix_or_result_known": "no"}, "L6"),
-            ("monolith module split", {"files_touched": "6+", "crosses_module_boundary": "yes", "needs_new_structure": "yes"}, "L5"),
+            ("README typo", {"mechanical_only": "yes"}, ("L1", "standard")),
+            ("calc add bug", {}, ("L2", "standard")),
+            ("list pagination", {"files_touched": "2-5", "changes_public_api_contract": "yes"}, ("L4", "standard")),
+            ("session token expiry", {"files_touched": "2-5", "changes_security_or_payment_logic": "yes"}, ("L5", "elevated")),
+            ("order/payment timeout", {"crosses_service_boundary": "yes", "intermittent_or_concurrency": "yes", "fix_or_result_known": "no"}, ("L5", "elevated")),
+            ("monolith module split", {"files_touched": "6+", "crosses_module_boundary": "yes", "needs_new_structure": "yes"}, ("L5", "standard")),
         )
         for name, facts, expected in cases:
             with self.subTest(task=name):
-                self.assertEqual(self.level_of(**facts)[0], expected)
+                self.assertEqual(self.level_of(**facts)[:2], expected)
 
     def test_mechanical_work_is_not_l1_once_a_higher_rule_matches(self):
         self.assertEqual(self.level_of(mechanical_only="yes", files_touched="6+")[0], "L4")
 
     def test_highest_matching_rule_wins_and_is_recorded(self):
-        level, critical, matched, _ = self.level_of(changes_public_api_contract="yes", needs_new_structure="yes")
-        self.assertEqual((level, critical), ("L5", False))
+        level, tier, matched, _ = self.level_of(changes_public_api_contract="yes", needs_new_structure="yes")
+        self.assertEqual((level, tier), ("L5", "standard"))
         self.assertEqual(matched, ["L5:needs_new_structure", "L4:changes_public_api_contract"])
 
     def test_irreversible_work_is_critical(self):
-        _, critical, matched, _ = self.level_of(irreversible_or_ledger_or_crypto="yes")
-        self.assertTrue(critical)
+        level, tier, matched, _ = self.level_of(irreversible_or_ledger_or_crypto="yes")
+        self.assertEqual((level, tier), ("L5", "critical"))
+        self.assertEqual(matched, ["critical:irreversible_or_ledger_or_crypto"])
         result = routed(classifier=lambda _: router.validate_classifier_output(classifier_output(irreversible_or_ledger_or_crypto="yes", raw=False)))
-        self.assertEqual((result.level, result.model), ("critical", "gpt-6-astra"))
+        self.assertEqual((result.level, result.risk_tier, result.stages[0]["model"], result.stages[0]["effort"]), ("L5", "critical", "gpt-5.6-sol", "max"))
 
     def test_unknown_policy(self):
         # security unknown sits one level below the security floor; other unknowns take the rule
@@ -565,8 +568,8 @@ class DifficultyRuleTests(unittest.TestCase):
     def test_module_boundary_unknown_escalates_without_raising_the_floor(self):
         # Eval finding: an unknown module boundary over-routed single-module tasks to
         # L4; unknown now only asks for repository context, and yes keeps the L4 rule.
-        level, critical, matched, needs_context = self.level_of(crosses_module_boundary="unknown")
-        self.assertEqual((level, critical, needs_context), ("L2", False, True))
+        level, tier, matched, needs_context = self.level_of(crosses_module_boundary="unknown")
+        self.assertEqual((level, tier, needs_context), ("L2", "standard", True))
         self.assertEqual(matched, ["context:crosses_module_boundary_unknown (unknown)"])
         level, _, matched, needs_context = self.level_of(crosses_module_boundary="unknown", files_touched="2-5")
         self.assertEqual((level, needs_context), ("L3", True))
@@ -598,27 +601,27 @@ class DifficultyRuleTests(unittest.TestCase):
     def test_intermittent_unknown_escalates_without_raising_the_floor(self):
         # unknown is a needs_context-only signal here: it must not by itself bump an
         # otherwise-L2 task past its base level.
-        level, critical, matched, needs_context = self.level_of(intermittent_or_concurrency="unknown")
-        self.assertEqual((level, critical, needs_context), ("L2", False, True))
+        level, tier, matched, needs_context = self.level_of(intermittent_or_concurrency="unknown")
+        self.assertEqual((level, tier, needs_context), ("L2", "standard", True))
         self.assertEqual(matched, ["context:intermittent_or_concurrency_unknown (unknown)"])
 
-    def test_intermittent_unknown_does_not_match_the_l6_cross_service_rule(self):
-        level, critical, matched, needs_context = self.level_of(
+    def test_intermittent_unknown_does_not_match_the_elevated_cross_service_rule(self):
+        level, tier, matched, needs_context = self.level_of(
             intermittent_or_concurrency="unknown", crosses_service_boundary="yes",
         )
-        self.assertNotIn("L6:intermittent_across_services", matched)
-        self.assertEqual((level, critical, needs_context), ("L4", False, True))
+        self.assertNotIn("elevated:intermittent_across_services", matched)
+        self.assertEqual((level, tier, needs_context), ("L4", "standard", True))
 
     def test_irreversible_unknown_floors_at_l5_and_is_never_critical(self):
-        level, critical, matched, needs_context = self.level_of(irreversible_or_ledger_or_crypto="unknown")
-        self.assertEqual((level, critical, needs_context), ("L5", False, True))
+        level, tier, matched, needs_context = self.level_of(irreversible_or_ledger_or_crypto="unknown")
+        self.assertEqual((level, tier, needs_context), ("L5", "standard", True))
         self.assertEqual(matched, ["L5:irreversible_or_ledger_or_crypto_unknown (unknown)"])
 
     def test_irreversible_yes_is_still_critical_never_unknown(self):
-        _, critical, matched, _ = self.level_of(irreversible_or_ledger_or_crypto="yes")
-        self.assertTrue(critical)
-        _, critical_unknown, _, _ = self.level_of(irreversible_or_ledger_or_crypto="unknown")
-        self.assertFalse(critical_unknown)
+        _, tier, matched, _ = self.level_of(irreversible_or_ledger_or_crypto="yes")
+        self.assertEqual(tier, "critical")
+        _, tier_unknown, _, _ = self.level_of(irreversible_or_ledger_or_crypto="unknown")
+        self.assertNotEqual(tier_unknown, "critical")
 
     def test_classifier_reply_with_new_unknown_values_is_accepted(self):
         output = classifier_output(
@@ -627,7 +630,7 @@ class DifficultyRuleTests(unittest.TestCase):
         classification_ = router.validate_classifier_output(output)
         self.assertEqual(classification_.level, "L5")
         self.assertTrue(classification_.needs_context)
-        self.assertFalse(classification_.critical)
+        self.assertNotEqual(classification_.risk_tier, "critical")
 
     def test_read_only_design_and_review_accept_zero_files_touched(self):
         for task_type in ("design", "review"):
@@ -655,7 +658,8 @@ class DifficultyRuleTests(unittest.TestCase):
         classification_ = router.validate_classifier_output(classifier_output(changes_public_api_contract="yes", raw=False))
         result = routed(classifier=lambda _: classification_)
         payload = router.result_payload(result, router.stage_commands(result, "task"))
-        self.assertEqual(payload["schema_version"], 4)
+        self.assertEqual(payload["schema_version"], 5)
+        self.assertEqual(payload["risk_tier"], "standard")
         self.assertEqual(payload["facts"]["changes_public_api_contract"], "yes")
         self.assertEqual(payload["matched_rules"], ["L4:changes_public_api_contract"])
         self.assertNotIn("score", payload)
@@ -731,7 +735,7 @@ class SecurityReviewFloorTests(unittest.TestCase):
         self.assertIn("L5:security_domain_critical", result.matched_rules)
         self.assertIn("L4:reviews_security_sensitive_code", result.matched_rules)
         claude = self.review_route(platform="claude-code", reviews_security_sensitive_code="yes", security_domain="payment")
-        self.assertEqual((claude.level, claude.model, claude.effort), ("L5", "claude-fable-5-1", "high"))
+        self.assertEqual((claude.level, claude.model, claude.effort), ("L5", "claude-opus-5", "high"))
 
     def test_critical_domains_floor_at_l5_regardless_of_task_type(self):
         for domain in ("payment", "auth", "crypto", "permissions", "pii"):
@@ -752,23 +756,23 @@ class SecurityReviewFloorTests(unittest.TestCase):
         self.assertEqual(self.review_route().level, "L2")
         self.assertEqual(self.review_route(files_touched="2-5").level, "L3")
 
-    def test_changing_payment_logic_still_reaches_l6(self):
-        level, _, matched, _ = self.level_of(changes_security_or_payment_logic="yes", security_domain="payment")
-        self.assertEqual(level, "L6")
-        self.assertEqual(matched[0], "L6:changes_security_or_payment_logic")
+    def test_changing_payment_logic_reaches_the_elevated_tier(self):
+        level, tier, matched, _ = self.level_of(changes_security_or_payment_logic="yes", security_domain="payment")
+        self.assertEqual((level, tier), ("L5", "elevated"))
+        self.assertEqual(matched[0], "elevated:changes_security_or_payment_logic")
 
-    def test_critical_override_still_wins(self):
-        _, critical, _, _ = self.level_of(irreversible_or_ledger_or_crypto="yes", reviews_security_sensitive_code="yes", security_domain="crypto")
-        self.assertTrue(critical)
+    def test_critical_tier_still_wins(self):
+        _, tier, _, _ = self.level_of(irreversible_or_ledger_or_crypto="yes", reviews_security_sensitive_code="yes", security_domain="crypto")
+        self.assertEqual(tier, "critical")
         result = self.review_route(irreversible_or_ledger_or_crypto="yes", reviews_security_sensitive_code="yes", security_domain="crypto")
-        self.assertEqual(result.level, "critical")
+        self.assertEqual((result.level, result.risk_tier, result.model, result.effort), ("L5", "critical", "gpt-5.6-sol", "max"))
 
-    def test_floors_never_lower_a_higher_level(self):
-        level, _, _, _ = self.level_of(
+    def test_floors_never_lower_a_higher_tier(self):
+        level, tier, _, _ = self.level_of(
             needs_new_structure="yes", crosses_service_boundary="yes", fix_or_result_known="no",
             blast_radius="broad", reviews_security_sensitive_code="yes", security_domain="pii",
         )
-        self.assertEqual(level, "L7")
+        self.assertEqual((level, tier), ("L5", "elevated"))
 
     def test_unknown_review_facts_take_at_most_the_l4_floor_and_ask_for_context(self):
         # Unknown-driven L5 floors already over-route (~33-38% in the eval); an unknown
@@ -781,12 +785,12 @@ class SecurityReviewFloorTests(unittest.TestCase):
                 level, _, matched, needs_context = self.level_of(**facts)
                 self.assertEqual((level, needs_context, matched), ("L4", True, [rule]))
 
-    def test_review_facts_do_not_raise_the_change_flags_or_the_l6_floor(self):
+    def test_review_facts_do_not_raise_the_change_flags_or_the_elevated_tier(self):
         classification_ = router.validate_classifier_output(
             classifier_output(task_type="review", files_touched="0", raw=False, reviews_security_sensitive_code="yes", security_domain="payment")
         )
         self.assertFalse(any(classification_.risk_flags.values()))
-        self.assertEqual(routed(classifier=lambda _: classification_).level, "L5")
+        self.assertEqual(routed(classifier=lambda _: classification_).risk_tier, "standard")
 
     def test_policy_and_readme_document_the_review_floors(self):
         policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
@@ -800,64 +804,67 @@ class SecurityReviewFloorTests(unittest.TestCase):
 
 
 class ImpactFloorTests(unittest.TestCase):
-    """L6/L7 follow the impact of a wrong judgement. needs_new_structure is a design
-    difficulty signal; L7 also needs a security trust boundary or high impact."""
+    """The elevated tier follows the impact of a wrong judgement. needs_new_structure is a
+    design difficulty signal; it is elevated only across services with an open result, or
+    together with a critical-domain trust boundary."""
 
     def level_of(self, **facts):
         return router.evaluate_rules({**BASE_FACTS, **facts})
 
     CROSS_SERVICE_DESIGN = {"needs_new_structure": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no"}
 
-    def test_auth_extraction_deciding_a_trust_boundary_is_l6(self):
-        level, critical, matched, _ = self.level_of(security_domain="auth", changes_trust_boundary="yes")
-        self.assertEqual((level, critical), ("L6", False))
-        self.assertIn("L6:critical_domain_trust_boundary", matched)
+    def test_auth_extraction_deciding_a_trust_boundary_is_elevated(self):
+        level, tier, matched, _ = self.level_of(security_domain="auth", changes_trust_boundary="yes")
+        self.assertEqual((level, tier), ("L5", "elevated"))
+        self.assertIn("elevated:critical_domain_trust_boundary", matched)
 
-    def test_new_auth_structure_across_a_trust_boundary_is_l7(self):
-        level, _, matched, _ = self.level_of(security_domain="auth", changes_trust_boundary="yes", needs_new_structure="yes")
-        self.assertEqual(level, "L7")
-        self.assertIn("L7:new_structure_security_trust_boundary", matched)
+    def test_new_auth_structure_across_a_trust_boundary_is_elevated(self):
+        level, tier, matched, _ = self.level_of(security_domain="auth", changes_trust_boundary="yes", needs_new_structure="yes")
+        self.assertEqual((level, tier), ("L5", "elevated"))
+        self.assertIn("elevated:critical_domain_trust_boundary", matched)
 
     def test_trust_boundary_needs_a_critical_domain(self):
         for domain in ("none", "secrets", "unknown"):
             with self.subTest(domain=domain):
-                level, _, matched, _ = self.level_of(security_domain=domain, changes_trust_boundary="yes", needs_new_structure="yes")
-                self.assertNotIn(level, ("L6", "L7"))
+                level, tier, matched, _ = self.level_of(security_domain=domain, changes_trust_boundary="yes", needs_new_structure="yes")
+                self.assertEqual(tier, "standard")
                 self.assertFalse(any("trust_boundary" in rule for rule in matched))
 
-    def test_narrow_cross_service_structure_design_is_l6_not_l7(self):
-        level, _, matched, _ = self.level_of(**self.CROSS_SERVICE_DESIGN)
-        self.assertEqual(level, "L6")
-        self.assertEqual(matched[0], "L6:new_structure_across_services_with_open_result")
-        self.assertFalse(any(rule.startswith("L7:") for rule in matched))
+    def test_cross_service_structure_design_is_elevated(self):
+        level, tier, matched, _ = self.level_of(**self.CROSS_SERVICE_DESIGN)
+        self.assertEqual((level, tier), ("L5", "elevated"))
+        self.assertEqual(matched[0], "elevated:new_structure_across_services_with_open_result")
 
-    def test_broad_distributed_design_is_l7(self):
-        level, _, matched, _ = self.level_of(**self.CROSS_SERVICE_DESIGN, blast_radius="broad")
-        self.assertEqual(level, "L7")
-        self.assertIn("L7:new_structure_across_services_broad_impact", matched)
+    def test_broad_or_silent_impact_does_not_add_a_tier_above_elevated(self):
+        for extra in ({"blast_radius": "broad"}, {"silent_failure_material_harm": "yes"}):
+            with self.subTest(extra=extra):
+                level, tier, _, _ = self.level_of(**self.CROSS_SERVICE_DESIGN, **extra)
+                self.assertEqual((level, tier), ("L5", "elevated"))
 
-    def test_silent_harm_distributed_design_is_l7(self):
-        level, _, matched, _ = self.level_of(**self.CROSS_SERVICE_DESIGN, silent_failure_material_harm="yes")
-        self.assertEqual(level, "L7")
-        self.assertIn("L7:new_structure_across_services_silent_harm", matched)
+    def test_broad_blast_radius_with_silent_harm_is_elevated(self):
+        level, tier, matched, _ = self.level_of(blast_radius="broad", silent_failure_material_harm="yes")
+        self.assertEqual((level, tier), ("L5", "elevated"))
+        self.assertEqual(matched, ["elevated:broad_blast_radius_with_silent_harm"])
 
-    def test_impact_alone_does_not_reach_l7_without_new_structure(self):
-        for missing in ("needs_new_structure", "crosses_service_boundary"):
-            facts = {**self.CROSS_SERVICE_DESIGN, "blast_radius": "broad", "silent_failure_material_harm": "yes", missing: "no"}
-            with self.subTest(missing=missing):
-                self.assertNotEqual(self.level_of(**facts)[0], "L7")
-        known = {**self.CROSS_SERVICE_DESIGN, "fix_or_result_known": "yes", "blast_radius": "broad"}
-        self.assertNotEqual(self.level_of(**known)[0], "L7")
+    def test_one_impact_fact_alone_stays_standard(self):
+        # Neither a broad reach nor a silent failure alone is a confirmed high-risk change,
+        # and an unknown never matches (it only asks for repository context).
+        for facts in (
+            {"blast_radius": "broad"},
+            {"silent_failure_material_harm": "yes"},
+            {"blast_radius": "broad", "silent_failure_material_harm": "unknown"},
+            {"blast_radius": "unknown", "silent_failure_material_harm": "yes"},
+        ):
+            with self.subTest(facts=facts):
+                self.assertEqual(self.level_of(**facts)[:2], ("L2", "standard"))
 
-    def test_every_l7_rule_requires_new_structure_and_an_impact_condition(self):
-        impact = {"changes_trust_boundary", "blast_radius", "silent_failure_material_harm"}
-        l7_rules = [(name, conditions) for level, name, conditions in router.DIFFICULTY_RULES if level == "L7"]
-        self.assertEqual(len(l7_rules), 3)
-        for name, conditions in l7_rules:
+    def test_every_tier_rule_needs_confirmed_yes_conditions(self):
+        tier_rules = [(name, conditions) for level, name, conditions in router.DIFFICULTY_RULES if level in router.RISK_TIERS[1:]]
+        self.assertEqual(len(tier_rules), 6)
+        for name, conditions in tier_rules:
             with self.subTest(rule=name):
-                self.assertEqual(conditions["needs_new_structure"], ("yes",))
-                self.assertTrue(impact & set(conditions))
                 self.assertNotIn("unknown", [value for values in conditions.values() for value in values])
+        self.assertFalse(any(level in ("L6", "L7") for level, _, _ in router.DIFFICULTY_RULES))
 
     def test_identical_facts_route_to_the_same_level_for_every_task_type(self):
         for facts in (
@@ -876,18 +883,17 @@ class ImpactFloorTests(unittest.TestCase):
     def test_unknown_impact_facts_ask_for_context_without_a_floor(self):
         for fact in ("changes_trust_boundary", "blast_radius", "silent_failure_material_harm"):
             with self.subTest(fact=fact):
-                level, critical, matched, needs_context = self.level_of(**{fact: "unknown"})
-                self.assertEqual((level, critical, needs_context), ("L2", False, True))
+                level, tier, matched, needs_context = self.level_of(**{fact: "unknown"})
+                self.assertEqual((level, tier, needs_context), ("L2", "standard", True))
                 self.assertEqual(matched, [f"context:{fact}_unknown (unknown)"])
 
-    def test_unknown_impact_facts_never_match_l6_or_l7(self):
-        level, _, matched, _ = self.level_of(
+    def test_unknown_impact_facts_never_match_the_trust_boundary_tier_rule(self):
+        level, tier, matched, _ = self.level_of(
             **self.CROSS_SERVICE_DESIGN, security_domain="auth",
             changes_trust_boundary="unknown", blast_radius="unknown", silent_failure_material_harm="unknown",
         )
-        self.assertEqual(level, "L6")
-        self.assertNotIn("L6:critical_domain_trust_boundary", matched)
-        self.assertFalse(any(rule.startswith("L7:") for rule in matched))
+        self.assertEqual((level, tier), ("L5", "elevated"))
+        self.assertNotIn("elevated:critical_domain_trust_boundary", matched)
 
     def test_cascade_keeps_primary_impact_answers_when_escalated_is_unknown(self):
         # Escalated only fills its own gaps from primary's affirmative answers; it must
@@ -905,7 +911,8 @@ class ImpactFloorTests(unittest.TestCase):
             [combined.facts[f] for f in ("blast_radius", "changes_trust_boundary", "silent_failure_material_harm")],
             ["broad", "yes", "yes"],
         )
-        self.assertEqual(combined.level, "L7")
+        self.assertEqual((combined.level, combined.risk_tier), ("L5", "elevated"))
+        self.assertIn("elevated:critical_domain_trust_boundary", combined.matched_rules)
 
     def test_schema_enums_for_impact_facts(self):
         facts_schema = router.CLASSIFIER_SCHEMA["properties"]["facts"]
@@ -1045,32 +1052,32 @@ class CascadeEscalatedOverridesPrimaryTests(unittest.TestCase):
     def test_irreversible_is_or_aggregated_over_all_nine_combinations(self):
         # irreversible_or_ledger_or_crypto is sticky. Never weaken this to make an
         # eval case pass.
-        expected_level = {"yes": "L2", "unknown": "L5", "no": "L2"}
+        expected_level = {"yes": "L5", "unknown": "L5", "no": "L2"}
         for primary_value in ("yes", "no", "unknown"):
             for escalated_value in ("yes", "no", "unknown"):
                 expected = "yes" if "yes" in (primary_value, escalated_value) else escalated_value
                 with self.subTest(primary=primary_value, escalated=escalated_value):
                     combined = self.combine(self.FACT, primary_value, escalated_value)
                     self.assertEqual(combined.facts[self.FACT], expected)
-                    self.assertEqual(combined.critical, expected == "yes")
+                    self.assertEqual(combined.risk_tier == "critical", expected == "yes")
                     self.assertEqual(combined.level, expected_level[expected])
                     if expected == "yes":
                         self.assertIn("critical:irreversible_or_ledger_or_crypto", combined.matched_rules)
-                        self.assertEqual(routed(classifier=lambda _: combined).level, "critical")
+                        self.assertEqual(routed(classifier=lambda _: combined).risk_tier, "critical")
 
     def test_other_sticky_safety_facts_are_or_aggregated(self):
         # Never weaken this to make an eval case pass.
         cases = (
-            ("changes_security_or_payment_logic", "yes", "no", "yes", "L6"),
-            ("changes_security_or_payment_logic", "yes", "unknown", "yes", "L6"),
-            ("changes_security_or_payment_logic", "no", "yes", "yes", "L6"),
-            ("changes_security_or_payment_logic", "unknown", "yes", "yes", "L6"),
-            ("changes_security_or_payment_logic", "no", "unknown", "unknown", "L5"),
+            ("changes_security_or_payment_logic", "yes", "no", "yes", "elevated"),
+            ("changes_security_or_payment_logic", "yes", "unknown", "yes", "elevated"),
+            ("changes_security_or_payment_logic", "no", "yes", "yes", "elevated"),
+            ("changes_security_or_payment_logic", "unknown", "yes", "yes", "elevated"),
+            ("changes_security_or_payment_logic", "no", "unknown", "unknown", "standard"),
         )
-        for fact, primary_value, escalated_value, expected, level in cases:
+        for fact, primary_value, escalated_value, expected, tier in cases:
             with self.subTest(fact=fact, primary=primary_value, escalated=escalated_value):
                 combined = self.combine(fact, primary_value, escalated_value)
-                self.assertEqual((combined.facts[fact], combined.level, combined.critical), (expected, level, False))
+                self.assertEqual((combined.facts[fact], combined.level, combined.risk_tier), (expected, "L5", tier))
 
     def test_security_domain_is_correctable_not_or_aggregated(self):
         # Unlike the sticky facts above, security_domain may be lowered once
@@ -1088,7 +1095,7 @@ class CascadeEscalatedOverridesPrimaryTests(unittest.TestCase):
             with self.subTest(primary=primary_value, escalated=escalated_value):
                 combined = self.combine("security_domain", primary_value, escalated_value)
                 self.assertEqual(
-                    (combined.facts["security_domain"], combined.level, combined.critical), (expected, level, False)
+                    (combined.facts["security_domain"], combined.level, combined.risk_tier), (expected, level, "standard")
                 )
 
     def test_security_domain_priority_picks_the_more_critical_of_two_named_domains(self):
@@ -1313,17 +1320,17 @@ class ExternalClassificationTests(unittest.TestCase):
 
     def test_session_cascade_envelope_preserves_primary_safety_facts_when_escalated_is_unknown(self):
         cases = (
-            ("changes_security_or_payment_logic", "yes", "L6"),
-            ("changes_persisted_data", "yes", "L4"),
-            ("changes_public_api_contract", "yes", "L4"),
-            ("irreversible_or_ledger_or_crypto", "yes", "critical"),
-            ("reviews_security_sensitive_code", "yes", "L4"),
-            ("security_domain", "auth", "L5"),
-            ("changes_trust_boundary", "yes", "L2"),
-            ("silent_failure_material_harm", "yes", "L2"),
-            ("blast_radius", "broad", "L2"),
+            ("changes_security_or_payment_logic", "yes", "L5", "elevated"),
+            ("changes_persisted_data", "yes", "L4", "standard"),
+            ("changes_public_api_contract", "yes", "L4", "standard"),
+            ("irreversible_or_ledger_or_crypto", "yes", "L5", "critical"),
+            ("reviews_security_sensitive_code", "yes", "L4", "standard"),
+            ("security_domain", "auth", "L5", "standard"),
+            ("changes_trust_boundary", "yes", "L2", "standard"),
+            ("silent_failure_material_harm", "yes", "L2", "standard"),
+            ("blast_radius", "broad", "L2", "standard"),
         )
-        for fact, value, expected_level in cases:
+        for fact, value, expected_level, expected_tier in cases:
             with self.subTest(fact=fact):
                 envelope = json.dumps({
                     "primary": classifier_output(
@@ -1339,6 +1346,7 @@ class ExternalClassificationTests(unittest.TestCase):
                     )
                 payload = json.loads(out)
                 self.assertEqual((code, payload["effective_level"], payload["source"]), (0, expected_level, "classification-file"))
+                self.assertEqual(payload["risk_tier"], expected_tier)
                 self.assertEqual(payload["facts"][fact], value)
                 self.assertFalse(payload["needs_context"])
 
@@ -1417,118 +1425,119 @@ class ExternalClassificationTests(unittest.TestCase):
 
 
 class EscalationTests(unittest.TestCase):
-    def test_additional_risks_do_not_stack_on_the_security_floor(self):
-        # The risk factor already scores these; stacking +1s pushed security work to L7.
+    def test_security_flags_force_the_elevated_tier(self):
         for security_flag in router.SECURITY_FLOOR_FLAGS:
-            for additional in ("data_migration", "public_api_change"):
+            for additional in (None, "data_migration", "public_api_change"):
                 with self.subTest(security=security_flag, additional=additional):
-                    flags = {**NO_FLAGS, security_flag: True, additional: True}
-                    self.assertEqual(router.apply_risk_escalation("L2", flags), "L6")
+                    flags = {**NO_FLAGS, security_flag: True, **({additional: True} if additional else {})}
+                    # The additional risks do not stack: the security flag alone decides.
+                    self.assertEqual(router.apply_risk_escalation("L2", "standard", flags), ("L5", "elevated"))
 
-    def test_security_flags_force_an_l4_floor(self):
+    def test_security_flags_lift_any_base_level_to_l5(self):
         cases = (
-            ("L1", {"authentication": True}, "L6"),
-            ("L2", {"payment": True}, "L6"),
-            ("L3", {"authorization": True}, "L6"),
-            ("L1", {"security_sensitive": True}, "L6"),
-            ("L6", {"security_sensitive": True}, "L6"),
-            ("L7", {"security_sensitive": True}, "L7"),
+            ("L1", "standard", {"authentication": True}),
+            ("L2", "standard", {"payment": True}),
+            ("L3", "standard", {"authorization": True}),
+            ("L1", "standard", {"security_sensitive": True}),
+            ("L5", "standard", {"security_sensitive": True}),
         )
-        for base, flags, expected in cases:
+        for base, tier, flags in cases:
             with self.subTest(base=base, flags=flags):
-                self.assertEqual(router.apply_risk_escalation(base, {**NO_FLAGS, **flags}), expected)
+                self.assertEqual(router.apply_risk_escalation(base, tier, {**NO_FLAGS, **flags}), ("L5", "elevated"))
+
+    def test_security_flags_never_lower_the_critical_tier(self):
+        self.assertEqual(router.apply_risk_escalation("L5", "critical", {**NO_FLAGS, "payment": True}), ("L5", "critical"))
 
     def test_non_security_flags_force_an_l4_floor(self):
-        self.assertEqual(router.apply_risk_escalation("L2", {**NO_FLAGS, "data_migration": True}), "L4")
-        self.assertEqual(router.apply_risk_escalation("L3", {**NO_FLAGS, "public_api_change": True}), "L4")
+        self.assertEqual(router.apply_risk_escalation("L2", "standard", {**NO_FLAGS, "data_migration": True}), ("L4", "standard"))
+        self.assertEqual(router.apply_risk_escalation("L3", "standard", {**NO_FLAGS, "public_api_change": True}), ("L4", "standard"))
         self.assertEqual(
-            router.apply_risk_escalation("L3", {**NO_FLAGS, "data_migration": True, "public_api_change": True}),
-            "L4",
+            router.apply_risk_escalation("L3", "standard", {**NO_FLAGS, "data_migration": True, "public_api_change": True}),
+            ("L4", "standard"),
         )
-        self.assertEqual(router.apply_risk_escalation("L5", {**NO_FLAGS, "data_migration": True}), "L5")
+        self.assertEqual(router.apply_risk_escalation("L5", "standard", {**NO_FLAGS, "data_migration": True}), ("L5", "standard"))
 
     def test_no_flags_keeps_the_base_level(self):
-        self.assertEqual(router.apply_risk_escalation("L2", NO_FLAGS), "L2")
+        self.assertEqual(router.apply_risk_escalation("L2", "standard", NO_FLAGS), ("L2", "standard"))
+
+    def test_a_risk_tier_alone_lifts_the_level_to_l5(self):
+        for tier in ("elevated", "critical"):
+            self.assertEqual(router.apply_risk_escalation("L2", tier, NO_FLAGS), ("L5", tier))
+
+
+CODEX_IMPL = (
+    ("gpt-5.6-luna", "low"),
+    ("gpt-5.6-luna", "medium"),
+    ("gpt-5.6-terra", "medium"),
+    ("gpt-5.6-terra", "high"),
+)
+# Sol and Opus never run below high effort: they are the judging models.
+CODEX_JUDGE = (
+    ("gpt-5.6-luna", "medium"),
+    ("gpt-5.6-sol", "high"),
+    ("gpt-5.6-sol", "high"),
+    ("gpt-5.6-sol", "high"),
+    ("gpt-5.6-sol", "high"),
+)
+CLAUDE_IMPL = (
+    ("claude-haiku-4-5", None), ("claude-haiku-4-5", None),
+    ("claude-sonnet-5", "medium"), ("claude-sonnet-5", "high"),
+)
+CLAUDE_JUDGE = (
+    ("claude-haiku-4-5", None), ("claude-opus-5", "high"), ("claude-opus-5", "high"),
+    ("claude-opus-5", "high"), ("claude-opus-5", "high"),
+)
+AGY_FLASH = ("Gemini 3.8 Flash (High)", None)
+AGY_PRO = ("Gemini 3.1 Pro (High)", None)
+AGY_SONNET = ("Claude Sonnet 4.6 (Thinking)", None)
 
 
 class MatrixTests(unittest.TestCase):
-    CODEX_IMPL = (
-        ("gpt-5.6-luna", "low"),
-        ("gpt-5.6-luna", "medium"),
-        ("gpt-5.6-terra", "medium"),
-        ("gpt-5.6-terra", "high"),
-        ("gpt-5.6-sol", "high"),
-        ("gpt-5.6-sol", "xhigh"),
-        ("gpt-6-astra", "xhigh"),
-    )
     EXPECTED_SINGLE = {
         "codex": {
-            **{("implementation", level): cell for level, cell in zip(router.LEVELS, CODEX_IMPL)},
-            **{("local_refactoring", level): cell for level, cell in zip(router.LEVELS, CODEX_IMPL)},
-            **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
-                ("gpt-5.6-luna", "medium"),
-                ("gpt-5.6-sol", "low"),
-                ("gpt-5.6-sol", "medium"),
-                ("gpt-5.6-sol", "high"),
-                ("gpt-5.6-sol", "high"),
-                ("gpt-5.6-sol", "xhigh"),
-                ("gpt-6-astra", "xhigh"),
-            ))},
+            **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, CODEX_IMPL)},
+            **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CODEX_JUDGE)},
             ("architectural_refactoring", "L1"): ("gpt-5.6-luna", "medium"),
-            ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "medium"),
+            ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
         },
         "claude-code": {
-            **{("implementation", level): cell for level, cell in zip(router.LEVELS, (
-                ("claude-haiku-4-5", None), ("claude-haiku-4-5", None), ("claude-sonnet-5", "medium"), ("claude-sonnet-5", "high"),
-                ("claude-fable-5-1", "medium"), ("claude-fable-5-1", "high"), ("claude-fable-5-1", "xhigh"),
-            ))},
-            **{("local_refactoring", level): cell for level, cell in zip(router.LEVELS, (
-                ("claude-haiku-4-5", None), ("claude-haiku-4-5", None), ("claude-sonnet-5", "medium"), ("claude-sonnet-5", "high"),
-                ("claude-fable-5-1", "medium"), ("claude-fable-5-1", "high"), ("claude-fable-5-1", "xhigh"),
-            ))},
-            **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
-                ("claude-haiku-4-5", None), ("claude-opus-5", "low"), ("claude-opus-5", "medium"), ("claude-opus-5", "high"),
-                ("claude-fable-5-1", "high"), ("claude-fable-5-1", "xhigh"), ("claude-fable-5-1", "xhigh"),
-            ))},
+            **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, CLAUDE_IMPL)},
+            **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CLAUDE_JUDGE)},
             ("architectural_refactoring", "L1"): ("claude-haiku-4-5", None),
-            ("architectural_refactoring", "L2"): ("claude-opus-5", "medium"),
+            ("architectural_refactoring", "L2"): ("claude-opus-5", "high"),
         },
         "antigravity": {
             **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, (
-                ("Gemini 3.8 Flash (High)", None), ("Gemini 3.8 Flash (High)", None), ("Gemini 3.8 Flash (High)", None),
-                ("Claude Sonnet 4.6 (Thinking)", None), ("Gemini 3.1 Pro (High)", None),
-                ("Claude Opus 4.6 (Thinking)", None), ("Claude Opus 4.6 (Thinking)", None),
+                AGY_FLASH, AGY_FLASH, AGY_FLASH, AGY_SONNET,
             ))},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
-                ("Gemini 3.8 Flash (High)", None), ("Gemini 3.8 Flash (High)", None), ("Gemini 3.1 Pro (High)", None),
-                ("Gemini 3.1 Pro (High)", None), ("Gemini 3.1 Pro (High)", None),
-                ("Claude Opus 4.6 (Thinking)", None), ("Claude Opus 4.6 (Thinking)", None),
+                AGY_FLASH, AGY_FLASH, AGY_PRO, AGY_PRO, AGY_PRO,
             ))},
-            ("architectural_refactoring", "L1"): ("Gemini 3.8 Flash (High)", None),
-            ("architectural_refactoring", "L2"): ("Gemini 3.8 Flash (High)", None),
+            ("architectural_refactoring", "L1"): AGY_FLASH,
+            ("architectural_refactoring", "L2"): AGY_FLASH,
         },
     }
     EXPECTED_STAGES = {
         "codex": {
+            ("implementation", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
+            ("local_refactoring", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
             ("architectural_refactoring", "L3"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "medium")],
             ("architectural_refactoring", "L4"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
             ("architectural_refactoring", "L5"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
-            ("architectural_refactoring", "L6"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-sol", "xhigh")],
-            ("architectural_refactoring", "L7"): [("planner", "gpt-6-astra", "xhigh"), ("implementer", "gpt-5.6-sol", "xhigh")],
         },
         "claude-code": {
-            ("architectural_refactoring", "L3"): [("planner", "claude-fable-5-1", "high"), ("implementer", "claude-sonnet-5", "medium")],
-            ("architectural_refactoring", "L4"): [("planner", "claude-fable-5-1", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
-            ("architectural_refactoring", "L5"): [("planner", "claude-fable-5-1", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
-            ("architectural_refactoring", "L6"): [("planner", "claude-fable-5-1", "xhigh"), ("implementer", "claude-fable-5-1", "high")],
-            ("architectural_refactoring", "L7"): [("planner", "claude-fable-5-1", "max"), ("implementer", "claude-fable-5-1", "xhigh")],
+            ("implementation", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
+            ("local_refactoring", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
+            ("architectural_refactoring", "L3"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "medium")],
+            ("architectural_refactoring", "L4"): [("planner", "claude-opus-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
+            ("architectural_refactoring", "L5"): [("planner", "claude-opus-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
         },
         "antigravity": {
+            ("implementation", "L5"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
+            ("local_refactoring", "L5"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
             ("architectural_refactoring", "L3"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Gemini 3.8 Flash (High)", None)],
             ("architectural_refactoring", "L4"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
             ("architectural_refactoring", "L5"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
-            ("architectural_refactoring", "L6"): [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Opus 4.6 (Thinking)", None)],
-            ("architectural_refactoring", "L7"): [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Opus 4.6 (Thinking)", None)],
         },
     }
 
@@ -1539,7 +1548,7 @@ class MatrixTests(unittest.TestCase):
                     with self.subTest(cell=f"{platform}/{task_type}/{level}"):
                         result = routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
                         self.assertEqual(result.task_type, task_type)
-                        self.assertEqual(result.level, level)
+                        self.assertEqual((result.level, result.risk_tier), (level, "standard"))
                         if (task_type, level) in self.EXPECTED_SINGLE[platform]:
                             model, effort = self.EXPECTED_SINGLE[platform][(task_type, level)]
                             self.assertEqual(result.mode, "single")
@@ -1552,6 +1561,77 @@ class MatrixTests(unittest.TestCase):
                             self.assertIsNotNone(result.plan_dir)
                             self.assertEqual([(s["role"], s["model"], s["effort"]) for s in result.stages], expected)
 
+    def test_top_models_are_sol_and_opus_only(self):
+        text = json.dumps(CONFIG)
+        for retired in ("astra", "fable", "candidates"):
+            self.assertNotIn(retired, text.lower())
+
+    def test_implementation_is_never_run_by_the_judging_model(self):
+        # Sol/Opus plan and judge; implementation stays on Luna/Terra, Haiku/Sonnet, Flash/Sonnet.
+        judges = {"codex": ("gpt-5.6-sol",), "claude-code": ("claude-opus-5",), "antigravity": ("Claude Opus",)}
+        for platform, judge_models in judges.items():
+            for task_type in ("implementation", "local_refactoring"):
+                for level in router.LEVELS:
+                    for tier in router.RISK_TIERS:
+                        if tier != "standard" and level != "L5":
+                            continue
+                        result = routed(platform=platform, classifier=lambda _, t=task_type, l=level, k=tier: classification(t, l, risk_tier=k))
+                        implementers = [s["model"] for s in result.stages if s["role"] != "planner"]
+                        with self.subTest(platform=platform, task_type=task_type, level=level, tier=tier):
+                            self.assertTrue(implementers)
+                            self.assertFalse([m for m in implementers if m.startswith(judge_models)])
+
+    def test_tiers_raise_only_the_planning_stage_effort(self):
+        cases = (
+            ("codex", "implementation", "elevated", [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")]),
+            ("codex", "implementation", "critical", [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")]),
+            ("codex", "review", "elevated", [("executor", "gpt-5.6-sol", "xhigh")]),
+            ("codex", "review", "critical", [("executor", "gpt-5.6-sol", "max")]),
+            ("codex", "architectural_refactoring", "critical", [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")]),
+            ("claude-code", "implementation", "elevated", [("planner", "claude-opus-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")]),
+            ("claude-code", "design", "critical", [("executor", "claude-opus-5", "max")]),
+            ("antigravity", "design", "elevated", [("executor", "Claude Opus 4.6 (Thinking)", None)]),
+            ("antigravity", "implementation", "critical", [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)]),
+            ("antigravity", "architectural_refactoring", "critical", [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)]),
+        )
+        for platform, task_type, tier, expected in cases:
+            with self.subTest(platform=platform, task_type=task_type, tier=tier):
+                result = routed(platform=platform, classifier=lambda _, t=task_type, k=tier: classification(t, "L5", risk_tier=k))
+                self.assertEqual((result.level, result.risk_tier), ("L5", tier))
+                self.assertEqual([(s["role"], s["model"], s["effort"]) for s in result.stages], expected)
+
+    def test_a_tier_never_lowers_an_already_higher_effort(self):
+        result = routed(classifier=lambda _: classification("architectural_refactoring", "L5", risk_tier="elevated"))
+        self.assertEqual(result.stages[0]["effort"], "xhigh")
+        self.assertEqual(router.raise_effort("max", "xhigh"), "max")
+        self.assertEqual(router.raise_effort(None, "xhigh"), "xhigh")
+
+    def test_antigravity_tier_uses_the_detected_opus_model(self):
+        result = routed(
+            platform="antigravity",
+            classifier=lambda _: classification("design", "L5", risk_tier="elevated"),
+            available_models=["Gemini 3.1 Pro (High)", "Claude Opus 5 (Thinking)"],
+        )
+        self.assertEqual(result.model, "Claude Opus 5 (Thinking)")
+
+    def test_a_missing_tier_profile_is_a_config_error(self):
+        config = json.loads(json.dumps(CONFIG))
+        del config["tiers"]["critical"]["codex"]
+        with self.assertRaisesRegex(ValueError, "missing the critical tier profile"):
+            router.route("task", "codex", config, classifier=lambda _: classification("review", "L5", risk_tier="critical"))
+
+    def test_a_pre_v5_config_without_tiers_fails_cleanly(self):
+        old = json.loads(json.dumps(CONFIG))
+        del old["tiers"]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "old.json"
+            path.write_text(json.dumps(old), encoding="utf-8")
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(io.StringIO()):
+                code = router.main(["task", "--platform", "codex", "--config", str(path), "--task-type", "review", "--critical"])
+        self.assertEqual(code, 2)
+        self.assertIn("older than schema v5", stderr.getvalue())
+
     def test_antigravity_patterns_match_account_models_before_fallback(self):
         result = routed(
             platform="antigravity",
@@ -1562,20 +1642,22 @@ class MatrixTests(unittest.TestCase):
 
 
 class RoutingTests(unittest.TestCase):
-    def test_single_l5_to_l7_codex_routes_record_safe_orchestration_eligibility(self):
-        for level in ("L5", "L6", "L7"):
-            with self.subTest(level=level):
-                result = routed(classifier=lambda _, level=level: classification("implementation", level, delegability=2))
+    def test_single_l5_codex_routes_record_safe_orchestration_eligibility(self):
+        for task_type, tier in (("review", "standard"), ("design", "elevated")):
+            with self.subTest(task_type=task_type, tier=tier):
+                result = routed(classifier=lambda _, t=task_type, k=tier: classification(t, "L5", delegability=2, risk_tier=k))
                 self.assertEqual(result.execution_strategy, "direct")
+                self.assertEqual(result.mode, "single")
                 self.assertTrue(result.orchestration_eligible)
 
     def test_orchestration_eligibility_fails_closed_for_non_codex_two_stage_or_risk(self):
         cases = (
-            routed(platform="claude-code", classifier=lambda _: classification("implementation", "L6", delegability=2)),
-            routed(classifier=lambda _: classification("architectural_refactoring", "L6", delegability=2)),
-            routed(classifier=lambda _: classification("implementation", "L6", delegability=1)),
-            routed(classifier=lambda _: classification("implementation", "L6", delegability=2, flags={"public_api_change": True})),
-            routed(critical=True, classifier=lambda _: classification("implementation", "L7", delegability=2)),
+            routed(platform="claude-code", classifier=lambda _: classification("review", "L5", delegability=2)),
+            routed(classifier=lambda _: classification("architectural_refactoring", "L5", delegability=2)),
+            routed(classifier=lambda _: classification("implementation", "L5", delegability=2)),
+            routed(classifier=lambda _: classification("review", "L5", delegability=1)),
+            routed(classifier=lambda _: classification("review", "L5", delegability=2, flags={"public_api_change": True})),
+            routed(critical=True, classifier=lambda _: classification("review", "L5", delegability=2)),
         )
         for result in cases:
             with self.subTest(result=result):
@@ -1587,14 +1669,14 @@ class RoutingTests(unittest.TestCase):
         config["orchestration"]["codex"].pop("minimum_delegability")
         result = router.route(
             "task", "codex", config,
-            classifier=lambda _: classification("implementation", "L6", delegability=2),
+            classifier=lambda _: classification("review", "L5", delegability=2),
         )
         self.assertFalse(result.orchestration_eligible)
 
     def test_orchestration_policy_cannot_broaden_the_fixed_safe_floor(self):
         config = json.loads(json.dumps(CONFIG))
         config["orchestration"]["codex"].update(
-            eligible_levels=["L1", "L5", "L6", "L7"], minimum_delegability=0,
+            eligible_levels=["L1", "L5"], minimum_delegability=0,
         )
         result = router.route(
             "task", "codex", config,
@@ -1604,18 +1686,31 @@ class RoutingTests(unittest.TestCase):
 
     def test_security_flag_promotes_an_l1_implementation_to_terra(self):
         result = routed(classifier=lambda _: classification("implementation", "L1", flags={"authentication": True}))
-        self.assertEqual((result.base_level, result.level), ("L1", "L6"))
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "xhigh"))
+        self.assertEqual((result.base_level, result.level, result.risk_tier), ("L1", "L5", "elevated"))
+        self.assertEqual(
+            [(stage["role"], stage["model"], stage["effort"]) for stage in result.stages],
+            [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
+        )
 
     def test_review_with_authorization_routes_sol_xhigh(self):
         result = routed(classifier=lambda _: classification("review", "L2", flags={"authorization": True}))
-        self.assertEqual((result.level, result.model, result.effort), ("L6", "gpt-5.6-sol", "xhigh"))
+        self.assertEqual((result.level, result.risk_tier, result.model, result.effort), ("L5", "elevated", "gpt-5.6-sol", "xhigh"))
 
-    def test_critical_override_forces_highest_profile(self):
-        result = routed(critical=True)
-        self.assertEqual(result.level_name, "critical")
-        self.assertEqual((result.model, result.effort), ("gpt-6-astra", "max"))
-        self.assertTrue(any("Critical override applied" in r for r in result.rationale))
+    def test_critical_flag_forces_the_critical_tier_at_l5(self):
+        result = routed(critical=True, classifier=lambda _: classification("review", "L2"))
+        self.assertEqual((result.level, result.level_name, result.risk_tier), ("L5", "advanced", "critical"))
+        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "max"))
+        self.assertTrue(any("critical risk tier" in r for r in result.rationale))
+
+    def test_retired_levels_are_rejected(self):
+        for level in ("L6", "L7", "critical"):
+            with self.subTest(level=level):
+                with self.assertRaises(ValueError):
+                    router.normalise_level(level)
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        router.main(["task", "--platform", "codex", "--level", level, "--task-type", "design"])
+        self.assertEqual(router.LEVELS, ("L1", "L2", "L3", "L4", "L5"))
 
     def test_explicit_task_type_overrides_the_classified_type_but_not_level(self):
         spy = mock.Mock(return_value=classification("design", "L2"))
@@ -1626,11 +1721,11 @@ class RoutingTests(unittest.TestCase):
 
     def test_explicit_l5_with_explicit_type_bypasses_the_classifier(self):
         classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
-        result = routed(explicit_level="L7", explicit_task_type="design", classifier=classifier)
+        result = routed(explicit_level="L5", explicit_task_type="design", classifier=classifier)
         classifier.assert_not_called()
-        self.assertEqual(result.level, "L7")
+        self.assertEqual(result.level, "L5")
         self.assertEqual(result.task_type, "design")
-        self.assertEqual((result.model, result.effort), ("gpt-6-astra", "xhigh"))
+        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "high"))
         self.assertEqual(result.source, "manual")
 
     def test_explicit_level_with_explicit_type_bypasses_the_classifier(self):
@@ -1644,9 +1739,12 @@ class RoutingTests(unittest.TestCase):
         classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
         result = routed(critical=True, explicit_task_type="implementation", classifier=classifier)
         classifier.assert_not_called()
-        self.assertEqual(result.level, "critical")
+        self.assertEqual((result.level, result.risk_tier), ("L5", "critical"))
         self.assertEqual(result.task_type, "implementation")
-        self.assertEqual((result.model, result.effort), ("gpt-6-astra", "max"))
+        self.assertEqual(
+            [(stage["role"], stage["model"], stage["effort"]) for stage in result.stages],
+            [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")],
+        )
         self.assertEqual(result.source, "manual")
 
 
@@ -1666,7 +1764,7 @@ class RoutingTests(unittest.TestCase):
     def test_antigravity_available_model_matching(self):
         result = routed(
             platform="antigravity",
-            classifier=lambda _: classification("design", "L6"),
+            classifier=lambda _: classification("design", "L5", risk_tier="elevated"),
             available_models=["Gemini 3.8 Flash (High)", "Claude Opus 4.6 (Thinking)"],
         )
         self.assertEqual(result.model, "Claude Opus 4.6 (Thinking)")
@@ -1675,7 +1773,7 @@ class RoutingTests(unittest.TestCase):
     def test_antigravity_l5_prefers_31_pro_high(self):
         result = routed(
             platform="antigravity",
-            classifier=lambda _: classification("implementation", "L5"),
+            classifier=lambda _: classification("design", "L5"),
             available_models=["Gemini 3.8 Flash (High)", "Gemini 3.1 Pro (High)", "Claude Opus 4.6 (Thinking)"],
         )
         self.assertEqual(result.model, "Gemini 3.1 Pro (High)")
@@ -1684,13 +1782,13 @@ class RoutingTests(unittest.TestCase):
     def test_antigravity_l5_availability_fallback_to_sonnet_thinking(self):
         result = routed(
             platform="antigravity",
-            classifier=lambda _: classification("implementation", "L5"),
+            classifier=lambda _: classification("design", "L5"),
             available_models=["Gemini 3.8 Flash (High)", "Claude Sonnet 4.6 (Thinking)", "Claude Opus 4.6 (Thinking)"],
         )
         self.assertEqual(result.model, "Claude Sonnet 4.6 (Thinking)")
         self.assertIsNone(result.effort)
 
-    def test_auth_typo_in_readme_does_not_trigger_l6_floor(self):
+    def test_auth_typo_in_readme_does_not_trigger_the_elevated_tier(self):
         # A documentation typo fix mentioning auth should not set security risk flags and should remain L1
         payload = classifier_output(level="L1", raw=False)
         fix = router.validate_classifier_output(payload)
@@ -1750,7 +1848,7 @@ class RoutingTests(unittest.TestCase):
     def test_manual_recovery_keeps_risk_flags_from_the_failed_classification(self):
         # Primary flagged payment risk, then a later stage failed: classify_task
         # preserves the flag on the fallback. A manually chosen L1 must still hit
-        # the L6 floor and keep payment active.
+        # the elevated tier and keep payment active.
         fallback = dataclasses.replace(
             router.fallback_classification("timed out", "timeout"),
             risk_flags={**NO_FLAGS, "payment": True},
@@ -1770,7 +1868,7 @@ class RoutingTests(unittest.TestCase):
                         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
                             router.main(["--platform", "codex", "--format", "text", "task"])
         self.assertTrue(captured["result"].risk_flags["payment"])
-        self.assertEqual(captured["result"].level, "L6")
+        self.assertEqual((captured["result"].level, captured["result"].risk_tier), ("L5", "elevated"))
 
     def test_invalid_task_type_is_rejected_by_argparse(self):
         with contextlib.redirect_stderr(io.StringIO()):
@@ -1790,22 +1888,26 @@ class CommandAndLauncherTests(unittest.TestCase):
             for output_format in ("json", "command"):
                 with self.subTest(platform=platform, output=output_format):
                     output = io.StringIO()
-                    with mock.patch("builtins.input", side_effect=AssertionError("route generation must not request approval")):
+                    with mock.patch("builtins.input", side_effect=AssertionError("route generation must not prompt")):
                         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(output):
                             self.assertEqual(router.main([
-                                "task", "--platform", platform, "--task-type", "implementation",
-                                "--level", "L7", "--interactive", "--format", output_format,
+                                "task", "--platform", platform, "--task-type", "design",
+                                "--level", "L5", "--interactive", "--format", output_format,
                             ]), 0)
                     command = json.loads(output.getvalue())["steps"][0]["command"] if output_format == "json" else router.shlex.split(output.getvalue())
                     self.assertNotIn({"codex": "exec", "claude-code": "-p", "antigravity": "--prompt"}[platform], command)
                     if platform == "antigravity":
                         self.assertIn("--prompt-interactive", command)
 
-    def test_direct_launchers_replay_high_tier_routes_before_execution(self):
+    def _elevated_review_reply(self):
+        return classifier_output(task_type="review", files_touched="0", changes_security_or_payment_logic="yes")
+
+    def test_direct_launchers_run_elevated_routes_without_approval(self):
+        reply = self._elevated_review_reply()
         cases = (
-            ("codex-route", "codex", "gpt-5.6-luna", classifier_output(level="L7")),
-            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
-            ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
+            ("codex-route", "codex", "gpt-5.6-luna", reply),
+            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(reply)})),
+            ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(reply)})),
         )
         for launcher, executable, classifier_model, classifier_reply in cases:
             with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
@@ -1834,7 +1936,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 }
                 if launcher == "agy-route":
                     models = directory / "models.txt"
-                    models.write_text("Claude Fable 5.1 (Thinking)\n", encoding="utf-8")
+                    models.write_text("Claude Opus 5 (Thinking)\n", encoding="utf-8")
                     env["MODEL_EFFORT_ROUTER_MODELS_FILE"] = str(models)
 
                 proc = subprocess.run(
@@ -1845,10 +1947,39 @@ class CommandAndLauncherTests(unittest.TestCase):
                     timeout=10,
                     env=env,
                 )
-                self.assertEqual(proc.returncode, 3, proc.stderr)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertEqual(classifier_calls.read_text(), "1")
-                self.assertFalse(marker.exists())
+                self.assertTrue(marker.exists())
                 self.assertEqual(list(temp_dir.iterdir()), [])
+
+    def test_print_only_env_prints_the_replayed_command_without_executing(self):
+        for launcher, executable, platform in (
+            ("codex-route", "codex", "codex"),
+            ("claude-route", "claude", "claude-code"),
+            ("agy-route", "agy", "antigravity"),
+        ):
+            with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                marker = directory / "executor-called"
+                fake = directory / executable
+                fake.write_text(f"#!/bin/sh\ntouch '{marker}'\n", encoding="utf-8")
+                fake.chmod(0o755)
+                result = routed(platform=platform, classifier=lambda _: classification("review", "L5", risk_tier="critical"))
+                route_file = directory / "route.json"
+                route_file.write_text(json.dumps(router.result_payload(result, router.stage_commands(result, "task"))), encoding="utf-8")
+                env = {
+                    **os.environ,
+                    "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                    "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1",
+                    "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
+                }
+                saved = subprocess.run(
+                    [str(ROOT / self.LAUNCHERS[launcher]), "--route-file", str(route_file)],
+                    capture_output=True, text=True, timeout=10, env=env,
+                )
+                self.assertEqual(saved.returncode, 0, saved.stderr)
+                self.assertIn(result.stages[0]["model"], saved.stderr)
+                self.assertFalse(marker.exists())
 
     def test_direct_two_stage_launchers_leave_no_plan_dir_behind(self):
         # Regression for the generate-then-replay launcher flow: a direct two-stage
@@ -1914,75 +2045,6 @@ class CommandAndLauncherTests(unittest.TestCase):
                 generated = re.search(r'ROUTE_ARGS=\(--route-file "\$\{ROUTE_FILE\}" --cleanup-plan-dir\)', text)
                 self.assertIsNotNone(user_supplied, "user-supplied --route-file branch changed shape")
                 self.assertIsNotNone(generated, "direct-run generated route file must pass --cleanup-plan-dir")
-
-    def test_high_tier_print_only_outputs_without_approval_or_execution(self):
-        cases = (
-            ("codex-route", "codex", "gpt-5.6-luna", classifier_output(level="L7")),
-            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
-            ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(classifier_output(level="L7"))})),
-        )
-        for launcher, executable, classifier_model, classifier_reply in cases:
-            with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
-                directory = Path(tmp)
-                marker = directory / "executor-called"
-                classifier_calls = directory / "classifier-calls"
-                fake = directory / executable
-                fake.write_text(
-                    f"#!{sys.executable}\nimport pathlib, sys\n"
-                    f"if {classifier_model!r} in sys.argv[1:]:\n"
-                    f"    calls = pathlib.Path({str(classifier_calls)!r})\n"
-                    f"    calls.write_text(str(int(calls.read_text() or '0') + 1) if calls.exists() else '1')\n"
-                    f"    print({classifier_reply!r})\n"
-                    f"else:\n"
-                    f"    pathlib.Path({str(marker)!r}).touch()\n",
-                    encoding="utf-8",
-                )
-                fake.chmod(0o755)
-                available_models = ["Claude Fable 5.1 (Thinking)"] if launcher == "agy-route" else None
-                result = routed(
-                    platform={"codex-route": "codex", "claude-route": "claude-code", "agy-route": "antigravity"}[launcher],
-                    classifier=lambda _: classification("implementation", "L7"),
-                    available_models=available_models,
-                )
-                route_file = directory / "route.json"
-                route_file.write_text(json.dumps(router.result_payload(result, router.stage_commands(result, "task"))), encoding="utf-8")
-                temp_dir = directory / "routes"
-                temp_dir.mkdir()
-                env = {
-                    **os.environ,
-                    "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
-                    "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1",
-                    "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
-                    "TMPDIR": str(temp_dir),
-                }
-                if launcher == "agy-route":
-                    models = directory / "models.txt"
-                    models.write_text("Claude Fable 5.1 (Thinking)\n", encoding="utf-8")
-                    env["MODEL_EFFORT_ROUTER_MODELS_FILE"] = str(models)
-
-                saved = subprocess.run(
-                    [str(ROOT / self.LAUNCHERS[launcher]), "--route-file", str(route_file)],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    env=env,
-                )
-                self.assertEqual(saved.returncode, 0, saved.stderr)
-                self.assertIn(result.stages[0]["model"], saved.stderr)
-                self.assertFalse(marker.exists())
-
-                direct = subprocess.run(
-                    [str(ROOT / self.LAUNCHERS[launcher]), "--", "task"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    env=env,
-                )
-                self.assertEqual(direct.returncode, 0, direct.stderr)
-                self.assertEqual(classifier_calls.read_text(), "1")
-                self.assertIn(result.stages[0]["model"], direct.stderr)
-                self.assertFalse(marker.exists())
-                self.assertEqual(list(temp_dir.iterdir()), [])
 
     def test_antigravity_launcher_executes_stored_route_without_reclassification(self):
         result = routed(platform="antigravity", classifier=lambda _: classification("review", "L3"))
@@ -2095,7 +2157,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 },
             ),
         )
-        command_text = " ".join(router.stage_commands(result, "migrate auth API")[0])
+        command_text = " ".join(router.stage_commands(result, "migrate auth API")[-1])
         for recommendation in (
             "- security_review: A security, authentication, authorization, or payment risk is active.",
             "- migration_safety: A data migration risk is active.",
@@ -2157,11 +2219,11 @@ class CommandAndLauncherTests(unittest.TestCase):
 
         review = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
         step = router.result_payload(review, router.stage_commands(review, "task"))["steps"][0]
-        self.assertEqual(step["agent"], {"subagent_type": "model-effort:effort-low", "model": "opus"})
+        self.assertEqual(step["agent"], {"subagent_type": "model-effort:effort-high", "model": "opus"})
 
         two = routed(platform="claude-code", classifier=lambda _: classification("architectural_refactoring", "L4"))
         steps = router.result_payload(two, router.stage_commands(two, "task"))["steps"]
-        self.assertEqual([step["agent"]["model"] for step in steps], ["fable", "sonnet"])
+        self.assertEqual([step["agent"]["model"] for step in steps], ["opus", "sonnet"])
         for step in steps:
             self.assertEqual(step["agent"]["subagent_type"], f"model-effort:effort-{step['effort']}")
 
@@ -2196,9 +2258,9 @@ class CommandAndLauncherTests(unittest.TestCase):
         verification = router.result_payload(result, router.stage_commands(result, "task"))["verification"]
         self.assertEqual(
             [check["id"] for check in verification["recommended"]],
-            ["focused_tests", "contract_review", "security_review", "migration_safety", "broad_regression"],
+            ["focused_tests", "plan_validation", "contract_review", "security_review", "migration_safety", "broad_regression"],
         )
-        self.assertEqual([check["id"] for check in verification["skipped"]], ["plan_validation"])
+        self.assertEqual([check["id"] for check in verification["skipped"]], [])
 
     def test_design_payload_recommends_only_contract_review(self):
         result = routed(classifier=lambda _: classification("design", "L2"))
@@ -2292,139 +2354,6 @@ class CommandAndLauncherTests(unittest.TestCase):
             subprocess.run(["bash", "-c", chain], capture_output=True, text=True, timeout=10, env=env, check=True)
             self.assertTrue(plan_dir.is_dir(), "stored route file's plan dir must be preserved")
 
-    def test_high_tier_route_file_requires_explicit_approval_before_execution(self):
-        for platform, task_type, level in (
-            ("codex", "implementation", "L7"),
-            ("claude-code", "implementation", "L5"),
-            ("codex", "architectural_refactoring", "L7"),
-        ):
-            with self.subTest(platform=platform, task_type=task_type), tempfile.TemporaryDirectory() as tmp:
-                result = routed(platform=platform, classifier=lambda _: classification(task_type, level))
-                route_file = Path(tmp) / "route.json"
-                route_file.write_text(json.dumps(router.result_payload(result, router.stage_commands(result, "task"))), encoding="utf-8")
-
-                with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
-                    with contextlib.redirect_stderr(io.StringIO()):
-                        self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
-
-                with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
-                    with mock.patch("builtins.input", return_value="yes") as approval:
-                        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
-                            self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
-                    self.assertEqual(approval.call_count, 1)
-                with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
-                    with mock.patch("builtins.input", return_value="no"):
-                        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
-                            self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
-
-                output = io.StringIO()
-                with contextlib.redirect_stdout(output):
-                    self.assertEqual(router.main(["--approved", "--route-file", str(route_file)]), 0)
-                self.assertIn(result.stages[0]["model"], output.getvalue())
-
-        with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp)
-            result = routed(classifier=lambda _: classification("implementation", "L7"))
-            route_file = directory / "route.json"
-            route_file.write_text(json.dumps(router.result_payload(result, router.stage_commands(result, "task"))), encoding="utf-8")
-            marker = directory / "codex-called"
-            fake_codex = directory / "codex"
-            fake_codex.write_text(f"#!/bin/sh\ntouch '{marker}'\n", encoding="utf-8")
-            fake_codex.chmod(0o755)
-            env = {
-                **os.environ,
-                "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
-                "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
-            }
-
-            blocked = subprocess.run(
-                [str(ROOT / self.LAUNCHERS["codex-route"]), "--route-file", str(route_file)],
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
-                timeout=10,
-                env=env,
-            )
-            self.assertEqual(blocked.returncode, 3, blocked.stderr)
-            self.assertFalse(marker.exists())
-
-            approved = subprocess.run(
-                [str(ROOT / self.LAUNCHERS["codex-route"]), "--approved", "--route-file", str(route_file)],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                env=env,
-            )
-            self.assertEqual(approved.returncode, 0, approved.stderr)
-            self.assertTrue(marker.exists())
-
-    def test_route_file_rejects_tampered_model_metadata_before_approval_check(self):
-        for task_type in ("implementation", "architectural_refactoring"):
-            with self.subTest(task_type=task_type), tempfile.TemporaryDirectory() as tmp:
-                result = routed(classifier=lambda _: classification(task_type, "L7"))
-                payload = router.result_payload(result, router.stage_commands(result, "task"))
-                for step in payload["steps"]:
-                    step["model"] = "gpt-5.6-sol"
-                route_file = Path(tmp) / "route.json"
-                route_file.write_text(json.dumps(payload), encoding="utf-8")
-
-                with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
-                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                        self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
-
-    def test_route_file_requires_approval_for_selected_claude_agent_model(self):
-        result = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
-        payload = router.result_payload(result, router.stage_commands(result, "task"))
-        payload["steps"][0]["agent"]["model"] = "FaBlE"
-        with tempfile.TemporaryDirectory() as tmp:
-            route_file = Path(tmp) / "route.json"
-            route_file.write_text(json.dumps(payload), encoding="utf-8")
-            with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
-                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                    self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
-
-    def test_route_file_requires_approval_for_a_fallback_model(self):
-        result = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
-        payload = router.result_payload(result, router.stage_commands(result, "task"))
-        payload["steps"][0]["command"][-1:-1] = ["--fallback-model", "claude-fable-5-1"]
-        with tempfile.TemporaryDirectory() as tmp:
-            route_file = Path(tmp) / "route.json"
-            route_file.write_text(json.dumps(payload), encoding="utf-8")
-            with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
-                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                    self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
-
-    def test_route_file_requires_approval_for_equals_form_model_options(self):
-        for option, model in (
-            ("--model", "claude-fable-5-1"),
-            ("--fallback-model", "claude-fable-5-1"),
-        ):
-            with self.subTest(option=option), tempfile.TemporaryDirectory() as tmp:
-                result = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
-                payload = router.result_payload(result, router.stage_commands(result, "task"))
-                command = payload["steps"][0]["command"]
-                if option == "--model":
-                    payload["steps"][0]["model"] = model
-                    index = command.index("--model")
-                    command[index:index + 2] = [f"{option}={model}"]
-                else:
-                    command[-1:-1] = [f"{option}={model}"]
-                route_file = Path(tmp) / "route.json"
-                route_file.write_text(json.dumps(payload), encoding="utf-8")
-                with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
-                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                        self.assertEqual(router.main(["--route-file", str(route_file)]), 3)
-
-    def test_route_file_does_not_treat_prompt_text_as_a_model_selection(self):
-        result = routed(platform="claude-code", classifier=lambda _: classification("review", "L2"))
-        payload = router.result_payload(result, router.stage_commands(result, "mention fable and astra"))
-        with tempfile.TemporaryDirectory() as tmp:
-            route_file = Path(tmp) / "route.json"
-            route_file.write_text(json.dumps(payload), encoding="utf-8")
-            with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
-                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                    self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
-
     def test_v2_and_v3_direct_replay_never_invokes_the_astra_adapter(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
         v3 = router.result_payload(result, router.stage_commands(result, "task"))
@@ -2440,6 +2369,44 @@ class CommandAndLauncherTests(unittest.TestCase):
                     with contextlib.redirect_stdout(output):
                         self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
                 self.assertNotIn("astra_adapter.py", output.getvalue())
+
+    def test_router_has_no_approval_gate(self):
+        for option in ("--approved", "--print-only"):
+            with self.subTest(option=option), tempfile.TemporaryDirectory() as tmp:
+                route_file = Path(tmp) / "route.json"
+                route_file.write_text("{}", encoding="utf-8")
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        router.main([option, "--route-file", str(route_file)])
+        for retired in ("approval_models", "prompt_execution_approval", "APPROVAL_REQUIRED_EXIT_CODE", "APPROVAL_MODEL_MARKERS"):
+            self.assertFalse(hasattr(router, retired), retired)
+
+    def test_critical_and_elevated_route_files_replay_without_a_prompt(self):
+        for platform in ("codex", "claude-code", "antigravity"):
+            for task_type in ("implementation", "architectural_refactoring", "review"):
+                for tier in ("elevated", "critical"):
+                    with self.subTest(platform=platform, task_type=task_type, tier=tier), tempfile.TemporaryDirectory() as tmp:
+                        result = routed(platform=platform, classifier=lambda _: classification(task_type, "L5", risk_tier=tier))
+                        route_file = Path(tmp) / "route.json"
+                        route_file.write_text(json.dumps(router.result_payload(result, router.stage_commands(result, "task"))), encoding="utf-8")
+                        output = io.StringIO()
+                        with mock.patch.object(router.sys.stdin, "isatty", return_value=True):
+                            with mock.patch("builtins.input", side_effect=AssertionError("replay must not request approval")):
+                                with contextlib.redirect_stdout(output):
+                                    self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
+                        self.assertIn(result.stages[0]["model"], output.getvalue())
+
+    def test_route_file_rejects_tampered_model_metadata(self):
+        for task_type in ("implementation", "architectural_refactoring"):
+            with self.subTest(task_type=task_type), tempfile.TemporaryDirectory() as tmp:
+                result = routed(classifier=lambda _: classification(task_type, "L5", risk_tier="elevated"))
+                payload = router.result_payload(result, router.stage_commands(result, "task"))
+                for step in payload["steps"]:
+                    step["model"] = "gpt-5.6-sol"
+                route_file = Path(tmp) / "route.json"
+                route_file.write_text(json.dumps(payload), encoding="utf-8")
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(router.main(["--route-file", str(route_file)]), 2)
 
     def test_route_file_rejects_v3_missing_orchestration_contract(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
@@ -2523,7 +2490,7 @@ class CommandAndLauncherTests(unittest.TestCase):
 
     def test_two_stage_commands_are_platform_native(self):
         for platform, expected_head in (
-            ("claude-code", ["claude", "-p", "--model", "claude-fable-5-1"]),
+            ("claude-code", ["claude", "-p", "--model", "claude-opus-5"]),
             ("antigravity", ["agy", "--model", "Gemini 3.1 Pro (High)"]),
         ):
             with self.subTest(platform=platform):
@@ -2536,53 +2503,6 @@ class CommandAndLauncherTests(unittest.TestCase):
                 chain = router.command_chain(result, "task")
                 self.assertTrue(chain.startswith("mkdir -p "))
                 self.assertIn("rm -rf ", chain)
-
-    def test_claude_l6_prefers_fable_when_available(self):
-        result = routed(
-            platform="claude-code",
-            classifier=lambda _: classification("implementation", "L6"),
-            available_models=["claude-fable-5-1", "claude-opus-5"],
-        )
-        self.assertEqual((result.model, result.effort), ("claude-fable-5-1", "high"))
-
-    def test_claude_l6_falls_back_to_opus_when_fable_unavailable(self):
-        result = routed(
-            platform="claude-code",
-            classifier=lambda _: classification("implementation", "L6"),
-            available_models=["claude-opus-5", "claude-sonnet-5"],
-        )
-        self.assertEqual((result.model, result.effort), ("claude-opus-5", "high"))
-
-    def test_claude_critical_prefers_fable_and_falls_back_to_opus(self):
-        result_fable = routed(
-            platform="claude-code",
-            critical=True,
-            available_models=["claude-fable-5-1", "claude-opus-5"],
-        )
-        self.assertEqual((result_fable.model, result_fable.effort), ("claude-fable-5-1", "max"))
-
-        result_opus = routed(
-            platform="claude-code",
-            critical=True,
-            available_models=["claude-opus-5"],
-        )
-        self.assertEqual((result_opus.model, result_opus.effort), ("claude-opus-5", "max"))
-
-    def test_antigravity_l6_matches_fable_if_available(self):
-        result = routed(
-            platform="antigravity",
-            classifier=lambda _: classification("implementation", "L6"),
-            available_models=["Claude Fable 5.1 (Thinking)", "Claude Opus 4.6 (Thinking)"],
-        )
-        self.assertEqual(result.model, "Claude Fable 5.1 (Thinking)")
-
-    def test_antigravity_l6_falls_back_to_opus_if_fable_unavailable(self):
-        result = routed(
-            platform="antigravity",
-            classifier=lambda _: classification("implementation", "L6"),
-            available_models=["Claude Opus 4.6 (Thinking)"],
-        )
-        self.assertEqual(result.model, "Claude Opus 4.6 (Thinking)")
 
     def _run_via_symlink(self, name: str, extra_env: dict[str, str] | None = None):
         source = ROOT / self.LAUNCHERS[name]
@@ -2742,7 +2662,8 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertIn("`security_review` or `migration_safety`", primary)
                 self.assertIn("verification.recommended", primary)
                 self.assertIn("`single` `mode`", primary)
-                self.assertIn("no `fable`/`astra` model", primary)
+                self.assertNotIn("fable", primary.lower())
+                self.assertNotIn("astra", primary.lower().replace("astra_adapter.py", ""))
                 self.assertIn("delegating once to the routed executor", primary)
                 self.assertIn("at most one review", primary)
                 self.assertIn("no multi-agent chains", primary)
@@ -2755,12 +2676,31 @@ class RouteSkillContractTests(unittest.TestCase):
         for plugin in ("codex", "claude"):
             hook = ROOT / "plugins" / f"{plugin}-model-effort-router" / "scripts" / "routing_policy_hook.py"
             text = hook.read_text(encoding="utf-8")
-            for expected in ("bounded changes", "single-agent fast path", "L1-L3", "fable/astra"):
+            for expected in ("bounded changes", "single-agent fast path", "L1-L3"):
                 self.assertIn(expected, text)
             self.assertNotIn("implement directly", text)
+            self.assertNotIn("fable", text.lower())
+            self.assertNotIn("astra", text.lower())
         self.assertFalse((ROOT / "plugins" / "antigravity-model-effort-router" / "scripts" / "routing_policy_hook.py").exists())
 
-    def test_root_and_plugin_docs_describe_v2_to_v4_replay_contract(self):
+    def test_skills_and_policy_carry_the_role_pipeline(self):
+        # The judging model reviews once, a failed review re-classifies the fix, and
+        # escalation needs evidence rather than difficulty.
+        judges = {"codex": "sol", "claude": "opus", "antigravity": "opus"}
+        for plugin, judge in judges.items():
+            skill = ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md"
+            primary = " ".join(skill.read_text(encoding="utf-8").split()).lower()
+            with self.subTest(plugin=plugin):
+                self.assertIn("merge", primary)
+                self.assertIn("re-classify the fix", primary)
+                self.assertIn("reuse the stored route", primary)
+                self.assertIn("scope expansion", primary) if plugin != "antigravity" else self.assertIn("scope growth", primary)
+                self.assertIn(judge, primary)
+        policy = " ".join((ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8").split())
+        for expected in ("Execution roles and pipeline", "ONE verification + code review", "risk tier", "Luna high", "unknown"):
+            self.assertIn(expected, policy)
+
+    def test_root_and_plugin_docs_describe_v2_to_v5_replay_contract(self):
         paths = [ROOT / "README.md", ROOT / "references" / "routing-policy.md"]
         for plugin in ("codex", "claude", "antigravity"):
             base = ROOT / "plugins" / f"{plugin}-model-effort-router"
@@ -2770,14 +2710,15 @@ class RouteSkillContractTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("orchestration_eligible", text)
                 self.assertIn("execution_strategy", text)
-                self.assertIn("v2-v4", text)
+                self.assertIn("v2-v5", text)
 
     def test_runtime_docs_match_the_current_matrix_and_classifier_contract(self):
         claude_skill = (ROOT / "plugins" / "claude-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
         claude_readme = (ROOT / "plugins" / "claude-model-effort-router" / "README.md").read_text(encoding="utf-8")
         codex_readme = (ROOT / "plugins" / "codex-model-effort-router" / "README.md").read_text(encoding="utf-8")
-        self.assertIn("fable", claude_skill)
-        self.assertNotIn("opus` at every level", claude_skill)
+        self.assertNotIn("fable", claude_skill.lower())
+        self.assertNotIn("--approved", claude_skill)
+        self.assertIn("opus", claude_skill)
         self.assertNotIn("low confidence", claude_readme)
         self.assertNotIn("five Markdown files", claude_readme)
         self.assertNotIn("gpt-5.6-luna -c model_reasoning_effort=xhigh", codex_readme)
@@ -2789,7 +2730,7 @@ class RouteSkillContractTests(unittest.TestCase):
             paths.extend([base / "README.md", base / "skills" / "route" / "SKILL.md"])
         for path in paths:
             with self.subTest(path=path):
-                text = path.read_text(encoding="utf-8")
+                text = " ".join(path.read_text(encoding="utf-8").split())
                 self.assertIn("astra_adapter.py", text)
                 self.assertIn("never invokes", text)
 
@@ -2797,9 +2738,9 @@ class RouteSkillContractTests(unittest.TestCase):
         codex = (ROOT / "plugins" / "codex-model-effort-router" / "README.md").read_text(encoding="utf-8")
         claude = (ROOT / "plugins" / "claude-model-effort-router" / "README.md").read_text(encoding="utf-8")
         antigravity = (ROOT / "plugins" / "antigravity-model-effort-router" / "README.md").read_text(encoding="utf-8")
-        self.assertIn("L1-L7", codex)
+        self.assertIn("L1-L5", codex)
         self.assertIn("gpt-5.6-luna` / medium", codex)
-        self.assertIn("L6 floor", codex)
+        self.assertIn("elevated", codex)
         self.assertIn("claude-sonnet-5` / medium", claude)
         self.assertIn("Gemini 3.8 Flash (Medium)", antigravity)
         self.assertNotIn("gemini-3.6-flash-low", antigravity)
@@ -2870,7 +2811,7 @@ class PaperthinIntegrationTests(unittest.TestCase):
         command = router.stage_commands(result_sec, "fix payment")[0]
         self.assertIn("Autobahn scope guard", " ".join(command))
 
-        payload_sec = router.result_payload(result_sec, [command])
+        payload_sec = router.result_payload(result_sec, router.stage_commands(result_sec, "fix payment"))
         self.assertIn("scope_guard", payload_sec)
         self.assertEqual(payload_sec["scope_guard"]["policy"], "autobahn_scope_carve")
         self.assertIn("security_sensitive", payload_sec["scope_guard"]["risk_flags"])

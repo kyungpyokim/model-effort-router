@@ -30,7 +30,7 @@ class BenchmarkCase:
     task_type: str
     facts: dict[str, str]
     expected_level: str
-    expected_critical: bool = False
+    expected_tier: str = "standard"
     expected_risk_flags: tuple[str, ...] = ()
     expected_needs_context: bool = False
 
@@ -199,47 +199,51 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         expected_level="L5",
     ),
 
-    # L6 Cases (changes_security_or_payment_logic, intermittent across services)
+    # Elevated-tier cases (changes_security_or_payment_logic, intermittent across services)
     BenchmarkCase(
-        name="L6_security_oauth_token_refresh",
+        name="L5E_security_oauth_token_refresh",
         task="Revamp OAuth 2.0 refresh token rotation and JWT signature validation",
         task_type="implementation",
         facts={"mechanical_only": "no", "files_touched": "2-5", "changes_security_or_payment_logic": "yes", "fix_or_result_known": "yes"},
-        expected_level="L6",
+        expected_level="L5",
+        expected_tier="elevated",
         expected_risk_flags=("security_sensitive", "authentication"),
     ),
     BenchmarkCase(
-        name="L6_payment_stripe_integration",
+        name="L5E_payment_stripe_integration",
         task="Implement Stripe webhook signature verification and checkout session payment handler",
         task_type="implementation",
         facts={"mechanical_only": "no", "files_touched": "2-5", "changes_security_or_payment_logic": "yes", "fix_or_result_known": "yes"},
-        expected_level="L6",
+        expected_level="L5",
+        expected_tier="elevated",
         expected_risk_flags=("security_sensitive", "payment"),
     ),
     BenchmarkCase(
-        name="L6_security_rbac_authorization",
+        name="L5E_security_rbac_authorization",
         task="Update role-based access control (RBAC) permission check middleware",
         task_type="implementation",
         facts={"mechanical_only": "no", "files_touched": "2-5", "changes_security_or_payment_logic": "yes", "fix_or_result_known": "yes"},
-        expected_level="L6",
+        expected_level="L5",
+        expected_tier="elevated",
         expected_risk_flags=("security_sensitive", "authorization"),
     ),
     BenchmarkCase(
-        name="L6_cross_service_intermittent_bug",
+        name="L5E_cross_service_intermittent_bug",
         task="Investigate intermittent distributed transaction failure across auth and order microservices",
         task_type="implementation",
         facts={"mechanical_only": "no", "files_touched": "6+", "intermittent_or_concurrency": "yes", "crosses_service_boundary": "yes"},
-        expected_level="L6",
+        expected_level="L5",
+        expected_tier="elevated",
     ),
 
     # MEDIUM-A regression: the approval-gate carve-out must stay narrow. A
-    # cost/model-tier confirmation (this router's own Fable/Astra approval gate)
+    # cost/model-tier confirmation (approving an expensive model before it runs)
     # is workflow control, not permissions, and must not float to a security
     # floor. Removing the equivalent gate on a real access-control boundary
     # (a prod deploy approval bypass) is the opposite: that IS permissions.
     BenchmarkCase(
         name="L2_model_tier_approval_confirmation",
-        task="Add a confirmation prompt before running the router's Fable/Astra high-tier model, gated behind --approved",
+        task="Add a confirmation prompt before running an expensive high-tier model, gated behind a --yes flag",
         task_type="implementation",
         facts={
             "mechanical_only": "no",
@@ -252,7 +256,7 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         expected_level="L2",
     ),
     BenchmarkCase(
-        name="L6_deploy_approval_bypass_removed",
+        name="L5E_deploy_approval_bypass_removed",
         task="Remove the --approved bypass on the production deploy approval gate so deploys can no longer skip user consent",
         task_type="implementation",
         facts={
@@ -263,58 +267,55 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
             "reviews_security_sensitive_code": "yes",
             "security_domain": "permissions",
         },
-        expected_level="L6",
+        expected_level="L5",
+        expected_tier="elevated",
         expected_risk_flags=("security_sensitive",),
     ),
 
-    # L7 Cases (needs_new_structure + crosses_service_boundary + fix_or_result_known=no)
+    # Elevated-tier cases (needs_new_structure + crosses_service_boundary + fix_or_result_known=no)
     BenchmarkCase(
-        # Old policy: cross-service open design alone was L7. New policy: that
-        # combination alone is L6; L7 needs blast_radius broad or silent
-        # material harm on top. This task's "chronic cross-service data
-        # inconsistency" is the silent_failure_material_harm example verbatim,
-        # so the fact is set explicitly rather than lowering the expectation.
-        name="L7_multi_service_frontier_redesign",
+        # Cross-service open design with silent material harm: the elevated tier.
+        name="L5E_multi_service_frontier_redesign",
         task="Solve chronic cross-service data inconsistency with unknown root cause requiring new cross-repo protocol",
         task_type="architectural_refactoring",
         facts={"mechanical_only": "no", "files_touched": "6+", "needs_new_structure": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "silent_failure_material_harm": "yes"},
-        expected_level="L7",
+        expected_level="L5",
+        expected_tier="elevated",
     ),
     BenchmarkCase(
-        # Same L7 policy change as above. A novel consensus protocol across
-        # multi-region sync affects many services/regions system-wide, so
-        # blast_radius broad is made explicit rather than lowering to L6.
-        name="L7_distributed_consensus_design",
+        # A novel consensus protocol across multi-region sync: cross-service open design, elevated tier.
+        name="L5E_distributed_consensus_design",
         task="Design novel distributed consensus protocol replacing legacy multi-region sync mechanism",
         task_type="design",
         facts={"mechanical_only": "no", "files_touched": "0", "needs_new_structure": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "blast_radius": "broad"},
-        expected_level="L7",
+        expected_level="L5",
+        expected_tier="elevated",
     ),
 
-    # Critical Override Cases (irreversible_or_ledger_or_crypto = yes)
+    # Critical-tier cases (irreversible_or_ledger_or_crypto = yes)
     BenchmarkCase(
-        name="Critical_ledger_balance_reconciliation",
+        name="L5C_ledger_balance_reconciliation",
         task="Implement double-entry financial ledger balance settlement and invariant verification",
         task_type="implementation",
         facts={"mechanical_only": "no", "files_touched": "2-5", "irreversible_or_ledger_or_crypto": "yes", "fix_or_result_known": "yes"},
-        expected_level="L7",
-        expected_critical=True,
+        expected_level="L5",
+        expected_tier="critical",
     ),
     BenchmarkCase(
-        name="Critical_crypto_key_derivation",
+        name="L5C_crypto_key_derivation",
         task="Design cryptographic key derivation and zero-knowledge proof verification pipeline",
         task_type="design",
         facts={"mechanical_only": "no", "files_touched": "0", "irreversible_or_ledger_or_crypto": "yes", "needs_new_structure": "yes"},
-        expected_level="L7",
-        expected_critical=True,
+        expected_level="L5",
+        expected_tier="critical",
     ),
     BenchmarkCase(
-        name="Critical_irreversible_database_purge",
+        name="L5C_irreversible_database_purge",
         task="Execute irreversible GDPR permanent data erasure on production partition tables",
         task_type="implementation",
         facts={"mechanical_only": "no", "files_touched": "1", "irreversible_or_ledger_or_crypto": "yes", "changes_persisted_data": "yes"},
-        expected_level="L7",
-        expected_critical=True,
+        expected_level="L5",
+        expected_tier="critical",
     ),
 ]
 
@@ -345,31 +346,28 @@ def evaluate_rules_benchmark() -> dict:
     for case in GOLDEN_BENCHMARK_CASES:
         merged_facts = {**base_facts, **case.facts}
         t0 = time.perf_counter_ns()
-        level, critical, matched_rules, needs_context = router.evaluate_rules(merged_facts)
+        level, tier, matched_rules, needs_context = router.evaluate_rules(merged_facts)
         t_elapsed_us = (time.perf_counter_ns() - t0) / 1000.0
         latencies_us.append(t_elapsed_us)
 
         # Accuracy check
-        critical_match = (critical == case.expected_critical)
+        tier_match = (tier == case.expected_tier)
         context_match = (needs_context == case.expected_needs_context)
-        if case.expected_critical:
-            level_match = critical_match
-        else:
-            level_match = (level == case.expected_level)
-        passed = level_match and critical_match and context_match
+        level_match = (level == case.expected_level)
+        passed = level_match and tier_match and context_match
         if passed:
             accuracy_passes += 1
 
         # Safety floor checks
         has_security = merged_facts.get("changes_security_or_payment_logic") == "yes"
-        if has_security and router.LEVELS.index(level) < router.LEVELS.index("L6") and not critical:
+        if has_security and tier == "standard":
             safety_violations += 1
 
         has_api_or_migration = (
             merged_facts.get("changes_public_api_contract") == "yes"
             or merged_facts.get("changes_persisted_data") == "yes"
         )
-        if has_api_or_migration and router.LEVELS.index(level) < router.LEVELS.index("L4") and not critical:
+        if has_api_or_migration and router.LEVELS.index(level) < router.LEVELS.index("L4"):
             safety_violations += 1
 
         # Routing check for 3 platforms
@@ -381,13 +379,14 @@ def evaluate_rules_benchmark() -> dict:
                 risk_flags=router.risk_flags_from_facts(merged_facts),
                 reason="benchmark",
                 source="test",
+                risk_tier=tier,
             )
             route_res = router.route(
                 case.task,
                 plat,
                 config,
                 classifier=lambda _t, c=mock_classification: c,
-                critical=critical,
+                critical=(tier == "critical"),
             )
             platform_routes[plat] = {
                 "level": route_res.level,
@@ -399,7 +398,7 @@ def evaluate_rules_benchmark() -> dict:
             "name": case.name,
             "passed": passed,
             "level": level,
-            "critical": critical,
+            "risk_tier": tier,
             "matched_rules": matched_rules,
             "needs_context": needs_context,
             "latency_us": round(t_elapsed_us, 2),
@@ -449,13 +448,12 @@ def print_report(data: dict) -> None:
     print(f" Latency (p95)             : {summary['latency_us_p95']:.2f} µs")
     print(f" Latency (p99)             : {summary['latency_us_p99']:.2f} µs")
     print("-" * 80)
-    print(f"{'Case Name':<35} | {'Level':<8} | {'Crit':<5} | {'Ctx':<5} | {'Status':<6} | {'Latency'}")
+    print(f"{'Case Name':<35} | {'Level':<8} | {'Tier':<9} | {'Ctx':<5} | {'Status':<6} | {'Latency'}")
     print("-" * 80)
     for c in data["cases"]:
         status = "PASS" if c["passed"] else "FAIL"
-        crit = "YES" if c["critical"] else "no"
         ctx = "YES" if c["needs_context"] else "no"
-        print(f"{c['name']:<35} | {c['level']:<8} | {crit:<5} | {ctx:<5} | {status:<6} | {c['latency_us']} µs")
+        print(f"{c['name']:<35} | {c['level']:<8} | {c['risk_tier']:<9} | {ctx:<5} | {status:<6} | {c['latency_us']} µs")
     print("=" * 80)
 
 

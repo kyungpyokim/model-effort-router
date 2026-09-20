@@ -1,6 +1,6 @@
 ---
 name: route
-description: Classify a substantive coding task by task_type and difficulty (L1-L7 / Critical), then delegate it to the Codex agent profile whose model and reasoning effort match. Use before implementation, design, review, refactoring, or debugging work when model and effort should be selected from extracted task facts and fixed difficulty rules.
+description: Classify a substantive coding task by task_type and difficulty (L1-L5 plus an elevated/critical risk tier), then delegate it to the Codex agent profile whose model and reasoning effort match. Use before implementation, design, review, refactoring, or debugging work when model and effort should be selected from extracted task facts and fixed difficulty rules.
 ---
 
 # Task-Type and Difficulty Router
@@ -44,12 +44,7 @@ worker classifies instead.
    If the router exits non-zero, the classification JSON was invalid. Classify once more; if it
    still fails, do not guess a route and do not delegate. Report the failure, ask the user for
    `task_type` and `level`, and rerun step 2 with `--task-type` and `--level`.
-   After the one allowed `needs_context` cascade, inspect the final `steps[].model` and, when
-   present, `steps[].agent.model` values. If a selected model contains `fable` or `astra`, show
-   the matching model names to the user and wait for explicit approval. Do not delegate,
-   reclassify, or execute before approval. After approval, reuse this exact stored route JSON;
-   terminal replay uses `<skill-dir>/../../bin/codex-route --approved --route-file <route.json>`.
-   Outside that manual step, never run the router in this flow without `--classification-file`:
+   Never run the router in this flow without `--classification-file`:
    that spawns a nested `codex exec` that fails in the sandbox. Never delegate a route whose
    `source` is `fallback`; classification did not happen, so stop and report it.
 4. Delegate each entry in `steps` in order to a spawned worker whose `model` and
@@ -58,29 +53,48 @@ worker classifies instead.
    step's `command`, followed by the last element of `command`. Pass the complete generated
    route JSON along with the original task. The delegated executor must use every
    `verification.recommended` ID and reason to select applicable existing repository
-   checks and report each result or why it was not run. If any selected `steps[].model` or present
-   `steps[].agent.model` contains `fable` or `astra` (case-insensitive), this delegation happens
-   only after the explicit user approval described above.
-5. For `two_stage` (`architectural_refactoring` L3+), the planner step writes the plan
+   checks and report each result or why it was not run.
+5. For `two_stage` (`architectural_refactoring` L3+, or `implementation` / `local_refactoring` at L5), the planner step writes the plan
    file, then the executor step reads it together with the repository and implements it.
    Never run the executor after a failed plan stage.
 6. Do not describe the parent session's model, effort, or inability to change models.
 7. The classification-only worker classifies only. An executor that received the
    complete route JSON executes its assigned work and does not invoke this router again.
-8. Re-route only if new evidence materially raises scope or risk.
+8. Re-route only if new evidence materially raises scope or risk; same-task follow-ups reuse the stored route.
 9. For bounded changes, use a single-agent fast path: applies only when the stored route has
    `effective_level` L1-L3, empty `risk_flags`, no `security_review` or `migration_safety` in
-   `verification.recommended`, a `single` `mode`, and no `fable`/`astra` model. It means delegating
+   `verification.recommended`, and a `single` `mode`. It means delegating
    once to the routed executor (one step) with focused tests, at most one review, and no
    multi-agent chains; re-route only if new evidence raises scope or risk. It never means the
    parent implements the task itself.
 
 When named-agent delegation is unavailable, save that JSON result to a temporary file, then run `<skill-dir>/../../bin/codex-route --route-file <route.json>` from the same working directory. This replays the result's selected command without another classification; two-stage results remain success-dependent. Do not continue the task in the parent session.
 
-Schema v4 records facts and `orchestration_eligible` as handoff metadata only. The local
-`scripts/astra_adapter.py` is caller-invoked, revalidates worker inputs, and
+Schema v5 records facts, `risk_tier`, and `orchestration_eligible` as handoff metadata only. The local
+`scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
-`execution_strategy: direct` because direct v2-v4 route-file replay never invokes it.
+`execution_strategy: direct` because direct v2-v5 route-file replay never invokes it.
+
+Pipeline guidance (Sol thinks and verifies, Luna and Terra implement):
+
+- Follow-up questions in the same task reuse the stored route; do not route again.
+  Re-classify only when the task type changes (for example inspect to modify), the scope
+  grows a lot, new risk evidence appears, or a fact shows the approved design cannot be
+  implemented.
+- Do not call Sol after each step. Batch the implementation steps and run the tests
+  (test execution stays on the cheap Luna/Terra implementation models), then make ONE Sol call
+  that merges verification and code review. Send only the original requirement, the
+  approved plan, the git diff, the test results, and the key code, never the whole
+  session. Effort is High by default, XHigh for an `elevated` `risk_tier`, and Max for
+  `critical`.
+- On review FAIL the reviewer does not fix it. Re-classify the fix: simple (for example
+  null handling) to Luna (medium), an ordinary logic change to Terra, a design problem to Sol,
+  then a final Sol review.
+- An executor that finds something outside the plan stops and returns evidence for a
+  Sol re-plan instead of deciding structure itself. Valid evidence: scope expansion,
+  architecture change, public API change, DB migration, security boundary change, or a
+  plan/code-structure mismatch. "It is hard" or "I am unsure" alone is not a reason to
+  escalate.
 
 The result's `verification` object is recommendation metadata only. The
 selected executor receives recommended IDs and reasons, selects applicable

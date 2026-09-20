@@ -29,7 +29,7 @@ mechanism actually proven to work (`reviewer.toml` → `sol`, `explorer.toml` �
 |---|---|---|---|
 | `research` | `gpt-5.6-luna` | high | lookups, comparisons, reading code/docs, no file writes |
 | `coding` | `gpt-5.6-terra` | medium (pass `-c model_reasoning_effort="high"` for bigger changes) | features, fixes, tests, local refactors |
-| `complex` | `gpt-6-astra` | high | architecture, ambiguous/high-stakes work, escalation |
+| `complex` | `gpt-5.6-sol` | high | architecture, ambiguous/high-stakes work, escalation |
 
 Review already has a correct native agent — `reviewer` (`gpt-5.6-sol` / high,
 in `~/.codex/agents/reviewer.toml`) — so this plugin does not duplicate it.
@@ -71,7 +71,7 @@ agent mechanism entirely and pass the same model/effort directly:
 ```bash
 codex exec -m gpt-5.6-luna -c model_reasoning_effort="high" "이 라이브러리 최신 버전 API 변경점 조사"
 codex exec -m gpt-5.6-terra -c model_reasoning_effort="medium" "재고 API에 페이지네이션 추가"
-codex exec -m gpt-6-astra -c model_reasoning_effort="high" "결제 시스템 아키텍처 재설계"
+codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" "결제 시스템 아키텍처 재설계"
 ```
 
 `scripts/eval_task_router.py` in this bundle's repo root does exactly this,
