@@ -178,7 +178,7 @@ On every platform, code changes (`implementation`, `local_refactoring`,
 chain, with the planner taken from the platform's `design` row at that level. The exception: when the
 derived planner's model and effort equal the implementer's, no planner is inserted and the route
 stays single-stage (Codex and Claude Code `architectural_refactoring` at L2, and every
-Antigravity L2 code change). L1 code changes are always single-stage. The planner (Codex `sol`, Claude Code `opus`, Antigravity Flash/Pro) writes a structured plan JSON
+Antigravity L2 code change). L1 code changes are always single-stage. The planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
 into a temporary run directory, then the implementer (`luna`/`terra`, or
 `sonnet`) reads the plan plus the repository and implements it with the plan's
 validation commands. The implementer does not make new design decisions: it stops
@@ -215,8 +215,10 @@ Planned, not implemented yet: re-classifying each planned step and each review F
 a cheaper or stronger fixer (model-by-difficulty routing).
 
 - **Planning and implementation difficulty are separate.** A hard task (for example
-  redesigning the router's security hard floor) is designed by Sol/Opus; each resulting
-  step is classified again. The planner does not have to implement.
+  redesigning the router's security hard floor) is designed by Sol/Opus and implemented by
+  the cheaper model the matrix picks for that level (re-classifying each planned step is planned,
+  not implemented). The planner does not have to implement (except in the rows where the planner
+  equals the implementer).
 - **Test execution** (pytest, lint, formatter, typecheck, build) runs in the launcher
   with no model call; the final "does this satisfy the requirement?" verification is
   the Sol/Opus review.

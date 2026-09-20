@@ -44,7 +44,7 @@ Classify with the in-session assessor, not a nested CLI:
    that spawns a nested classifier CLI. Never delegate a route whose `source` is `fallback`;
    classification did not happen, so stop and report it.
 
-The model comes from the selected `task_type × level` matrix row plus any configured L2 refinement (already applied in `steps[].model`), never from an agent default. `review` and `design` use `claude-haiku-4-5` at L1, then `claude-opus-5` at L2-L5. The `elevated` and `critical` `risk_tier` values imply L5 and raise only the planning/judging stage effort (Opus xhigh / max); the implementer keeps its matrix profile. A level-only delegation that keeps the agent's own model is wrong.
+The model comes from the selected `task_type × level` matrix row plus any configured L2 refinement (already applied in `steps[].model`), never from an agent default. `review` and `design` use `claude-haiku-4-5` at L1, then `claude-opus-5` at L2-L5. The `elevated` and `critical` `risk_tier` values imply L5 and raise only the planning and review stages' effort (Opus xhigh / max); the implementer keeps its matrix profile. A level-only delegation that keeps the agent's own model is wrong.
 
 1. Pick the executor from the route JSON's `pipeline` block. Never reclassify, and do not continue or implement the task in the parent session.
    - `pipeline` non-null (every code change: `implementation`, `local_refactoring`, `architectural_refactoring`): save the complete route JSON, exactly as generated, to a fresh temp file (`mktemp`), then run it with Bash from the user's current working directory:
