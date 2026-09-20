@@ -61,7 +61,15 @@ plugins/codex-model-effort-router/bin/codex-route --route-file /tmp/model-effort
 
 결과 JSON에는 `verification.recommended` 및 `verification.skipped` 항목도 포함됩니다. 이 항목들은 이유와 함께 저장소 독립적인 검증 권장 사항을 식별하며, 셸 명령이나 실제 실행 결과가 아닙니다. 선택된 실행기는 권장 검증을 수신하여 적용 가능한 기존 저장소 검증을 선택하고, 각 결과 또는 실행하지 않은 이유를 보고합니다. 라우트 파일 재생(replay) 시에는 이 JSON 안내를 무시하고 저장된 실행 단계만 재사용합니다.
 
-라우트 JSON은 스키마 v5를 출력합니다. 이전 점수 필드 대신 `facts`, `matched_rules`, `needs_context`, `evidence`가 사용되며, 레벨 옆에 `risk_tier`(`standard` / `elevated` / `critical`)가 기록됩니다. 또한 `execution_strategy: "direct"`와 `orchestration_eligible`을 분리하여 기록합니다. 오케스트레이션 적격성(`orchestration_eligible`)은 Codex 오케스트레이션 인계 후보일 뿐이며 실행 요청이 아닙니다. `scripts/astra_adapter.py`는 변경되지 않은 오케스트레이션 어댑터로, 호출자가 직접 호출하는 로컬 격리 워커 경계입니다(제공된 라우트 및 매니페스트 다이제스트 검증, 시도별 워커 입력 복사본 재검증, 시도 후 검증된 원본 아티팩트 보존). 직접 v2-v5 라우트 파일 재생 시에는 이 어댑터를 호출하지 않습니다.
+### 체이닝 파이프라인
+
+비대화형 런처(`codex-route`, `claude-route`, `agy-route`) 실행은 `scripts/pipeline.py`를 거칩니다: 계획 -> 구현 -> 결정적 테스트 -> Sol/Opus 통합 리뷰 1회. 테스트는 모델 호출 없이 런처가 직접 실행하며(`MODEL_EFFORT_ROUTER_TEST_CMD` 또는 `pipeline.py --test-cmd`), 실패했을 때만 잘라낸 로그를 구현 모델에 넘깁니다. L4 이상 코드 변경은 리스크 티어 effort로 리뷰를 받고, 리뷰 FAIL은 1회 수정, 다음 실패는 1회 재계획, 그 뒤에는 중단합니다. Claude 구현/수정 단계만 `acceptEdits`로 실행되고 계획/리뷰 단계는 코드를 수정할 수 없습니다. 라우트 파일에는 라우터가 생성한 argv 형태만 허용됩니다. 런처는 단계마다 `phase=...` 한 줄을 남깁니다(`MODEL_EFFORT_ROUTER_VERBOSE=1`이면 명령도 출력). 라우트(누가)와 실행 상태(어디까지, `state.json`)는 분리됩니다. 자세한 내용: `references/routing-policy.md`.
+
+### 라우트 재사용
+
+작업 스레드마다 `MODEL_EFFORT_ROUTER_SESSION=<key>`(또는 `router.py --session <key>`)를 지정하면 첫 작업만 분류해 저장하고, 같은 워크스페이스의 후속 작업은 분류기 호출 없이 그 라우트를 재사용합니다. 워크스페이스 변경, 4시간 경과, 실행 중 재계획/실패, 새 작업의 작업 종류 변경·범위 확대·새 리스크 근거가 있으면 다시 분류합니다. `--no-reuse`는 강제로 새로 분류합니다.
+
+라우트 JSON은 스키마 v6를 출력합니다. 이전 점수 필드 대신 `facts`, `matched_rules`, `needs_context`, `evidence`가 사용되며, 레벨 옆에 `risk_tier`(`standard` / `elevated` / `critical`)가 기록됩니다. 또한 `execution_strategy: "direct"`와 `orchestration_eligible`을 분리하여 기록합니다. 오케스트레이션 적격성(`orchestration_eligible`)은 Codex 오케스트레이션 인계 후보일 뿐이며 실행 요청이 아닙니다. `scripts/astra_adapter.py`는 변경되지 않은 오케스트레이션 어댑터로, 호출자가 직접 호출하는 로컬 격리 워커 경계입니다(제공된 라우트 및 매니페스트 다이제스트 검증, 시도별 워커 입력 복사본 재검증, 시도 후 검증된 원본 아티팩트 보존). 직접 v2-v6 라우트 파일 재생 시에는 이 어댑터를 호출하지 않습니다.
 
 `delegability`(위임 가능성)는 난이도 규칙과 독립적입니다.
 - `0`: 공유 상태, 순서 의존성, 위험 작업 또는 강하게 결합된 작업
@@ -131,7 +139,7 @@ python3 scripts/router.py --platform codex --task-type architectural_refactoring
 - **리뷰 FAIL 시** 리뷰어는 직접 고치지 않습니다. 수정 작업을 위 표대로 다시 분류하고 최종 Sol/Opus 리뷰를 받습니다.
 - **에스컬레이션은 근거 기반**입니다. 구현 모델이 계획 밖의 문제를 발견하면 멈추고 근거(범위 확대, 아키텍처 변경, 퍼블릭 API 변경, DB 마이그레이션, 보안 경계 변경, 계획과 코드 구조 불일치)를 반환합니다. "어렵다", "확신이 없다"만으로는 유효한 사유가 아닙니다.
 - **후속 질문은 저장된 라우트를 재사용**합니다. 작업 유형이 바뀌거나(예: INSPECT -> MODIFY), 범위가 크게 늘거나, 새로운 위험 증거가 나오거나, 승인된 설계를 구현할 수 없다는 사실이 드러날 때만 다시 분류합니다.
-- **Effort 상한**: Luna는 Low/Medium/High(Luna High로 부족하면 Luna XHigh가 아니라 Terra로), Terra는 Medium/High, Sol은 High/XHigh/Max. Claude Code는 Haiku(단순), Sonnet(일반~복잡 구현), Opus(계획/설계/검증/리뷰). 현재 매트릭스는 Luna High나 Sonnet Low를 레벨 단계로 쓰지 않습니다(명확한 소규모 구현은 L2 = Luna Medium). 이들은 여유 공간이지 라우팅되는 프로필이 아닙니다.
+- **Effort 상한**: Luna는 Low/Medium/High(Luna High로 부족하면 Luna XHigh가 아니라 Terra로), Terra는 Medium/High, Sol은 High/XHigh/Max. Claude Code는 Haiku(단순), Sonnet(일반~복잡 구현), Opus(계획/설계/검증/리뷰). Luna High와 Sonnet Low는 L2 세분화로만 라우팅됩니다: 단순 구현이지만 기존 코드 이해가 필요하면(`requires_code_understanding` = yes) Luna High / Sonnet Low, 아니면 L2는 Luna Medium / Haiku 그대로입니다.
 - **토큰 절약**: Sol/Opus는 판단에만 사용, 코딩은 위임, 검증+리뷰는 상위 모델 1회 호출로 통합, 같은 범위는 재분류하지 않음, 큰 출력을 다시 보내지 않음(요구사항+계획+diff+테스트 결과+핵심 코드만), 단순한 불확실성이 아니라 새로운 증거가 있을 때만 재분류.
 
 전체 규칙과 매트릭스는 [references/routing-policy.md](references/routing-policy.md)를 참고하세요.

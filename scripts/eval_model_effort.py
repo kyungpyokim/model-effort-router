@@ -86,6 +86,11 @@ def collect_profiles(model_map: dict, target_platform: str | None = None) -> lis
                         )
                     )
 
+        # 1b. Collect refinement profiles (routable only through a fact, but still real billable combos)
+        for ref in plat_cfg.get("refinements", []):
+            model, effort = extract_model_and_effort(ref["stage"])
+            cases.append(ProfileCase(platform=plat, level=ref["level"] + " (refined)", task_type="+".join(ref["task_types"]), model=model, effort=effort))
+
         # 2. Collect risk-tier profiles (applied to the planning/judging stage)
         for tier, per_platform in model_map.get("tiers", {}).items():
             tier_cfg = per_platform.get(plat)

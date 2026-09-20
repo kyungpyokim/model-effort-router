@@ -51,7 +51,7 @@ Classify with the in-session assessor, not a nested CLI:
    that spawns a nested classifier CLI. Never delegate a route whose `source` is `fallback`;
    classification did not happen, so stop and report it.
 
-The model comes from the selected `task_type × level` matrix row, never from an agent default. `review` and `design` use `claude-haiku-4-5` at L1, then `claude-opus-5` at L2-L5. The `elevated` and `critical` `risk_tier` values imply L5 and raise only the planning/judging stage effort (Opus xhigh / max); the implementer keeps its matrix profile. A level-only delegation that keeps the agent's own model is wrong.
+The model comes from the selected `task_type × level` matrix row plus any configured L2 refinement (already applied in `steps[].model`), never from an agent default. `review` and `design` use `claude-haiku-4-5` at L1, then `claude-opus-5` at L2-L5. The `elevated` and `critical` `risk_tier` values imply L5 and raise only the planning/judging stage effort (Opus xhigh / max); the implementer keeps its matrix profile. A level-only delegation that keeps the agent's own model is wrong.
 
 1. Execute the route with the Agent tool, one call per stored step, in order. Pass the complete generated route JSON with the original task. For each step, set `subagent_type` to `steps[].agent.subagent_type`, `model` to `steps[].agent.model`, and use the last element of `steps[].command` as the prompt; it already carries the task, the stage instructions, and the verification handoff. A `single` route is one call; a `two_stage` route (`architectural_refactoring` L3+, or `implementation` / `local_refactoring` at L5) runs the planner, then runs the executor only if the plan step succeeds. Never reclassify, and do not continue the task in the parent session.
 2. The Agent tool cannot set effort, so `steps[].agent.subagent_type` is an `effort-*` agent whose frontmatter pins `steps[].effort`. Do not substitute a `level-N` agent.
@@ -71,10 +71,10 @@ executor keeps normal edit permissions; `--route-file` replays stored `steps[].c
 without reclassifying. A non-interactive `-p` executor runs with default permissions and
 cannot edit files unless the user's settings allow it.
 
-Schema v5 records facts, `risk_tier`, and `orchestration_eligible` (future metadata only).
+Schema v6 records facts, `risk_tier`, and `orchestration_eligible` (future metadata only).
 `scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
-`execution_strategy: direct` because direct v2-v5 route-file replay never invokes it.
+`execution_strategy: direct` because direct v2-v6 route-file replay never invokes it.
 
 Pipeline guidance (Opus thinks and verifies, Haiku and Sonnet implement):
 

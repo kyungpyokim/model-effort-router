@@ -19,7 +19,7 @@ Haiku and Sonnet implement.** See [Execution roles and pipeline](#execution-role
 
 ## Cascading preflight classifier
 
-The classifier never scores difficulty. It answers sixteen bounded facts about
+The classifier never scores difficulty. It answers seventeen bounded facts about
 the work (files touched, module or service boundaries, whether the result is known,
 new structure, security/payment logic changed or reviewed, the security domain,
 public API, persisted data, irreversible changes, trust-boundary changes, blast
@@ -90,14 +90,31 @@ checks, selects applicable existing repository checks, and reports each result
 or why it was not run. Route-file replay ignores this JSON guidance and
 reuses only the stored execution steps.
 
-Route JSON emits schema v5: `facts`, `matched_rules`, `needs_context`, and
+### Chained pipeline
+
+Non-interactive launcher runs (`codex-route`, `claude-route`, `agy-route`) execute
+`scripts/pipeline.py`: plan -> implement -> deterministic test -> one merged Sol/Opus review.
+Tests run in the launcher without a model call: set `MODEL_EFFORT_ROUTER_TEST_CMD` (or pass
+`--test-cmd` to `pipeline.py`). Only a failure sends a truncated log to the implementer.
+L4+ code changes get the review at the risk tier's effort; a review FAIL is fixed once, the next
+failure re-plans once, and then the run stops. Claude implement/fix stages run with `acceptEdits`; plan and review stages cannot edit code. Route files may only carry router-generated argv shapes. The launcher logs one `phase=...` line per stage (`MODEL_EFFORT_ROUTER_VERBOSE=1` adds the commands). Route (who) and execution state (where the run
+is, `state.json`) stay separate. Details: `references/routing-policy.md`.
+
+### Route reuse
+
+Set `MODEL_EFFORT_ROUTER_SESSION=<key>` (or `router.py --session <key>`) for a task thread. The first
+task is classified and stored; follow-ups in the same workspace reuse that route without calling the
+classifier, until the workspace changes, 4 hours pass, a run re-plans or fails, or the new task shows a
+different operation, wider scope, or new risk evidence. `--no-reuse` forces a fresh classification.
+
+Route JSON emits schema v6: `facts`, `matched_rules`, `needs_context`, and
 `evidence` replace the old score fields, and `risk_tier` (`standard`, `elevated`,
 `critical`) is recorded next to the level. It records `execution_strategy: "direct"` and
 `orchestration_eligible` separately: eligibility is only a Codex orchestration handoff
 candidate, never an execution request. `scripts/astra_adapter.py` is the unchanged
 local, caller-invoked orchestration adapter (an isolated-worker boundary that requires
 supplied route and manifest digests, revalidates worker input copies, and preserves the
-original verified artifacts after each attempt). Direct v2-v5 route-file replay never
+original verified artifacts after each attempt). Direct v2-v6 route-file replay never
 invokes it.
 
 `delegability` is independent of the difficulty rules: `0` is shared
@@ -205,8 +222,9 @@ request -> classify (cheap) -> plan/design (Sol / Opus)
 - **Effort ceilings.** Luna low/medium/high (beyond Luna high, move to Terra rather than
   Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Claude Code: Haiku for simple work,
   Sonnet for general-to-complex implementation, Opus for plan/design/verify/review. The
-  current matrix does not use Luna high or Sonnet low as a level rung (a clear small
-  implementation is L2 = Luna medium); they are headroom, not routed profiles.
+  current matrix reaches Luna high and Sonnet low only through the L2 refinement: a simple
+  implementation that needs existing-code understanding (`requires_code_understanding`) gets Luna
+  high / Sonnet low, otherwise L2 stays Luna medium / Haiku.
 
 The full rule set and matrices are in [references/routing-policy.md](references/routing-policy.md).
 

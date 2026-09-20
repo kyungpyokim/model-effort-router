@@ -13,7 +13,7 @@ and no self-reported confidence.
 User Request
      │
 Classifier (Luna Med / Sonnet 5 Med / Gemini 3.8 Flash Med, or the in-session difficulty-assessor agent)
-  -> task_type + 16 facts (yes / no / unknown, plus a security domain and blast radius) + evidence
+  -> task_type + 17 facts (yes / no / unknown, plus a security domain and blast radius) + evidence
      │
 DIFFICULTY_RULES (scripts/router.py)
   ├─ Base L2 (L1 when mechanical_only = yes)
@@ -38,7 +38,7 @@ or a tightly coupled deep problem; `1` permits separable analysis but leaves
 dependencies or ownership coupled; `2` requires independent subtasks, explicit
 file/artifact ownership, and independently verifiable results.
 
-Schema v5 route files always retain `execution_strategy: "direct"` in this
+Schema v6 route files always retain `execution_strategy: "direct"` in this
 release. `orchestration_eligible: true` is only recorded for safe Codex
 single-stage L5 routes with `delegability: 2` and no risk flags
 (`orchestration.codex.eligible_levels` is `["L5"]`). Critical-tier, two-stage,
@@ -46,9 +46,9 @@ non-Codex, and any risky routes are ineligible. The local,
 caller-invoked `scripts/astra_adapter.py` accepts only digest-verified route and
 manifest bytes, revalidates per-attempt worker inputs, and preserves the
 original verified artifacts after each attempt. It is the unchanged orchestration adapter and does not change direct
-execution. Direct v2-v5 route-file replay never invokes it.
+execution. Direct v2-v6 route-file replay never invokes it.
 
-Replay accepts v2-v5 route files. v3 and later require the two orchestration
+Replay accepts v2-v6 route files. v3 and later require the two orchestration
 fields; malformed v3+ files are rejected before execution.
 
 ### Classifiers by Platform
@@ -96,6 +96,7 @@ Mixed tasks classify by their primary purpose. Design with sample code is `desig
 | `changes_trust_boundary` | yes / no / unknown | Designs, changes, or decides where trust is established or delegated between components, services, tenants, or principals (service-to-service auth, token propagation, permission delegation, isolation), including whether to move it; reviewing existing boundary code or moving code within one trust zone is no |
 | `blast_radius` | narrow / broad / unknown | broad: a wrong result affects many services, all users or tenants, production data at large, external API consumers, or money/credentials system-wide; narrow: one component, feature, or a recoverable subset |
 | `silent_failure_material_harm` | yes / no / unknown | A mistake could go unnoticed (no error, alert, or failing test) while causing data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency |
+| `requires_code_understanding` | yes / no / unknown | Doing the work right depends on reading and understanding existing code beyond the edit site (callers, callees, existing behaviour, invariants, state flow); no for a self-contained edit evident from the task text (a new standalone helper, an added field or parameter, a clear one-line change, a test for stated behaviour). It never changes the level: it only picks the L2 implementer (below). A classifier reply or stored classification that omits it defaults to `unknown` |
 
 Payment, in `changes_security_or_payment_logic`, `reviews_security_sensitive_code`, and `security_domain`, is decided by monetary consequence, not by a module or file named billing or order: moving money; determining the amount charged (price, discount, or tax calculation); authorizing, capturing, cancelling, or refunding payments, including an order cancellation that decides a refund; ledger or settlement correctness; or creating or changing a monetary obligation. Not payment: an order list UI, billing address edits, displaying an invoice PDF, order status strings, order creation that charges nothing, or code that merely lives in a billing or order module. Caching or reading billing or order data is not payment unless the cached or read value decides the amount charged.
 
@@ -163,20 +164,20 @@ payment              data_migration      public_api_change
 
 | task_type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation | luna low | luna med | terra med | terra high | sol high → terra high |
+| implementation | luna low | luna med (luna high with `requires_code_understanding`) | terra med | terra high | sol high → terra high |
 | design | luna med | sol high | sol high | sol high | sol high |
 | review | luna med | sol high | sol high | sol high | sol high |
-| local_refactoring | luna low | luna med | terra med | terra high | sol high → terra high |
+| local_refactoring | luna low | luna med (luna high with `requires_code_understanding`) | terra med | terra high | sol high → terra high |
 | architectural_refactoring | luna med | sol high | sol high → terra med | sol xhigh → terra high | sol xhigh → terra high |
 
 ### Claude Code Matrix
 
 | task_type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation | haiku | haiku | sonnet med | sonnet high | opus high → sonnet high |
+| implementation | haiku | haiku (sonnet low with `requires_code_understanding`) | sonnet med | sonnet high | opus high → sonnet high |
 | design | haiku | opus high | opus high | opus high | opus high |
 | review | haiku | opus high | opus high | opus high | opus high |
-| local_refactoring | haiku | haiku | sonnet med | sonnet high | opus high → sonnet high |
+| local_refactoring | haiku | haiku (sonnet low with `requires_code_understanding`) | sonnet med | sonnet high | opus high → sonnet high |
 | architectural_refactoring | haiku | opus high | opus high → sonnet med | opus xhigh → sonnet high | opus xhigh → sonnet high |
 
 ### Antigravity Matrix
@@ -204,7 +205,7 @@ Risk tiers modify these rows at the planning/judging stage only (the planner of 
 - `Claude Opus Thinking` on Antigravity resolves availability-driven: `Claude Opus 5 .*(Thinking)` → `Claude Opus .*(Thinking)` → `Opus.*Thinking` → `Claude Opus 4.6 (Thinking)` (fallback).
 - `Pro High` on Antigravity resolves availability-driven: preferred `Gemini 3.1 Pro (High)` → `Gemini .* Pro (High)` → `Claude Sonnet .* (Thinking)`.
 - On Claude Code, `sonnet` is `claude-sonnet-5` (medium at L3, high at L4), `haiku` is `claude-haiku-4-5` without an effort parameter, and `opus` is `claude-opus-5`. On Codex, `luna`, `terra`, and `sol` are `gpt-5.6-luna`, `gpt-5.6-terra`, and `gpt-5.6-sol`.
-- Effort ceilings: Luna low/medium/high (a task that needs more than Luna high moves to Terra, never to Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). The matrix does not currently use Luna high or Sonnet low as a level rung: a clear small implementation is L2 (Luna medium). They are headroom, not routed profiles.
+- Effort ceilings: Luna low/medium/high (a task that needs more than Luna high moves to Terra, never to Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Luna high and Sonnet low are routed only through the L2 refinement (`refinements` in the config, applied after the matrix lookup to single-stage `implementation` and `local_refactoring` routes at L2): `requires_code_understanding` = yes -> Luna high (Codex) / Sonnet low (Claude Code); no or unknown -> the matrix profile, Luna medium / Haiku. `unknown` is missing information, not evidence, so it keeps the cheaper profile; a failing test gate or the fix loop covers a wrong guess. L3 stays Terra medium / Sonnet medium and higher levels are unchanged. Antigravity defines no refinement. Reused session routes keep the stored fact. A refinement is keyed on the post-escalation level, so an explicit `--level L2` on a mechanical task can reach it. It replaces the whole matrix entry, so a refinement stage must carry its own `fallback_model` or `candidates` if the entry it replaces had them, and a refinement that lowers the same model's effort is refused.
 
 ## Execution roles and pipeline
 
@@ -234,10 +235,18 @@ Rules:
 
 - **Planning and implementation difficulty are separate.** A hard overall task (for example redesigning the router's security hard floor) is designed by Sol/Opus, then each resulting step is classified again: a conditional tweak goes to Luna medium / Sonnet, extra tests to Luna / Haiku, a multi-file refactor to Terra / Sonnet. The planner does not have to implement.
 - **Test execution** (pytest, lint, formatter, typecheck, build) is done by the cheap implementation models. The final verification ("does this satisfy the requirement?") is Sol/Opus.
+- **Runtime enforcement.** `scripts/pipeline.py` runs the chain (launchers call it for every non-interactive run; interactive sessions stay a single hand-off): plan -> implement -> deterministic test -> merged review. The route JSON (schema v6) holds only who does each role (`steps`, plus a `pipeline` block: `review`, `replan`, `limits`, `task`); where the run is (phase, fix and review counters) lives in `state.json` in the run's work directory, never in the route.
+- **Deterministic tests.** The runner executes the test commands itself, with no model call (`--test-cmd`, repeatable, or `MODEL_EFFORT_ROUTER_TEST_CMD`). A green run costs no tokens and moves to review; a failure sends only the failing command and a truncated log tail (80 lines / 6000 chars) to the cheap implementer. A stored interactive route is handed to the terminal untouched (no capture, no review). Test commands come from the caller, not from plan text: a plan cannot make the launcher run shell commands the model wrote.
+- **Review stage.** Code-change routes at L4 and above get the merged Sol/Opus verification + review after a green test run, at the risk tier's effort (High / XHigh / Max) - the same tier raise the planner gets; the implementer keeps its matrix profile. L1-L3 keep only the test gate. The reviewer's last line must be `VERDICT: PASS` or `VERDICT: FAIL` (only the final line counts, so an echoed prompt cannot force a pass); a missing verdict stops the run (exit 11) instead of passing. It receives the request, the plan, the test results, and the diff (capped), never the session.
+- **Fail loop caps.** A failed test is fixed by the implementer up to 2 times; a review FAIL is fixed once. The next failure re-plans once with the planning model (the route's planner, or the reviewing Sol/Opus for a single-stage route) and re-runs the implementer on the new plan, after which the counters reset. Still failing after the re-plan budget: the run stops (exit 10; a stage that fails to start is 12, a missing plan file 13, any other stage failure passes its own exit code through). Route-file limits may only lower these caps, and every stage and test command has a timeout (1 hour / 30 minutes). An implementer whose last line is an `ESCALATE:` evidence line skips the fix budget and goes straight to the re-plan.
+- **Stage permissions (Claude Code).** Non-interactive Claude stages get permission flags by role: implement and fix run with `--permission-mode acceptEdits`; plan and re-plan run in `dontAsk` mode and may write only the plan file (`Edit(//<abs plan path>)`, with Bash, NotebookEdit and MCP servers denied); review runs in `dontAsk` with Edit, Write, NotebookEdit, Bash and MCP denied, so a reviewer cannot fix code even where project settings allow it (deny rules beat allow rules). The plan directory is resolved once when the route is built so the prompt, the edit rule and the route agree (macOS `/var` vs `/private/var`); a plan path with parentheses is refused. The prompt follows `--` so it is never read as a tool name. `--dangerously-skip-permissions` is never used. Codex and Antigravity keep their own sandboxing. Because Bash is not pre-approved for the implementer either, a Claude implementer cannot run shell checks itself; the launcher's test gate does.
+- **Route-file argv grammar.** A route file's `command` argv is accepted only in the shapes this router generates, for every schema version, in both `router.py --route-file` and `pipeline.py` (violations exit 2). A v6 Claude command must equal the generated argv for its step's model, effort and role (permission flags included, so no duplicate or widened permission flags); routes older than v6 predate permission flags and may only add the old `--agent <name>`. Codex accepts `-m` plus `-c model_reasoning_effort|developer_instructions`; Antigravity `--model` plus `--prompt`. Model ids are restricted to a strict charset (Antigravity display names may contain spaces and parentheses). Known limit: the text of a Codex `developer_instructions` value is not compared with the generated one. Multi-stage routes may not carry interactive (TUI) steps.
+- **Fail-closed checks.** A planner that wrote no plan file stops the run (exit 13). In a git work tree (diffed against the HEAD seen when the run started, so commits count), an implementer that changed nothing fails the review without spending a review call, so it is fixed or re-planned like any other review FAIL.
+- **Logging.** The runner logs one line per phase to stderr (`phase=implement model=... effort=...`, `phase=review ... attempt=N`); raw commands appear only with `MODEL_EFFORT_ROUTER_VERBOSE=1` or `--verbose`. `MODEL_EFFORT_ROUTER_PRINT_ONLY` prints just the replayable plan/implement command chain.
 - **Review policy.** Do not call Sol/Opus after each step. Batch steps 1..N, run the tests, then make one Sol/Opus call that merges verification and code review. Send it only the original requirement, the approved plan, the git diff, the test results, and the key code, never the whole session. Default effort is High; the elevated tier uses XHigh and the critical tier Max.
-- **Review FAIL.** The reviewer does not fix the problem. Re-classify the fix: a simple one (for example null handling) goes to Luna medium / Haiku, an ordinary logic change to Terra / Sonnet, a design problem to Sol / Opus, followed by a final Sol/Opus review.
+- **Review FAIL.** The reviewer does not fix the problem. Re-classify the fix: a simple one (for example null handling) goes to Luna medium / Haiku, an ordinary logic change to Terra / Sonnet, a design problem to Sol / Opus, followed by a final Sol/Opus review. The launcher runner does not re-classify: it reuses the route's implementer for the fix and re-plans on the second failure (Fail loop caps above).
 - **Implementation escalation.** If the implementer finds something outside the plan it stops and returns evidence for a Sol/Opus re-plan instead of deciding structure itself. Valid evidence: scope expansion, architecture change, public API change, DB migration, security boundary change, or a plan that no longer matches the code structure. "It is hard" or "I am unsure" alone is not a valid reason.
-- **Follow-ups reuse the stored route** (no re-routing). Re-classify only when the task type changes (for example INSPECT to MODIFY), the scope grows a lot, new risk evidence appears, or a fact shows the approved design cannot be implemented.
+- **Follow-ups reuse the stored route** (no re-routing). Re-classify only when the task type changes (for example INSPECT to MODIFY), the scope grows a lot, new risk evidence appears, or a fact shows the approved design cannot be implemented. Runtime: name a session (`--session KEY` or `MODEL_EFFORT_ROUTER_SESSION`) and `router.py` stores the classification (task type, level, tier, risk flags, facts) under `MODEL_EFFORT_ROUTER_STATE_DIR` (default `~/.cache/model-effort-router`). A later task in the same session reuses it and skips the classifier unless a deterministic blocker fires: workspace changed; stored route older than 4 hours (reuse does not extend it); the route was already reused 10 times; the stored route asked for repository context (`needs_context`); the caller pins a different `--task-type`; an earlier pipeline run re-planned or failed (only `pipeline.py` records this, so a run through `--format command` never invalidates a route); the task text shows a different operation (inspect vs modify, mixed, or no recognisable operation for a stored read-only route), wider scope, or risk evidence in a dimension the stored route does not already cover (security words need a security flag, migration/production words a `data_migration` flag or the critical tier, public API words a `public_api_change` flag; a tier alone never covers security words). Text that names no operation reuses a stored code-change route. The record file is private (0600, owner-checked, size-capped, atomic rename, never through a symlink); a malformed record reclassifies. Unknown never blocks, so the caller's session key is what stands for "same target": use one session per task thread. `--no-reuse` and explicit pins bypass the store; fallback and manual routes are never stored; a corrupt or tampered record reclassifies. A reused route keeps its stored risk flags, tier and scope guard, and route JSON carries `reuse: {session, reused, reason}`.
 - **Token savings.** Limit Sol/Opus to judgement; delegate coding; merge verification and review into one high-tier call; never re-classify the same scope; do not resend large output (send requirement + plan + diff + test results + key code); re-classify on new evidence, not on mere uncertainty.
 
 ## Verification recommendations

@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import json
 import math
+import os
 import re
 import shlex
 import subprocess
@@ -17,6 +18,10 @@ import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
+
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+import route_reuse  # noqa: E402
 
 LEVELS = ("L1", "L2", "L3", "L4", "L5")
 LEVEL_NAMES = {
@@ -42,8 +47,12 @@ RISK_FLAGS = (
 )
 SECURITY_FLOOR_FLAGS = ("security_sensitive", "authentication", "authorization", "payment")
 FALLBACK_TASK_TYPE = "implementation"
-SCHEMA_VERSION = 5
-SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, 3, 4, SCHEMA_VERSION)
+SCHEMA_VERSION = 6
+SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, 3, 4, 5, SCHEMA_VERSION)
+CODE_CHANGE_TASK_TYPES = ("implementation", "local_refactoring", "architectural_refactoring")
+# Below this level the cheap implementer's own checks are enough; no merged Sol/Opus review.
+REVIEW_MIN_LEVEL = "L4"
+PIPELINE_LIMITS = {"max_test_fixes": 2, "review_fixes_before_replan": 1, "max_replans": 1}
 SAFE_ORCHESTRATION_LEVELS = ("L5",)
 SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY = 2
 
@@ -109,7 +118,11 @@ FACTS = {
     "changes_trust_boundary": YES_NO_UNKNOWN,
     "blast_radius": ("narrow", "broad", "unknown"),
     "silent_failure_material_harm": YES_NO_UNKNOWN,
+    # Never changes the level: it only picks the implementer rung inside L2 (see refinements in the config).
+    "requires_code_understanding": YES_NO_UNKNOWN,
 }
+# Facts an older classifier reply or stored classification may omit; they default here.
+OPTIONAL_FACT_DEFAULTS = {"requires_code_understanding": "unknown"}
 # Sticky safety facts: fact -> its affirmative values. A primary affirmative here is
 # OR-aggregated into the cascade result and the repository-aware escalation may never
 # lower it, no matter what it answers. These guard the changes where under-routing is
@@ -221,6 +234,7 @@ Authorization or permissions, in the three facts above, is decided by access con
 - changes_trust_boundary: yes when the work designs, changes, or decides where trust is established or delegated between components, services, tenants, or principals (service-to-service authentication, token propagation, permission delegation, isolation boundaries), including deciding whether to move such a boundary. Reviewing existing boundary code without redesigning it is no here (covered by reviews_security_sensitive_code); moving code inside one trust zone is no.
 - blast_radius: broad when a wrong result would affect many services, all users or tenants, production data at large, external API consumers, or money or credentials system-wide; narrow when it stays within one component, feature, or a recoverable subset; unknown when the text and your reads cannot settle it.
 - silent_failure_material_harm: yes when a mistake could go unnoticed (no error, alert, or failing test) while causing material harm such as data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency.
+- requires_code_understanding: yes when doing the work right depends on reading and understanding existing code beyond the edit site (following callers or callees, existing behaviour, invariants, how state flows); no when the edit is self-contained and evident from the task text (a new standalone helper, adding a field or parameter, a clear one-line change, a test for stated behaviour); unknown when neither is evident. It never changes difficulty; it only picks the implementer for simple work.
 Answer no when neither the task text nor the repository you read mentions or implies that area (for example a pagination fix says nothing about payment, persisted data, or public APIs, so those are no). Answer unknown only when the area is plausibly involved but the text and your reads cannot settle it; never answer yes just to be safe.
 Set delegability separately: 0 for shared mutable state, order-dependent work, security/auth/payment/data migration/risky operations, or one tightly coupled deep problem; 1 only when analysis can be split but dependencies or artifact ownership remain coupled; 2 only when subtasks can run independently with explicit file/artifact ownership and independently verifiable results.
 List up to five short evidence strings (task phrases or file paths) behind the facts. Keep reason to one short sentence. Return the requested JSON only.
@@ -243,7 +257,7 @@ A structured plan file is provided at: {plan_path}
 Read the plan together with the original request and the current repository state first.
 Apply re0 hygiene: leave the codebase cleaner than found, touch only what the plan requires, and remove scaffolding residue.
 If the repository conflicts with the plan, stop and report the difference instead of forcing the plan through.
-Do not make new design decisions yourself. Stop and return escalation evidence for the planner when you find a wider scope than planned, an architecture change, a public API change, a needed data migration, a security-boundary change, or a plan that no longer matches the code. Difficulty or uncertainty alone is not evidence.
+Do not make new design decisions yourself. Stop and return escalation evidence for the planner, as a final line that starts with ESCALATE and a colon, when you find a wider scope than planned, an architecture change, a public API change, a needed data migration, a security-boundary change, or a plan that no longer matches the code. Difficulty or uncertainty alone is not evidence.
 Execute the planned changes, run validation.commands, satisfy acceptance_criteria, and apply rollback_notes when validation fails.
 Do not blindly follow the plan when the repository state has moved on from what the planner saw.
 Do not invoke the model-effort router recursively."""
@@ -294,6 +308,8 @@ class RouteResult:
     source: str
     execution_strategy: str
     orchestration_eligible: bool
+    # Who reviews and re-plans after implementation; None for routes without a chained pipeline.
+    pipeline: dict | None = None
 
 
 def agent_name(level: str) -> str:
@@ -433,6 +449,8 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
         raise ValueError(f"response must contain exactly {', '.join(required)}")
     task_type = normalise_task_type(payload["task_type"])
     facts, delegability, evidence, reason = payload["facts"], payload["delegability"], payload["evidence"], payload["reason"]
+    if isinstance(facts, dict):
+        facts = {**OPTIONAL_FACT_DEFAULTS, **facts}
     if not isinstance(facts, dict) or set(facts) != set(FACTS):
         raise ValueError(f"facts must contain exactly {', '.join(FACTS)}")
     for name, values in FACTS.items():
@@ -817,6 +835,54 @@ def pinned_classification(task_type: str, level: str) -> Classification:
     )
 
 
+def load_reused_classification(
+    session: str, cwd: str, task: str, explicit_task_type: str | None = None,
+) -> tuple[Classification | None, dict | None, str]:
+    """The stored session classification when no blocker fires, else ``None`` and why not."""
+    record = route_reuse.load_record(session)
+    if record is None:
+        return None, None, "no stored route for this session"
+    try:
+        task_type, level, tier = record["task_type"], record["level"], record["risk_tier"]
+        flags, facts, rules = record["risk_flags"], record["facts"], record["matched_rules"]
+        if task_type not in TASK_TYPES or level not in LEVELS or tier not in RISK_TIERS:
+            raise ValueError("unknown route values")
+        if not isinstance(flags, dict) or set(flags) != set(RISK_FLAGS) or not all(isinstance(v, bool) for v in flags.values()):
+            raise ValueError("bad risk flags")
+        if not isinstance(facts, dict) or not isinstance(rules, list) or not isinstance(record.get("evidence", []), list):
+            raise ValueError("bad facts")
+        delegability, reuses = record.get("delegability", 0), record.get("reuses", 0)
+        if delegability not in (0, 1, 2) or isinstance(reuses, bool) or not isinstance(reuses, int):
+            raise ValueError("bad counters")
+        if not isinstance(record["saved_at"], (int, float)) or isinstance(record["saved_at"], bool):
+            raise ValueError("bad timestamp")
+        blockers = route_reuse.reuse_blockers(
+            record, cwd, task, task_type in CODE_CHANGE_TASK_TYPES,
+            explicit_task_type=normalise_task_type(explicit_task_type) if explicit_task_type else None,
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None, None, "stored route is invalid"
+    if blockers:
+        return None, record, "; ".join(blockers)
+    classification = Classification(
+        task_type=task_type, level=level, risk_flags=dict(flags),
+        reason=f"route reused from the session (reuse {reuses + 1}); the classifier was not called",
+        source="reused", facts={str(k): str(v) for k, v in facts.items()}, matched_rules=tuple(str(r) for r in rules),
+        risk_tier=tier, needs_context=bool(record.get("needs_context", False)),
+        evidence=tuple(str(e) for e in record.get("evidence", [])), delegability=delegability,
+    )
+    return classification, record, ""
+
+
+def session_record(result: RouteResult, delegability: int) -> dict:
+    return {
+        "task_type": result.task_type, "level": result.level, "risk_tier": result.risk_tier,
+        "risk_flags": dict(result.risk_flags), "facts": dict(result.facts),
+        "matched_rules": list(result.matched_rules), "needs_context": result.needs_context,
+        "evidence": list(result.evidence), "delegability": delegability,
+    }
+
+
 SINGLE_ENTRY_KEYS = (
     {"model", "effort"},
     {"patterns", "fallback"},
@@ -1010,6 +1076,67 @@ def apply_tier(
     return [stage, *stages[1:]]
 
 
+def load_refinements(config: dict, platform: str) -> list[dict]:
+    """The platform's optional implementer refinements, validated."""
+    refinements = config.get("platforms", {}).get(platform, {}).get("refinements", [])
+    if not isinstance(refinements, list):
+        raise ValueError(f"config platforms.{platform}.refinements must be a list")
+    for ref in refinements:
+        valid = (
+            isinstance(ref, dict)
+            and isinstance(ref.get("task_types"), list) and set(ref["task_types"]) <= set(CODE_CHANGE_TASK_TYPES)
+            and ref.get("level") in LEVELS
+            and isinstance(ref.get("when"), dict) and ref["when"] and set(ref["when"]) <= set(FACTS)
+            and all(value in FACTS[fact] for fact, value in ref["when"].items())
+            and isinstance(ref.get("stage"), dict) and _valid_matrix_entry(ref["stage"])
+        )
+        if not valid:
+            raise ValueError(f"invalid refinement in config platforms.{platform}.refinements")
+    return refinements
+
+
+def apply_refinement(
+    config: dict, platform: str, task_type: str, level: str, facts: dict[str, str], raw_stages: list[dict], mode: str,
+) -> tuple[list[dict], str | None]:
+    """Swap a single-stage implementer for a matching refinement (a fact that picks the rung inside a level)."""
+    refinements = load_refinements(config, platform)  # validated on every route, not only single-stage ones
+    if mode != "single":
+        return raw_stages, None
+    for ref in refinements:
+        if task_type in ref["task_types"] and level == ref["level"] and all(
+            facts.get(fact, OPTIONAL_FACT_DEFAULTS.get(fact, "unknown")) == value for fact, value in ref["when"].items()
+        ):
+            base, refined = raw_stages[0], ref["stage"]
+            if (
+                base.get("model") == refined.get("model") and base.get("effort") in EFFORT_ORDER and refined.get("effort") in EFFORT_ORDER
+                and EFFORT_ORDER.index(refined["effort"]) < EFFORT_ORDER.index(base["effort"])
+            ):
+                raise ValueError(f"refinement lowers the {platform} {level} matrix effort; a refinement may only raise the rung")
+            label = ", ".join(f"{fact}={value}" for fact, value in ref["when"].items())
+            return [{"role": raw_stages[0].get("role", "executor"), **ref["stage"]}], label
+    return raw_stages, None
+
+
+def pipeline_plan(
+    platform: str, task_type: str, level: str, mode: str, matrix: dict, stages: list[dict],
+    profile: dict | None, available_models: list[str] | None,
+) -> dict | None:
+    """Who reviews and re-plans a code change once the implementer is done.
+
+    The merged Sol/Opus review and re-plan stage run at L4+ and take the risk tier's effort;
+    lower levels keep only the deterministic test gate and the cheap fix loop."""
+    if task_type not in CODE_CHANGE_TASK_TYPES:
+        return None
+    review = replan = None
+    if LEVELS.index(level) >= LEVELS.index(REVIEW_MIN_LEVEL):
+        judge_raw, _ = resolve_stages(matrix, "review", level)
+        judge = apply_tier(platform, materialise_stages(platform, judge_raw, "single", available_models), profile, available_models)[0]
+        review = {**judge, "role": "reviewer"}
+        # A two-stage route already has its planner; a single-stage one re-plans with the judge.
+        replan = {**(stages[0] if mode == "two_stage" else judge), "role": "planner"}
+    return {"review": review, "replan": replan, "limits": dict(PIPELINE_LIMITS)}
+
+
 def route(
     task: str,
     platform: str,
@@ -1055,10 +1182,15 @@ def route(
     matrix = load_matrix(config, platform)
     tier_profile = load_tier_profile(config, platform, risk_tier) if risk_tier != "standard" else None
     raw_stages, mode = resolve_stages(matrix, task_type, level)
+    raw_stages, refined_by = apply_refinement(config, platform, task_type, level, classification.facts, raw_stages, mode)
+    if refined_by:
+        rationale.append(f"{level} implementer refined by {refined_by}")
     stages = apply_tier(platform, materialise_stages(platform, raw_stages, mode, available_models), tier_profile, available_models)
+    pipeline = pipeline_plan(platform, task_type, level, mode, matrix, stages, tier_profile, available_models)
     plan_dir = None
     if mode == "two_stage":
-        plan_dir = str(Path(tempfile.gettempdir()) / f"codex-route-{uuid.uuid4().hex[:8]}")
+        # Resolved once (macOS /var -> /private/var) so the prompt, the Claude edit rule and the route agree.
+        plan_dir = str(Path(tempfile.gettempdir()).resolve() / f"codex-route-{uuid.uuid4().hex[:8]}")
         model = effort = None
     else:
         model, effort = stages[0]["model"], stages[0]["effort"]
@@ -1087,6 +1219,7 @@ def route(
         source=classification.source,
         execution_strategy="direct",
         orchestration_eligible=orchestration_eligible,
+        pipeline=pipeline,
     )
 
 
@@ -1102,10 +1235,13 @@ def shell_command(result: RouteResult, task: str, interactive: bool) -> list[str
     # Instructions lead the prompt so the Agent tool path (which reuses the prompt) keeps them.
     prompt = f"{markdown_agent_instructions(result.platform, result.level)}\n\n{task}"
     if result.platform == "claude-code":
+        if not interactive:
+            access = "edit" if result.task_type in CODE_CHANGE_TASK_TYPES else "read"
+            return _claude_print_command(result.model, result.effort, prompt, access)
         base = ["claude", "--model", result.model]
         if result.effort:
             base += ["--effort", str(result.effort)]
-        return base + ([prompt] if interactive else ["-p", prompt])
+        return base + [prompt]
     return ["agy", "--model", result.model, *(["--prompt-interactive", prompt] if interactive else ["--prompt", prompt])]
 
 
@@ -1122,11 +1258,38 @@ def _codex_exec_command(model: str, effort: str, instructions: str, prompt: str,
     return ["codex", *options, prompt] if interactive else ["codex", "exec", *options, prompt]
 
 
-def _claude_print_command(model: str, effort: str | None, prompt: str) -> list[str]:
+CLAUDE_READ_TOOLS = ("Read", "Grep", "Glob")
+
+
+def claude_access_flags(access: str, plan_path: str | None = None) -> list[str]:
+    """Permission flags for a non-interactive Claude stage.
+
+    ``edit`` (implement/fix) auto-approves file edits. ``plan`` may write only the plan file and
+    ``read`` may not write at all: dontAsk denies whatever would prompt, deny rules (which beat
+    project allow rules) close Bash, the edit tools and MCP servers."""
+    if access == "edit":
+        return ["--permission-mode", "acceptEdits"]
+    if access == "plan":
+        if not plan_path or not plan_path.startswith("/") or "(" in plan_path or ")" in plan_path:
+            raise ValueError("a plan stage needs an absolute plan path without parentheses")
+        # Edit(//abs) is the absolute-path rule form and covers every built-in file-editing tool;
+        # the Edit tool family cannot be denied here without denying the plan file itself.
+        return [
+            "--permission-mode", "dontAsk", "--allowedTools", *CLAUDE_READ_TOOLS, f"Edit(/{plan_path})",
+            "--disallowedTools", "Bash", "NotebookEdit", "--strict-mcp-config",
+        ]
+    return [
+        "--permission-mode", "dontAsk", "--allowedTools", *CLAUDE_READ_TOOLS,
+        "--disallowedTools", "Edit", "Write", "NotebookEdit", "Bash", "--strict-mcp-config",
+    ]
+
+
+def _claude_print_command(model: str, effort: str | None, prompt: str, access: str = "read", plan_path: str | None = None) -> list[str]:
     command = ["claude", "-p", "--model", model]
     if effort:
         command += ["--effort", effort]
-    return [*command, prompt]
+    # `--` ends the variadic tool lists so the prompt is never read as a tool name.
+    return [*command, *claude_access_flags(access, plan_path), "--", prompt]
 
 
 def _agy_prompt_command(model: str, prompt: str) -> list[str]:
@@ -1146,6 +1309,18 @@ def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> 
     return shell_command(result, prompt, interactive)
 
 
+def stage_command(platform: str, stage: dict, instructions: str, prompt: str, access: str = "read", plan_path: str | None = None) -> list[str]:
+    """One non-interactive exec/print argv for a stage with explicit instructions.
+
+    ``access`` (read / plan / edit) is enforced by Claude Code's permission flags; Codex and
+    Antigravity keep their own sandboxing."""
+    if platform == "codex":
+        return _codex_exec_command(stage["model"], stage["effort"], instructions, prompt, interactive=False)
+    if platform == "claude-code":
+        return _claude_print_command(stage["model"], stage["effort"], f"{instructions}\n\n{prompt}", access, plan_path)
+    return _agy_prompt_command(stage["model"], f"{instructions}\n\n{prompt}")
+
+
 def stage_commands(result: RouteResult, task: str, interactive: bool = False) -> list[list[str]]:
     """Build one argv per execution stage. Two-stage runs are always exec/print sessions."""
     if result.mode != "two_stage":
@@ -1162,13 +1337,10 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
         execute_instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
     execute_instructions = f"{execute_instructions}\n\n{verification_handoff_instructions(result)}"
     execute_prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
-    builders = {
-        "codex": lambda stage, instr, prompt: _codex_exec_command(stage["model"], stage["effort"], instr, prompt, interactive=False),
-        "claude-code": lambda stage, instr, prompt: _claude_print_command(stage["model"], stage["effort"], f"{instr}\n\n{prompt}"),
-        "antigravity": lambda stage, instr, prompt: _agy_prompt_command(stage["model"], f"{instr}\n\n{prompt}"),
-    }
-    build = builders[result.platform]
-    return [build(planner, instructions, plan_prompt), build(implementer, execute_instructions, execute_prompt)]
+    return [
+        stage_command(result.platform, planner, instructions, plan_prompt, "plan", plan_path),
+        stage_command(result.platform, implementer, execute_instructions, execute_prompt, "edit"),
+    ]
 
 
 def command_chain(result: RouteResult, task: str, keep_plan: bool = False, interactive: bool = False) -> str | None:
@@ -1194,15 +1366,84 @@ def command_model(command: list[str], option: str) -> str | None:
     return models[0] if len(models) == 1 else None
 
 
-def command_chain_from_payload(payload: object, cleanup_plan_dir: bool = False) -> str:
-    """Return the already-classified platform command chain from a route JSON payload.
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\-]*$")  # Codex and Claude ids
+AGY_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._()/:\-]*$")  # display names like "Gemini 3.1 Pro (High)"
+AGENT_NAME_RE = re.compile(r"^[a-z0-9-]+$")
+CODEX_CONFIG_KEYS = ("model_reasoning_effort", "developer_instructions")
 
-    ``cleanup_plan_dir`` removes the two-stage plan directory after the chain runs,
-    on both success and failure. It must only be set by a caller that just generated
-    this route file for an immediate direct run (the plan dir was created for this
-    run alone) -- never for a stored/user-supplied route file replayed later, whose
-    plan artifacts the user may still want.
-    """
+
+def model_ok(platform: str, model: object) -> bool:
+    return isinstance(model, str) and bool((AGY_MODEL_RE if platform == "antigravity" else MODEL_RE).match(model))
+
+
+def validate_argv(
+    platform: str, command: list[str], *, model: str | None = None, effort: str | None = None,
+    access: str | None = None, plan_path: str | None = None, legacy: bool = False,
+) -> None:
+    """Accept only argv shapes this router generates; refuse every other flag or override.
+
+    The last element is the prompt. Claude commands of a v6 route must equal the generated
+    argv for the step's model, effort and access level (permission flags included); routes
+    older than v6 predate permission flags and may only carry the old ``--agent`` form."""
+    options, i = command[1:-1], 0
+
+    def fail(reason: str):
+        raise ValueError(f"route file command is not a router-generated {platform} command ({reason})")
+
+    if platform == "codex":
+        if options[:1] == ["exec"]:
+            options = options[1:]
+        models = 0
+        while i < len(options):
+            flag, value = options[i], options[i + 1] if i + 1 < len(options) else None
+            key, sep, setting = (value or "").partition("=")
+            if flag == "-m" and model_ok(platform, value):
+                models += 1
+            elif flag == "-c" and sep and key in CODEX_CONFIG_KEYS and (key != "model_reasoning_effort" or setting in EFFORT_ORDER):
+                pass
+            else:
+                fail(f"unexpected option {flag}")
+            i += 2
+        if models != 1:
+            fail("expected exactly one model")
+        return
+    if platform == "antigravity":
+        if legacy and options[:1] == ["--agent"] and len(options) > 1 and AGENT_NAME_RE.match(options[1]):
+            options = options[2:]
+        if len(options) != 3 or options[0] != "--model" or not model_ok(platform, options[1]) or options[2] not in ("--prompt", "--prompt-interactive"):
+            fail("unexpected option")
+        return
+    if not model_ok(platform, model):
+        fail("bad model")
+    tail = [*(["--effort", effort] if effort else [])]
+    if not legacy:
+        try:
+            expected = [["claude", "-p", "--model", model, *tail, *claude_access_flags(access or "read", plan_path), "--"], ["claude", "--model", model, *tail]]
+        except ValueError as exc:
+            fail(str(exc))
+        if command[:-1] not in expected:
+            fail("flags differ from the generated command")
+        return
+    seen_model = False
+    while i < len(options):
+        flag = options[i]
+        if flag in ("-p", "--print"):
+            i += 1
+        elif flag == "--agent" and i + 1 < len(options) and AGENT_NAME_RE.match(options[i + 1]):
+            i += 2
+        elif flag == "--model" and i + 1 < len(options) and options[i + 1] == model and not seen_model:
+            seen_model = True
+            i += 2
+        elif flag == "--effort" and i + 1 < len(options) and options[i + 1] in EFFORT_ORDER:
+            i += 2
+        else:
+            fail(f"unexpected option {flag}")
+    if not seen_model:
+        fail("expected a model")
+
+
+def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:
+    """Validate a route JSON payload; return its execution-step argvs and the plan file path (two-stage only)."""
     if not isinstance(payload, dict) or payload.get("schema_version") not in SUPPORTED_ROUTE_SCHEMA_VERSIONS:
         raise ValueError("route file must be a supported route JSON payload")
     if payload["schema_version"] >= 3:
@@ -1216,29 +1457,56 @@ def command_chain_from_payload(payload: object, cleanup_plan_dir: bool = False) 
     steps = payload.get("steps")
     if not isinstance(steps, list) or not steps:
         raise ValueError("route file must contain at least one execution step")
+    mode = payload.get("mode")
+    plan_path = None
+    if mode == "two_stage" and len(steps) == 2:
+        plan = steps[0].get("output") if isinstance(steps[0], dict) else None
+        plan_path = plan.get("path") if isinstance(plan, dict) else None
+        if not isinstance(plan_path, str) or not plan_path:
+            raise ValueError("two-stage route file must declare its plan output")
+    elif not (mode == "single" and len(steps) == 1):
+        raise ValueError("route file mode does not match its execution steps")
     commands: list[list[str]] = []
-    for step in steps:
+    for index, step in enumerate(steps):
         command = step.get("command") if isinstance(step, dict) else None
         if not isinstance(command, list) or not command or command[0] != executable or not all(isinstance(arg, str) and arg for arg in command):
             raise ValueError("route file contains an invalid platform command")
         if not isinstance(step.get("model"), str) or step["model"] != command_model(command, model_option):
             raise ValueError("route file step model does not match its command")
+        if plan_path is not None:
+            access = "plan" if index == 0 else "edit"
+        else:
+            access = "edit" if payload.get("task_type") in CODE_CHANGE_TASK_TYPES else "read"
+        validate_argv(
+            platform, command, model=step["model"], effort=step.get("effort"), access=access,
+            plan_path=plan_path if index == 0 else None, legacy=payload["schema_version"] < 6,
+        )
         commands.append(command)
-    if payload.get("mode") == "single" and len(commands) == 1:
+    return commands, plan_path
+
+
+def command_chain_from_payload(payload: object, cleanup_plan_dir: bool = False) -> str:
+    """Return the already-classified plan/implement shell chain from a route JSON payload.
+
+    This is the printable, replayable core of a route; the test/review/fix stages of a
+    v6 ``pipeline`` block run only through scripts/pipeline.py.
+
+    ``cleanup_plan_dir`` removes the two-stage plan directory after the chain runs,
+    on both success and failure. It must only be set by a caller that just generated
+    this route file for an immediate direct run (the plan dir was created for this
+    run alone) -- never for a stored/user-supplied route file replayed later, whose
+    plan artifacts the user may still want.
+    """
+    commands, plan_path = validated_commands(payload)
+    if plan_path is None:
         return shlex.join(commands[0])
-    if payload.get("mode") == "two_stage" and len(commands) == 2:
-        plan = steps[0].get("output") if isinstance(steps[0], dict) else None
-        plan_path = plan.get("path") if isinstance(plan, dict) else None
-        if not isinstance(plan_path, str) or not plan_path:
-            raise ValueError("two-stage route file must declare its plan output")
-        plan_dir = shlex.quote(str(Path(plan_path).parent))
-        stages = " && ".join(shlex.join(command) for command in commands)
-        if not cleanup_plan_dir:
-            return f"mkdir -p {plan_dir} && {stages}"
-        # Clean up on both success and failure (rc preserved) -- unlike a plain
-        # `&&` tail, this must not depend on every stage succeeding.
-        return f"mkdir -p {plan_dir} && ({stages}; rc=$?; rm -rf {plan_dir}; exit $rc)"
-    raise ValueError("route file mode does not match its execution steps")
+    plan_dir = shlex.quote(str(Path(plan_path).parent))
+    stages = " && ".join(shlex.join(command) for command in commands)
+    if not cleanup_plan_dir:
+        return f"mkdir -p {plan_dir} && {stages}"
+    # Clean up on both success and failure (rc preserved) -- unlike a plain
+    # `&&` tail, this must not depend on every stage succeeding.
+    return f"mkdir -p {plan_dir} && ({stages}; rc=$?; rm -rf {plan_dir}; exit $rc)"
 
 
 def verification_recommendations(task_type: str, level: str, risk_flags: dict[str, bool], mode: str) -> dict[str, list[dict[str, str]]]:
@@ -1314,7 +1582,19 @@ def claude_agent_delegation(effort: str | None, model: str) -> dict[str, str]:
     return {"subagent_type": f"model-effort:effort-{effort or 'none'}", "model": alias}
 
 
-def result_payload(result: RouteResult, commands: list[list[str]] | None = None) -> dict:
+def pipeline_payload(result: RouteResult, task: str | None) -> dict | None:
+    if result.pipeline is None:
+        return None
+    payload = {**result.pipeline, "task": task}
+    if result.platform == "claude-code":
+        for name in ("review", "replan"):
+            stage = payload[name]
+            if stage:
+                payload[name] = {**stage, "agent": claude_agent_delegation(stage["effort"], stage["model"])}
+    return payload
+
+
+def result_payload(result: RouteResult, commands: list[list[str]] | None = None, task: str | None = None) -> dict:
     steps: list[dict] = []
     ids = ["plan", "execute"] if result.mode == "two_stage" else ["execute"]
     for position, stage in enumerate(result.stages):
@@ -1356,6 +1636,7 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None)
         "verification": verification_recommendations(result.task_type, result.level, result.risk_flags, result.mode),
         "execution_strategy": result.execution_strategy,
         "orchestration_eligible": result.orchestration_eligible,
+        "pipeline": pipeline_payload(result, task),
     }
     if any(flag in SECURITY_FLOOR_FLAGS for flag in active_risk_flags):
         payload["scope_guard"] = {
@@ -1468,6 +1749,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Route from externally produced classifier JSON (a path, or - for stdin) instead of "
         "spawning a classifier; a primary/escalated envelope combines one repository-aware retry",
     )
+    parser.add_argument(
+        "--session", default=None, metavar="KEY",
+        help=f"Reuse this session's stored classification for follow-up tasks (also {route_reuse.SESSION_ENV}); "
+        "a workspace change, expiry, an earlier re-plan, or a new operation, scope or risk reclassifies",
+    )
+    parser.add_argument("--no-reuse", action="store_true", help="Classify again even when the session has a reusable route")
     parser.add_argument("--critical", action="store_true", help="Force the critical risk tier (L5 with maximum planning/judging effort)")
     parser.add_argument("--classifier-timeout", type=positive_finite_float, default=CLASSIFIER_TIMEOUT_SECONDS)
     parser.add_argument("--detect-antigravity-models", action="store_true")
@@ -1492,7 +1779,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "--platform", "--config", "--level", "--task-type", "--keep-plan",
             "--classifier-timeout", "--detect-antigravity-models", "--detect-timeout",
             "--available-models-file", "--format", "--interactive", "--no-prompt", "--repo-aware", "--critical",
-            "--print-classifier-prompt", "--classification-file",
+            "--print-classifier-prompt", "--classification-file", "--session", "--no-reuse",
         }
         if args.task or any(option in argv for option in task_options):
             parser.error("--route-file cannot be combined with task-routing options")
@@ -1542,6 +1829,14 @@ def main(argv: list[str] | None = None) -> int:
     manual_bypass = explicit_task_type is not None and (args.critical or args.level is not None)
 
     classification = external
+    session = args.session or os.environ.get(route_reuse.SESSION_ENV)
+    reuse_info = None
+    stored = None
+    if session and not manual_bypass and classification is None and not args.no_reuse:
+        classification, stored, why = load_reused_classification(session, os.getcwd(), args.task, explicit_task_type)
+        reuse_info = {"session": session, "reused": classification is not None, **({"reason": why} if why else {})}
+    elif session:
+        reuse_info = {"session": session, "reused": False, "reason": "reuse skipped (explicit classification, pins, or --no-reuse)"}
     prompted_critical = False
     if not manual_bypass and classification is None:
         classification = classify_task(
@@ -1569,6 +1864,13 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"routing failed: {exc}", file=sys.stderr)
         return 2
+    if session and result.source not in ("fallback", "manual"):
+        delegability = classification.delegability if classification is not None else 0
+        route_reuse.save_record(
+            session, os.getcwd(), session_record(result, delegability),
+            saved_at=stored.get("saved_at") if reuse_info and reuse_info["reused"] else None,
+            reuses=int(stored.get("reuses", 0)) + 1 if reuse_info and reuse_info["reused"] else 0,
+        )
     if result.source == "fallback":
         print(
             "Semantic preflight failed; safe fallback applied "
@@ -1576,7 +1878,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
     if args.format == "json":
-        print(json.dumps(result_payload(result, stage_commands(result, args.task, args.interactive)), ensure_ascii=False, indent=2))
+        payload = result_payload(result, stage_commands(result, args.task, args.interactive), args.task)
+        if reuse_info:
+            payload["reuse"] = reuse_info
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     elif args.format == "command":
         chain = command_chain(result, args.task, keep_plan=args.keep_plan, interactive=args.interactive)
         print(chain if chain is not None else shlex.join(shell_command(result, args.task, args.interactive)))
@@ -1590,6 +1895,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"stages: {stages_text}")
         print("rules: " + (", ".join(result.matched_rules) or "none (base level)"))
         print("risk flags: " + (", ".join(active_flags) if active_flags else "none"))
+        if reuse_info:
+            print("route reuse: " + ("reused" if reuse_info["reused"] else f"reclassified ({reuse_info.get('reason', '')})"))
         if result.needs_context:
             print("needs context: a deciding fact is unknown; classify again with repository access")
         print("reason: " + "; ".join(result.rationale))

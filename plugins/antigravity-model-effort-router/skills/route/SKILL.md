@@ -27,10 +27,10 @@ once to the routed executor (one step) with focused tests, at most one review, a
 multi-agent chains; re-route only if new evidence raises scope or risk. It never means the
 parent implements the task itself.
 
-Schema v5 records facts, `risk_tier`, and `orchestration_eligible` as future metadata only.
+Schema v6 records facts, `risk_tier`, and `orchestration_eligible` as future metadata only.
 `scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
-`execution_strategy: direct` because direct v2-v5 route-file replay never invokes it.
+`execution_strategy: direct` because direct v2-v6 route-file replay never invokes it.
 
 An `elevated` or `critical` `risk_tier` implies L5 and swaps the planning/judging stage to
 `Claude Opus Thinking` (Antigravity has no effort setting); the implementer stage keeps its

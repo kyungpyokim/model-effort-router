@@ -29,9 +29,9 @@ if [[ "${1:-}" == "--route-file" ]]; then
   [[ "$#" -eq 2 && "$INTERACTIVE" -eq 0 ]] || { echo "usage: agy-route --route-file <route.json>" >&2; exit 2; }
   ROUTE_ARGS=(--route-file "$2")
   COMMAND="$(python3 "${ROUTER}" "${ROUTE_ARGS[@]}")"
-  echo "[model-effort-router] ${COMMAND}" >&2
+  if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}${MODEL_EFFORT_ROUTER_VERBOSE:-}" ]]; then echo "[model-effort-router] ${COMMAND}" >&2; fi
   if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then exit 0; fi
-  exec bash -c "${COMMAND}"
+  exec python3 "${ROOT_DIR}/scripts/pipeline.py" --route-file "$2"
 fi
 if [[ "${1:-}" == "--" ]]; then
   shift
@@ -56,8 +56,14 @@ fi
 python3 "${ARGS[@]}" > "${ROUTE_FILE}"
 ROUTE_ARGS=(--route-file "${ROUTE_FILE}" --cleanup-plan-dir)
 COMMAND="$(python3 "${ROUTER}" "${ROUTE_ARGS[@]}")"
-echo "[model-effort-router] ${COMMAND}" >&2
+if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}${MODEL_EFFORT_ROUTER_VERBOSE:-}" ]]; then echo "[model-effort-router] ${COMMAND}" >&2; fi
 if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then
   exit 0
 fi
-bash -c "${COMMAND}"
+# Interactive sessions stay a single hand-off; everything else runs the chained
+# plan -> implement -> test -> review pipeline (MODEL_EFFORT_ROUTER_TEST_CMD sets the test gate).
+if [[ "$INTERACTIVE" -eq 1 ]]; then
+  bash -c "${COMMAND}"
+else
+  python3 "${ROOT_DIR}/scripts/pipeline.py" --route-file "${ROUTE_FILE}" --cleanup-plan-dir
+fi

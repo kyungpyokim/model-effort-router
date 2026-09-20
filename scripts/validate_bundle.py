@@ -67,6 +67,9 @@ def main() -> int:
     require(codex / "skills" / "route" / "SKILL.md")
     require(codex / "hooks" / "hooks.json")
     require(codex / "scripts" / "routing_policy_hook.py")
+    for plugin in (codex, claude, agy):
+        require(plugin / "scripts" / "pipeline.py")
+        require(plugin / "scripts" / "route_reuse.py")
     codex_hooks = read_json(codex / "hooks" / "hooks.json")["hooks"]
     assert set(codex_hooks) == {"SessionStart"}
     handler = codex_hooks["SessionStart"][0]["hooks"][0]

@@ -658,7 +658,7 @@ class DifficultyRuleTests(unittest.TestCase):
         classification_ = router.validate_classifier_output(classifier_output(changes_public_api_contract="yes", raw=False))
         result = routed(classifier=lambda _: classification_)
         payload = router.result_payload(result, router.stage_commands(result, "task"))
-        self.assertEqual(payload["schema_version"], 5)
+        self.assertEqual(payload["schema_version"], 6)
         self.assertEqual(payload["risk_tier"], "standard")
         self.assertEqual(payload["facts"]["changes_public_api_contract"], "yes")
         self.assertEqual(payload["matched_rules"], ["L4:changes_public_api_contract"])
@@ -798,9 +798,9 @@ class SecurityReviewFloorTests(unittest.TestCase):
         for text in (policy, readme):
             self.assertIn("reviews_security_sensitive_code", text)
             self.assertIn("security_domain", text)
-        self.assertIn("sixteen bounded facts", readme)
+        self.assertIn("seventeen bounded facts", readme)
         self.assertNotIn("13 facts", policy)
-        self.assertIn("16 facts", policy)
+        self.assertIn("17 facts", policy)
 
 
 class ImpactFloorTests(unittest.TestCase):
@@ -921,7 +921,7 @@ class ImpactFloorTests(unittest.TestCase):
             "blast_radius": ["narrow", "broad", "unknown"],
             "silent_failure_material_harm": ["yes", "no", "unknown"],
         }
-        self.assertEqual(len(router.FACTS), 16)
+        self.assertEqual(len(router.FACTS), 17)
         for fact, values in expected.items():
             with self.subTest(fact=fact):
                 self.assertIn(fact, facts_schema["required"])
@@ -981,7 +981,7 @@ class ImpactFloorTests(unittest.TestCase):
             self.assertIn("unless the cached or read value decides the amount charged", text)
         # The precedence text and the fact set stay as they are.
         self.assertIn("payment over crypto over auth over permissions over pii over secrets", self.prompt_line("security_domain"))
-        self.assertEqual(len(router.FACTS), 16)
+        self.assertEqual(len(router.FACTS), 17)
 
     def test_prompt_and_policy_count_tenant_and_customer_data_isolation_as_permissions(self):
         # A wrong per-customer cache key exposes one customer's data to another: that
@@ -2003,7 +2003,11 @@ class CommandAndLauncherTests(unittest.TestCase):
                     f"    print({classifier_reply!r})\n"
                     "else:\n"
                     f"    with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
-                    "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n",
+                    "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n"
+                    "    import re\n"
+                    "    plan = re.search(r'exactly: (\\S+)', ' '.join(sys.argv[1:]))\n"
+                    "    if plan:\n"
+                    "        pathlib.Path(plan.group(1)).write_text('{}')\n",
                     encoding="utf-8",
                 )
                 fake.chmod(0o755)
@@ -2045,6 +2049,14 @@ class CommandAndLauncherTests(unittest.TestCase):
                 generated = re.search(r'ROUTE_ARGS=\(--route-file "\$\{ROUTE_FILE\}" --cleanup-plan-dir\)', text)
                 self.assertIsNotNone(user_supplied, "user-supplied --route-file branch changed shape")
                 self.assertIsNotNone(generated, "direct-run generated route file must pass --cleanup-plan-dir")
+
+    def test_launchers_run_non_interactive_routes_through_the_pipeline_runner(self):
+        for launcher in self.LAUNCHERS.values():
+            text = (ROOT / launcher).read_text(encoding="utf-8")
+            with self.subTest(launcher=launcher):
+                self.assertEqual(text.count('scripts/pipeline.py" --route-file'), 2)
+                self.assertRegex(text, r'pipeline\.py" --route-file "\$2"')
+                self.assertRegex(text, r'pipeline\.py" --route-file "\$\{ROUTE_FILE\}" --cleanup-plan-dir')
 
     def test_antigravity_launcher_executes_stored_route_without_reclassification(self):
         result = routed(platform="antigravity", classifier=lambda _: classification("review", "L3"))
@@ -2089,6 +2101,8 @@ class CommandAndLauncherTests(unittest.TestCase):
                     f"with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
                     "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
                     "if 'You are the planning stage' in sys.argv[-1]:\n"
+                    f"    if {planner_status} == 0:\n"
+                    f"        pathlib.Path({str(directory / 'plan' / 'plan.json')!r}).write_text('{{}}')\n"
                     f"    raise SystemExit({planner_status})\n",
                     encoding="utf-8",
                 )
@@ -2458,13 +2472,13 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env={**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1"},
             )
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("claude --model claude-opus-5", proc.stderr)
+        self.assertIn("claude -p --model claude-opus-5", proc.stderr)
         self.assertNotIn("--agent", proc.stderr)
 
     def test_claude_and_antigravity_embed_level_instructions_without_installed_agents(self):
         # `--agent` needs the plugin installed: claude exits "not found", agy silently ignores it.
         for platform, instruction_flag, snippet in (
-            ("claude-code", "-p", "Analyse module boundaries"),
+            ("claude-code", "--", "Analyse module boundaries"),
             ("antigravity", "--prompt", "Analyse dependencies"),
         ):
             with self.subTest(platform=platform):
@@ -2710,7 +2724,7 @@ class RouteSkillContractTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("orchestration_eligible", text)
                 self.assertIn("execution_strategy", text)
-                self.assertIn("v2-v5", text)
+                self.assertIn("v2-v6", text)
 
     def test_runtime_docs_match_the_current_matrix_and_classifier_contract(self):
         claude_skill = (ROOT / "plugins" / "claude-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
@@ -2778,7 +2792,7 @@ class ModelDetectionTests(unittest.TestCase):
 
 
 class BundleParityTests(unittest.TestCase):
-    SHARED = ("scripts/router.py", "config/model-map.json", "config/classification-schema.json", "references/routing-policy.md")
+    SHARED = ("scripts/router.py", "scripts/pipeline.py", "scripts/route_reuse.py", "scripts/astra_adapter.py", "config/model-map.json", "config/classification-schema.json", "references/routing-policy.md")
     PLUGINS = ("plugins/codex-model-effort-router", "plugins/claude-model-effort-router", "plugins/antigravity-model-effort-router")
 
     def test_plugin_copies_match_the_bundle_root(self):
