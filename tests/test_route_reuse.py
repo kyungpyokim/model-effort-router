@@ -174,6 +174,123 @@ class RouteReuseTests(ReuseCase):
             router.parse_args(["--route-file", "r.json", "--session", "s"])
 
 
+class ReviewHardeningTests(ReuseCase):
+    def test_a_migration_flag_does_not_cover_a_later_security_change(self):
+        self.route("add the orders table migration", classified=classification(level="L4", flags=("data_migration",)))
+        payload, calls = self.route("add the payment refund endpoint and rotate the auth secret")
+        self.assertEqual(calls, 1)
+        self.assertIn("security", payload["reuse"]["reason"])
+
+    def test_a_critical_tier_without_security_flags_does_not_cover_security_words(self):
+        self.route("purge the ledger", classified=classification(level="L5", tier="critical"))
+        payload, calls = self.route("fix the token refresh")
+        self.assertEqual(calls, 1)
+        self.assertIn("security", payload["reuse"]["reason"])
+
+    def test_common_security_vocabulary_forces_reclassification(self):
+        for task in ("fix the SQL injection in the search filter", "add a JWT refresh endpoint", "wire up stripe", "harden the csrf check",
+                     "세션 만료 수정", "관리자 권한 수정", "cors headers"):
+            with self.subTest(task=task):
+                self.route("fix the parser bug")
+                _, calls = self.route(task)
+                self.assertEqual(calls, 1)
+
+    def test_a_read_only_route_is_not_reused_for_a_modification(self):
+        review = classification(task_type="review", level="L3")
+        for follow_up in ("이 부분 고쳐줘", "리팩토링 해줘", "the second file too"):
+            with self.subTest(follow_up=follow_up):
+                self.route("review the parser", classified=review)
+                _, calls = self.route(follow_up)
+                self.assertEqual(calls, 1)
+
+    def test_a_different_pinned_task_type_reclassifies(self):
+        self.route("review the parser", classified=classification(task_type="review"))
+        _, calls = self.route("look at it again", "--task-type", "implementation")
+        self.assertEqual(calls, 1)
+
+    def test_malformed_records_reclassify_instead_of_crashing(self):
+        for field, value in (("saved_at", "soon"), ("risk_flags", ["security_sensitive"]), ("delegability", 99), ("reuses", "x"), ("facts", [])):
+            with self.subTest(field=field):
+                self.route("fix the parser bug")
+                record = route_reuse.load_record("s1")
+                record[field] = value
+                route_reuse.record_path("s1").write_text(json.dumps(record), encoding="utf-8")
+                payload, calls = self.route("also handle empty input")
+                self.assertEqual(calls, 1)
+                self.assertFalse(payload["reuse"]["reused"])
+
+    def test_a_future_timestamp_does_not_live_forever(self):
+        self.route("fix the parser bug")
+        record = route_reuse.load_record("s1")
+        record["saved_at"] = 9e15
+        route_reuse.record_path("s1").write_text(json.dumps(record), encoding="utf-8")
+        _, calls = self.route("also handle empty input")
+        self.assertEqual(calls, 1)
+
+    def test_the_record_is_private_atomic_and_never_follows_a_symlink(self):
+        self.route("fix the parser bug")
+        path = route_reuse.record_path("s1")
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual([p.name for p in path.parent.iterdir()], [path.name])
+        target = self.workspace / "victim.txt"
+        target.write_text("keep")
+        path.unlink()
+        path.symlink_to(target)
+        self.assertIsNone(route_reuse.load_record("s1"))
+        self.route("fix the parser bug")
+        self.assertEqual(target.read_text(), "keep")
+        self.assertFalse(path.is_symlink())
+
+    def test_foreign_or_oversized_records_are_ignored(self):
+        self.route("fix the parser bug")
+        with mock.patch.object(route_reuse.os, "geteuid", return_value=os.geteuid() + 1):
+            self.assertIsNone(route_reuse.load_record("s1"))
+        route_reuse.record_path("s1").write_text(" " * (route_reuse.MAX_RECORD_BYTES + 1), encoding="utf-8")
+        self.assertIsNone(route_reuse.load_record("s1"))
+
+    def test_needs_context_and_evidence_survive_reuse_via_a_blocker(self):
+        uncertain = router.Classification(**{**classification().__dict__, "needs_context": True, "evidence": ("a.py",)})
+        self.route("fix the parser bug", classified=uncertain)
+        payload, calls = self.route("also handle empty input")
+        self.assertEqual(calls, 1)
+        self.assertIn("context", payload["reuse"]["reason"])
+
+    def test_evidence_is_kept_on_a_reused_route(self):
+        evidence = router.Classification(**{**classification().__dict__, "evidence": ("a.py",)})
+        self.route("fix the parser bug", classified=evidence)
+        payload, calls = self.route("also handle empty input")
+        self.assertEqual((calls, payload["evidence"]), (0, ["a.py"]))
+
+    def test_a_reuse_chain_is_capped(self):
+        self.route("fix the parser bug")
+        for _ in range(route_reuse.MAX_REUSES):
+            _, calls = self.route("also the next file")
+            self.assertEqual(calls, 0)
+        payload, calls = self.route("also the next file")
+        self.assertEqual(calls, 1)
+        self.assertIn("times already", payload["reuse"]["reason"])
+
+    def test_a_non_mapping_reuse_field_is_a_validation_error_not_a_crash(self):
+        payload, _ = self.route("fix the parser bug")
+        payload["reuse"] = "s1"
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
+
+    def test_a_route_file_cannot_invalidate_another_sessions_record(self):
+        payload, _ = self.route("fix the parser bug", session="mine")
+        payload["reuse"]["session"] = "mine"
+        payload["pipeline"]["review"] = payload["pipeline"]["replan"] = None
+        fake = self.state.parent / "bin"
+        fake.mkdir()
+        exe = fake / "codex"
+        exe.write_text(f"#!{sys.executable}\nimport sys\nsys.exit(7)\n", encoding="utf-8")
+        exe.chmod(0o755)
+        with mock.patch.dict(os.environ, {"PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            pipeline.run_route(payload, [], str(self.workspace), own_session="someone-else")
+        self.assertIsNone(route_reuse.load_record("mine")["blocked"])
+
+
 class OutcomeTests(ReuseCase):
     def test_a_run_that_replanned_or_failed_invalidates_the_stored_route(self):
         for replans, code, expected in ((0, 0, None), (1, 0, "re-planned"), (0, 10, "exit 10")):
@@ -194,7 +311,7 @@ class OutcomeTests(ReuseCase):
         exe.chmod(0o755)
         with mock.patch.dict(os.environ, {"PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            rc = pipeline.run_route(payload, [], str(self.workspace))
+            rc = pipeline.run_route(payload, [], str(self.workspace), own_session="s1")
         self.assertEqual(rc, 7)
         self.assertEqual(route_reuse.load_record("s1")["blocked"], "exit 7")
 

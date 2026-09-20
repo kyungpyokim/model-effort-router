@@ -19,7 +19,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 import route_reuse  # noqa: E402
 
 LEVELS = ("L1", "L2", "L3", "L4", "L5")
@@ -827,7 +828,9 @@ def pinned_classification(task_type: str, level: str) -> Classification:
     )
 
 
-def load_reused_classification(session: str, cwd: str, task: str) -> tuple[Classification | None, dict | None, str]:
+def load_reused_classification(
+    session: str, cwd: str, task: str, explicit_task_type: str | None = None,
+) -> tuple[Classification | None, dict | None, str]:
     """The stored session classification when no blocker fires, else ``None`` and why not."""
     record = route_reuse.load_record(session)
     if record is None:
@@ -837,21 +840,29 @@ def load_reused_classification(session: str, cwd: str, task: str) -> tuple[Class
         flags, facts, rules = record["risk_flags"], record["facts"], record["matched_rules"]
         if task_type not in TASK_TYPES or level not in LEVELS or tier not in RISK_TIERS:
             raise ValueError("unknown route values")
-        if set(flags) != set(RISK_FLAGS) or not all(isinstance(v, bool) for v in flags.values()):
+        if not isinstance(flags, dict) or set(flags) != set(RISK_FLAGS) or not all(isinstance(v, bool) for v in flags.values()):
             raise ValueError("bad risk flags")
-        if not isinstance(facts, dict) or not isinstance(rules, list):
+        if not isinstance(facts, dict) or not isinstance(rules, list) or not isinstance(record.get("evidence", []), list):
             raise ValueError("bad facts")
-        delegability = int(record.get("delegability", 0))
-    except (KeyError, TypeError, ValueError):
+        delegability, reuses = record.get("delegability", 0), record.get("reuses", 0)
+        if delegability not in (0, 1, 2) or isinstance(reuses, bool) or not isinstance(reuses, int):
+            raise ValueError("bad counters")
+        if not isinstance(record["saved_at"], (int, float)) or isinstance(record["saved_at"], bool):
+            raise ValueError("bad timestamp")
+        blockers = route_reuse.reuse_blockers(
+            record, cwd, task, task_type in CODE_CHANGE_TASK_TYPES,
+            explicit_task_type=normalise_task_type(explicit_task_type) if explicit_task_type else None,
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):
         return None, None, "stored route is invalid"
-    blockers = route_reuse.reuse_blockers(record, cwd, task, task_type in CODE_CHANGE_TASK_TYPES)
     if blockers:
         return None, record, "; ".join(blockers)
     classification = Classification(
         task_type=task_type, level=level, risk_flags=dict(flags),
-        reason=f"route reused from the session (reuse {int(record.get('reuses', 0)) + 1}); the classifier was not called",
+        reason=f"route reused from the session (reuse {reuses + 1}); the classifier was not called",
         source="reused", facts={str(k): str(v) for k, v in facts.items()}, matched_rules=tuple(str(r) for r in rules),
-        risk_tier=tier, delegability=delegability,
+        risk_tier=tier, needs_context=bool(record.get("needs_context", False)),
+        evidence=tuple(str(e) for e in record.get("evidence", [])), delegability=delegability,
     )
     return classification, record, ""
 
@@ -860,7 +871,8 @@ def session_record(result: RouteResult, delegability: int) -> dict:
     return {
         "task_type": result.task_type, "level": result.level, "risk_tier": result.risk_tier,
         "risk_flags": dict(result.risk_flags), "facts": dict(result.facts),
-        "matched_rules": list(result.matched_rules), "delegability": delegability,
+        "matched_rules": list(result.matched_rules), "needs_context": result.needs_context,
+        "evidence": list(result.evidence), "delegability": delegability,
     }
 
 
@@ -1770,7 +1782,7 @@ def main(argv: list[str] | None = None) -> int:
     reuse_info = None
     stored = None
     if session and not manual_bypass and classification is None and not args.no_reuse:
-        classification, stored, why = load_reused_classification(session, os.getcwd(), args.task)
+        classification, stored, why = load_reused_classification(session, os.getcwd(), args.task, explicit_task_type)
         reuse_info = {"session": session, "reused": classification is not None, **({"reason": why} if why else {})}
     elif session:
         reuse_info = {"session": session, "reused": False, "reason": "reuse skipped (explicit classification, pins, or --no-reuse)"}
