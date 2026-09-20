@@ -8,6 +8,7 @@ import io
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -2244,6 +2245,31 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertNotIn('agy-route --interactive --', text)
                 self.assertNotIn('agy-route -- "<task>"', text)
                 self.assertNotIn("gemini-3.6-flash-low", text)
+
+    def test_antigravity_route_generation_command_is_not_hardcoded_interactive(self):
+        plugin = ROOT / "plugins" / "antigravity-model-effort-router"
+        for relative in ("GEMINI.md", "commands/route.toml"):
+            text = (plugin / relative).read_text(encoding="utf-8")
+            command = re.search(r"python3 <extension-root>/scripts/router\.py [^`]+`", text)
+            with self.subTest(path=relative):
+                self.assertIsNotNone(command)
+                self.assertNotIn("--interactive", command.group(0))
+
+    def test_documented_route_generation_command_works_for_two_stage_routes(self):
+        text = (ROOT / "plugins" / "antigravity-model-effort-router" / "commands" / "route.toml").read_text(encoding="utf-8")
+        command = re.search(r"python3 <extension-root>/scripts/router\.py ([^`]+)`", text).group(1)
+        # Mirror the documented argv; pinned type/level bypass the classifier and agy detection is dropped.
+        argv = [a for a in shlex.split(command) if a != "--detect-antigravity-models"]
+        argv = ["add a retry to the sync job" if a == "{{args}}" else a for a in argv]
+        argv += ["--task-type", "implementation", "--level", "L3", "--no-prompt"]
+        out, err = io.StringIO(), io.StringIO()
+        with tempfile.TemporaryDirectory() as state, mock.patch.dict(
+            os.environ, {"MODEL_EFFORT_ROUTER_STATE_DIR": state}
+        ), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            os.environ.pop("MODEL_EFFORT_ROUTER_SESSION", None)
+            code = router.main(argv)
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertEqual(json.loads(out.getvalue())["mode"], "two_stage")
 
     def test_readme_documents_the_current_preflight_contract(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

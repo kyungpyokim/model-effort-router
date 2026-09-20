@@ -1,8 +1,11 @@
 import contextlib
 import io
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -88,7 +91,10 @@ class PlanWorkflowTests(unittest.TestCase):
 class InteractiveIsSingleStageOnlyTests(unittest.TestCase):
     def cli(self, *args):
         out, err = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with tempfile.TemporaryDirectory() as state, mock.patch.dict(
+            os.environ, {"MODEL_EFFORT_ROUTER_STATE_DIR": state}
+        ), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            os.environ.pop("MODEL_EFFORT_ROUTER_SESSION", None)
             code = router.main(["x", *args])
         return code, out.getvalue(), err.getvalue()
 

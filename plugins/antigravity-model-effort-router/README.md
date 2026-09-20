@@ -45,8 +45,9 @@ To execute an already-generated route without classifying or detecting models ag
 ```
 
 Replay preserves `steps[].command`, including the interactive choice saved when
-generating JSON with `--interactive`. Two-stage runs remain noninteractive and
-start the executor only after the planner succeeds. A non-interactive run goes through
+generating JSON with `--interactive`. `--interactive` is single-stage only: the router
+refuses it (exit 2) for two-stage routes, which run non-interactively through
+`agy-route --route-file` and start the executor only after the planner succeeds. A non-interactive run goes through
 `scripts/pipeline.py` (plan -> implement -> launcher-run tests -> merged review).
 
 The router first classifies with native `agy` using fixed
