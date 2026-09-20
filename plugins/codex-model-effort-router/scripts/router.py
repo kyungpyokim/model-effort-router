@@ -1275,8 +1275,18 @@ def stage_command(platform: str, stage: dict, instructions: str, prompt: str, ac
     return _agy_prompt_command(stage["model"], f"{instructions}\n\n{prompt}")
 
 
+def refuse_interactive_two_stage(result: RouteResult, interactive: bool) -> None:
+    if interactive and result.mode == "two_stage":
+        raise ValueError(
+            "--interactive is single-stage only; this route is two-stage (plan -> implement). "
+            "Run without --interactive so the pipeline runs the plan, test gate and review"
+        )
+
+
 def stage_commands(result: RouteResult, task: str, interactive: bool = False) -> list[list[str]]:
-    """Build one argv per execution stage. Two-stage runs are always exec/print sessions."""
+    """Build one argv per execution stage. Two-stage runs are always exec/print sessions
+    and refuse ``interactive``."""
+    refuse_interactive_two_stage(result, interactive)
     if result.mode != "two_stage":
         return [_single_stage_command(result, task, interactive)]
     plan_path = str(Path(result.plan_dir) / "plan.json")
@@ -1919,6 +1929,7 @@ def main(argv: list[str] | None = None) -> int:
             repo_aware=args.repo_aware,
             critical=args.critical or prompted_critical,
         )
+        refuse_interactive_two_stage(result, args.interactive)
     except ValueError as exc:
         print(f"routing failed: {exc}", file=sys.stderr)
         return 2
