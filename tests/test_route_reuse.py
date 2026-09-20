@@ -49,7 +49,7 @@ class ReuseCase(unittest.TestCase):
         out = io.StringIO()
         with mock.patch.object(router, "classify_task", fake), contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
             rc = router.main(args)
-        self.assertEqual(rc, 0)
+        self.assertIn(rc, (0, router.EXIT_NEEDS_ANSWER))
         return json.loads(out.getvalue()), len(calls)
 
 
@@ -248,12 +248,16 @@ class ReviewHardeningTests(ReuseCase):
         route_reuse.record_path("s1").write_text(" " * (route_reuse.MAX_RECORD_BYTES + 1), encoding="utf-8")
         self.assertIsNone(route_reuse.load_record("s1"))
 
-    def test_needs_context_and_evidence_survive_reuse_via_a_blocker(self):
-        uncertain = router.Classification(**{**classification().__dict__, "needs_context": True, "evidence": ("a.py",)})
+    def test_a_route_with_unresolved_facts_is_not_stored_for_reuse(self):
+        uncertain = router.Classification(**{**classification().__dict__, "unresolved": ("changes_persisted_data",)})
         self.route("fix the parser bug", classified=uncertain)
         payload, calls = self.route("also handle empty input")
-        self.assertEqual(calls, 1)
-        self.assertIn("context", payload["reuse"]["reason"])
+        self.assertEqual(calls, 1)  # nothing was stored, so the follow-up classifies
+
+    def test_a_stored_record_with_unresolved_facts_blocks_reuse(self):
+        route_reuse.save_record("s2", str(self.workspace), {"task_type": "implementation", "risk_flags": {}, "unresolved": ["changes_persisted_data"]})
+        record = route_reuse.load_record("s2")
+        self.assertIn("unresolved", " ".join(route_reuse.reuse_blockers(record, str(self.workspace), "also handle empty input", True)))
 
     def test_evidence_is_kept_on_a_reused_route(self):
         evidence = router.Classification(**{**classification().__dict__, "evidence": ("a.py",)})

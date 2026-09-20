@@ -33,7 +33,7 @@ class BenchmarkCase:
     expected_level: str
     expected_tier: str = "standard"
     expected_risk_flags: tuple[str, ...] = ()
-    expected_needs_context: bool = False
+    expected_unresolved: tuple[str, ...] = ()
 
 
 GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
@@ -204,15 +204,23 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         expected_level="L4",
     ),
     BenchmarkCase(
-        # crosses_module_boundary unknown is a context-only signal (asks for repo
-        # context) and no longer floors the level itself, so this settles at L3
-        # from files_touched=2-5 rather than the old L4 floor.
-        name="L3_unknown_module_boundary_needs_context",
+        # An unknown fact never floors the level: it is reported as unresolved (a question for
+        # the user), and the level comes from the explicit facts (files_touched=2-5 gives L3).
+        name="L3_unknown_module_boundary_unresolved",
         task="Refactor session handling where module boundary impact is unknown",
         task_type="architectural_refactoring",
         facts={"mechanical_only": "no", "files_touched": "2-5", "crosses_module_boundary": "unknown"},
         expected_level="L3",
-        expected_needs_context=True,
+        expected_unresolved=("crosses_module_boundary",),
+    ),
+
+    BenchmarkCase(
+        name="L2_unknown_security_change_is_not_a_floor",
+        task="Fix the login problem",
+        task_type="implementation",
+        facts={"mechanical_only": "no", "files_touched": "1", "changes_security_or_payment_logic": "unknown", "irreversible_or_ledger_or_crypto": "unknown"},
+        expected_level="L2",
+        expected_unresolved=("changes_security_or_payment_logic", "irreversible_or_ledger_or_crypto"),
     ),
 
     # L5 Cases (needs_new_structure, intermittent_or_concurrency, open result across modules)
@@ -394,13 +402,13 @@ def evaluate_rules_benchmark() -> dict:
     for case in GOLDEN_BENCHMARK_CASES:
         merged_facts = {**base_facts, **case.facts}
         t0 = time.perf_counter_ns()
-        level, tier, matched_rules, needs_context = router.evaluate_rules(merged_facts)
+        level, tier, matched_rules, unresolved = router.evaluate_rules(merged_facts)
         t_elapsed_us = (time.perf_counter_ns() - t0) / 1000.0
         latencies_us.append(t_elapsed_us)
 
         # Accuracy check
         tier_match = (tier == case.expected_tier)
-        context_match = (needs_context == case.expected_needs_context)
+        context_match = (unresolved == case.expected_unresolved)
         level_match = (level == case.expected_level)
         passed = level_match and tier_match and context_match
         if passed:
@@ -450,7 +458,7 @@ def evaluate_rules_benchmark() -> dict:
             "level": level,
             "risk_tier": tier,
             "matched_rules": matched_rules,
-            "needs_context": needs_context,
+            "unresolved": list(unresolved),
             "latency_us": round(t_elapsed_us, 2),
             "platform_routes": platform_routes,
         })
@@ -500,13 +508,13 @@ def _pct(hit: int, total: int) -> float:
 def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict, platform: str, base_facts: dict[str, str]) -> dict:
     """Grade one classifier answer against its labels: fact agreement, level/tier, and the routed model+effort."""
     expected_facts = {**base_facts, **case.facts}
-    expected_level, expected_tier, _, expected_needs_context = router.evaluate_rules(expected_facts)
+    expected_level, expected_tier, _, expected_unresolved = router.evaluate_rules(expected_facts)
     per_fact = {name: {"expected": expected, "actual": actual.facts.get(name)} for name, expected in expected_facts.items()}
     # task_type is graded on its own: implementation and local_refactoring route identically, so a swap must not fail routing.
     routing_match = (
         actual.level == expected_level
         and actual.risk_tier == expected_tier
-        and actual.needs_context == expected_needs_context
+        and actual.unresolved == expected_unresolved
     )
     # An unlabelled requires_code_understanding must not be graded on the corpus default: for the profile check
     # that fact follows the classifier's own answer.
@@ -529,11 +537,11 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
         "profile_passed": "error" not in actual_profile and expected_profile == actual_profile,
         "expected": {
             "task_type": case.task_type, "level": expected_level, "risk_tier": expected_tier,
-            "needs_context": expected_needs_context, "profile": expected_profile,
+            "unresolved": list(expected_unresolved), "profile": expected_profile,
         },
         "actual": {
             "task_type": actual.task_type, "level": actual.level, "risk_tier": actual.risk_tier,
-            "needs_context": actual.needs_context, "profile": actual_profile,
+            "unresolved": list(actual.unresolved), "profile": actual_profile,
         },
         "facts": per_fact,
     }
@@ -652,7 +660,7 @@ def print_report(data: dict) -> None:
     print("-" * 80)
     for c in data["cases"]:
         status = "PASS" if c["passed"] else "FAIL"
-        ctx = "YES" if c["needs_context"] else "no"
+        ctx = "ASK" if c["unresolved"] else "no"
         print(f"{c['name']:<35} | {c['level']:<8} | {c['risk_tier']:<9} | {ctx:<5} | {status:<6} | {c['latency_us']} µs")
     classifier_data = data.get("classifier_benchmark")
     if classifier_data:

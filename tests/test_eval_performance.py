@@ -76,9 +76,9 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         self.assertGreater(summary["unknown_transitions"]["expected_unknown_to_unknown"], 0)
 
         unknown_only = eval_perf.evaluate_classifier_benchmark(
-            classifier=classifier, case_names=("L3_unknown_module_boundary_needs_context",),
+            classifier=classifier, case_names=("L3_unknown_module_boundary_unresolved",),
         )
-        self.assertEqual([case["name"] for case in unknown_only["cases"]], ["L3_unknown_module_boundary_needs_context"])
+        self.assertEqual([case["name"] for case in unknown_only["cases"]], ["L3_unknown_module_boundary_unresolved"])
 
         biased = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(lambda case: eval_perf._base_facts()))["summary"]
         self.assertLess(biased["labelled_fact_accuracy_pct"], biased["all_fact_agreement_pct"])

@@ -23,10 +23,10 @@ def routed(platform, task_type="implementation", understanding="yes", level=None
     all_facts = {**BASE_FACTS, **facts}
     if understanding is not None:
         all_facts["requires_code_understanding"] = understanding
-    level_, tier, matched, needs_context = router.evaluate_rules({**router.OPTIONAL_FACT_DEFAULTS, **all_facts})
+    level_, tier, matched, unresolved = router.evaluate_rules({**router.OPTIONAL_FACT_DEFAULTS, **all_facts})
     classification = router.Classification(
         task_type=task_type, level=level_, risk_flags={f: False for f in router.RISK_FLAGS}, reason="r", source="primary",
-        facts=all_facts, matched_rules=tuple(matched), risk_tier=tier, needs_context=needs_context,
+        facts=all_facts, matched_rules=tuple(matched), risk_tier=tier, unresolved=unresolved,
     )
     return router.route("t", platform, config, explicit_level=level, classifier=lambda _: classification)
 
