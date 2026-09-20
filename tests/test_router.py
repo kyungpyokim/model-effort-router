@@ -915,9 +915,14 @@ class CommandFormatPipelineTests(unittest.TestCase):
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(router.main(argv), 0)
         command = stdout.getvalue().strip()
-        route_file = next(part for part in router.shlex.split(command.strip("()").split(";")[0]) if part.endswith(".json"))
+        route_file = self.route_file_of(command)
         self.addCleanup(Path(route_file).unlink, missing_ok=True)
         return command, route_file
+
+    @staticmethod
+    def route_file_of(command):
+        parts = router.shlex.split(command.strip("()").split(";")[0])
+        return next((part for part in parts if part.endswith(".json")), "")
 
     def test_the_printed_command_runs_pipeline_py_on_a_valid_route_file(self):
         command, route_file = self.print_command()
@@ -928,18 +933,18 @@ class CommandFormatPipelineTests(unittest.TestCase):
         self.assertEqual(payload["schema_version"], router.SCHEMA_VERSION)
         self.assertIn("pipeline", payload)
         self.assertEqual(Path(route_file).stat().st_mode & 0o777, 0o600)
-        self.assertIn(f"rm -f {route_file}", command)  # the route file removes itself unless --keep-plan
+        self.assertIn(f"rm -f {router.shlex.quote(route_file)}", command)  # the route file removes itself unless --keep-plan
 
     def test_keep_plan_keeps_the_route_file_and_the_plan_directory(self):
         command, route_file = self.print_command("--keep-plan", task_type="architectural_refactoring", level="L3")
-        self.assertNotIn("--cleanup-plan-dir", command)
-        self.assertNotIn("rm -f", command)
+        self.assertNotIn("--cleanup-plan-dir", command)  # the plan directory is left for inspection
+        self.assertNotIn("rm -f", command)              # and so is the route file
         self.assertTrue(Path(route_file).exists())
 
     def test_a_session_is_passed_through_so_a_failed_run_can_invalidate_the_stored_route(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {router.route_reuse.STATE_DIR_ENV: tmp}):
             command, route_file = self.print_command("--session", "s-1")
-            self.assertIn("--session s-1", command)
+            self.assertIn("--session=s-1", command)
             self.assertEqual(json.loads(Path(route_file).read_text(encoding="utf-8"))["reuse"]["session"], "s-1")
 
     def test_executing_the_printed_command_runs_the_pipeline_and_a_failure_blocks_reuse(self):
@@ -956,13 +961,48 @@ class CommandFormatPipelineTests(unittest.TestCase):
                 input=classifier_output(level="L2"), capture_output=True, text=True, timeout=30, env=env, cwd=directory,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            route_file = next(part for part in router.shlex.split(proc.stdout.strip().strip("()").split(";")[0]) if part.endswith(".json"))
+            route_file = self.route_file_of(proc.stdout.strip())
+            self.assertTrue(route_file, proc.stdout)
             run = subprocess.run(["bash", "-c", proc.stdout.strip()], capture_output=True, text=True, timeout=30, env=env, cwd=directory)
             self.assertNotEqual(run.returncode, 0)
-            self.assertIn("phase=", run.stderr + run.stdout)  # the pipeline ran (it logs one phase line per stage)
+            self.assertIn("phase=implement", run.stderr + run.stdout)  # the pipeline ran and reached its implement stage
             record = json.loads(next(state.glob("session-*.json")).read_text(encoding="utf-8"))
             self.assertTrue(record["blocked"])
             self.assertFalse(Path(route_file).exists())  # cleaned up after the run
+
+    def test_a_session_key_starting_with_a_dash_still_parses(self):
+        command, _ = self.print_command("--session=-x")
+        self.assertIn("--session=-x", command)
+
+    def test_every_platform_prints_a_command_the_pipeline_accepts(self):
+        for platform, task_type, level in (
+            ("claude-code", "implementation", "L2"), ("claude-code", "architectural_refactoring", "L3"),
+            ("antigravity", "implementation", "L2"), ("antigravity", "review", "L4"), ("codex", "implementation", "L5"),
+        ):
+            with self.subTest(platform=platform, task_type=task_type, level=level):
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(router.main(["task", "--platform", platform, "--format", "command", "--task-type", task_type, "--level", level]), 0)
+                route_file = self.route_file_of(stdout.getvalue().strip())
+                self.addCleanup(Path(route_file).unlink, missing_ok=True)
+                payload = json.loads(Path(route_file).read_text(encoding="utf-8"))
+                router.validated_commands(payload)
+                self.assertEqual(payload["platform"], platform)
+
+    def test_a_fallback_or_unresolved_route_leaves_no_route_file_behind(self):
+        before = set(Path(tempfile.gettempdir()).glob("model-effort-route.*"))
+        with mock.patch.object(router, "classify_task", return_value=router.fallback_classification("process failed")):
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(router.main(["--platform", "codex", "--format", "command", "task"]), 1)
+        unresolved = router.validate_classifier_output(classifier_output(raw=False, changes_persisted_data="unknown"))
+        stdout = io.StringIO()
+        with mock.patch.object(router, "classify_task", return_value=unresolved):
+            with mock.patch.object(router.sys.stdin, "isatty", return_value=False):
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(router.main(["--platform", "codex", "--format", "command", "task"]), router.EXIT_NEEDS_ANSWER)
+        self.assertEqual(stdout.getvalue(), "")  # nothing runnable for a route that is still a question
+        self.assertEqual(set(Path(tempfile.gettempdir()).glob("model-effort-route.*")), before)
 
     def test_an_interactive_single_stage_route_stays_a_bare_hand_off(self):
         stdout = io.StringIO()
@@ -1488,9 +1528,9 @@ class RoutingTests(unittest.TestCase):
                     self.assertEqual(router.main(["--platform", "codex", "--format", "command", "task"]), 1)
         self.assertIn("safe fallback applied", stderr.getvalue())
         self.assertIn("implementation / L3", stderr.getvalue())
-        # The fallback route is still emitted so a human can use it deliberately.
-        self.assertIn("pipeline.py --route-file", stdout.getvalue())
-        self.addCleanup(lambda: [Path(part).unlink(missing_ok=True) for part in router.shlex.split(stdout.getvalue().strip("()\n ").split(";")[0]) if part.endswith(".json")])
+        # The fallback route is still emitted so a human can use it deliberately (as a plain chain, no route file).
+        self.assertIn("codex", stdout.getvalue())
+        self.assertNotIn("pipeline.py", stdout.getvalue())
 
     def test_main_never_prompts_when_no_prompt_is_set(self):
         fallback = router.fallback_classification("timed out", "timeout")

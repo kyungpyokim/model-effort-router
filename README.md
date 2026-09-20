@@ -175,14 +175,13 @@ always reported on stderr.
 ## Two-stage routes
 
 On every platform, `architectural_refactoring` at L3+ and
-`implementation` / `local_refactoring` at L5 run as a success-dependent shell
-chain: the planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
+`implementation` / `local_refactoring` at L5 run as a plan -> implement
+sequence: the planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
 into a temporary run directory, then the implementer (`luna`/`terra`, or
 `sonnet`) reads the plan plus the repository and implements it with the plan's
 validation commands. The implementer does not make new design decisions: it stops
 and returns escalation evidence for the planner instead. The run directory is
-removed on success and preserved on any failure (`--keep-plan` forces
-preservation).
+removed after the run, on success and on failure alike, like the launchers do (`--keep-plan` keeps it).
 
 ```bash
 python3 scripts/router.py --platform codex --task-type architectural_refactoring --level L5 "모듈 경계 재분리" --format command

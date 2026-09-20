@@ -1297,7 +1297,7 @@ def pipeline_command(payload: dict, session: str | None, keep_plan: bool = False
     pipeline = Path(__file__).resolve().with_name("pipeline.py")
     parts = ["python3", str(pipeline), "--route-file", route_file]
     if session:
-        parts += ["--session", session]
+        parts.append(f"--session={session}")  # a key starting with "-" must not read as an option
     if not keep_plan:
         parts.append("--cleanup-plan-dir")
     command = shlex.join(parts)
@@ -1868,21 +1868,23 @@ def main(argv: list[str] | None = None) -> int:
             f"({result.task_type} / {result.level}); pin --task-type/--level or rerun on a terminal to choose",
             file=sys.stderr,
         )
-    if args.format == "json":
+    if args.format in ("json", "command"):
         payload = result_payload(result, stage_commands(result, args.task, args.interactive), args.task)
         if reuse_info:
             payload["reuse"] = reuse_info
+    if args.format == "json":
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     elif args.format == "command":
-        commands = stage_commands(result, args.task, args.interactive)
         if args.interactive and result.mode != "two_stage":
             # An interactive session needs the terminal, so it stays a single hand-off (nothing to chain).
-            print(shlex.join(commands[0]))
-        else:
-            payload = result_payload(result, commands, args.task)
-            if reuse_info:
-                payload["reuse"] = reuse_info
-            print(pipeline_command(payload, session, keep_plan=args.keep_plan))
+            print(shlex.join(stage_commands(result, args.task, True)[0]))
+        elif not result.unresolved:
+            if result.source == "fallback":
+                # A guessed route is only shown, never wired to the pipeline; no route file is written for it.
+                print(command_chain_from_payload(payload))
+            else:
+                print(pipeline_command(payload, session, keep_plan=args.keep_plan))
+        # An unresolved route prints nothing runnable: the questions are on stderr and the exit code is 3.
     else:
         stages_text = " -> ".join(
             f"{stage['role']}={stage['model']}/{stage['effort'] or ('embedded' if result.platform == 'antigravity' else 'none')}"

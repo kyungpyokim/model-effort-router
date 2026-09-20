@@ -108,10 +108,11 @@ claude plugin validate .
 python3 scripts/router.py --platform claude-code --format command "<task>"
 ```
 
-This prints a command such as:
+This prints a command that runs the routed pipeline (`pipeline.py --route-file <saved route>`: plan ->
+implement -> test -> review). With `--interactive` a single-stage route prints the bare hand-off instead:
 
 ```bash
-claude --model claude-sonnet-5 --effort high -p '<level-4-complex instructions> <task>'
+claude --model claude-sonnet-5 --effort high '<level-4-complex instructions> <task>'
 ```
 
 `--level` alone is a minimum; `--level` with an explicit `--task-type`
