@@ -1442,6 +1442,59 @@ def validate_argv(
         fail("expected a model")
 
 
+def expected_stage_text(payload: dict, index: int, plan_path: str | None) -> tuple[str, str, str]:
+    """What a router-generated step must contain: (instructions, prompt head after them, prompt tail).
+
+    Codex carries the instructions in ``developer_instructions``; Claude Code and Antigravity embed
+    them at the front of the prompt. Only the task text between head and tail is free."""
+    platform, level, task_type, mode = payload["platform"], payload["effective_level"], payload["task_type"], payload["mode"]
+    active = set(payload.get("risk_flags") or [])
+    flags = {flag: flag in active for flag in RISK_FLAGS}
+    secure = any(flags[flag] for flag in SECURITY_FLOOR_FLAGS)
+    guard = f"\n{AUTOBAHN_SCOPE_GUARD}" if secure else ""
+    handoff = handoff_text(task_type, level, flags, mode)
+    if mode == "two_stage":
+        if index == 0:
+            return PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path) + guard, PLANNER_PROMPT_PREFIX, ""
+        return f"{IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)}{guard}\n\n{handoff}", IMPLEMENTER_PROMPT_PREFIX, ""
+    if platform == "codex":
+        return f"{codex_agent_instructions(level)}{guard}\n\n{handoff}", "", ""
+    head = f"[{AUTOBAHN_SCOPE_GUARD}]\n\n" if secure else ""
+    return markdown_agent_instructions(platform, level), head, f"\n\n{handoff}"
+
+
+def validate_step_instructions(payload: dict, index: int, command: list[str], plan_path: str | None, effort: str | None) -> None:
+    """A v6 route's stage instructions, scope guard and effort must be the generated ones.
+
+    The argv grammar accepts any ``developer_instructions`` text; without this a route file could
+    rewrite a stage's whole prompt (drop the scope guard or the verification handoff)."""
+    def fail(reason: str):
+        raise ValueError(f"route file step {index + 1} does not carry the generated instructions ({reason})")
+
+    try:
+        instructions, head, tail = expected_stage_text(payload, index, plan_path)
+    except (OSError, KeyError, TypeError) as exc:
+        fail(f"cannot rebuild them: {exc}")
+    prompt = command[-1]
+    if payload["platform"] == "codex":
+        settings = [command[i + 1].partition("=") for i, flag in enumerate(command[:-1]) if flag == "-c"]
+        found = [value for key, _, value in settings if key == "developer_instructions"]
+        efforts = [value for key, _, value in settings if key == "model_reasoning_effort"]
+        try:
+            actual = json.loads(found[0]) if len(found) == 1 else None
+        except json.JSONDecodeError:
+            actual = None
+        if actual != instructions:
+            fail("developer_instructions differ or repeat")
+        if efforts != [effort]:
+            fail("reasoning effort differs from the step")
+        if not prompt.startswith(head):
+            fail("prompt does not start with the stage task prefix")
+        return
+    if not prompt.startswith(f"{instructions}\n\n{head}") or not prompt.endswith(tail):
+        fail("prompt does not carry the stage instructions")
+
+
 def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:
     """Validate a route JSON payload; return its execution-step argvs and the plan file path (two-stage only)."""
     if not isinstance(payload, dict) or payload.get("schema_version") not in SUPPORTED_ROUTE_SCHEMA_VERSIONS:
@@ -1481,6 +1534,8 @@ def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:
             platform, command, model=step["model"], effort=step.get("effort"), access=access,
             plan_path=plan_path if index == 0 else None, legacy=payload["schema_version"] < 6,
         )
+        if payload["schema_version"] >= 6:  # older routes were written with older instruction texts
+            validate_step_instructions(payload, index, command, plan_path, step.get("effort"))
         commands.append(command)
     return commands, plan_path
 
@@ -1560,7 +1615,11 @@ def verification_recommendations(task_type: str, level: str, risk_flags: dict[st
 
 def verification_handoff_instructions(result: RouteResult) -> str:
     """Format already-selected verification guidance for an executor prompt."""
-    checks = verification_recommendations(result.task_type, result.level, result.risk_flags, result.mode)["recommended"]
+    return handoff_text(result.task_type, result.level, result.risk_flags, result.mode)
+
+
+def handoff_text(task_type: str, level: str, risk_flags: dict[str, bool], mode: str) -> str:
+    checks = verification_recommendations(task_type, level, risk_flags, mode)["recommended"]
     check_lines = "\n".join(f"- {check['id']}: {check['reason']}" for check in checks)
     return (
         "Verification handoff:\n"
