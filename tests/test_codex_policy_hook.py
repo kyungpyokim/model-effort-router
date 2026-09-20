@@ -69,15 +69,13 @@ class CodexPolicyHookTests(unittest.TestCase):
             "same-scope follow-ups",
             "a distinct task, a new review, materially increased scope/risk",
             "casual chat or status-only questions",
-            "bounded changes",
-            "single-agent fast path",
             "classification-only process",
             "executor given a complete route",
             "not successful semantic routing",
         ):
             self.assertIn(expected, policy)
 
-    def test_policy_states_the_bounded_fast_path_conditions_and_never_parent_implements(self):
+    def test_policy_routes_code_changes_through_the_pipeline_launcher(self):
         result = subprocess.run(
             [sys.executable, str(HOOK), "SessionStart"],
             input="{}",
@@ -88,18 +86,17 @@ class CodexPolicyHookTests(unittest.TestCase):
         )
         policy = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
         for expected in (
-            "L1-L3",
-            "risk_flags",
-            "security_review/migration_safety",
-            "single mode",
-            "delegates once",
-            "at most 1 review",
-            "no multi-agent chains",
-            "re-route only on new",
+            "pipeline block is non-null (code changes)",
+            "bin/codex-route --route-file",
+            "scripts/pipeline.py",
+            "plan, implement, test, review and fix",
             "never the parent implementing directly",
+            "Only pipeline-null routes (design/review) are delegated to a worker",
+            "Show task_type, level, model/effort, source before delegating",
         ):
             self.assertIn(expected, policy)
-        self.assertNotIn("implement directly", policy)
+        for stale in ("single-agent fast path", "bounded changes", "L1-L3", "merged Sol", "implement directly"):
+            self.assertNotIn(stale, policy)
 
     def test_malformed_input_is_ignored_without_failing_the_host(self):
         result = subprocess.run(

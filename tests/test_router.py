@@ -2361,13 +2361,15 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertNotIn("astra", primary.lower().replace("astra_adapter.py", ""))
                 self.assertNotIn("implement directly", primary)
 
-        # The same hooks that carry the router into a session also carry the fast-path
-        # gate; both codex and claude have a hook, antigravity has none.
+        # The same hooks that carry the router into a session state the pipeline workflow and no
+        # fast path; both codex and claude have a hook, antigravity has none.
         for plugin in ("codex", "claude"):
             hook = ROOT / "plugins" / f"{plugin}-model-effort-router" / "scripts" / "routing_policy_hook.py"
             text = hook.read_text(encoding="utf-8")
-            for expected in ("bounded changes", "single-agent fast path", "L1-L3"):
+            for expected in ("pipeline.py --route-file" if plugin == "claude" else "codex-route --route-file", "pipeline-null routes"):
                 self.assertIn(expected, text)
+            for stale in ("bounded changes", "single-agent fast path", "L1-L3"):
+                self.assertNotIn(stale, text)
             self.assertNotIn("implement directly", text)
             self.assertNotIn("fable", text.lower())
             self.assertNotIn("astra", text.lower())
