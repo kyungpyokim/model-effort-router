@@ -52,6 +52,9 @@ PIPELINE_LIMITS = {"max_test_fixes": 2, "review_fixes_before_replan": 1, "max_re
 
 TEST_COMMAND_ENV = "MODEL_EFFORT_ROUTER_TEST_CMD"
 
+ROUTER_PLAN_DIR_RE = re.compile(r"^codex-route-[0-9a-f]{8}$")
+ROUTER_PLAN_MARKER = ".model-effort-router-plan"
+
 INSPECT_MAX_LEVEL = "L2"
 
 TRIVIAL_EDIT_TASK_TYPES = ("implementation", "local_refactoring")
@@ -75,6 +78,28 @@ TRIVIAL_EDIT_FACTS = {
     "silent_failure_material_harm": "no",
     "requires_code_understanding": "no",
 }
+
+
+def router_plan_file(path: object) -> Path:
+    """Return the one plan artifact path the router is allowed to create or remove."""
+    if not isinstance(path, str) or not path:
+        raise ValueError("two-stage route file must declare its plan output")
+    candidate = Path(os.path.normpath(path))
+    if not candidate.is_absolute():
+        raise ValueError("route plan path must be absolute")
+    temp_dir = Path(tempfile.gettempdir()).resolve()
+    marker = candidate.parent / ROUTER_PLAN_MARKER
+    if (
+        candidate.name != "plan.json"
+        or candidate.parent.parent != temp_dir
+        or not ROUTER_PLAN_DIR_RE.fullmatch(candidate.parent.name)
+        or candidate.parent.is_symlink()
+        or candidate.is_symlink()
+        or marker.is_symlink()
+        or not marker.is_file()
+    ):
+        raise ValueError("route plan path must be the router-owned codex-route-*/plan.json artifact")
+    return candidate
 
 @dataclass(frozen=True)
 class RouteResult:
@@ -345,7 +370,10 @@ def route(
     plan_dir = None
     if mode == "two_stage":
         # Resolved once (macOS /var -> /private/var) so the prompt, the Claude edit rule and the route agree.
-        plan_dir = str(Path(tempfile.gettempdir()).resolve() / f"codex-route-{uuid.uuid4().hex[:8]}")
+        plan_path = Path(tempfile.gettempdir()).resolve() / f"codex-route-{uuid.uuid4().hex[:8]}"
+        plan_path.mkdir(mode=0o700)
+        (plan_path / ROUTER_PLAN_MARKER).write_text("router-owned\n", encoding="utf-8")
+        plan_dir = str(plan_path)
         model = effort = None
     else:
         model, effort = stages[0]["model"], stages[0]["effort"]
@@ -431,7 +459,7 @@ def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:
         if not isinstance(step.get("model"), str) or step["model"] != command_model(command, model_option):
             raise ValueError("route file step model does not match its command")
         if plan_path is not None:
-            access = "plan" if index == 0 else "edit"
+            access = "read" if index == 0 and payload["schema_version"] >= SCHEMA_VERSION else ("plan" if index == 0 else "edit")
         else:
             access = "edit" if payload.get("task_type") in CODE_CHANGE_TASK_TYPES else "read"
         validate_argv(

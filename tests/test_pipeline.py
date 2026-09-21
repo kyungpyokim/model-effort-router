@@ -66,10 +66,14 @@ reply = replies[index] if index < len(replies) else {{}}
 if reply.get("touch"):
     pathlib.Path(reply["touch"]).write_text("x")
 if role == "plan" and not reply.get("no_plan"):
-    import re
-    plan = re.search(r"exactly: (\\S+)", text)
-    pathlib.Path(plan.group(1)).write_text("{{}}")
-print(reply.get("out", ""))
+    print(json.dumps({{
+        "schema_version": 1,
+        "analysis": {{"current_structure": [], "constraints": [], "affected_areas": [], "risks": []}},
+        "implementation_plan": {{"steps": [], "expected_files": [], "compatibility_requirements": []}},
+        "validation": {{"commands": [], "acceptance_criteria": [], "rollback_notes": []}},
+    }}))
+else:
+    print(reply.get("out", ""))
 sys.exit(reply.get("rc", 0))
 """
 
@@ -219,14 +223,12 @@ class PipelineRunTests(PipelineCase):
     def test_a_route_without_a_pipeline_block_just_executes(self):
         payload = self.payload(level="L4")
         payload.pop("pipeline")
-        payload["schema_version"] = 5
         rc, calls = self.run_pipeline([{}, {}], payload=payload)
         self.assertEqual((rc, self.roles(calls)), (0, ["plan", "execute"]))
 
     def test_a_single_stage_route_without_a_pipeline_block_just_executes(self):
         single = self.payload(fast=True)
         single.pop("pipeline")
-        single["schema_version"] = 5
         rc, calls = self.run_pipeline([{}], payload=single)
         self.assertEqual((rc, self.roles(calls)), (0, ["execute"]))
 
@@ -270,10 +272,8 @@ class PipelineHardeningTests(PipelineCase):
         config = router.load_config(ROOT / "config" / "model-map.json")
         result = dataclasses.replace(router.route("t", "codex", config, "L5", "implementation"), plan_dir=str(foreign))
         payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
-        rc, _ = self.run_pipeline([{}, {}, {"out": "VERDICT: PASS"}], payload=payload)
-        self.assertEqual(rc, 0)
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            pipeline.run_route(payload, ["true"], str(self.work), cleanup=True)
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
         self.assertTrue(foreign.exists())
 
     def test_interactive_shapes_are_detected(self):
@@ -344,7 +344,7 @@ class ClaudeAccessTests(unittest.TestCase):
         self.assertIn("acceptEdits", implementer)
         self.assertNotIn("acceptEdits", planner)
         self.assertEqual(planner[planner.index("--permission-mode") + 1], "dontAsk")
-        self.assertTrue(any(arg.startswith("Edit(//") and arg.endswith("plan.json)") for arg in planner))
+        self.assertEqual(planner[planner.index("--disallowedTools") + 1], "Edit")
         review = router.stage_command("claude-code", {"model": "claude-opus-5", "effort": "high"}, "i", "p", "read")
         self.assertEqual(review[review.index("--permission-mode") + 1], "dontAsk")
         self.assertEqual(review[review.index("--disallowedTools") + 1], "Edit")
@@ -366,7 +366,8 @@ class ClaudeAccessTests(unittest.TestCase):
     def test_interactive_claude_edits_keep_its_own_permission_prompts(self):
         result = fast_route("claude-code")
         self.assertEqual(result.mode, "single")
-        self.assertNotIn("--permission-mode", router.shell_command(result, "t", True))
+        command = router.shell_command(result, "t", True)
+        self.assertEqual(command[command.index("--permission-mode") + 1], "acceptEdits")
 
     def test_interactive_claude_inspect_is_read_only(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
@@ -438,16 +439,16 @@ class RouteFileArgvGrammarTests(PipelineCase):
         result = router.route("t", "claude-code", config, "L5", "implementation")
         payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
         plan_path = payload["steps"][0]["output"]["path"]
-        self.assertIn(f"Edit(/{plan_path})", payload["steps"][0]["command"])
         self.assertEqual(plan_path, str(Path(plan_path).resolve()))
-        self.assertIn(plan_path, payload["steps"][0]["command"][-1])
+        self.assertNotIn(plan_path, payload["steps"][0]["command"][-1])
+        self.assertIn(plan_path, payload["steps"][1]["command"][-1])
 
     def test_a_plan_rule_for_another_path_is_rejected(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
         result = router.route("t", "claude-code", config, "L5", "implementation")
         payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
         command = payload["steps"][0]["command"]
-        command[command.index(next(a for a in command if a.startswith("Edit(//")))] = "Edit(///etc/passwd)"
+        command[command.index("--permission-mode") + 1] = "acceptEdits"
         with self.assertRaises(ValueError):
             router.validated_commands(payload)
 

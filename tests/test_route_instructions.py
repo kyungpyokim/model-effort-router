@@ -28,6 +28,15 @@ def payload_for(platform, level, secure=False, task="do the thing", task_type="i
     return router.result_payload(result, router.stage_commands(result, task, interactive), task)
 
 
+def legacy_codex_command(command):
+    command = list(command)
+    for flag in ("--sandbox", "--ask-for-approval"):
+        while flag in command:
+            index = command.index(flag)
+            del command[index:index + 2]
+    return command
+
+
 class GeneratedInstructionTests(unittest.TestCase):
     def test_generated_routes_validate_with_and_without_a_security_guard(self):
         for platform in PLATFORMS:
@@ -56,7 +65,10 @@ class TamperedInstructionTests(unittest.TestCase):
     def assert_rejected(self, payload):
         with self.assertRaises(ValueError) as caught:
             router.validated_commands(payload)
-        self.assertIn("generated instructions", str(caught.exception))
+        self.assertTrue(
+            "generated instructions" in str(caught.exception)
+            or "router-generated" in str(caught.exception)
+        )
 
     def test_codex_developer_instructions_must_be_the_generated_text(self):
         # A security flag makes the route elevated (L5); a design task stays single-stage there.
@@ -183,6 +195,8 @@ class TamperedInstructionTests(unittest.TestCase):
             router.validated_commands(as_v6)
         payload["schema_version"] = 5
         payload.pop("pipeline")
+        payload["steps"][0]["command"] = legacy_codex_command(payload["steps"][0]["command"])
+        payload["steps"][1]["command"] = legacy_codex_command(payload["steps"][1]["command"])
         router.validated_commands(payload)
 
     def test_the_pipeline_runner_refuses_a_tampered_route(self):

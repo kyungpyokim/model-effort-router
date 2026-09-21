@@ -20,6 +20,16 @@ from rules import CODE_CHANGE_TASK_TYPES, EFFORT_ORDER, LEVEL_NAMES, RISK_FLAGS,
 PLANNER_INSTRUCTIONS_TEMPLATE = """You are the planning stage of a two-stage plan-and-implement pipeline.
 Analyse the request against the current repository state and produce a structured implementation plan.
 Apply re0 and debloat principles: write the plan as a clean v0 specification without speculative boilerplate or process noise. Cut words, keep rules: each step must be concise, mechanistic, and load-bearing.
+Return the plan as JSON to stdout, with no Markdown fences or other output.
+Use this top-level shape:
+{{"schema_version": 1, "analysis": {{"current_structure": [], "constraints": [], "affected_areas": [], "risks": []}}, "implementation_plan": {{"steps": [], "expected_files": [], "compatibility_requirements": []}}, "validation": {{"commands": [], "acceptance_criteria": [], "rollback_notes": []}}}}
+Do not modify any repository file. Cross-check the request against the real repository before returning the plan.
+Do not invoke the model-effort router recursively.
+If the repository cannot be analysed safely, exit non-zero without returning a plan."""
+
+LEGACY_PLANNER_INSTRUCTIONS_TEMPLATE = """You are the planning stage of a two-stage plan-and-implement pipeline.
+Analyse the request against the current repository state and produce a structured implementation plan.
+Apply re0 and debloat principles: write the plan as a clean v0 specification without speculative boilerplate or process noise. Cut words, keep rules: each step must be concise, mechanistic, and load-bearing.
 Write the plan as JSON to exactly this path: {plan_path}
 Use this top-level shape:
 {{"schema_version": 1, "analysis": {{"current_structure": [], "constraints": [], "affected_areas": [], "risks": []}}, "implementation_plan": {{"steps": [], "expected_files": [], "compatibility_requirements": []}}, "validation": {{"commands": [], "acceptance_criteria": [], "rollback_notes": []}}}}
@@ -119,13 +129,15 @@ def role_prompt_prefix(task_type: str) -> str:
     }.get(task_type, IMPLEMENTER_PROMPT_PREFIX)
 
 def _codex_exec_command(model: str, effort: str, instructions: str, prompt: str, interactive: bool, access: str = "edit") -> list[str]:
+    if access not in ("read", "edit"):
+        raise ValueError("stage access must be read or edit")
     options = [
+        "--sandbox", "workspace-write" if access == "edit" else "read-only",
+        "--ask-for-approval", "never",
         "-m", model,
         "-c", f"model_reasoning_effort={effort}",
         "-c", f"developer_instructions={json.dumps(instructions)}",
     ]
-    if access == "read":
-        options += ["--sandbox", "read-only"]
     return ["codex", *options, prompt] if interactive else ["codex", "exec", *options, prompt]
 
 def claude_access_flags(access: str, plan_path: str | None = None) -> list[str]:
@@ -151,14 +163,20 @@ def claude_access_flags(access: str, plan_path: str | None = None) -> list[str]:
     ]
 
 def _claude_print_command(model: str, effort: str | None, prompt: str, access: str = "read", plan_path: str | None = None) -> list[str]:
-    command = ["claude", "-p", "--model", model]
+    return _claude_command(model, effort, prompt, access, interactive=False, plan_path=plan_path)
+
+def _claude_command(model: str, effort: str | None, prompt: str, access: str = "read", interactive: bool = False, plan_path: str | None = None) -> list[str]:
+    command = ["claude", *([] if interactive else ["-p"]), "--model", model]
     if effort:
         command += ["--effort", effort]
     # `--` ends the variadic tool lists so the prompt is never read as a tool name.
     return [*command, *claude_access_flags(access, plan_path), "--", prompt]
 
-def _agy_prompt_command(model: str, prompt: str) -> list[str]:
-    return ["agy", "--model", model, "--prompt", prompt]
+def _agy_prompt_command(model: str, prompt: str, access: str = "read", interactive: bool = False) -> list[str]:
+    if access not in ("read", "edit"):
+        raise ValueError("stage access must be read or edit")
+    mode = "accept-edits" if access == "edit" else "plan"
+    return ["agy", "--mode", mode, "--sandbox", "--model", model, "--prompt-interactive" if interactive else "--prompt", prompt]
 
 def _single_stage_command(result: RouteResult, task: str, interactive: bool) -> list[str]:
     has_security_flag = any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS)
@@ -189,15 +207,8 @@ def shell_command(result: RouteResult, task: str, interactive: bool) -> list[str
     prompt = f"{markdown_agent_instructions(result.platform, result.level)}\n\n{task}"
     if result.platform == "claude-code":
         access = "edit" if result.task_type in CODE_CHANGE_TASK_TYPES else "read"
-        if not interactive:
-            return _claude_print_command(result.model, result.effort, prompt, access)
-        base = ["claude", "--model", result.model]
-        if result.effort:
-            base += ["--effort", str(result.effort)]
-        if access == "read":
-            base += [*claude_access_flags("read"), "--"]
-        return base + [prompt]
-    return ["agy", "--model", result.model, *(["--prompt-interactive", prompt] if interactive else ["--prompt", prompt])]
+        return _claude_command(result.model, result.effort, prompt, access, interactive)
+    return _agy_prompt_command(result.model, prompt, "edit" if result.task_type in CODE_CHANGE_TASK_TYPES else "read", interactive)
 
 def stage_command(platform: str, stage: dict, instructions: str, prompt: str, access: str = "read", plan_path: str | None = None) -> list[str]:
     """One non-interactive exec/print argv for a stage with explicit instructions.
@@ -208,7 +219,7 @@ def stage_command(platform: str, stage: dict, instructions: str, prompt: str, ac
         return _codex_exec_command(stage["model"], stage["effort"], instructions, prompt, interactive=False, access=access)
     if platform == "claude-code":
         return _claude_print_command(stage["model"], stage["effort"], f"{instructions}\n\n{prompt}", access, plan_path)
-    return _agy_prompt_command(stage["model"], f"{instructions}\n\n{prompt}")
+    return _agy_prompt_command(stage["model"], f"{instructions}\n\n{prompt}", access)
 
 def refuse_interactive_two_stage(result: RouteResult, interactive: bool) -> None:
     if interactive and result.mode == "two_stage":
@@ -226,17 +237,17 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
     plan_path = str(Path(result.plan_dir) / "plan.json")
     planner, implementer = result.stages
     has_security_flag = any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS)
-    instructions = PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
+    instructions = PLANNER_INSTRUCTIONS_TEMPLATE
     if has_security_flag:
         instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
-    plan_prompt = f"{PLANNER_PROMPT_PREFIX}{task}\n\nWrite the plan JSON to exactly: {plan_path}\n"
+    plan_prompt = f"{PLANNER_PROMPT_PREFIX}{task}\n\nReturn only the plan JSON on stdout.\n"
     execute_instructions = IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)
     if has_security_flag:
         execute_instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
     execute_instructions = f"{execute_instructions}\n\n{verification_handoff_instructions(result)}"
     execute_prompt = f"{IMPLEMENTER_PROMPT_PREFIX}{task}\n\nPlan file to read first: {plan_path}\n"
     return [
-        stage_command(result.platform, planner, instructions, plan_prompt, "plan", plan_path),
+        stage_command(result.platform, planner, instructions, plan_prompt, "read"),
         stage_command(result.platform, implementer, execute_instructions, execute_prompt, "edit"),
     ]
 
@@ -278,6 +289,13 @@ def validate_argv(
     if platform == "codex":
         if options[:1] == ["exec"]:
             options = options[1:]
+        if not legacy:
+            if options[:2] != ["--sandbox", "workspace-write" if access == "edit" else "read-only"]:
+                fail("sandbox differs from the generated command")
+            options = options[2:]
+            if options[:2] != ["--ask-for-approval", "never"]:
+                fail("approval policy differs from the generated command")
+            options = options[2:]
         models = sandboxes = 0
         while i < len(options):
             flag, value = options[i], options[i + 1] if i + 1 < len(options) else None
@@ -286,19 +304,24 @@ def validate_argv(
                 models += 1
             elif flag == "-c" and sep and key in CODEX_CONFIG_KEYS and (key != "model_reasoning_effort" or setting in EFFORT_ORDER):
                 pass
-            elif flag == "--sandbox" and access == "read" and value == "read-only":
+            elif flag == "--sandbox" and legacy and access == "read" and value == "read-only":
                 sandboxes += 1
             else:
                 fail(f"unexpected option {flag}")
             i += 2
         if models != 1:
             fail("expected exactly one model")
-        if access == "read" and sandboxes != 1:
+        if legacy and access == "read" and sandboxes != 1:
             fail("read-only stages require exactly one read-only sandbox")
         return
     if platform == "antigravity":
         if legacy and options[:1] == ["--agent"] and len(options) > 1 and AGENT_NAME_RE.match(options[1]):
             options = options[2:]
+        if not legacy:
+            expected_mode = "accept-edits" if access == "edit" else "plan"
+            if options[:4] != ["--mode", expected_mode, "--sandbox", "--model"]:
+                fail("sandbox differs from the generated command")
+            options = options[3:]
         if len(options) != 3 or options[0] != "--model" or not model_ok(platform, options[1]) or options[2] not in ("--prompt", "--prompt-interactive"):
             fail("unexpected option")
         return
@@ -307,14 +330,13 @@ def validate_argv(
     tail = [*(["--effort", effort] if effort else [])]
     if not legacy:
         try:
-            expected = [["claude", "-p", "--model", model, *tail, *claude_access_flags(access or "read", plan_path), "--"]]
-            if access == "read":
-                expected.append(["claude", "--model", model, *tail, *claude_access_flags("read"), "--"])
-            else:
-                expected.append(["claude", "--model", model, *tail])
+            expected = [
+                _claude_command(model, effort, "", access or "read"),
+                _claude_command(model, effort, "", access or "read", interactive=True),
+            ]
         except ValueError as exc:
             fail(str(exc))
-        if command[:-1] not in expected:
+        if [*command[:-1], ""] not in expected:
             fail("flags differ from the generated command")
         return
     seen_model = False
@@ -420,7 +442,9 @@ def expected_stage_text(payload: dict, index: int, plan_path: str | None, router
     if mode == "two_stage":
         if index == 0:
             prefix = LEGACY_PLANNER_PROMPT_PREFIX if legacy else PLANNER_PROMPT_PREFIX
-            return PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path) + guard, prefix, f"\n\nWrite the plan JSON to exactly: {plan_path}\n"
+            if legacy:
+                return LEGACY_PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path) + guard, prefix, f"\n\nWrite the plan JSON to exactly: {plan_path}\n"
+            return PLANNER_INSTRUCTIONS_TEMPLATE + guard, prefix, "\n\nReturn only the plan JSON on stdout.\n"
         return (
             f"{IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)}{guard}\n\n{handoff}",
             LEGACY_IMPLEMENTER_PROMPT_PREFIX if legacy else IMPLEMENTER_PROMPT_PREFIX,

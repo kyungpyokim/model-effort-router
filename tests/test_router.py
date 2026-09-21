@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest import mock
+import copy
 import contextlib
 import dataclasses
 import hashlib
@@ -8,6 +9,7 @@ import io
 import json
 import os
 import re
+import shutil
 import shlex
 import subprocess
 import sys
@@ -43,6 +45,15 @@ BASE_FACTS = {
     "silent_failure_material_harm": "no",
     "requires_code_understanding": "no",
 }
+
+
+def legacy_codex_command(command, keep_sandbox=False):
+    command = list(command)
+    for flag in (("--ask-for-approval",) if keep_sandbox else ("--sandbox", "--ask-for-approval")):
+        while flag in command:
+            index = command.index(flag)
+            del command[index:index + 2]
+    return command
 # The smallest fact change that makes DIFFICULTY_RULES pick each level.
 LEVEL_FACTS = {
     "L1": {"mechanical_only": "yes"},
@@ -1654,6 +1665,12 @@ class CommandAndLauncherTests(unittest.TestCase):
                 json.dumps({"structured_output": json.loads(classifier_output(task_type="architectural_refactoring", level="L3"))}),
             ),
         )
+        plan_json = json.dumps({
+            "schema_version": 1,
+            "analysis": {"current_structure": [], "constraints": [], "affected_areas": [], "risks": []},
+            "implementation_plan": {"steps": [], "expected_files": [], "compatibility_requirements": []},
+            "validation": {"commands": [], "acceptance_criteria": [], "rollback_notes": []},
+        })
         for launcher, executable, classifier_model, classifier_reply in cases:
             with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
                 directory = Path(tmp)
@@ -1671,10 +1688,8 @@ class CommandAndLauncherTests(unittest.TestCase):
                     "    if 'merged verification' in ' '.join(sys.argv[1:]):\n"
                     "        print('VERDICT: PASS')\n"
                     "        sys.exit(0)\n"
-                    "    import re\n"
-                    "    plan = re.search(r'exactly: (\\S+)', ' '.join(sys.argv[1:]))\n"
-                    "    if plan:\n"
-                    "        pathlib.Path(plan.group(1)).write_text('{}')\n"
+                    f"    if 'planning stage' in ' '.join(sys.argv[1:]):\n"
+                    f"        print({plan_json!r})\n"
                     # The implement step edits the (hermetic) work tree so the pipeline sees a change.
                     "    if 'You are the execution stage' in ' '.join(sys.argv[1:]):\n"
                     "        pathlib.Path('implemented.txt').write_text('done')\n",
@@ -1765,7 +1780,8 @@ class CommandAndLauncherTests(unittest.TestCase):
             with self.subTest(planner_status=planner_status), tempfile.TemporaryDirectory() as tmp:
                 directory = Path(tmp)
                 result = routed(platform="antigravity", classifier=lambda _: classification("architectural_refactoring", "L3"))
-                result = dataclasses.replace(result, plan_dir=str(directory / "plan"))
+                plan_dir = Path(result.plan_dir)
+                self.addCleanup(shutil.rmtree, plan_dir, ignore_errors=True)
                 commands = router.stage_commands(result, "restructure modules")
                 route_file = directory / "route.json"
                 route_file.write_text(json.dumps(router.result_payload(result, commands)), encoding="utf-8")
@@ -1781,7 +1797,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     "    raise SystemExit(0)\n"
                     "if 'You are the planning stage' in sys.argv[-1]:\n"
                     f"    if {planner_status} == 0:\n"
-                    f"        pathlib.Path({str(directory / 'plan' / 'plan.json')!r}).write_text('{{}}')\n"
+                    f"        print({json.dumps({'schema_version': 1, 'analysis': {'current_structure': [], 'constraints': [], 'affected_areas': [], 'risks': []}, 'implementation_plan': {'steps': [], 'expected_files': [], 'compatibility_requirements': []}, 'validation': {'commands': [], 'acceptance_criteria': [], 'rollback_notes': []}})!r})\n"
                     f"    raise SystemExit({planner_status})\n"
                     # The implement step edits the (hermetic) work tree so the pipeline sees a change.
                     "if 'You are the execution stage' in sys.argv[-1]:\n"
@@ -1800,7 +1816,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertEqual(seen[:len(expected)], [command[1:] for command in expected])
                 # A passing plan runs the executor and then one judge review; a failed plan runs nothing else.
                 self.assertEqual(len(seen), len(expected) + (1 if planner_status == 0 else 0))
-                self.assertTrue(Path(result.plan_dir).is_dir())
+                self.assertTrue(plan_dir.is_dir())
 
     def test_implementer_codex_command_pins_model_and_effort(self):
         # A fast trivial-edit L1 stays single-stage; every other code change has the implementer last, after the judge plan.
@@ -1897,7 +1913,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertEqual(implementer[implementer.index("-m") + 1], "gpt-5.6-terra")
         joined_planner = " ".join(planner)
         joined_implementer = " ".join(implementer)
-        self.assertEqual(joined_planner.count(plan_path), 2)
+        self.assertEqual(joined_planner.count(plan_path), 0)
         self.assertGreaterEqual(joined_implementer.count(plan_path), 1)
         self.assertIn("planning stage", joined_planner)
         self.assertIn("execution stage", joined_implementer)
@@ -2003,6 +2019,10 @@ class CommandAndLauncherTests(unittest.TestCase):
         payload["schema_version"] = 2
         payload.pop("execution_strategy")
         payload.pop("orchestration_eligible")
+        payload["steps"] = [
+            {**step, "command": legacy_codex_command(step["command"], keep_sandbox=True)}
+            for step in payload["steps"]
+        ]
         with tempfile.TemporaryDirectory() as tmp:
             route_file = Path(tmp) / "route-v2.json"
             route_file.write_text(json.dumps(payload), encoding="utf-8")
@@ -2073,6 +2093,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         v2 = dict(v3, schema_version=2)
         v2.pop("execution_strategy")
         v2.pop("orchestration_eligible")
+        v2["steps"] = [{**step, "command": legacy_codex_command(step["command"], keep_sandbox=True)} for step in v2["steps"]]
         for payload in (v2, v3):
             with self.subTest(schema_version=payload["schema_version"]), tempfile.TemporaryDirectory() as tmp:
                 route_file = Path(tmp) / "route.json"
@@ -2210,14 +2231,14 @@ class CommandAndLauncherTests(unittest.TestCase):
     def test_two_stage_commands_are_platform_native(self):
         for platform, expected_head in (
             ("claude-code", ["claude", "-p", "--model", "claude-opus-5"]),
-            ("antigravity", ["agy", "--model", "Gemini 3.1 Pro (High)"]),
+            ("antigravity", ["agy", "--mode", "plan", "--sandbox", "--model"]),
         ):
             with self.subTest(platform=platform):
                 result = routed(platform=platform, classifier=lambda _: classification("architectural_refactoring", "L4"))
                 planner, implementer = router.stage_commands(result, "task")
                 plan_path = str(Path(result.plan_dir) / "plan.json")
                 self.assertEqual(planner[:len(expected_head)], expected_head)
-                self.assertGreaterEqual(" ".join(planner).count(plan_path), 1)
+                self.assertEqual(" ".join(planner).count(plan_path), 0)
                 self.assertGreaterEqual(" ".join(implementer).count(plan_path), 1)
                 chain = router.command_chain(result, "task")
                 self.assertTrue(chain.startswith("mkdir -p "))

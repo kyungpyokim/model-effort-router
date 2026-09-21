@@ -43,6 +43,11 @@ VERBOSE_PROMPT_CHARS = 120
 
 VERDICT_RE = re.compile(r"^VERDICT: (PASS|FAIL)$")
 ESCALATE_RE = re.compile(r"^ESCALATE: (.+)$")
+PLAN_SECTIONS = {
+    "analysis": ("current_structure", "constraints", "affected_areas", "risks"),
+    "implementation_plan": ("steps", "expected_files", "compatibility_requirements"),
+    "validation": ("commands", "acceptance_criteria", "rollback_notes"),
+}
 
 REVIEW_INSTRUCTIONS = f"""{router.REVIEW_ROLE_PROMPT}
 You are the single merged verification and code review stage of a plan-implement-test-review pipeline.
@@ -158,6 +163,33 @@ def escalation(output: str) -> tuple[str, str] | None:
     return ("escalate", found.group(1)) if found else None
 
 
+def write_plan(plan_file: Path, stdout: str) -> bool:
+    """Validate planner stdout and atomically install it without touching a prior plan on failure."""
+    try:
+        plan = json.loads(stdout)
+        if not isinstance(plan, dict) or set(plan) != {"schema_version", *PLAN_SECTIONS} or plan["schema_version"] != 1:
+            raise ValueError("unexpected top-level structure")
+        for section, fields in PLAN_SECTIONS.items():
+            value = plan[section]
+            if not isinstance(value, dict) or set(value) != set(fields) or not all(isinstance(value[field], list) for field in fields):
+                raise ValueError(f"invalid {section} structure")
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        log(f"planner returned invalid plan JSON: {exc}")
+        return False
+    fd, temporary = tempfile.mkstemp(dir=plan_file.parent, prefix=f".{plan_file.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(plan, stream)
+        os.replace(temporary, plan_file)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+    return True
+
+
 def validated_stage(value: object, name: str, platform: str) -> dict | None:
     if value is None:
         return None
@@ -218,8 +250,8 @@ class Pipeline:
         validated_stage(pipe.get("replan"), "replan", payload["platform"])
         reuse_session(payload)
         commands, plan_path = router.validated_commands(payload)
-        if plan_path is not None and not Path(plan_path).is_absolute():
-            raise ValueError("route plan path must be absolute")
+        if plan_path is not None:
+            router.router_plan_file(plan_path)
         if len(commands) > 1 and any(is_interactive(command) for command in commands):
             raise ValueError("a multi-stage route cannot use interactive commands")
         fast_path = payload.get("fast_path")
@@ -263,15 +295,14 @@ class Pipeline:
         plan_prompt = (
             f"Re-plan after a failed attempt ({kind}).\nOriginal request:\n{self.task}\n\n"
             f"Evidence:\n{detail}\n\nThe repository already holds the previous attempt's changes; plan from its current state.\n"
-            f"Write the plan JSON to exactly: {self.plan_file}\n"
+            "Return only the plan JSON on stdout.\n"
         )
-        instructions = router.PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=self.plan_file) + self.scope_guard
-        argv = router.stage_command(self.platform, self.planner, instructions, plan_prompt, "plan", str(self.plan_file))
-        rc, _ = self.stage("replan", argv, self.planner, self.replans)
+        instructions = router.PLANNER_INSTRUCTIONS_TEMPLATE + self.scope_guard
+        argv = router.stage_command(self.platform, self.planner, instructions, plan_prompt, "read")
+        rc, output = self.stage("replan", argv, self.planner, self.replans)
         if rc:
             return rc, ""
-        if not self.plan_file.exists():
-            log("the re-planner wrote no plan file")
+        if not write_plan(self.plan_file, output):
             return EXIT_NO_PLAN, ""
         execute_prompt = f"{router.IMPLEMENTER_PROMPT_PREFIX}{self.task}\n\nPlan file to read first: {self.plan_file}\n"
         instructions = router.IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=self.plan_file) + self.scope_guard
@@ -316,11 +347,10 @@ class Pipeline:
 
     def run(self) -> int:
         if self.route_plan_path:
-            rc, _ = self.stage("plan", self.commands[0], self.plan_step)
+            rc, output = self.stage("plan", self.commands[0], self.plan_step)
             if rc:
                 return rc
-            if not self.plan_file.exists():
-                log("the planner wrote no plan file")
+            if not write_plan(self.plan_file, output):
                 return EXIT_NO_PLAN
         rc, output = self.stage("implement", self.commands[-1], self.implementer)
         if rc:
@@ -357,7 +387,7 @@ def run_route(payload: object, test_commands: list[str], cwd: str, cleanup: bool
     if not has_required_test_command(payload, test_commands):
         return 2
     _, plan_path = router.validated_commands(payload)
-    workdir = Path(plan_path).parent if plan_path else Path(tempfile.mkdtemp(prefix="model-effort-pipeline-")).resolve()
+    workdir = router.router_plan_file(plan_path).parent if plan_path else Path(tempfile.mkdtemp(prefix="model-effort-pipeline-")).resolve()
     workdir.mkdir(parents=True, exist_ok=True)
     plan_file = Path(plan_path) if plan_path else workdir / "plan.json"
     try:
@@ -369,9 +399,8 @@ def run_route(payload: object, test_commands: list[str], cwd: str, cleanup: bool
             route_reuse.mark_outcome(session, runner.replans, exit_code)
         return exit_code
     finally:
-        # A directory this runner made is always removed; a route's own plan dir only when asked,
-        # and only when it is the router's own codex-route-* directory.
-        if plan_path is None or (cleanup and workdir.name.startswith("codex-route-")):
+        # A directory this runner made is always removed; a validated route plan directory only when asked.
+        if plan_path is None or cleanup:
             shutil.rmtree(workdir, ignore_errors=True)
 
 
