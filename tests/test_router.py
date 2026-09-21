@@ -893,6 +893,13 @@ class ImpactFloorTests(unittest.TestCase):
         self.assertIn("can be rolled back is no", irreversible)
         self.assertIn("JWT", irreversible)
 
+    def test_prompt_excludes_writing_new_tests_from_security_review(self):
+        # Live eval: "Add unit test suite covering user authentication helper utilities" was answered
+        # reviews_security_sensitive_code=yes / security_domain=auth by a live classifier -- writing NEW
+        # test code is not reviewing, auditing, or judging existing security-sensitive code.
+        self.assertIn("Writing new tests for such code is not itself a review", self.prompt_line("reviews_security_sensitive_code"))
+        self.assertIn("writing new tests for it is not itself a review", self.prompt_line("security_domain"))
+
     def test_prompt_adds_the_eval_false_positive_examples(self):
         # 40-case eval: recoverable fixes, single-module layouts, and internal endpoints over-routed.
         self.assertIn("retries, compensating transactions, idempotent re-runs, and other recoverable fixes", self.prompt_line("irreversible_or_ledger_or_crypto"))
