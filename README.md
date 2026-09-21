@@ -49,7 +49,9 @@ Classifier models by platform (no escalation model exists):
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
 (task_type, facts, delegability, evidence, reason) before selecting a profile. `files_touched`
-accepts `0` for read-only design and review work. In a Claude Code
+is `1` only for one existing file with no separate test/new-file work; a separate test/new
+file or subsystem/protocol is `2-5`, cross-cutting work is `6+`, and `unknown` means no scope
+signal. Read-only design and review use `0`. In a Claude Code
 or Codex session the route skill runs the same prompt through an in-session
 `difficulty-assessor` agent instead and passes its JSON with `--classification-file`. The
 route skill reads the repository in that single pass (`--repo-aware`), and asks the user about
