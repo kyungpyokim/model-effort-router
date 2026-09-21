@@ -34,6 +34,7 @@ EXIT_NEEDS_ANSWER = 3
 CLASSIFIER_TIMEOUT_SECONDS = 90.0
 
 DETECT_TIMEOUT_SECONDS = 20.0
+MAX_REASON_CHARS = 200
 
 CLASSIFIER_SCHEMA = {
     "type": "object",
@@ -139,7 +140,7 @@ def fallback_classification(reason: str, kind: str | None = None) -> Classificat
         task_type=FALLBACK_TASK_TYPE,
         level="L3",
         risk_flags={flag: False for flag in RISK_FLAGS},
-        reason=f"Semantic preflight unavailable ({reason}); safe fallback applied",
+        reason=_bounded(f"Semantic preflight unavailable ({reason}); safe fallback applied"),
         source="fallback",
         failure_kind=kind,
     )
@@ -215,6 +216,15 @@ def _extract_json_payload(raw: str) -> object:
         return last_object
     raise first_error
 
+def _bounded(text: str) -> str:
+    """Escapes control characters (no raw ANSI/terminal injection from hostile text) without altering ordinary
+    printable text, and bounds length so a pathological reply can't flood stderr or the route's rationale. Applied
+    at every sink this model-controlled text reaches: a successful reply's own reason, and a rejected reply's
+    validation-error detail."""
+    escaped = "".join(char if char.isprintable() else f"\\x{ord(char):02x}" for char in text[:MAX_REASON_CHARS])
+    return escaped[:MAX_REASON_CHARS]
+
+
 def validate_classifier_output(payload: object, source: str = "classifier") -> Classification:
     required = CLASSIFIER_SCHEMA["required"]
     if not isinstance(payload, dict) or set(payload) != set(required):
@@ -241,13 +251,13 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
         task_type=task_type,
         level=level,
         risk_flags=risk_flags_from_facts(facts),
-        reason=reason,
+        reason=_bounded(reason),
         source=source,
         facts=dict(facts),
         matched_rules=tuple(matched),
         risk_tier=risk_tier,
         unresolved=unresolved,
-        evidence=tuple(evidence),
+        evidence=tuple(_bounded(item) for item in evidence),
         delegability=delegability,
     )
 
@@ -274,12 +284,10 @@ def classify_task_single(
 ) -> Classification:
     commands = {"codex": "codex", "claude-code": "claude", "antigravity": "agy"}
 
-    def fallback(exc: Exception) -> Classification:
+    def fallback(exc: subprocess.TimeoutExpired | OSError) -> Classification:
         if isinstance(exc, subprocess.TimeoutExpired):
             return fallback_classification("timed out", "timeout")
-        if isinstance(exc, OSError):
-            return fallback_classification("process could not start", "oserror")
-        return fallback_classification("invalid structured output", "invalid_json")
+        return fallback_classification("process could not start", "oserror")
 
     if platform not in commands:
         raise ValueError(f"unknown platform: {platform}")

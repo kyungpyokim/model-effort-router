@@ -23,6 +23,7 @@ router = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = router
 SPEC.loader.exec_module(router)
+classifier = sys.modules["classifier"]
 CONFIG = router.load_config(ROOT / "config" / "model-map.json")
 
 NO_FLAGS = {flag: False for flag in router.RISK_FLAGS}
@@ -388,14 +389,45 @@ class PlatformClassifierTests(unittest.TestCase):
 
     def test_fallback_reason_names_the_validation_error(self):
         # Well-formed JSON that fails validation is not a parse failure: the reason must say which rule it broke.
+        self.assertEqual(classifier.MAX_REASON_CHARS, 200)
         rejected = classifier_output(task_type="implementation", files_touched="0")
         with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, rejected, "")):
             result = router.classify_task("task")
         self.assertEqual((result.source, result.failure_kind), ("fallback", "invalid_json"))
         self.assertIn("files_touched", result.reason)
+        # Bounded once, not twice: the closing marker must survive alongside the validation detail.
+        self.assertTrue(result.reason.endswith("; safe fallback applied"))
 
-    def test_prompt_tells_the_model_files_touched_zero_is_read_only_only(self):
-        self.assertIn("An implementation that runs an operation or changes production data is at least 1", router.CLASSIFIER_PROMPT)
+        # The rejected value itself lands in the ValueError text (facts[name]!r), and that text reaches this
+        # reason unmodified — it's shown in stderr and the route rationale, so a bad reply's own field value could
+        # otherwise inject terminal escapes or flood the log. Bound the length and escape control characters.
+        hostile = classifier_output(task_type="implementation", files_touched="\x1b[31m" + "x" * 2000)
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, hostile, "")):
+            poisoned = router.classify_task("task")
+        self.assertLessEqual(len(poisoned.reason), classifier.MAX_REASON_CHARS)
+        self.assertNotIn("\x1b", poisoned.reason)
+
+    def test_a_successful_classification_also_bounds_and_escapes_its_reason(self):
+        # The reason field a well-formed response supplies is free text from the model, and it reaches the same
+        # sinks (stderr, the route rationale) as a rejected reply's detail — it needs the same guard, not just the
+        # validation-failure path.
+        hostile_reason = "\x1b[31m" + "y" * 2000
+        output = classifier_output(reason=hostile_reason)
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, output, "")):
+            result = router.classify_task("task")
+        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertLessEqual(len(result.reason), classifier.MAX_REASON_CHARS)
+        self.assertNotIn("\x1b", result.reason)
+
+    def test_a_successful_classification_bounds_and_escapes_evidence(self):
+        payload = json.loads(classifier_output())
+        payload["evidence"] = ["\x1b[31m" + "e" * 2000]
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(payload), "")):
+            result = router.classify_task("task")
+        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertEqual(len(result.evidence), 1)
+        self.assertLessEqual(len(result.evidence[0]), classifier.MAX_REASON_CHARS)
+        self.assertNotIn("\x1b", result.evidence[0])
 
     def test_schema_validation_rejects_bad_values(self):
         valid = classifier_output(raw=False)
@@ -930,6 +962,16 @@ class ExternalClassificationTests(unittest.TestCase):
         self.assertEqual((code, out), (2, ""))
         self.assertIn("invalid classification file", err)
 
+    def test_invalid_classification_file_error_is_bounded_and_escaped(self):
+        # This ValueError is built from the reply's own rejected field value (facts[name]!r), the same
+        # model-controlled text _bounded guards on the subprocess path -- this sink must not bypass it.
+        legacy = classifier_output(raw=False, files_touched="\x1b[31m" + "x" * 2000)
+        with mock.patch.object(router.sys, "stdin", io.StringIO(json.dumps(legacy))):
+            code, out, err = self.run_main(["fix", "--platform", "codex", "--classification-file", "-"])
+        self.assertEqual((code, out), (2, ""))
+        self.assertNotIn("\x1b", err)
+        self.assertLessEqual(len(err), classifier.MAX_REASON_CHARS + len("invalid classification file: \n"))
+
     def test_classification_file_prose_before_fenced_json(self):
         # Live failure: haiku assessor replies with prose (sometimes containing inline
         # `backticks` and **bold**) before the ```json block instead of bare/fenced JSON alone.
@@ -1082,6 +1124,24 @@ class UnresolvedFactsTests(unittest.TestCase):
     def test_an_old_session_record_with_needs_context_still_blocks_reuse(self):
         record = {"workspace": "/w", "saved_at": time.time(), "task_type": "implementation", "risk_flags": {}, "needs_context": True}
         self.assertIn("unresolved", " ".join(router.route_reuse.reuse_blockers(record, "/w", "also fix x", True)))
+
+    def test_reused_evidence_is_bounded_and_escaped(self):
+        # evidence normally reaches Classification only through validate_classifier_output, which bounds and
+        # escapes each item. A reused route rebuilds it straight from the stored session record instead --
+        # a stale record written before this guard existed (or a tampered one) must not bypass it.
+        hostile = "\x1b[31m" + "z" * 2000
+        record = {
+            "task_type": "implementation", "level": "L2", "risk_tier": "standard",
+            "risk_flags": {flag: False for flag in router.RISK_FLAGS}, "facts": {}, "matched_rules": [],
+            "evidence": [hostile], "saved_at": time.time(),
+        }
+        with mock.patch.object(router.route_reuse, "load_record", return_value=record), \
+             mock.patch.object(router.route_reuse, "reuse_blockers", return_value=[]):
+            classification, _, reason = router.load_reused_classification("s", "/w", "task")
+        self.assertEqual(reason, "")
+        self.assertEqual(len(classification.evidence), 1)
+        self.assertLessEqual(len(classification.evidence[0]), classifier.MAX_REASON_CHARS)
+        self.assertNotIn("\x1b", classification.evidence[0])
 
     def test_merge_lookup_and_apply_answers_are_pure(self):
         first = router.validate_classifier_output(classifier_output(raw=False, **self.UNKNOWN))
