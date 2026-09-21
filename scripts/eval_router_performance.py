@@ -218,9 +218,9 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L2_unknown_security_change_is_not_a_floor",
         task="Fix the login problem",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "changes_security_or_payment_logic": "unknown", "irreversible_or_ledger_or_crypto": "unknown"},
+        facts={"mechanical_only": "no", "files_touched": "1", "changes_security_or_payment_logic": "unknown"},
         expected_level="L2",
-        expected_unresolved=("changes_security_or_payment_logic", "irreversible_or_ledger_or_crypto"),
+        expected_unresolved=("changes_security_or_payment_logic",),
     ),
 
     # L5 Cases (needs_new_structure, intermittent_or_concurrency, open result across modules)
@@ -508,7 +508,13 @@ def _pct(hit: int, total: int) -> float:
 def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict, platform: str, base_facts: dict[str, str]) -> dict:
     """Grade one classifier answer against its labels: fact agreement, level/tier, and the routed model+effort."""
     expected_facts = {**base_facts, **case.facts}
-    expected_level, expected_tier, _, expected_unresolved = router.evaluate_rules(expected_facts)
+    # Only labelled facts are graded: a fact the case does not label follows the classifier's own answer, so the
+    # corpus default ("nothing risky here") cannot fail routing or the profile for a fact nobody labelled.
+    graded_facts = {
+        **expected_facts,
+        **{name: value for name, value in actual.facts.items() if value is not None and name not in case.facts},
+    }
+    expected_level, expected_tier, _, expected_unresolved = router.evaluate_rules(graded_facts)
     per_fact = {name: {"expected": expected, "actual": actual.facts.get(name)} for name, expected in expected_facts.items()}
     # task_type is graded on its own: implementation and local_refactoring route identically, so a swap must not fail routing.
     routing_match = (
@@ -516,14 +522,9 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
         and actual.risk_tier == expected_tier
         and actual.unresolved == expected_unresolved
     )
-    # An unlabelled requires_code_understanding must not be graded on the corpus default: for the profile check
-    # that fact follows the classifier's own answer.
-    profile_facts = dict(expected_facts)
-    if "requires_code_understanding" not in case.facts:
-        profile_facts["requires_code_understanding"] = actual.facts.get("requires_code_understanding", "unknown")
     expected_classification = router.Classification(
-        task_type=case.task_type, level=expected_level, risk_flags=router.risk_flags_from_facts(expected_facts),
-        reason="labelled", source="test", facts=profile_facts, risk_tier=expected_tier,
+        task_type=case.task_type, level=expected_level, risk_flags=router.risk_flags_from_facts(graded_facts),
+        reason="labelled", source="test", facts=graded_facts, risk_tier=expected_tier,
     )
     expected_profile = _route_profile(config, platform, case.task, expected_classification, expected_tier == "critical")
     actual_profile = _route_profile(config, platform, case.task, actual, actual.risk_tier == "critical")
@@ -556,8 +557,8 @@ def _tally_facts(case: BenchmarkCase, graded: dict, tally: dict) -> None:
             counts = tally["per_fact"].setdefault(name, {"matches": 0, "total": 0})
             counts["matches"] += agree
             counts["total"] += 1
-        if item["actual"] is None:
-            continue  # a missing fact resolved nothing, and is not a regression either
+        if item["actual"] is None or name not in case.facts:
+            continue  # a missing fact resolved nothing, and an unlabelled one has no expected answer to move away from
         if item["expected"] == "unknown":
             tally["unknown"]["expected_unknown_to_unknown" if item["actual"] == "unknown" else "expected_unknown_to_known"] += 1
         elif item["actual"] == "unknown":

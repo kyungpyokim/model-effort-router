@@ -93,6 +93,25 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         labelled = sum("requires_code_understanding" in case.facts for case in eval_perf.GOLDEN_BENCHMARK_CASES)
         self.assertEqual(summary["unknown_transitions"]["expected_known_to_unknown"], labelled)
 
+    def test_facts_the_corpus_does_not_label_are_not_graded(self):
+        # The case labels only its own facts; the classifier's answer on the rest must not fail routing or count as a transition.
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L5E_security_oauth_token_refresh")
+        self.assertNotIn("crosses_module_boundary", case.facts)
+        divergent = {"crosses_module_boundary": "unknown", "blast_radius": "broad", "changes_trust_boundary": "yes"}
+        kwargs = {"case_names": (case.name,)}
+        perfect = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(labelled_facts), **kwargs)["summary"]
+        summary = eval_perf.evaluate_classifier_benchmark(
+            classifier=stub_classifier(lambda c: labelled_facts(c, **divergent)), **kwargs,
+        )["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (100.0, 100.0))
+        self.assertEqual(summary["unknown_transitions"], perfect["unknown_transitions"])
+
+        # A labelled fact still fails routing: the classifier calling a security change harmless drops the tier.
+        missed = eval_perf.evaluate_classifier_benchmark(
+            classifier=stub_classifier(lambda c: labelled_facts(c, changes_security_or_payment_logic="no")), **kwargs,
+        )["summary"]
+        self.assertEqual(missed["routing_accuracy_pct"], 0.0)
+
     def test_swapping_implementation_and_local_refactoring_does_not_fail_routing(self):
         swap = {"implementation": "local_refactoring", "local_refactoring": "implementation"}
         summary = eval_perf.evaluate_classifier_benchmark(

@@ -386,6 +386,17 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(result.source, "fallback")
         self.assertEqual(result.failure_kind, "invalid_json")
 
+    def test_fallback_reason_names_the_validation_error(self):
+        # Well-formed JSON that fails validation is not a parse failure: the reason must say which rule it broke.
+        rejected = classifier_output(task_type="implementation", files_touched="0")
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, rejected, "")):
+            result = router.classify_task("task")
+        self.assertEqual((result.source, result.failure_kind), ("fallback", "invalid_json"))
+        self.assertIn("files_touched", result.reason)
+
+    def test_prompt_tells_the_model_files_touched_zero_is_read_only_only(self):
+        self.assertIn("An implementation that runs an operation or changes production data is at least 1", router.CLASSIFIER_PROMPT)
+
     def test_schema_validation_rejects_bad_values(self):
         valid = classifier_output(raw=False)
         for mutation in (
