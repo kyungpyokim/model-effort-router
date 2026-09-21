@@ -23,7 +23,7 @@ _THIS_MODULE = sys.modules.get(__name__)
 
 import route_reuse
 
-from classifier import (CLASSIFIER_PROMPT, CLASSIFIER_SCHEMA, CLASSIFIER_TIMEOUT_SECONDS, DETECT_TIMEOUT_SECONDS, EXIT_NEEDS_ANSWER, FACT_QUESTIONS, FALLBACK_TASK_TYPE, PRIMARY_CLASSIFIER_CONFIG, RETRYABLE_FAILURE_KINDS, Classification, apply_answers, choose_antigravity_model, classifier_prompt, classify_task, classify_task_single, fallback_classification, merge_lookup, pinned_classification, read_classification_file, settleable, validate_classifier_output, with_facts)
+from classifier import (CLASSIFIER_PROMPT, CLASSIFIER_SCHEMA, CLASSIFIER_TIMEOUT_SECONDS, DETECT_TIMEOUT_SECONDS, EXIT_NEEDS_ANSWER, FACT_QUESTIONS, FALLBACK_TASK_TYPE, PRIMARY_CLASSIFIER_CONFIG, RETRYABLE_FAILURE_KINDS, Classification, apply_answers, choose_antigravity_model, classifier_prompt, classify_task, classify_task_single, fallback_classification, merge_lookup, pinned_classification, read_classification_file, settleable, validate_classifier_output, with_facts, _bounded)
 
 from commands import (AGENT_NAME_RE, AUTOBAHN_SCOPE_GUARD, AUTOBAHN_SCOPE_GUARD_INSTRUCTION, CLAUDE_READ_TOOLS, CODEX_CONFIG_KEYS, IMPLEMENTER_INSTRUCTIONS_TEMPLATE, IMPLEMENTER_PROMPT_PREFIX, MARKDOWN_AGENT_PLUGINS, PLANNER_INSTRUCTIONS_TEMPLATE, PLANNER_PROMPT_PREFIX, REVIEW_ROLE_PROMPT, _agy_prompt_command, _claude_print_command, _codex_exec_command, _single_stage_command, agent_name, claude_access_flags, codex_agent_instructions, command_chain, command_model, expected_stage_text, handoff_text, markdown_agent_instructions, role_prompt_prefix, shell_command, stage_command, stage_commands, validate_argv, validate_step_instructions, verification_handoff_instructions, verification_recommendations)
 from commands import refuse_interactive_two_stage
@@ -257,7 +257,7 @@ def load_reused_classification(
         reason=f"route reused from the session (reuse {reuses + 1}); the classifier was not called",
         source="reused", facts={str(k): str(v) for k, v in facts.items()}, matched_rules=tuple(str(r) for r in rules),
         risk_tier=tier,
-        evidence=tuple(str(e) for e in record.get("evidence", [])), delegability=delegability,
+        evidence=tuple(_bounded(str(e)) for e in record.get("evidence", [])), delegability=delegability,
     )
     return classification, record, ""
 

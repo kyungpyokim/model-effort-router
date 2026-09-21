@@ -27,6 +27,7 @@ from classifier import (
     classify_task,
     read_classification_file,
     settleable,
+    _bounded,
 )
 from commands import (
     command_chain,
@@ -197,7 +198,7 @@ def main(argv: list[str] | None = None, router: object | None = None) -> int:
         try:
             external = router.read_classification_file(args.classification_file)
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            print(f"invalid classification file: {exc}", file=sys.stderr)
+            print(f"invalid classification file: {_bounded(str(exc))}", file=sys.stderr)
             return 2
     config = router.load_config(args.config or router.default_config_path())
     explicit_task_type = None if args.task_type == "auto" else args.task_type

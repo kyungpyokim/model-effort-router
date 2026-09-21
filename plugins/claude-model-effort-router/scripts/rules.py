@@ -39,6 +39,13 @@ YES_NO_UNKNOWN = ("yes", "no", "unknown")
 
 CRITICAL_SECURITY_DOMAINS = ("payment", "crypto", "auth", "permissions", "pii")
 
+# security_domain_critical's bare-mention floor: auth is excluded. Naming the auth domain alone (no confirmed
+# change, no reviewed sensitive code) is not itself a critical-impact signal -- a vague "fix the login problem"
+# plausibly touches auth without being high-impact work. Payment, crypto, permissions and pii keep the floor: a
+# wrong judgement there costs as much even when nothing is confirmed changed yet (see reviews_security_sensitive_code
+# and changes_security_or_payment_logic below for how a confirmed auth change or review still reaches L4/elevated).
+BARE_DOMAIN_FLOOR_DOMAINS = ("payment", "crypto", "permissions", "pii")
+
 SECURITY_DOMAINS = ("none", "auth", "payment", "secrets", "crypto", "permissions", "pii", "unknown")
 
 FACTS = {
@@ -78,7 +85,7 @@ DIFFICULTY_RULES = (
     # Both must be confirmed: a broad reach alone, or a silent failure alone, is not enough.
     ("elevated", "broad_blast_radius_with_silent_harm", {"blast_radius": ("broad",), "silent_failure_material_harm": ("yes",)}),
     # Security floors follow the impact of a wrong judgement, not whether code changes.
-    ("L5", "security_domain_critical", {"security_domain": CRITICAL_SECURITY_DOMAINS}),
+    ("L5", "security_domain_critical", {"security_domain": BARE_DOMAIN_FLOOR_DOMAINS}),
     ("L5", "needs_new_structure", {"needs_new_structure": ("yes",)}),
     ("L5", "intermittent_or_concurrency", {"intermittent_or_concurrency": ("yes",)}),
     ("L5", "open_result_across_modules", {"fix_or_result_known": ("no",), "crosses_module_boundary": ("yes",)}),

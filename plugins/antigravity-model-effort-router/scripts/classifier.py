@@ -34,6 +34,7 @@ EXIT_NEEDS_ANSWER = 3
 CLASSIFIER_TIMEOUT_SECONDS = 90.0
 
 DETECT_TIMEOUT_SECONDS = 20.0
+MAX_REASON_CHARS = 200
 
 CLASSIFIER_SCHEMA = {
     "type": "object",
@@ -65,15 +66,15 @@ Choose exactly one task_type:
 Classify only what the user asked for: a request to look at, check or explain something is inspect even when a problem is visible; never widen it into a fix.
 Answer each fact about the work the task requires. Do not assign a level or score; the router derives difficulty from these facts with fixed rules.
 - mechanical_only: yes only for typos, renames, formatting, imports, comments, or documentation with no behaviour change.
-- files_touched: how many files the work changes, including new and test files; files only read for context do not count: 0, 1, 2-5, 6+, or unknown. Read-only design, review and inspect work is 0. An implementation that runs an operation or changes production data is at least 1, even when no source file changes.
+- files_touched: how many files the work changes, including new and test files; files only read for context do not count: 0, 1, 2-5, 6+, or unknown. Read-only design, review and inspect work is 0. An implementation that runs an operation or changes production data is at least 1, even when no source file changes. Estimate files_touched from the work's described scope even when no exact count is stated: a single named fix or one clearly bounded change is 1 only when it is confined to one existing file and no separate test or new file work is described; if the described work changes a production file and also touches a separate test or new file, use 2-5. A task whose entire scope is one test or one new file is still 1. Work described as changing an existing mechanism, protocol, or subsystem end-to-end, not one isolated call site, is 2-5; a cross-cutting or multi-service effort is 6+. Answer unknown only when the task gives no scope signal at all, never merely because an exact number is not stated.
 - crosses_module_boundary: the work spans more than one module or package, or moves responsibilities between them.
 - crosses_service_boundary: the work or its diagnosis spans more than one service, process, or repository.
 - fix_or_result_known: yes when the expected result or the place to change is stated or evident, including choosing between explicitly named options; no when the goal or candidate solutions must still be investigated or invented.
 - intermittent_or_concurrency: yes only for timing-dependent or concurrency defects (races, deadlocks, ordering, interleaved retries or distributed transactions). Occasional slowness or failures with no timing or concurrency aspect stated are no.
-- needs_new_structure: yes only when a new architecture, protocol, cross-module or cross-service boundary, or data-migration strategy must be designed with open choices. Laying out files inside one new module (including proposing the file layout for one new module inside an existing service), or moving existing code into a new module along a boundary the task already states, is no.
-- changes_security_or_payment_logic: authentication, authorization, secrets, cryptography, or payment behaviour changes. Moving, splitting, renaming, reviewing wording, or documenting such code without changing its behaviour is no; extracting an auth module into its own service with the same behaviour is no. Review or audit work that changes nothing is no here and is covered by reviews_security_sensitive_code and security_domain instead.
+- needs_new_structure: yes only when a new architecture, protocol, cross-module or cross-service boundary, or data-migration strategy must be designed with open choices. Laying out files inside one new module (including proposing the file layout for one new module inside an existing service), or moving existing code into a new module along a boundary the task already states, is no. Refactoring existing code where a boundary's impact is uncertain is no; not knowing whether a boundary is crossed is a crosses_module_boundary or crosses_service_boundary question, never a reason to design something new.
+- changes_security_or_payment_logic: authentication, authorization, secrets, cryptography, or payment behaviour changes. Moving, splitting, renaming, reviewing wording, or documenting such code without changing its behaviour is no; extracting an auth module into its own service with the same behaviour is no here (changes_trust_boundary is judged separately below: moving that code across a service boundary does decide to move a trust boundary, and belongs there instead). Review or audit work that changes nothing is no here and is covered by reviews_security_sensitive_code and security_domain instead.
 - reviews_security_sensitive_code: yes when the work reviews, audits, analyses vulnerabilities or attack paths in, or judges the correctness or safety of code or designs in a security-sensitive area (authentication, authorization or permissions, secrets, cryptography, payment, personal data), regardless of whether code is changed. Authorization or permissions covers access boundaries: tenant isolation and customer-specific data isolation, including cache keys or namespaces that hold per-customer or per-tenant data (a wrong key can expose one customer's data to another).
-- security_domain: the most critical security-sensitive area whose behaviour the work changes or whose correctness or safety it reviews or judges: none, auth, payment, secrets, crypto, permissions, pii, or unknown. When several apply pick the most critical, payment over crypto over auth over permissions over pii over secrets. permissions covers the access boundaries above: tenant isolation and customer-specific data isolation, including cache keys or namespaces that hold per-customer or per-tenant data; caching per-customer invoices is not payment but is a permissions review. none when such code is only mentioned, moved, renamed, formatted, or documented without changing or judging its behaviour.
+- security_domain: the most critical security-sensitive area whose behaviour the work changes or whose correctness or safety it reviews or judges: none, auth, payment, secrets, crypto, permissions, pii, or unknown. When several apply pick the most critical, payment over crypto over auth over permissions over pii over secrets. permissions covers the access boundaries above: tenant isolation and customer-specific data isolation, including cache keys or namespaces that hold per-customer or per-tenant data; caching per-customer invoices is not payment but is a permissions review. none when such code is only mentioned, renamed, formatted, or documented without changing or judging its behaviour, or moved within one trust zone; moved across a trust or service boundary keeps its domain, since changes_trust_boundary judges that move separately (see changes_security_or_payment_logic above).
 Payment, in the three facts above, is decided by monetary consequence, not by a module or file named billing or order: moving money; determining the amount charged (price, discount, or tax calculation); authorizing, capturing, cancelling, or refunding payments, including an order cancellation that decides a refund; ledger or settlement correctness; or creating or changing a monetary obligation. Not payment: an order list UI, billing address edits, displaying an invoice PDF, order status strings, order creation that charges nothing, or code that merely lives in a billing or order module. Caching or reading billing or order data is not payment unless the cached or read value decides the amount charged.
 Authorization or permissions, in the three facts above, is decided by access control boundaries (user authentication, RBAC, ACL, privilege, tenant isolation, credentials, or customer data isolation). Two narrow carve-outs are NOT authorization, permissions, or security changes: cost/model-tier confirmations (approving an expensive model before it runs), and plain UX confirmations that do not decide whether an action is allowed. Everything else that decides whether an agent, tool, or command may run without the user's consent IS authorization/permissions: tool or command permission prompts, sandbox or allowlist rules for shell commands, production or deploy approval gates, and adding, removing, or bypassing any such gate.
 - changes_public_api_contract: an externally consumed API, CLI, schema, or response format changes. Adding a new endpoint consumed only by your own frontend, without changing existing external consumers or a published schema, is no.
@@ -93,7 +94,7 @@ RETRYABLE_FAILURE_KINDS = ("process_failed",)
 
 FACT_QUESTIONS = {
     "mechanical_only": "Is this purely mechanical work (rename, format, move, no judgement)?",
-    "files_touched": "How many files will the work change (0 for read-only, 1, 2-5, 6+)?",
+    "files_touched": "How many files will the work change: 1 only for one existing file with no separate test or new file; 2-5 for a separate test or new file or subsystem or protocol; 6+ if cross-cutting; unknown only with no scope signal (0 read-only)?",
     "crosses_module_boundary": "Does the work span more than one module or package?",
     "crosses_service_boundary": "Does the work or its diagnosis span more than one service, process, or repository?",
     "fix_or_result_known": "Is the fix or the expected result already known?",
@@ -139,7 +140,7 @@ def fallback_classification(reason: str, kind: str | None = None) -> Classificat
         task_type=FALLBACK_TASK_TYPE,
         level="L3",
         risk_flags={flag: False for flag in RISK_FLAGS},
-        reason=f"Semantic preflight unavailable ({reason}); safe fallback applied",
+        reason=_bounded(f"Semantic preflight unavailable ({reason}); safe fallback applied"),
         source="fallback",
         failure_kind=kind,
     )
@@ -215,6 +216,15 @@ def _extract_json_payload(raw: str) -> object:
         return last_object
     raise first_error
 
+def _bounded(text: str) -> str:
+    """Escapes control characters (no raw ANSI/terminal injection from hostile text) without altering ordinary
+    printable text, and bounds length so a pathological reply can't flood stderr or the route's rationale. Applied
+    at every sink this model-controlled text reaches: a successful reply's own reason, and a rejected reply's
+    validation-error detail."""
+    escaped = "".join(char if char.isprintable() else f"\\x{ord(char):02x}" for char in text[:MAX_REASON_CHARS])
+    return escaped[:MAX_REASON_CHARS]
+
+
 def validate_classifier_output(payload: object, source: str = "classifier") -> Classification:
     required = CLASSIFIER_SCHEMA["required"]
     if not isinstance(payload, dict) or set(payload) != set(required):
@@ -241,13 +251,13 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
         task_type=task_type,
         level=level,
         risk_flags=risk_flags_from_facts(facts),
-        reason=reason,
+        reason=_bounded(reason),
         source=source,
         facts=dict(facts),
         matched_rules=tuple(matched),
         risk_tier=risk_tier,
         unresolved=unresolved,
-        evidence=tuple(evidence),
+        evidence=tuple(_bounded(item) for item in evidence),
         delegability=delegability,
     )
 
@@ -274,12 +284,10 @@ def classify_task_single(
 ) -> Classification:
     commands = {"codex": "codex", "claude-code": "claude", "antigravity": "agy"}
 
-    def fallback(exc: Exception) -> Classification:
+    def fallback(exc: subprocess.TimeoutExpired | OSError) -> Classification:
         if isinstance(exc, subprocess.TimeoutExpired):
             return fallback_classification("timed out", "timeout")
-        if isinstance(exc, OSError):
-            return fallback_classification("process could not start", "oserror")
-        return fallback_classification("invalid structured output", "invalid_json")
+        return fallback_classification("process could not start", "oserror")
 
     if platform not in commands:
         raise ValueError(f"unknown platform: {platform}")
