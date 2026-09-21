@@ -118,7 +118,10 @@ class EvalRouterPerformanceTests(unittest.TestCase):
                 self.assertEqual(summary["per_fact_accuracy_pct"]["requires_code_understanding"], 100.0)
                 self.assertEqual(set(summary["code_understanding_confusion"]), {"yes->yes", "no->no"})
                 yes_case = next(c for c in perfect["cases"] if c["name"] == "L2U_pattern_following_validation")
-                self.assertEqual(yes_case["actual"]["profile"]["stages"], [refined])
+                # L2 code changes carry a judge plan first; the refined rung is the implementer stage after it.
+                stages = yes_case["actual"]["profile"]["stages"]
+                self.assertEqual(len(stages), 2)
+                self.assertEqual(stages[-1], refined)
 
                 always_no = eval_perf.evaluate_classifier_benchmark(platform, classifier=answering(lambda c: "no"))["summary"]
                 self.assertEqual(always_no["routing_accuracy_pct"], 100.0)  # the level never depends on this fact
@@ -183,8 +186,9 @@ class EvalRouterPerformanceTests(unittest.TestCase):
     def test_rules_benchmark_routes_carry_the_refined_rung(self):
         data = eval_perf.evaluate_rules_benchmark()
         by_name = {case["name"]: case for case in data["cases"]}
-        self.assertEqual(by_name["L2U_pattern_following_validation"]["platform_routes"]["codex"]["efforts"], ["high"])
-        self.assertEqual(by_name["L2U_add_optional_field"]["platform_routes"]["codex"]["efforts"], ["medium"])
+        # Efforts are per stage: the Sol plan (high) first, then the implementer, which carries the refined rung.
+        self.assertEqual(by_name["L2U_pattern_following_validation"]["platform_routes"]["codex"]["efforts"], ["high", "high"])
+        self.assertEqual(by_name["L2U_add_optional_field"]["platform_routes"]["codex"]["efforts"], ["high", "medium"])
 
 
 class EvalModelEffortTests(unittest.TestCase):

@@ -7,7 +7,20 @@ import shutil
 import sys
 from pathlib import Path
 
-SHARED = ("scripts/router.py", "scripts/pipeline.py", "scripts/route_reuse.py", "scripts/astra_adapter.py", "config/model-map.json", "config/classification-schema.json", "references/routing-policy.md")
+SHARED = (
+    "scripts/router.py",
+    "scripts/classifier.py",
+    "scripts/rules.py",
+    "scripts/policy.py",
+    "scripts/commands.py",
+    "scripts/cli.py",
+    "scripts/pipeline.py",
+    "scripts/route_reuse.py",
+    "scripts/astra_adapter.py",
+    "config/model-map.json",
+    "config/classification-schema.json",
+    "references/routing-policy.md",
+)
 PLUGINS = (
     "plugins/codex-model-effort-router",
     "plugins/claude-model-effort-router",

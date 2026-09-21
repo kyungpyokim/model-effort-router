@@ -15,6 +15,7 @@
         "implementation",
         "design",
         "review",
+        "inspect",
         "local_refactoring",
         "architectural_refactoring"
       ]

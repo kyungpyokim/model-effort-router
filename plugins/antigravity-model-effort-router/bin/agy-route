@@ -55,11 +55,10 @@ if [[ "$INTERACTIVE" -eq 1 ]]; then
 fi
 python3 "${ARGS[@]}" > "${ROUTE_FILE}"
 ROUTE_ARGS=(--route-file "${ROUTE_FILE}" --cleanup-plan-dir)
-if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}${MODEL_EFFORT_ROUTER_VERBOSE:-}" ]]; then
-  COMMAND="$(python3 "${ROUTER}" "${ROUTE_ARGS[@]}")"
-  echo "[model-effort-router] ${COMMAND}" >&2
-  [[ -z "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]] || exit 0
+COMMAND="$(python3 "${ROUTER}" "${ROUTE_ARGS[@]}")"
+if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}${MODEL_EFFORT_ROUTER_VERBOSE:-}" ]]; then echo "[model-effort-router] ${COMMAND}" >&2; fi
+if [[ -n "${MODEL_EFFORT_ROUTER_PRINT_ONLY:-}" ]]; then
+  exit 0
 fi
-# The runner hands single-stage interactive routes straight to the terminal and
-# captures two-stage planners before it installs plan.json.
+# The pipeline permits interactive execution only for inspect and gated trivial edits.
 python3 "${ROOT_DIR}/scripts/pipeline.py" --route-file "${ROUTE_FILE}" --cleanup-plan-dir

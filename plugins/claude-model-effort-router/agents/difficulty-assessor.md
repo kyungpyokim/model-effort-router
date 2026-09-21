@@ -1,7 +1,7 @@
 ---
 name: difficulty-assessor
 description: Extracts routing facts for the model-effort router from a task and the repository. Read-only; selected by the route skill, do not pick it manually.
-model: sonnet
+model: haiku
 tools: Read, Grep, Glob
 maxTurns: 16
 ---

@@ -16,14 +16,25 @@ CONFIG = router.load_config(ROOT / "config" / "model-map.json")
 PLATFORMS = ("codex", "claude-code", "antigravity")
 
 
-def payload_for(platform, level, secure=False, task="do the thing", task_type="implementation", extra_flags=(), interactive=False):
+def payload_for(platform, level, secure=False, task="do the thing", task_type="implementation", extra_flags=(), interactive=False, fast=False):
     flags = {flag: (secure and flag == "security_sensitive") or flag in extra_flags for flag in router.RISK_FLAGS}
     classification = router.Classification(
         task_type=task_type, level=level, risk_flags=flags, reason="r", source="primary",
         risk_tier="elevated" if secure else "standard",
+        # fast: the trivial-edit fast path (all mechanical/local facts + a deterministic check) is a single-stage L1 route.
+        facts=dict(router.TRIVIAL_EDIT_FACTS) if fast else {},
     )
-    result = router.route(task, platform, CONFIG, classifier=lambda _: classification)
+    result = router.route(task, platform, CONFIG, classifier=lambda _: classification, check_available=fast)
     return router.result_payload(result, router.stage_commands(result, task, interactive), task)
+
+
+def legacy_codex_command(command):
+    command = list(command)
+    for flag in ("--sandbox", "--ask-for-approval"):
+        while flag in command:
+            index = command.index(flag)
+            del command[index:index + 2]
+    return command
 
 
 class GeneratedInstructionTests(unittest.TestCase):
@@ -32,12 +43,14 @@ class GeneratedInstructionTests(unittest.TestCase):
             for level, secure in (("L1", False), ("L2", False), ("L3", False), ("L4", False), ("L5", False), ("L5", True), ("L4", True)):
                 for task_type in router.TASK_TYPES:
                     with self.subTest(platform=platform, level=level, secure=secure, task_type=task_type):
+                        if task_type == "inspect" and (secure or router.LEVELS.index(level) > router.LEVELS.index(router.INSPECT_MAX_LEVEL)):
+                            continue
                         router.validated_commands(payload_for(platform, level, secure, task_type=task_type))
 
     def test_interactive_forms_and_migration_or_api_flags_validate(self):
         for platform in PLATFORMS:
             with self.subTest(platform=platform):
-                router.validated_commands(payload_for(platform, "L3", interactive=True))
+                router.validated_commands(payload_for(platform, "L3", task_type="design", interactive=True))
                 payload = payload_for(platform, "L4", extra_flags=("data_migration", "public_api_change"))
                 self.assertIn("migration_safety", json.dumps(payload["steps"]))
                 router.validated_commands(payload)
@@ -52,7 +65,10 @@ class TamperedInstructionTests(unittest.TestCase):
     def assert_rejected(self, payload):
         with self.assertRaises(ValueError) as caught:
             router.validated_commands(payload)
-        self.assertIn("generated instructions", str(caught.exception))
+        self.assertTrue(
+            "generated instructions" in str(caught.exception)
+            or "router-generated" in str(caught.exception)
+        )
 
     def test_codex_developer_instructions_must_be_the_generated_text(self):
         # A security flag makes the route elevated (L5); a design task stays single-stage there.
@@ -102,8 +118,10 @@ class TamperedInstructionTests(unittest.TestCase):
     def test_a_missing_agent_profile_is_reported_as_unverifiable_not_tampered(self):
         for platform, target in (("codex", "codex_agent_instructions"), ("claude-code", "markdown_agent_instructions"), ("antigravity", "markdown_agent_instructions")):
             with self.subTest(platform=platform):
-                payload = payload_for(platform, "L4")
-                with mock.patch.object(router, target, side_effect=FileNotFoundError("agents/level-4")):
+                # Only single-stage routes embed a per-level agent profile; regular code changes are two-stage, so use the fast L1 edit.
+                payload = payload_for(platform, "L1", fast=True)
+                self.assertEqual(payload["mode"], "single")
+                with mock.patch.object(router, target, side_effect=FileNotFoundError("agents/level-1")):
                     with self.assertRaises(ValueError) as caught:
                         router.validated_commands(payload)
                 self.assertIn("cannot be verified", str(caught.exception))
@@ -177,6 +195,8 @@ class TamperedInstructionTests(unittest.TestCase):
             router.validated_commands(as_v6)
         payload["schema_version"] = 5
         payload.pop("pipeline")
+        payload["steps"][0]["command"] = legacy_codex_command(payload["steps"][0]["command"])
+        payload["steps"][1]["command"] = legacy_codex_command(payload["steps"][1]["command"])
         router.validated_commands(payload)
 
     def test_the_pipeline_runner_refuses_a_tampered_route(self):

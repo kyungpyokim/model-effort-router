@@ -8,14 +8,18 @@ routes it through the v5 `task_type × level` matrix in `config/model-map.json`:
 
 | task type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation / local_refactoring | luna low | luna med | terra med | terra high | sol high -> terra high |
+| implementation / local_refactoring | luna med | sol high -> luna med | sol high -> terra med | sol high -> terra high | sol high -> terra high |
 | design / review | luna med | sol high | sol high | sol high | sol high |
 | architectural_refactoring | luna med | sol high | sol high -> terra med | sol xhigh -> terra high | sol xhigh -> terra high |
 
-`A -> B` is the success-dependent planner-to-implementer chain (`architectural_refactoring`
-L3+, and `implementation` / `local_refactoring` at L5). The `elevated` and `critical`
-risk tiers imply L5 and raise only the planning/judging stage (the planner of a
-two-stage route, otherwise the single stage) to `xhigh` / `max`. Read-only
+`A -> B` is the success-dependent planner-to-implementer chain. Every non-fast code change
+(`implementation`, `local_refactoring`, `architectural_refactoring`) gets its planner from the
+`design` row and a merged review from the `review` row; the exception is
+`architectural_refactoring` at L2, where the design row (sol high) equals the implementer, so no
+planner is inserted and the route stays single-stage. There the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). A gated trivial edit skips only plan and review; every other L1 code change uses the regular workflow. At L2,
+`requires_code_understanding` = yes swaps `luna med` for `luna high`. The `elevated` and
+`critical` risk tiers imply L5 and raise only the planning and review stages to `xhigh` / `max`
+(the implementer keeps its matrix profile). Read-only
 design and review use `files_touched: 0`; files only read for context do not count.
 
 Security-related risk flags (security_sensitive, authentication,
@@ -31,19 +35,22 @@ accepts `L1`-`L5` only.
 ## Execution roles and pipeline
 
 Goal: **Sol thinks and verifies, Luna and Terra implement.** Sol designs,
-verifies, and reviews; Luna/Terra implement, fix, and run tests; re-promote to Sol
-when the implementation hits a new design problem. Classification stays on Luna.
+verifies, and reviews; Luna/Terra implement and fix; the launcher runs the tests with no
+model; re-promote to Sol when the implementation hits a new design problem. Classification
+stays on Luna.
 
 - Reuse the stored route for follow-up questions in the same task. Re-classify only
   when the task type changes, scope grows a lot, new risk evidence appears, or a
   fact shows the approved design cannot be implemented.
-- Classify each planned step again (tweak or tests -> Luna med, ordinary logic ->
-  Terra); test execution (pytest, lint, typecheck, build) belongs to the cheap models.
-- Do not call Sol after each step. After steps 1..N and the tests, make one Sol
-  verification + code review call (High; elevated tier XHigh; critical tier Max),
+- Test execution (pytest, lint, typecheck, build) runs in the launcher with no model call
+  (`MODEL_EFFORT_ROUTER_TEST_CMD` or `--test-cmd`); only a failing log goes to the implementer.
+- Do not call Sol after each step. After the implementation and the tests, make one Sol
+  verification + code review call for every non-fast code change (High; elevated tier XHigh; critical tier Max),
   sent only the requirement, approved plan, git diff, test results, and key code.
-- On review FAIL the reviewer does not fix it: re-classify the fix (simple -> Luna
-  med, ordinary logic -> Terra, design problem -> Sol), then a final Sol review.
+- On review FAIL the reviewer does not fix it: the route's implementer fixes it (every fix
+  uses the route's implementer today), then the review runs again; the next failure re-plans
+  once. Re-classifying each planned step and each fix to pick Luna / Terra / Sol by
+  difficulty is planned, not implemented.
 - An implementer that finds something outside the plan stops and returns evidence
   (scope expansion, architecture or public API change, DB migration, security
   boundary change, plan/code mismatch) for a Sol re-plan; "hard" or "unsure" alone
@@ -96,13 +103,13 @@ python3 scripts/router.py --platform codex --format command "<task>"
 python3 scripts/router.py --platform codex --task-type design "<task>" --format command
 ```
 
-Example single-stage output:
+Example single-stage output (an L1 `implementation`):
 
 ```bash
-codex exec -m gpt-5.6-luna -c model_reasoning_effort=medium -c 'developer_instructions="..."' '<task>'
+codex exec -m gpt-5.6-luna -c model_reasoning_effort=low -c 'developer_instructions="..."' '<task>'
 ```
 
-Example two-stage output (`architectural_refactoring` L3+, or `implementation` / `local_refactoring` at L5):
+Example two-stage output (a non-fast code change whose planner differs from its implementer):
 
 ```bash
 mkdir -p /tmp/codex-route-<run-id> && codex exec -m gpt-5.6-sol ... '<plan>' && codex exec -m gpt-5.6-luna ... '<execute>' && rm -rf /tmp/codex-route-<run-id>
@@ -115,23 +122,20 @@ preserves it even on success.
 The CLI launcher starts a new process because a plugin cannot reliably replace the model of an already-running parent turn on every Codex surface. Codex CLI does not expose `--agent`, so this fallback applies the selected model and effort while the plugin skill handles named-agent delegation where available.
 
 Before selecting that process, the router runs the native Codex CLI with fixed
-`gpt-5.6-luna` / medium effort in a temporary read-only session and validates its JSON response.
+`gpt-5.6-luna` / low effort in a temporary read-only session and validates its JSON response.
 Timeouts, process failures, and invalid output safely route to implementation /
 L3. `--level` alone is a minimum; `--level` with an explicit `--task-type`
 pins both axes and bypasses the preflight.
 
 For a skill-selected route, save its JSON once and replay it with
 `bin/codex-route --route-file <route.json>`; this executes the selected command
-without another preflight classification. Two-stage replay stays in the parent pipeline,
-which captures and validates planner stdout before installing the shared plan file.
+without another preflight classification. Two-stage replay preserves its plan file.
 The JSON `verification` object contains recommended and skipped check IDs with
 reasons only; it does not execute checks. The selected executor receives its
 recommended checks and reports each result or why it was not run. Route-file
 replay ignores the JSON object and reuses only the stored execution steps.
 
-Schema v7 is current. Schema v6 remains legacy and replay-compatible under the pre-v7 native
-permission grammar; v7 records `facts`, `matched_rules`, `evidence`, and `risk_tier`,
-while legacy v6 records `unresolved_facts` and `questions`.
+Schema v7 records `facts`, `matched_rules`, `unresolved_facts`, `questions`, `evidence`, `risk_tier`, and
 `execution_strategy: "direct"` with
 `orchestration_eligible` separately. `scripts/astra_adapter.py` is the unchanged
 orchestration adapter, a caller-invoked isolated-worker boundary that revalidates worker

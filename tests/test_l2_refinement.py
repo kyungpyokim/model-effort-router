@@ -19,7 +19,7 @@ BASE_FACTS = {
 }
 
 
-def routed(platform, task_type="implementation", understanding="yes", level=None, config=CONFIG, **facts):
+def routed(platform, task_type="implementation", understanding="yes", level=None, config=CONFIG, check_available=False, **facts):
     all_facts = {**BASE_FACTS, **facts}
     if understanding is not None:
         all_facts["requires_code_understanding"] = understanding
@@ -28,12 +28,16 @@ def routed(platform, task_type="implementation", understanding="yes", level=None
         task_type=task_type, level=level_, risk_flags={f: False for f in router.RISK_FLAGS}, reason="r", source="primary",
         facts=all_facts, matched_rules=tuple(matched), risk_tier=tier, unresolved=unresolved,
     )
-    return router.route("t", platform, config, explicit_level=level, classifier=lambda _: classification)
+    return router.route(
+        "t", platform, config, explicit_level=level, classifier=lambda _: classification, check_available=check_available
+    )
 
 
 class L2RefinementTests(unittest.TestCase):
     def profile(self, result):
-        return result.model, result.effort
+        # L2+ code changes are two-stage (judge plan + implementer); the refined rung is the implementer's.
+        implementer = result.stages[-1]
+        return implementer["model"], implementer["effort"]
 
     def test_codex_l2_with_code_understanding_uses_luna_high(self):
         for task_type in ("implementation", "local_refactoring"):
@@ -78,7 +82,7 @@ class L2RefinementTests(unittest.TestCase):
 
     def test_the_claude_command_carries_the_refined_effort(self):
         result = routed("claude-code", understanding="yes")
-        command = router.stage_commands(result, "t")[0]
+        command = router.stage_commands(result, "t")[-1]
         self.assertEqual(command[command.index("--effort") + 1], "low")
         self.assertEqual(command[command.index("--permission-mode") + 1], "acceptEdits")
 

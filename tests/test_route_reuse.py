@@ -291,7 +291,7 @@ class ReviewHardeningTests(ReuseCase):
         exe.chmod(0o755)
         with mock.patch.dict(os.environ, {"PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            pipeline.run_route(payload, [], str(self.workspace), own_session="someone-else")
+            pipeline.run_route(payload, ["true"], str(self.workspace), own_session="someone-else")
         self.assertIsNone(route_reuse.load_record("mine")["blocked"])
 
 
@@ -301,7 +301,8 @@ class RefinementReuseTests(ReuseCase):
         first, _ = self.route("fix the parser bug", classified=refined)
         second, calls = self.route("also handle empty input")
         self.assertEqual(calls, 0)
-        self.assertEqual([(s["model"], s["effort"]) for s in second["steps"]], [("gpt-5.6-luna", "high")])
+        # L2 is judge-planned now: the stored refined rung is the implementer step after the Sol plan.
+        self.assertEqual([(s["model"], s["effort"]) for s in second["steps"]], [("gpt-5.6-sol", "high"), ("gpt-5.6-luna", "high")])
         self.assertEqual([(s["model"], s["effort"]) for s in first["steps"]], [(s["model"], s["effort"]) for s in second["steps"]])
 
 
@@ -325,7 +326,7 @@ class OutcomeTests(ReuseCase):
         exe.chmod(0o755)
         with mock.patch.dict(os.environ, {"PATH": f"{fake}{os.pathsep}{os.environ['PATH']}"}), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            rc = pipeline.run_route(payload, [], str(self.workspace), own_session="s1")
+            rc = pipeline.run_route(payload, ["true"], str(self.workspace), own_session="s1")
         self.assertEqual(rc, 7)
         self.assertEqual(route_reuse.load_record("s1")["blocked"], "exit 7")
 

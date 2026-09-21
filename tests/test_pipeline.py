@@ -7,14 +7,46 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import uuid
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import pipeline  # noqa: E402
 import router  # noqa: E402
+
+
+class RolePromptTests(unittest.TestCase):
+    def setUp(self):
+        self.config = router.load_config(ROOT / "config" / "model-map.json")
+
+    def test_role_prompts_are_specific_and_do_not_inflate_normal_changes(self):
+        result = router.route("fix a validation typo", "codex", self.config, "L3", "implementation")
+        planner, implementer = router.stage_commands(result, "fix a validation typo")
+
+        self.assertEqual(router.SCHEMA_VERSION, 7)
+        self.assertIn("PLAN\nProduce the minimum implementation plan needed for this task.", planner[-1])
+        self.assertIn("IMPLEMENT\nImplement the approved plan without expanding scope.", implementer[-1])
+        self.assertNotIn("architectural refactoring", planner[-1].lower())
+        self.assertNotIn("architectural refactoring", implementer[-1].lower())
+
+    def test_single_stage_design_and_review_prompts_name_their_roles(self):
+        for task_type, expected in (
+            ("design", "DESIGN\nProduce the architecture/design plan needed for this task."),
+            ("review", "REVIEW\nReview the implementation against the requirements and plan."),
+        ):
+            with self.subTest(task_type=task_type):
+                result = router.route("inspect the router", "codex", self.config, "L2", task_type)
+                command = router.stage_commands(result, "inspect the router")[0]
+                self.assertIn(expected, command[-1])
+
+    def test_runtime_reviewer_prompt_names_the_review_role(self):
+        self.assertIn(
+            "REVIEW\nReview the implementation against the requirements and plan.",
+            pipeline.REVIEW_INSTRUCTIONS,
+        )
+
 
 FAKE_CODEX = """#!{python}
 import json, os, pathlib, sys
@@ -33,17 +65,28 @@ replies = json.loads((directory / "replies.json").read_text())
 reply = replies[index] if index < len(replies) else {{}}
 if reply.get("touch"):
     pathlib.Path(reply["touch"]).write_text("x")
-if role == "plan":
-    print(reply.get("out", json.dumps({{
+if role == "plan" and not reply.get("no_plan"):
+    print(json.dumps({{
         "schema_version": 1,
         "analysis": {{"current_structure": [], "constraints": [], "affected_areas": [], "risks": []}},
         "implementation_plan": {{"steps": [], "expected_files": [], "compatibility_requirements": []}},
         "validation": {{"commands": [], "acceptance_criteria": [], "rollback_notes": []}},
-    }})))
+    }}))
 else:
     print(reply.get("out", ""))
 sys.exit(reply.get("rc", 0))
 """
+
+
+def fast_route(platform="codex", task_type="implementation"):
+    """A genuinely single-stage L1 code-change route: the trivial-edit fast path (explicit no-understanding fact + a check)."""
+    config = router.load_config(ROOT / "config" / "model-map.json")
+    classification = dataclasses.replace(
+        router.pinned_classification(task_type, "L1"), facts=dict(router.TRIVIAL_EDIT_FACTS)
+    )
+    result = router.route("t", platform, config, classifier=lambda _: classification, check_available=True)
+    assert (result.mode, result.fast_path) == ("single", "trivial_edit")
+    return result
 
 
 class PipelineCase(unittest.TestCase):
@@ -62,12 +105,15 @@ class PipelineCase(unittest.TestCase):
         self.addCleanup(os.environ.__setitem__, "PATH", old_path)
         self.addCleanup(lambda: os.environ.pop("FAKE_DIR") if old_dir is None else os.environ.__setitem__("FAKE_DIR", old_dir))
 
-    def payload(self, level="L4", task_type="implementation", platform="codex", critical=False):
+    def payload(self, level="L4", task_type="implementation", platform="codex", critical=False, fast=False):
         config = router.load_config(ROOT / "config" / "model-map.json")
-        result = router.route("do the thing", platform, config, level, task_type, critical=critical)
+        if fast:
+            result = fast_route(platform, task_type)
+        else:
+            result = router.route("do the thing", platform, config, level, task_type, critical=critical)
         return router.result_payload(result, router.stage_commands(result, "do the thing"), "do the thing")
 
-    def run_pipeline(self, replies, payload=None, tests=()):
+    def run_pipeline(self, replies, payload=None, tests=("true",)):
         (self.dir / "replies.json").write_text(json.dumps(replies), encoding="utf-8")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             rc = pipeline.run_route(payload or self.payload(), list(tests), str(self.work))
@@ -77,71 +123,83 @@ class PipelineCase(unittest.TestCase):
     def roles(self, calls):
         return [call["role"] for call in calls]
 
+    def git_repo(self):
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        (self.work / "a.txt").write_text("a")
+        for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "init"]):
+            subprocess.run(["git", *args], cwd=self.work, env=env, check=True, capture_output=True)
+
 
 class PipelineRunTests(PipelineCase):
+    # L4 code changes are two-stage now: every run starts with the judge's plan, so replies lead with a plan step.
     def test_green_run_ends_with_one_sol_review_at_high_effort(self):
-        rc, calls = self.run_pipeline([{}, {"out": "no findings\nVERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {}, {"out": "no findings\nVERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "review"])
-        self.assertEqual(calls[1]["model"], "gpt-5.6-sol")
-        self.assertIn("model_reasoning_effort=high", calls[1]["effort"])
-        self.assertNotEqual(calls[0]["model"], "gpt-5.6-sol")
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
+        self.assertEqual((calls[0]["model"], calls[2]["model"]), ("gpt-5.6-sol", "gpt-5.6-sol"))
+        self.assertIn("model_reasoning_effort=high", calls[2]["effort"])
+        self.assertNotEqual(calls[1]["model"], "gpt-5.6-sol")
 
     def test_failing_test_goes_to_the_implementer_with_a_log_tail_not_to_a_judge(self):
         flag = self.work / "flag"
         rc, calls = self.run_pipeline(
-            [{}, {"touch": str(flag)}, {"out": "VERDICT: PASS"}], tests=[f"echo boom >&2; test -f {flag}"]
+            [{}, {}, {"touch": str(flag)}, {"out": "VERDICT: PASS"}], tests=[f"echo boom >&2; test -f {flag}"]
         )
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "fix", "review"])
-        self.assertIn("(exit 1)", calls[1]["text"])
-        self.assertIn("boom", calls[1]["text"])
-        self.assertNotEqual(calls[1]["model"], "gpt-5.6-sol")
-        self.assertIn("PASS: ", calls[2]["text"])
+        self.assertEqual(self.roles(calls), ["plan", "execute", "fix", "review"])
+        self.assertIn("(exit 1)", calls[2]["text"])
+        self.assertIn("boom", calls[2]["text"])
+        self.assertNotEqual(calls[2]["model"], "gpt-5.6-sol")
+        self.assertIn("PASS: ", calls[3]["text"])
 
     def test_tests_that_never_pass_fix_twice_then_replan_once_then_stop(self):
-        rc, calls = self.run_pipeline([{}] * 8, tests=["false"])
+        rc, calls = self.run_pipeline([{}] * 9, tests=["false"])
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
-        self.assertEqual(self.roles(calls), ["execute", "fix", "fix", "plan", "execute", "fix", "fix"])
-        self.assertEqual(calls[3]["model"], "gpt-5.6-sol")
+        self.assertEqual(self.roles(calls), ["plan", "execute", "fix", "fix", "plan", "execute", "fix", "fix"])
+        self.assertEqual(calls[4]["model"], "gpt-5.6-sol")
         self.assertNotIn("review", self.roles(calls))
 
     def test_review_fail_is_fixed_once_then_re_reviewed(self):
-        rc, calls = self.run_pipeline([{}, {"out": "null deref\nVERDICT: FAIL"}, {}, {"out": "VERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {}, {"out": "null deref\nVERDICT: FAIL"}, {}, {"out": "VERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "review", "fix", "review"])
-        self.assertIn("null deref", calls[2]["text"])
-        self.assertNotEqual(calls[2]["model"], "gpt-5.6-sol")
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review"])
+        self.assertIn("null deref", calls[3]["text"])
+        self.assertNotEqual(calls[3]["model"], "gpt-5.6-sol")
 
     def test_second_review_fail_replans_with_the_planning_model(self):
         fail = {"out": "VERDICT: FAIL"}
-        rc, calls = self.run_pipeline([{}, fail, {}, fail, {}, {}, {"out": "VERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {}, fail, {}, fail, {}, {}, {"out": "VERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "review", "fix", "review", "plan", "execute", "review"])
-        self.assertEqual(calls[4]["model"], "gpt-5.6-sol")
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review", "plan", "execute", "review"])
+        self.assertEqual(calls[5]["model"], "gpt-5.6-sol")
 
     def test_review_fails_are_capped(self):
         fail = {"out": "VERDICT: FAIL"}
-        rc, calls = self.run_pipeline([{}, fail, {}, fail, {}, {}, fail, {}, fail, {}])
+        rc, calls = self.run_pipeline([{}, {}, fail, {}, fail, {}, {}, fail, {}, fail, {}])
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
-        self.assertEqual(self.roles(calls).count("plan"), 1)
+        # The route's own plan is not a replan: exactly one more plan step follows it.
+        self.assertEqual(self.roles(calls).count("plan"), 2)
         self.assertEqual(self.roles(calls).count("review"), 4)
 
     def test_a_review_without_a_verdict_stops_instead_of_passing(self):
-        rc, calls = self.run_pipeline([{}, {"out": "looks fine to me"}])
+        rc, calls = self.run_pipeline([{}, {}, {"out": "looks fine to me"}])
         self.assertEqual(rc, pipeline.EXIT_NO_VERDICT)
-        self.assertEqual(self.roles(calls), ["execute", "review"])
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
 
     def test_implementer_escalation_evidence_triggers_a_replan(self):
-        rc, calls = self.run_pipeline([{"out": "ESCALATE: public API change needed"}, {}, {}, {"out": "VERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {"out": "ESCALATE: public API change needed"}, {}, {}, {"out": "VERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "plan", "execute", "review"])
-        self.assertIn("public API change needed", calls[1]["text"])
+        self.assertEqual(self.roles(calls), ["plan", "execute", "plan", "execute", "review"])
+        self.assertIn("public API change needed", calls[2]["text"])
 
     def test_a_failing_stage_stops_the_run_with_its_exit_code(self):
-        rc, calls = self.run_pipeline([{"rc": 7}])
+        rc, calls = self.run_pipeline([{}, {"rc": 7}])
         self.assertEqual(rc, 7)
-        self.assertEqual(self.roles(calls), ["execute"])
+        self.assertEqual(self.roles(calls), ["plan", "execute"])
+
+    def test_a_failing_plan_stops_the_run_before_the_implementer(self):
+        rc, calls = self.run_pipeline([{"rc": 7}])
+        self.assertEqual((rc, self.roles(calls)), (7, ["plan"]))
 
     def test_two_stage_route_plans_first_and_keeps_the_route_plan_dir_until_asked(self):
         payload = self.payload(level="L5")
@@ -152,23 +210,11 @@ class PipelineRunTests(PipelineCase):
         self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
         self.assertEqual(json.loads((plan_dir / "state.json").read_text())["phase"], "done")
 
-    def test_planner_stdout_is_validated_and_written_by_the_parent(self):
-        payload = self.payload(level="L5")
-        plan_file = Path(payload["steps"][0]["output"]["path"])
-        self.addCleanup(lambda: __import__("shutil").rmtree(plan_file.parent, ignore_errors=True))
-        plan = {
-            "schema_version": 1,
-            "analysis": {"current_structure": [], "constraints": [], "affected_areas": [], "risks": []},
-            "implementation_plan": {"steps": [], "expected_files": [], "compatibility_requirements": []},
-            "validation": {"commands": [], "acceptance_criteria": [], "rollback_notes": []},
-        }
-        rc, calls = self.run_pipeline([{"out": json.dumps(plan)}, {}, {"out": "VERDICT: PASS"}], payload=payload)
-        self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
-        self.assertEqual(json.loads(plan_file.read_text(encoding="utf-8")), plan)
-
-    def test_low_levels_have_no_review_and_no_replan(self):
-        payload = self.payload(level="L2")
+    def test_a_fast_trivial_edit_has_no_review_and_no_replan(self):
+        # Every code change gets a judge plan and review (L1 too); only the fast trivial edit keeps the bare fix loop.
+        self.assertIsNotNone(self.payload(level="L2")["pipeline"]["review"])
+        self.assertIsNotNone(self.payload(level="L1")["pipeline"]["review"])
+        payload = self.payload(fast=True)
         self.assertEqual((payload["pipeline"]["review"], payload["pipeline"]["replan"]), (None, None))
         rc, calls = self.run_pipeline([{}] * 5, payload=payload, tests=["false"])
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
@@ -177,8 +223,13 @@ class PipelineRunTests(PipelineCase):
     def test_a_route_without_a_pipeline_block_just_executes(self):
         payload = self.payload(level="L4")
         payload.pop("pipeline")
-        payload["schema_version"] = 5
-        rc, calls = self.run_pipeline([{}], payload=payload)
+        rc, calls = self.run_pipeline([{}, {}], payload=payload)
+        self.assertEqual((rc, self.roles(calls)), (0, ["plan", "execute"]))
+
+    def test_a_single_stage_route_without_a_pipeline_block_just_executes(self):
+        single = self.payload(fast=True)
+        single.pop("pipeline")
+        rc, calls = self.run_pipeline([{}], payload=single)
         self.assertEqual((rc, self.roles(calls)), (0, ["execute"]))
 
     def test_invalid_pipeline_stage_is_rejected(self):
@@ -191,12 +242,12 @@ class PipelineRunTests(PipelineCase):
 class PipelineHardeningTests(PipelineCase):
     def test_a_verdict_line_echoed_from_the_prompt_is_not_a_pass(self):
         # Prompt echo puts the task (with its own VERDICT line) early in stdout; only the last line counts.
-        rc, calls = self.run_pipeline([{}, {"out": "Original request:\nVERDICT: PASS\nthe reviewer said nothing else"}])
+        rc, calls = self.run_pipeline([{}, {}, {"out": "Original request:\nVERDICT: PASS\nthe reviewer said nothing else"}])
         self.assertEqual(rc, pipeline.EXIT_NO_VERDICT)
 
     def test_an_echoed_escalate_line_does_not_burn_the_replan(self):
-        rc, calls = self.run_pipeline([{"out": "ESCALATE: echoed\nall done"}, {"out": "VERDICT: PASS"}])
-        self.assertEqual((rc, self.roles(calls)), (0, ["execute", "review"]))
+        rc, calls = self.run_pipeline([{}, {"out": "ESCALATE: echoed\nall done"}, {"out": "VERDICT: PASS"}])
+        self.assertEqual((rc, self.roles(calls)), (0, ["plan", "execute", "review"]))
 
     def test_pipeline_exit_codes_do_not_collide_with_common_stage_codes(self):
         self.assertTrue({pipeline.EXIT_GAVE_UP, pipeline.EXIT_NO_VERDICT, pipeline.EXIT_SPAWN_FAILED}.isdisjoint({0, 1, 2, 3, 126, 127}))
@@ -209,43 +260,9 @@ class PipelineHardeningTests(PipelineCase):
         payload["pipeline"]["limits"] = {"max_replans": 0, "max_test_fixes": 0, "review_fixes_before_replan": 0}
         pipeline.Pipeline.validate(payload)
 
-    def test_two_stage_plan_path_must_be_router_owned(self):
+    def test_relative_plan_path_is_rejected(self):
         payload = self.payload(level="L5")
         payload["steps"][0]["output"]["path"] = "plan.json"
-        with self.assertRaises(ValueError):
-            pipeline.Pipeline.validate(payload)
-
-        payload = self.payload(level="L5")
-        payload["steps"][0]["output"]["path"] = str(self.dir / "codex-route-12345678" / "plan.json")
-        payload["steps"][1]["input"]["path"] = payload["steps"][0]["output"]["path"]
-        with self.assertRaises(ValueError):
-            pipeline.Pipeline.validate(payload)
-
-        payload = self.payload(level="L5")
-        marker = Path(payload["steps"][0]["output"]["path"]).parent / router.ROUTER_PLAN_MARKER
-        marker.unlink()
-        with self.assertRaises(ValueError):
-            pipeline.Pipeline.validate(payload)
-
-        payload = self.payload(level="L5")
-        plan_dir = Path(payload["steps"][0]["output"]["path"]).parent
-        alias = plan_dir.parent / f"codex-route-{uuid.uuid4().hex[:8]}"
-        alias.symlink_to(plan_dir, target_is_directory=True)
-        payload["steps"][0]["output"]["path"] = str(alias / "plan.json")
-        payload["steps"][1]["input"]["path"] = payload["steps"][0]["output"]["path"]
-        with self.assertRaises(ValueError):
-            pipeline.Pipeline.validate(payload)
-
-        plan_file = plan_dir / "plan.json"
-        plan_file.symlink_to(plan_dir / "outside.json")
-        payload = self.payload(level="L5")
-        payload["steps"][0]["output"]["path"] = str(plan_file)
-        with self.assertRaises(ValueError):
-            pipeline.Pipeline.validate(payload)
-
-    def test_two_stage_plan_output_and_input_must_be_the_same_plan_file(self):
-        payload = self.payload(level="L5")
-        payload["steps"][1]["input"]["path"] = str(Path(payload["steps"][0]["output"]["path"]).with_name("other.json"))
         with self.assertRaises(ValueError):
             pipeline.Pipeline.validate(payload)
 
@@ -256,7 +273,7 @@ class PipelineHardeningTests(PipelineCase):
         result = dataclasses.replace(router.route("t", "codex", config, "L5", "implementation"), plan_dir=str(foreign))
         payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
         with self.assertRaises(ValueError):
-            pipeline.run_route(payload, [], str(self.work), cleanup=True)
+            pipeline.Pipeline.validate(payload)
         self.assertTrue(foreign.exists())
 
     def test_interactive_shapes_are_detected(self):
@@ -268,14 +285,14 @@ class PipelineHardeningTests(PipelineCase):
         self.assertFalse(pipeline.is_interactive(["agy", "--model", "m", "--prompt", "t"]))
 
     def test_stored_interactive_route_keeps_the_terminal(self):
-        config = router.load_config(ROOT / "config" / "model-map.json")
-        result = router.route("t", "codex", config, "L2", "implementation")
+        # Two-stage routes are never interactive, so the interactive replay is a fast single-stage route.
+        result = fast_route("codex")
         payload = router.result_payload(result, router.stage_commands(result, "t", interactive=True), "t")
         route_file = self.dir / "route.json"
         route_file.write_text(json.dumps(payload), encoding="utf-8")
         (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            rc = pipeline.main(["--route-file", str(route_file)])
+            rc = pipeline.main(["--route-file", str(route_file), "--test-cmd", "true"])
         self.assertEqual(rc, 0)
         calls = [json.loads(line) for line in (self.dir / "calls.jsonl").read_text().splitlines()]
         self.assertEqual(len(calls), 1)
@@ -283,43 +300,34 @@ class PipelineHardeningTests(PipelineCase):
 
 
 class PipelineFailClosedTests(PipelineCase):
-    def git_repo(self):
-        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
-        (self.work / "a.txt").write_text("a")
-        for args in (["init", "-q"], ["add", "."], ["commit", "-qm", "init"]):
-            subprocess.run(["git", *args], cwd=self.work, env=env, check=True, capture_output=True)
-
     def test_an_implementer_that_changed_nothing_fails_review_without_a_reviewer_call(self):
         self.git_repo()
-        rc, calls = self.run_pipeline([{}, {}, {}, {}, {}, {}, {}, {}])
+        rc, calls = self.run_pipeline([{}] * 9)
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
         self.assertNotIn("review", self.roles(calls))
-        self.assertEqual(self.roles(calls)[:3], ["execute", "fix", "plan"])
+        self.assertEqual(self.roles(calls)[:4], ["plan", "execute", "fix", "plan"])
 
     def test_a_real_change_reaches_the_reviewer_with_its_diff(self):
         self.git_repo()
-        rc, calls = self.run_pipeline([{"touch": str(self.work / "a.txt")}, {"out": "VERDICT: PASS"}])
+        rc, calls = self.run_pipeline([{}, {"touch": str(self.work / "a.txt")}, {"out": "VERDICT: PASS"}])
         self.assertEqual(rc, 0)
-        self.assertEqual(self.roles(calls), ["execute", "review"])
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
 
-    def test_invalid_planner_stdout_does_not_overwrite_an_existing_plan(self):
+    def test_a_planner_that_wrote_no_plan_stops_the_run(self):
         payload = self.payload(level="L5")
-        plan_file = Path(payload["steps"][0]["output"]["path"])
-        plan_dir = plan_file.parent
+        plan_dir = Path(payload["steps"][0]["output"]["path"]).parent
         self.addCleanup(lambda: __import__("shutil").rmtree(plan_dir, ignore_errors=True))
-        plan_dir.mkdir(parents=True, exist_ok=True)
-        plan_file.write_text('{"previous": true}', encoding="utf-8")
-        rc, calls = self.run_pipeline([{"out": "not JSON"}], payload=payload)
+        rc, calls = self.run_pipeline([{"no_plan": True}], payload=payload)
         self.assertEqual(rc, pipeline.EXIT_NO_PLAN)
         self.assertEqual(self.roles(calls), ["plan"])
-        self.assertEqual(plan_file.read_text(encoding="utf-8"), '{"previous": true}')
 
     def test_stage_logs_are_phase_based_and_hide_the_command_unless_verbose(self):
-        (self.dir / "replies.json").write_text(json.dumps([{}, {"out": "VERDICT: PASS"}]), encoding="utf-8")
+        (self.dir / "replies.json").write_text(json.dumps([{}, {}, {"out": "VERDICT: PASS"}]), encoding="utf-8")
         err = io.StringIO()
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
-            pipeline.run_route(self.payload(), [], str(self.work))
+            pipeline.run_route(self.payload(), ["true"], str(self.work))
         text = err.getvalue()
+        self.assertIn("phase=plan model=gpt-5.6-sol effort=high", text)
         self.assertIn("phase=implement model=gpt-5.6-terra effort=high", text)
         self.assertIn("phase=review model=gpt-5.6-sol effort=high attempt=1", text)
         self.assertNotIn("command:", text)
@@ -337,7 +345,6 @@ class ClaudeAccessTests(unittest.TestCase):
         self.assertNotIn("acceptEdits", planner)
         self.assertEqual(planner[planner.index("--permission-mode") + 1], "dontAsk")
         self.assertEqual(planner[planner.index("--disallowedTools") + 1], "Edit")
-        self.assertNotIn("Edit(", " ".join(planner))
         review = router.stage_command("claude-code", {"model": "claude-opus-5", "effort": "high"}, "i", "p", "read")
         self.assertEqual(review[review.index("--permission-mode") + 1], "dontAsk")
         self.assertEqual(review[review.index("--disallowedTools") + 1], "Edit")
@@ -350,76 +357,24 @@ class ClaudeAccessTests(unittest.TestCase):
         config = router.load_config(ROOT / "config" / "model-map.json")
         for task_type, expected in (("implementation", "acceptEdits"), ("design", "dontAsk"), ("review", "dontAsk")):
             with self.subTest(task_type=task_type):
-                result = router.route("t", "claude-code", config, "L3", task_type)
+                # Only the fast trivial edit keeps implementation single-stage; other code changes are two-stage and have no shell_command.
+                result = fast_route("claude-code") if task_type == "implementation" else router.route("t", "claude-code", config, "L3", task_type)
+                self.assertEqual(result.mode, "single")
                 command = router.shell_command(result, "t", False)
                 self.assertEqual(command[command.index("--permission-mode") + 1], expected)
 
-    def test_interactive_claude_keeps_terminal_access_flags(self):
-        config = router.load_config(ROOT / "config" / "model-map.json")
-        result = router.route("t", "claude-code", config, "L3", "implementation")
+    def test_interactive_claude_edits_keep_its_own_permission_prompts(self):
+        result = fast_route("claude-code")
+        self.assertEqual(result.mode, "single")
         command = router.shell_command(result, "t", True)
-        self.assertNotIn("-p", command)
         self.assertEqual(command[command.index("--permission-mode") + 1], "acceptEdits")
 
-
-class NativeAccessTests(unittest.TestCase):
-    STAGE = {"model": "gpt-5.6-sol", "effort": "high"}
-    AGY_STAGE = {"model": "Gemini 3.1 Pro (High)", "effort": None}
-
-    def test_stage_commands_use_native_sandboxes_by_access(self):
-        for access, sandbox, mode in (
-            ("read", "read-only", "plan"),
-            ("edit", "workspace-write", "accept-edits"),
-        ):
-            with self.subTest(access=access):
-                codex = router.stage_command("codex", self.STAGE, "i", "p", access)
-                self.assertEqual(codex[:6], ["codex", "exec", "--sandbox", sandbox, "--ask-for-approval", "never"])
-                router.validate_argv("codex", codex, model=self.STAGE["model"], effort="high", access=access)
-
-                agy = router.stage_command("antigravity", self.AGY_STAGE, "i", "p", access)
-                self.assertEqual(agy[:4], ["agy", "--mode", mode, "--sandbox"])
-                router.validate_argv("antigravity", agy, model=self.AGY_STAGE["model"], access=access)
-
-    def test_native_stage_commands_reject_invalid_or_tampered_access(self):
-        for platform, stage in (("codex", self.STAGE), ("antigravity", self.AGY_STAGE)):
-            with self.subTest(platform=platform), self.assertRaises(ValueError):
-                router.stage_command(platform, stage, "i", "p", "admin")
-
-        command = router.stage_command("codex", self.STAGE, "i", "p", "read")
-        command[command.index("read-only")] = "workspace-write"
-        with self.assertRaises(ValueError):
-            router.validate_argv("codex", command, model=self.STAGE["model"], effort="high", access="read")
-
-        command = router.stage_command("codex", self.STAGE, "i", "p", "read")
-        approval = command.index("--ask-for-approval")
-        del command[approval:approval + 2]
-        with self.assertRaises(ValueError):
-            router.validate_argv("codex", command, model=self.STAGE["model"], effort="high", access="read")
-
-        command = router.stage_command("codex", self.STAGE, "i", "p", "read")
-        command[command.index("never")] = "on-request"
-        with self.assertRaises(ValueError):
-            router.validate_argv("codex", command, model=self.STAGE["model"], effort="high", access="read")
-
-    def test_interactive_commands_keep_and_validate_native_access_flags(self):
+    def test_interactive_claude_inspect_is_read_only(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
-        for platform in ("codex", "claude-code", "antigravity"):
-            with self.subTest(platform=platform):
-                result = router.route("t", platform, config, "L3", "implementation")
-                command = router.stage_commands(result, "t", interactive=True)[0]
-                payload = router.result_payload(result, [command], "t")
-                router.validated_commands(payload)
-                if platform == "codex":
-                    self.assertEqual(command[1:5], ["--sandbox", "workspace-write", "--ask-for-approval", "never"])
-                    del payload["steps"][0]["command"][3:5]
-                elif platform == "claude-code":
-                    self.assertIn("--permission-mode", command)
-                    payload["steps"][0]["command"].remove("acceptEdits")
-                else:
-                    self.assertEqual(command[1:4], ["--mode", "accept-edits", "--sandbox"])
-                    del payload["steps"][0]["command"][1:4]
-                with self.assertRaises(ValueError):
-                    router.validated_commands(payload)
+        result = router.route("t", "claude-code", config, "L1", "inspect")
+        command = router.shell_command(result, "t", True)
+        self.assertEqual(command[command.index("--permission-mode") + 1], "dontAsk")
+        self.assertIn("Bash", command)
 
 
 class RouteFileArgvGrammarTests(PipelineCase):
@@ -428,6 +383,8 @@ class RouteFileArgvGrammarTests(PipelineCase):
         for platform in ("codex", "claude-code", "antigravity"):
             for level in router.LEVELS:
                 for task_type in router.TASK_TYPES:
+                    if task_type == "inspect" and router.LEVELS.index(level) > router.LEVELS.index(router.INSPECT_MAX_LEVEL):
+                        continue
                     result = router.route("t", platform, config, level, task_type)
                     for interactive in (False, True):
                         if interactive and result.mode == "two_stage":
@@ -461,27 +418,37 @@ class RouteFileArgvGrammarTests(PipelineCase):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 router.validate_argv(platform, command, **kwargs)
 
-    def test_reader_stages_cannot_run_shell_or_write(self):
+    def test_codex_reader_cannot_drop_its_read_only_sandbox(self):
+        command = ["codex", "exec", "-m", "gpt-5.6-luna", "task"]
+        with self.assertRaises(ValueError):
+            router.validate_argv("codex", command, model="gpt-5.6-luna", access="read")
+
+    def test_reader_stages_cannot_run_shell_or_write_and_the_planner_writes_only_its_plan(self):
         review = router.claude_access_flags("read")
         self.assertEqual(review[review.index("--disallowedTools") + 1:review.index("--strict-mcp-config")], ["Edit", "Write", "NotebookEdit", "Bash"])
-        with self.assertRaises(ValueError):
-            router.claude_access_flags("plan")
+        plan = router.claude_access_flags("plan", "/tmp/codex-route-x/plan.json")
+        self.assertIn("Edit(//tmp/codex-route-x/plan.json)", plan)
+        self.assertIn("Bash", plan)
+        self.assertNotIn("Edit", plan[plan.index("--disallowedTools"):])
+        for path in (None, "relative/plan.json", "/tmp/a (b)/plan.json"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                router.claude_access_flags("plan", path)
 
-    def test_the_planner_is_read_only_and_returns_stdout(self):
+    def test_the_plan_rule_names_exactly_the_path_the_planner_is_told(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "claude-code", config, "L5", "implementation")
+        payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
+        plan_path = payload["steps"][0]["output"]["path"]
+        self.assertEqual(plan_path, str(Path(plan_path).resolve()))
+        self.assertNotIn(plan_path, payload["steps"][0]["command"][-1])
+        self.assertIn(plan_path, payload["steps"][1]["command"][-1])
+
+    def test_a_plan_rule_for_another_path_is_rejected(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
         result = router.route("t", "claude-code", config, "L5", "implementation")
         payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
         command = payload["steps"][0]["command"]
-        self.assertEqual(command[command.index("--disallowedTools") + 1], "Edit")
-        self.assertNotIn("Edit(", " ".join(command))
-        self.assertIn("Return only the plan JSON on stdout", command[-1])
-
-    def test_a_planner_write_permission_is_rejected(self):
-        config = router.load_config(ROOT / "config" / "model-map.json")
-        result = router.route("t", "claude-code", config, "L5", "implementation")
-        payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
-        command = payload["steps"][0]["command"]
-        command[command.index("Edit")] = "Edit(/tmp/plan.json)"
+        command[command.index("--permission-mode") + 1] = "acceptEdits"
         with self.assertRaises(ValueError):
             router.validated_commands(payload)
 
@@ -492,20 +459,6 @@ class RouteFileArgvGrammarTests(PipelineCase):
             router.validate_argv("claude-code", ["claude", "-p", "--model", "opus", "--permission-mode", "acceptEdits", "--", "task"], model="opus", legacy=True)
         with self.assertRaises(ValueError):
             router.validate_argv("antigravity", ["agy", "--agent", "x", "--model", "Gemini 3.1 Pro (High)", "--prompt", "task"])
-
-    def test_schema_v6_native_routes_without_access_flags_remain_accepted(self):
-        config = router.load_config(ROOT / "config" / "model-map.json")
-        for platform in ("codex", "antigravity"):
-            with self.subTest(platform=platform):
-                result = router.route("t", platform, config, "L3", "implementation")
-                payload = router.result_payload(result, router.stage_commands(result, "t"), "t")
-                payload["schema_version"] = 6
-                command = payload["steps"][0]["command"]
-                if platform == "codex":
-                    del command[2:6]
-                else:
-                    del command[1:4]
-                router.validated_commands(payload)
 
     def test_replaying_a_route_with_an_injected_flag_is_refused(self):
         config = router.load_config(ROOT / "config" / "model-map.json")
@@ -580,3 +533,138 @@ class PipelinePlanTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TrivialEditCheckTests(PipelineCase):
+    """The trivial-edit fast path has no review, so the launcher must own a deterministic check."""
+
+    def setUp(self):
+        super().setUp()
+        self.git_repo()
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop(pipeline.TEST_COMMAND_ENV, None)
+        self.route_file = self.dir / "route.json"
+
+    def main(self, payload, *extra):
+        self.route_file.write_text(json.dumps(payload), encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = pipeline.main(["--route-file", str(self.route_file), *extra])
+        return rc, err.getvalue()
+
+    def calls(self):
+        path = self.dir / "calls.jsonl"
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def test_without_a_check_the_run_is_refused_before_any_model_runs(self):
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        rc, err = self.main(self.payload(fast=True))
+        self.assertEqual(rc, 2)
+        self.assertIn("deterministic check", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_a_regular_code_change_without_a_check_is_refused_before_any_model_runs(self):
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        rc, err = self.main(self.payload())
+        self.assertEqual(rc, 2)
+        self.assertIn("deterministic check", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_a_blank_check_is_refused_before_any_model_runs(self):
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        rc, err = self.main(self.payload(fast=True), "--test-cmd", "   ")
+        self.assertEqual(rc, 2)
+        self.assertIn("deterministic check", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_an_inspect_never_runs_a_supplied_test_command(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("look", "codex", config, "L1", "inspect")
+        payload = router.result_payload(result, router.stage_commands(result, "look"), "look")
+        rc, calls = self.run_pipeline([{}], payload=payload, tests=["false"])
+        self.assertEqual((rc, self.roles(calls)), (0, ["execute"]))
+
+    def test_an_interactive_hand_off_cannot_bypass_the_check(self):
+        result = fast_route("codex")
+        payload = router.result_payload(result, router.stage_commands(result, "t", interactive=True), "t")
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        rc, err = self.main(payload)
+        self.assertEqual(rc, 2)
+        self.assertIn("deterministic check", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_an_interactive_regular_code_change_is_refused(self):
+        config = router.load_config(ROOT / "config" / "model-map.json")
+        result = router.route("t", "codex", config, "L2", "architectural_refactoring")
+        payload = router.result_payload(result, router.stage_commands(result, "t", interactive=True), "t")
+        rc, err = self.main(payload, "--test-cmd", "true")
+        self.assertEqual(rc, 2)
+        self.assertIn("trivial_edit", err)
+        self.assertEqual(self.calls(), [])
+
+    def test_the_env_check_satisfies_the_guard_and_a_green_run_only_executes(self):
+        (self.dir / "replies.json").write_text("[{}]", encoding="utf-8")
+        old = os.getcwd()
+        os.chdir(self.work)
+        self.addCleanup(os.chdir, old)
+        os.environ[pipeline.TEST_COMMAND_ENV] = "true"
+        rc, _ = self.main(self.payload(fast=True))
+        self.assertEqual((rc, self.roles(self.calls())), (0, ["execute"]))
+
+    def test_a_passing_check_runs_execute_only(self):
+        rc, calls = self.run_pipeline([{}], payload=self.payload(fast=True), tests=["true"])
+        self.assertEqual((rc, self.roles(calls)), (0, ["execute"]))
+
+    def test_a_check_that_keeps_failing_stops_after_two_fixes_without_promotion(self):
+        rc, calls = self.run_pipeline([{}] * 5, payload=self.payload(fast=True), tests=["false"])
+        self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
+        self.assertEqual(self.roles(calls), ["execute", "fix", "fix"])
+
+
+class FastPathValidationTests(PipelineCase):
+    def test_absent_and_known_values_are_valid(self):
+        payload = self.payload(fast=True)
+        pipeline.Pipeline.validate(payload)
+        payload.pop("fast_path")
+        pipeline.Pipeline.validate(payload)
+        inspect = router.route("look", "codex", router.load_config(ROOT / "config" / "model-map.json"), "L1", "inspect")
+        pipeline.Pipeline.validate(router.result_payload(inspect, router.stage_commands(inspect, "look"), "look"))
+
+    def test_an_unknown_fast_path_value_is_an_invalid_route(self):
+        for value in ("turbo", "", 1, True, ["trivial_edit"]):
+            payload = self.payload(fast=True)
+            payload["fast_path"] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                pipeline.Pipeline.validate(payload)
+
+    def test_a_trivial_edit_claim_with_a_plan_stage_is_inconsistent(self):
+        payload = self.payload(level="L4")
+        payload["fast_path"] = "trivial_edit"
+        with self.assertRaises(ValueError):
+            pipeline.Pipeline.validate(payload)
+
+    def test_replayed_trivial_edit_rechecks_its_facts(self):
+        payload = self.payload(fast=True)
+        payload["facts"]["changes_trust_boundary"] = "yes"
+        with self.assertRaises(ValueError):
+            router.validated_commands(payload)
+
+    def test_a_trivial_edit_claim_carrying_a_review_or_replan_is_inconsistent(self):
+        for key in ("review", "replan"):
+            payload = self.payload(fast=True)
+            payload["pipeline"][key] = self.payload(level="L4")["pipeline"][key]
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                pipeline.Pipeline.validate(payload)
+
+    def test_main_reports_an_invalid_fast_path_as_an_invalid_route(self):
+        payload = self.payload(fast=True)
+        payload["fast_path"] = "turbo"
+        route_file = self.dir / "route.json"
+        route_file.write_text(json.dumps(payload), encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = pipeline.main(["--route-file", str(route_file), "--test-cmd", "true"])
+        self.assertEqual(rc, 2)
+        self.assertIn("invalid route file", err.getvalue())

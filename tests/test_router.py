@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest import mock
+import copy
 import contextlib
 import dataclasses
 import hashlib
@@ -8,6 +9,8 @@ import io
 import json
 import os
 import re
+import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -21,13 +24,6 @@ assert SPEC.loader is not None
 sys.modules[SPEC.name] = router
 SPEC.loader.exec_module(router)
 CONFIG = router.load_config(ROOT / "config" / "model-map.json")
-
-PLAN_JSON = json.dumps({
-    "schema_version": 1,
-    "analysis": {"current_structure": [], "constraints": [], "affected_areas": [], "risks": []},
-    "implementation_plan": {"steps": [], "expected_files": [], "compatibility_requirements": []},
-    "validation": {"commands": [], "acceptance_criteria": [], "rollback_notes": []},
-})
 
 NO_FLAGS = {flag: False for flag in router.RISK_FLAGS}
 BASE_FACTS = {
@@ -49,6 +45,15 @@ BASE_FACTS = {
     "silent_failure_material_harm": "no",
     "requires_code_understanding": "no",
 }
+
+
+def legacy_codex_command(command, keep_sandbox=False):
+    command = list(command)
+    for flag in (("--ask-for-approval",) if keep_sandbox else ("--sandbox", "--ask-for-approval")):
+        while flag in command:
+            index = command.index(flag)
+            del command[index:index + 2]
+    return command
 # The smallest fact change that makes DIFFICULTY_RULES pick each level.
 LEVEL_FACTS = {
     "L1": {"mechanical_only": "yes"},
@@ -88,8 +93,9 @@ def classifier_output(task_type="implementation", level="L2", flags=None, reason
     return json.dumps(payload) if raw else payload
 
 
-def classification(task_type="implementation", level="L2", flags=None, source="terra", delegability=0, risk_tier="standard"):
+def classification(task_type="implementation", level="L2", flags=None, source="terra", delegability=0, risk_tier="standard", facts=None):
     return router.Classification(
+        facts=dict(facts or {}),
         task_type=task_type,
         level=level,
         risk_flags={**NO_FLAGS, **(flags or {})},
@@ -100,8 +106,17 @@ def classification(task_type="implementation", level="L2", flags=None, source="t
     )
 
 
+def init_git_repo(path: Path) -> Path:
+    """A throwaway work tree with one commit, so a run's change detection never depends on the outer checkout."""
+    path.mkdir(parents=True, exist_ok=True)
+    git = ["git", "-c", "user.name=test", "-c", "user.email=test@example.invalid"]
+    for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "initial"]):
+        subprocess.run([*git, *args], cwd=path, check=True, capture_output=True)
+    return path
+
+
 def routed(task="task", platform="codex", explicit_level=None, explicit_task_type=None,
-           available_models=None, classifier=None, repo_aware=False, critical=False):
+           available_models=None, classifier=None, repo_aware=False, critical=False, check_available=False):
     return router.route(
         task, platform, CONFIG,
         explicit_level=explicit_level,
@@ -110,6 +125,20 @@ def routed(task="task", platform="codex", explicit_level=None, explicit_task_typ
         classifier=classifier or (lambda _: classification()),
         repo_aware=repo_aware,
         critical=critical,
+        check_available=check_available,
+    )
+
+
+# A trivial edit qualifies for the single-stage fast path only with every mechanical/local fact AND a deterministic check.
+FAST_FACTS = dict(router.TRIVIAL_EDIT_FACTS)
+
+
+def routed_fast_l1(platform="codex", task_type="implementation", flags=None):
+    """A genuinely single-stage L1 code-change route: the trivial-edit fast path."""
+    return routed(
+        platform=platform,
+        classifier=lambda _: classification(task_type, "L1", flags=flags, facts=FAST_FACTS),
+        check_available=True,
     )
 
 
@@ -148,7 +177,7 @@ class PlatformClassifierTests(unittest.TestCase):
             set(router.CLASSIFIER_SCHEMA["properties"]),
         )
 
-    def test_uses_fixed_low_effort_terra_with_v2_schema(self):
+    def test_uses_fixed_low_effort_luna_with_v7_schema(self):
         completed = subprocess.CompletedProcess([], 0, classifier_output(), "")
         captured = {}
 
@@ -162,7 +191,7 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(command[0:2], ["codex", "exec"])
         self.assertIn("--ephemeral", command)
         self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-luna")
-        self.assertIn('model_reasoning_effort="medium"', command)
+        self.assertIn('model_reasoning_effort="low"', command)
         self.assertEqual(captured["schema"]["properties"]["task_type"]["enum"], list(router.TASK_TYPES))
         self.assertEqual(captured["schema"]["properties"]["facts"]["required"], list(router.FACTS))
         self.assertNotIn("hard_floor", captured["schema"]["properties"])
@@ -200,7 +229,7 @@ class PlatformClassifierTests(unittest.TestCase):
 
     def test_a_fact_the_lookup_cannot_settle_stays_unresolved_and_never_raises_the_route(self):
         for platform, models in (
-            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-sonnet-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
+            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-haiku-4-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
         ):
             with self.subTest(platform=platform):
                 calls = []
@@ -303,10 +332,10 @@ class PlatformClassifierTests(unittest.TestCase):
             result = router.classify_task("add a settings page", platform="claude-code", timeout=7)
         command = run.call_args.args[0]
         self.assertEqual(command[:2], ["claude", "-p"])
-        self.assertEqual(command[command.index("--model") + 1], "claude-sonnet-5")
-        self.assertEqual(command[command.index("--effort") + 1], "medium")
+        self.assertEqual(command[command.index("--model") + 1], "claude-haiku-4-5")
+        self.assertNotIn("--effort", command)
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
-        self.assertEqual(result.source, "claude-sonnet-5")
+        self.assertEqual(result.source, "claude-haiku-4-5")
         self.assertEqual(Path(run.call_args.kwargs["cwd"]), ROOT / "config")
 
     def test_antigravity_uses_isolated_structured_json_classifier(self):
@@ -463,7 +492,7 @@ class DifficultyRuleTests(unittest.TestCase):
     def test_zero_files_touched_is_rejected_for_code_changing_task_types(self):
         for task_type in ("implementation", "local_refactoring", "architectural_refactoring"):
             with self.subTest(task_type=task_type):
-                with self.assertRaisesRegex(ValueError, "only valid for design or review"):
+                with self.assertRaisesRegex(ValueError, "only valid for design, review or inspect"):
                     router.validate_classifier_output(
                         classifier_output(task_type=task_type, files_touched="0", raw=False)
                     )
@@ -562,6 +591,10 @@ class SecurityReviewFloorTests(unittest.TestCase):
             for task_type in router.TASK_TYPES:
                 with self.subTest(domain=domain, task_type=task_type):
                     output = classifier_output(task_type=task_type, raw=False, security_domain=domain)
+                    if task_type == "inspect":
+                        with self.assertRaisesRegex(ValueError, "standard L1-L2"):
+                            routed(classifier=lambda _: router.validate_classifier_output(output))
+                        continue
                     result = routed(classifier=lambda _: router.validate_classifier_output(output))
                     self.assertEqual(result.level, "L5")
 
@@ -913,72 +946,6 @@ class ExternalClassificationTests(unittest.TestCase):
         self.assertEqual((code, payload["effective_level"], payload["source"]), (0, "L3", "classification-file"))
 
 
-class CommandFormatPipelineTests(unittest.TestCase):
-    """`--format command` prints a command that runs the route through pipeline.py, not a bare stage chain."""
-
-    def print_command(self, *extra, task_type="implementation", level="L2"):
-        stdout = io.StringIO()
-        argv = ["fix the parser", "--platform", "codex", "--format", "command", "--task-type", task_type, "--level", level, *extra]
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(router.main(argv), 0)
-        command = stdout.getvalue().strip()
-        route_file = next(part for part in router.shlex.split(command.strip("()").split(";")[0]) if part.endswith(".json"))
-        self.addCleanup(Path(route_file).unlink, missing_ok=True)
-        return command, route_file
-
-    def test_the_printed_command_runs_pipeline_py_on_a_valid_route_file(self):
-        command, route_file = self.print_command()
-        argv = router.shlex.split(command.strip("()").split(";")[0])
-        self.assertEqual(argv[:2], ["python3", str(ROOT / "scripts" / "pipeline.py")])
-        self.assertIn("--cleanup-plan-dir", argv)
-        payload = json.loads(Path(route_file).read_text(encoding="utf-8"))
-        self.assertEqual(payload["schema_version"], router.SCHEMA_VERSION)
-        self.assertIn("pipeline", payload)
-        self.assertEqual(Path(route_file).stat().st_mode & 0o777, 0o600)
-        self.assertIn(f"rm -f {route_file}", command)  # the route file removes itself unless --keep-plan
-
-    def test_keep_plan_keeps_the_route_file_and_the_plan_directory(self):
-        command, route_file = self.print_command("--keep-plan", task_type="architectural_refactoring", level="L3")
-        self.assertNotIn("--cleanup-plan-dir", command)
-        self.assertNotIn("rm -f", command)
-        self.assertTrue(Path(route_file).exists())
-
-    def test_a_session_is_passed_through_so_a_failed_run_can_invalidate_the_stored_route(self):
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {router.route_reuse.STATE_DIR_ENV: tmp}):
-            command, route_file = self.print_command("--session", "s-1")
-            self.assertIn("--session s-1", command)
-            self.assertEqual(json.loads(Path(route_file).read_text(encoding="utf-8"))["reuse"]["session"], "s-1")
-
-    def test_executing_the_printed_command_runs_the_pipeline_and_a_failure_blocks_reuse(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp)
-            fake = directory / "codex"
-            fake.write_text(f"#!{sys.executable}\nimport sys\nsys.exit(7)\n", encoding="utf-8")
-            fake.chmod(0o755)
-            state = directory / "state"
-            env = {**os.environ, router.route_reuse.STATE_DIR_ENV: str(state), "PATH": f"{directory}{os.pathsep}{os.environ['PATH']}"}
-            proc = subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / "router.py"), "fix the parser", "--platform", "codex", "--format", "command",
-                 "--session", "s-2", "--classification-file", "-"],
-                input=classifier_output(level="L2"), capture_output=True, text=True, timeout=30, env=env, cwd=directory,
-            )
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            route_file = next(part for part in router.shlex.split(proc.stdout.strip().strip("()").split(";")[0]) if part.endswith(".json"))
-            run = subprocess.run(["bash", "-c", proc.stdout.strip()], capture_output=True, text=True, timeout=30, env=env, cwd=directory)
-            self.assertNotEqual(run.returncode, 0)
-            self.assertIn("phase=", run.stderr + run.stdout)  # the pipeline ran (it logs one phase line per stage)
-            record = json.loads(next(state.glob("session-*.json")).read_text(encoding="utf-8"))
-            self.assertTrue(record["blocked"])
-            self.assertFalse(Path(route_file).exists())  # cleaned up after the run
-
-    def test_an_interactive_single_stage_route_stays_a_bare_hand_off(self):
-        stdout = io.StringIO()
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
-            router.main(["task", "--platform", "claude-code", "--task-type", "design", "--level", "L5", "--interactive", "--format", "command"])
-        self.assertNotIn("pipeline.py", stdout.getvalue())
-        self.assertEqual(router.shlex.split(stdout.getvalue())[0], "claude")
-
-
 class UnresolvedFactsTests(unittest.TestCase):
     """An unknown that survives the bounded lookup becomes a question for the user, never a stronger model."""
 
@@ -1156,7 +1123,7 @@ class EscalationTests(unittest.TestCase):
 
 
 CODEX_IMPL = (
-    ("gpt-5.6-luna", "low"),
+    ("gpt-5.6-luna", "medium"),
     ("gpt-5.6-luna", "medium"),
     ("gpt-5.6-terra", "medium"),
     ("gpt-5.6-terra", "high"),
@@ -1185,30 +1152,35 @@ AGY_SONNET = ("Claude Sonnet 4.6 (Thinking)", None)
 class MatrixTests(unittest.TestCase):
     EXPECTED_SINGLE = {
         "codex": {
-            **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, CODEX_IMPL)},
+            # Every non-fast code change is two-stage (judge plan + this cheap implementer); see EXPECTED_STAGES.
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CODEX_JUDGE)},
-            ("architectural_refactoring", "L1"): ("gpt-5.6-luna", "medium"),
             ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
+            # inspect above L2 is rejected; the raw L3-L5 cells live in test_fast_path.
+            **{("inspect", level): ("gpt-5.6-luna", "low") for level in router.LEVELS[:2]},
         },
         "claude-code": {
-            **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, CLAUDE_IMPL)},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CLAUDE_JUDGE)},
-            ("architectural_refactoring", "L1"): ("claude-haiku-4-5", None),
             ("architectural_refactoring", "L2"): ("claude-opus-5", "high"),
+            **{("inspect", level): ("claude-haiku-4-5", None) for level in router.LEVELS[:2]},
         },
         "antigravity": {
-            **{(kind, level): cell for kind in ("implementation", "local_refactoring") for level, cell in zip(router.LEVELS, (
-                AGY_FLASH, AGY_FLASH, AGY_FLASH, AGY_SONNET,
-            ))},
+            # The Flash L2 implementer equals the Flash design planner, so L2 keeps a single stage.
+            # The Flash L1 implementer equals the Flash design planner too.
+            **{(kind, level): AGY_FLASH for kind in ("implementation", "local_refactoring") for level in ("L1", "L2")},
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, (
                 AGY_FLASH, AGY_FLASH, AGY_PRO, AGY_PRO, AGY_PRO,
             ))},
             ("architectural_refactoring", "L1"): AGY_FLASH,
             ("architectural_refactoring", "L2"): AGY_FLASH,
+            **{("inspect", level): AGY_FLASH for level in router.LEVELS[:2]},
         },
     }
     EXPECTED_STAGES = {
         "codex": {
+            **{(kind, level): [("planner", "gpt-5.6-sol", "high"), ("implementer", *impl)]
+               for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS, CODEX_IMPL)},
+            # L1 is not fast here (no facts): the judge row is max(L1, L2) while the implementer keeps its L1 row.
+            ("architectural_refactoring", "L1"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-luna", "medium")],
             ("implementation", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
             ("local_refactoring", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
             ("architectural_refactoring", "L3"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "medium")],
@@ -1216,6 +1188,9 @@ class MatrixTests(unittest.TestCase):
             ("architectural_refactoring", "L5"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
         },
         "claude-code": {
+            **{(kind, level): [("planner", "claude-opus-5", "high"), ("implementer", *impl)]
+               for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS, CLAUDE_IMPL)},
+            ("architectural_refactoring", "L1"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-haiku-4-5", None)],
             ("implementation", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
             ("local_refactoring", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
             ("architectural_refactoring", "L3"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "medium")],
@@ -1223,6 +1198,8 @@ class MatrixTests(unittest.TestCase):
             ("architectural_refactoring", "L5"): [("planner", "claude-opus-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
         },
         "antigravity": {
+            **{(kind, level): [("planner", *AGY_PRO), ("implementer", *impl)]
+               for kind in ("implementation", "local_refactoring") for level, impl in (("L3", AGY_FLASH), ("L4", AGY_SONNET))},
             ("implementation", "L5"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
             ("local_refactoring", "L5"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)],
             ("architectural_refactoring", "L3"): [("planner", "Gemini 3.1 Pro (High)", None), ("implementer", "Gemini 3.8 Flash (High)", None)],
@@ -1236,6 +1213,10 @@ class MatrixTests(unittest.TestCase):
             for task_type in router.TASK_TYPES:
                 for level in router.LEVELS:
                     with self.subTest(cell=f"{platform}/{task_type}/{level}"):
+                        if task_type == "inspect" and router.LEVELS.index(level) > router.LEVELS.index(router.INSPECT_MAX_LEVEL):
+                            with self.assertRaisesRegex(ValueError, "standard L1-L2"):
+                                routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
+                            continue
                         result = routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
                         self.assertEqual(result.task_type, task_type)
                         self.assertEqual((result.level, result.risk_tier), (level, "standard"))
@@ -1407,7 +1388,8 @@ class RoutingTests(unittest.TestCase):
         result = routed(explicit_task_type="implementation", classifier=spy)
         spy.assert_called_once()
         self.assertEqual(result.task_type, "implementation")
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-luna", "medium"))
+        # L2 implementation is judge-planned; its implementer stage keeps the cheap Luna rung.
+        self.assertEqual((result.stages[-1]["model"], result.stages[-1]["effort"]), ("gpt-5.6-luna", "medium"))
 
     def test_explicit_l5_with_explicit_type_bypasses_the_classifier(self):
         classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
@@ -1496,8 +1478,7 @@ class RoutingTests(unittest.TestCase):
         self.assertIn("safe fallback applied", stderr.getvalue())
         self.assertIn("implementation / L3", stderr.getvalue())
         # The fallback route is still emitted so a human can use it deliberately.
-        self.assertIn("pipeline.py --route-file", stdout.getvalue())
-        self.addCleanup(lambda: [Path(part).unlink(missing_ok=True) for part in router.shlex.split(stdout.getvalue().strip("()\n ").split(";")[0]) if part.endswith(".json")])
+        self.assertIn("codex", stdout.getvalue())
 
     def test_main_never_prompts_when_no_prompt_is_set(self):
         fallback = router.fallback_classification("timed out", "timeout")
@@ -1597,7 +1578,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         reply = self._elevated_review_reply()
         cases = (
             ("codex-route", "codex", "gpt-5.6-luna", reply),
-            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(reply)})),
+            ("claude-route", "claude", "claude-haiku-4-5", json.dumps({"structured_output": json.loads(reply)})),
             ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(reply)})),
         )
         for launcher, executable, classifier_model, classifier_reply in cases:
@@ -1622,6 +1603,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env = {
                     **os.environ,
                     "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                    "MODEL_EFFORT_ROUTER_TEST_CMD": "true",
                     "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
                     "TMPDIR": str(temp_dir),
                 }
@@ -1641,7 +1623,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertEqual(classifier_calls.read_text(), "1")
                 self.assertTrue(marker.exists())
-                self.assertEqual([path for path in temp_dir.iterdir() if path.name != "xcrun_db"], [])
+                self.assertEqual([path.name for path in temp_dir.iterdir() if path.name != "xcrun_db"], [])
 
     def test_print_only_env_prints_the_replayed_command_without_executing(self):
         for launcher, executable, platform in (
@@ -1669,7 +1651,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     capture_output=True, text=True, timeout=10, env=env,
                 )
                 self.assertEqual(saved.returncode, 0, saved.stderr)
-                self.assertIn("scripts/pipeline.py", saved.stderr)
+                self.assertIn(result.stages[0]["model"], saved.stderr)
                 self.assertFalse(marker.exists())
 
     def test_direct_two_stage_launchers_leave_no_plan_dir_behind(self):
@@ -1683,6 +1665,12 @@ class CommandAndLauncherTests(unittest.TestCase):
                 json.dumps({"structured_output": json.loads(classifier_output(task_type="architectural_refactoring", level="L3"))}),
             ),
         )
+        plan_json = json.dumps({
+            "schema_version": 1,
+            "analysis": {"current_structure": [], "constraints": [], "affected_areas": [], "risks": []},
+            "implementation_plan": {"steps": [], "expected_files": [], "compatibility_requirements": []},
+            "validation": {"commands": [], "acceptance_criteria": [], "rollback_notes": []},
+        })
         for launcher, executable, classifier_model, classifier_reply in cases:
             with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
                 directory = Path(tmp)
@@ -1695,8 +1683,16 @@ class CommandAndLauncherTests(unittest.TestCase):
                     "else:\n"
                     f"    with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
                     "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n"
-                    "    if 'planning stage' in ' '.join(sys.argv[1:]):\n"
-                    f"        print({PLAN_JSON!r})\n",
+                    # L3 is now reviewed by the judge; let the review pass so the run can finish.
+                    # Answer it first: its prompt embeds the repo diff, which can mention the plan marker.
+                    "    if 'merged verification' in ' '.join(sys.argv[1:]):\n"
+                    "        print('VERDICT: PASS')\n"
+                    "        sys.exit(0)\n"
+                    f"    if 'planning stage' in ' '.join(sys.argv[1:]):\n"
+                    f"        print({plan_json!r})\n"
+                    # The implement step edits the (hermetic) work tree so the pipeline sees a change.
+                    "    if 'You are the execution stage' in ' '.join(sys.argv[1:]):\n"
+                    "        pathlib.Path('implemented.txt').write_text('done')\n",
                     encoding="utf-8",
                 )
                 fake.chmod(0o755)
@@ -1705,6 +1701,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env = {
                     **os.environ,
                     "MODEL_EFFORT_ROUTER_ROOT": str(ROOT),
+                    "MODEL_EFFORT_ROUTER_TEST_CMD": "true",
                     "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}",
                     "TMPDIR": str(temp_dir),
                 }
@@ -1713,6 +1710,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     models.write_text("Claude Fable 5.1 (Thinking)\n", encoding="utf-8")
                     env["MODEL_EFFORT_ROUTER_MODELS_FILE"] = str(models)
 
+                repo = init_git_repo(directory / "repo")
                 proc = subprocess.run(
                     [str(ROOT / self.LAUNCHERS[launcher]), "--", "split module boundaries"],
                     stdin=subprocess.DEVNULL,
@@ -1720,12 +1718,14 @@ class CommandAndLauncherTests(unittest.TestCase):
                     text=True,
                     timeout=10,
                     env=env,
+                    cwd=repo,
                 )
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn("planning stage", calls.read_text())
                 self.assertIn("execution stage", calls.read_text())
+                self.assertIn("merged verification", calls.read_text())
                 leaked = [path for path in temp_dir.iterdir() if path.name != "xcrun_db"]
-                self.assertEqual(leaked, [], f"leaked temp entries: {leaked}")
+                self.assertEqual(leaked, [], f"leaked router temp entries: {leaked}")
 
     def test_launchers_request_plan_dir_cleanup_only_for_the_route_file_they_generate(self):
         # Static guard for the launcher scripts themselves: the route file a launcher
@@ -1740,14 +1740,13 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertIsNotNone(user_supplied, "user-supplied --route-file branch changed shape")
                 self.assertIsNotNone(generated, "direct-run generated route file must pass --cleanup-plan-dir")
 
-    def test_launchers_run_every_generated_route_through_the_pipeline_runner(self):
+    def test_launchers_run_non_interactive_routes_through_the_pipeline_runner(self):
         for launcher in self.LAUNCHERS.values():
             text = (ROOT / launcher).read_text(encoding="utf-8")
             with self.subTest(launcher=launcher):
                 self.assertEqual(text.count('scripts/pipeline.py" --route-file'), 2)
                 self.assertRegex(text, r'pipeline\.py" --route-file "\$2"')
                 self.assertRegex(text, r'pipeline\.py" --route-file "\$\{ROUTE_FILE\}" --cleanup-plan-dir')
-                self.assertNotIn('bash -c "${COMMAND}"', text)
 
     def test_antigravity_launcher_executes_stored_route_without_reclassification(self):
         result = routed(platform="antigravity", classifier=lambda _: classification("review", "L3"))
@@ -1768,7 +1767,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 fake_agy.chmod(0o755)
-                env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+                env = {**os.environ, "MODEL_EFFORT_ROUTER_TEST_CMD": "true", "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
                 env.pop("MODEL_EFFORT_ROUTER_PRINT_ONLY", None)
                 env.pop("MODEL_EFFORT_ROUTER_ROOT", None)
                 proc = subprocess.run([str(ROOT / self.LAUNCHERS["agy-route"]), "--route-file", str(route_file)], capture_output=True, text=True, timeout=10, env=env)
@@ -1781,7 +1780,8 @@ class CommandAndLauncherTests(unittest.TestCase):
             with self.subTest(planner_status=planner_status), tempfile.TemporaryDirectory() as tmp:
                 directory = Path(tmp)
                 result = routed(platform="antigravity", classifier=lambda _: classification("architectural_refactoring", "L3"))
-                self.addCleanup(lambda path=Path(result.plan_dir): __import__("shutil").rmtree(path, ignore_errors=True))
+                plan_dir = Path(result.plan_dir)
+                self.addCleanup(shutil.rmtree, plan_dir, ignore_errors=True)
                 commands = router.stage_commands(result, "restructure modules")
                 route_file = directory / "route.json"
                 route_file.write_text(json.dumps(router.result_payload(result, commands)), encoding="utf-8")
@@ -1791,46 +1791,68 @@ class CommandAndLauncherTests(unittest.TestCase):
                     f"#!{sys.executable}\nimport json, pathlib, sys\n"
                     f"with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
                     "    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                    # L3 is now reviewed by the judge (its prompt quotes the plan stage too); let it pass.
+                    "if 'merged verification' in sys.argv[-1]:\n"
+                    "    print('VERDICT: PASS')\n"
+                    "    raise SystemExit(0)\n"
                     "if 'You are the planning stage' in sys.argv[-1]:\n"
                     f"    if {planner_status} == 0:\n"
-                    f"        print({PLAN_JSON!r})\n"
-                    f"    raise SystemExit({planner_status})\n",
+                    f"        print({json.dumps({'schema_version': 1, 'analysis': {'current_structure': [], 'constraints': [], 'affected_areas': [], 'risks': []}, 'implementation_plan': {'steps': [], 'expected_files': [], 'compatibility_requirements': []}, 'validation': {'commands': [], 'acceptance_criteria': [], 'rollback_notes': []}})!r})\n"
+                    f"    raise SystemExit({planner_status})\n"
+                    # The implement step edits the (hermetic) work tree so the pipeline sees a change.
+                    "if 'You are the execution stage' in sys.argv[-1]:\n"
+                    "    pathlib.Path('implemented.txt').write_text('done')\n",
                     encoding="utf-8",
                 )
                 fake_agy.chmod(0o755)
-                env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
+                env = {**os.environ, "MODEL_EFFORT_ROUTER_TEST_CMD": "true", "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
                 env.pop("MODEL_EFFORT_ROUTER_PRINT_ONLY", None)
                 env.pop("MODEL_EFFORT_ROUTER_ROOT", None)
-                proc = subprocess.run([str(ROOT / self.LAUNCHERS["agy-route"]), "--route-file", str(route_file)], capture_output=True, text=True, timeout=10, env=env)
+                repo = init_git_repo(directory / "repo")
+                proc = subprocess.run([str(ROOT / self.LAUNCHERS["agy-route"]), "--route-file", str(route_file)], capture_output=True, text=True, timeout=10, env=env, cwd=repo)
                 self.assertEqual(proc.returncode, planner_status, proc.stderr)
                 expected = commands if planner_status == 0 else commands[:1]
-                self.assertEqual([json.loads(line) for line in calls.read_text().splitlines()], [command[1:] for command in expected])
-                self.assertTrue(Path(result.plan_dir).is_dir())
+                seen = [json.loads(line) for line in calls.read_text().splitlines()]
+                self.assertEqual(seen[:len(expected)], [command[1:] for command in expected])
+                # A passing plan runs the executor and then one judge review; a failed plan runs nothing else.
+                self.assertEqual(len(seen), len(expected) + (1 if planner_status == 0 else 0))
+                self.assertTrue(plan_dir.is_dir())
 
-    def test_single_stage_codex_command_pins_model_and_effort(self):
+    def test_implementer_codex_command_pins_model_and_effort(self):
+        # A fast trivial-edit L1 stays single-stage; every other code change has the implementer last, after the judge plan.
+        l1 = routed_fast_l1("codex")
+        self.assertEqual((l1.mode, l1.model, l1.effort), ("single", "gpt-5.6-luna", "medium"))
+        l1_command = router.stage_commands(l1, "task")[0]
+        self.assertIn("model_reasoning_effort=medium", l1_command)
+        # A single stage embeds the level agent's instructions; a two-stage implementer embeds the plan contract.
+        self.assertIn(router.codex_agent_instructions("L1"), " ".join(l1_command).replace("\\n", "\n"))
         result = routed(classifier=lambda _: classification("implementation", "L3"))
-        command = router.stage_commands(result, "task")[0]
+        command = router.stage_commands(result, "task")[-1]
         self.assertEqual(command[:2], ["codex", "exec"])
-        self.assertIn("-m gpt-5.6-terra", " ".join(command[:command.index("task")]))
+        self.assertEqual(command[command.index("-m") + 1], "gpt-5.6-terra")
         self.assertIn("model_reasoning_effort=medium", command)
-        self.assertIn("Investigate dependencies and failure paths before editing.", " ".join(command))
+        self.assertIn("You are the execution stage of a two-stage plan-and-implement pipeline.", " ".join(command))
+        self.assertIn(str(Path(result.plan_dir) / "plan.json"), " ".join(command))
 
-    def test_single_stage_commands_include_verification_handoff(self):
+    def test_implementing_commands_include_verification_handoff(self):
+        # L1 is single-stage; from L2 the last stage is the implementer. Both carry the handoff.
         for platform in ("codex", "claude-code", "antigravity"):
-            result = routed(
-                platform=platform,
-                classifier=lambda _: classification("implementation", "L3"),
-            )
-            command_text = " ".join(router.stage_commands(result, "implement feature")[0])
-            self.assertIn(
-                "- focused_tests: Code changes need focused regression coverage.",
-                command_text,
-            )
-            self.assertIn(
-                "Report each recommended check's result or why it was not run.",
-                command_text,
-            )
-            self.assertIn("Do not report an unrun check as passed", command_text)
+            for level in ("L1", "L3"):
+                result = routed(
+                    platform=platform,
+                    classifier=lambda _, lv=level: classification("implementation", lv),
+                )
+                command_text = " ".join(router.stage_commands(result, "implement feature")[-1])
+                with self.subTest(platform=platform, level=level):
+                    self.assertIn(
+                        "- focused_tests: Code changes need focused regression coverage.",
+                        command_text,
+                    )
+                    self.assertIn(
+                        "Report each recommended check's result or why it was not run.",
+                        command_text,
+                    )
+                    self.assertIn("Do not report an unrun check as passed", command_text)
 
     def test_two_stage_only_executor_receives_verification_handoff(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
@@ -1871,17 +1893,17 @@ class CommandAndLauncherTests(unittest.TestCase):
         ):
             self.assertIn(recommendation, command_text)
 
-    def route_payload(self, result, task="restructure modules"):
-        return json.loads(json.dumps(router.result_payload(result, router.stage_commands(result, task), task)))
-
-    def test_two_stage_chain_runs_through_the_parent_pipeline(self):
+    def test_two_stage_chain_is_success_dependent_and_cleans_up(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
-        chain = router.command_chain_from_payload(self.route_payload(result), cleanup_plan_dir=True)
-        self.assertIn("scripts/pipeline.py", chain)
-        self.assertIn("--cleanup-plan-dir", chain)
-        self.assertNotIn("rm -rf", chain)
-        kept = router.command_chain_from_payload(self.route_payload(result))
-        self.assertNotIn("--cleanup-plan-dir", kept)
+        chain = router.command_chain(result, "restructure modules")
+        self.assertIn("mkdir -p ", chain)
+        self.assertIn(" && ", chain)
+        self.assertIn("-m gpt-5.6-sol", chain)
+        self.assertIn("-m gpt-5.6-terra", chain)
+        self.assertIn(str(Path(result.plan_dir) / "plan.json"), chain)
+        self.assertIn(f"rm -rf {shlex_quote(str(result.plan_dir))}", chain)
+        kept = router.command_chain(result, "restructure modules", keep_plan=True)
+        self.assertNotIn("rm -rf", kept)
 
     def test_two_stage_stage_commands_reference_the_plan_file_twice(self):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L4"))
@@ -1891,7 +1913,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertEqual(implementer[implementer.index("-m") + 1], "gpt-5.6-terra")
         joined_planner = " ".join(planner)
         joined_implementer = " ".join(implementer)
-        self.assertNotIn(plan_path, joined_planner)
+        self.assertEqual(joined_planner.count(plan_path), 0)
         self.assertGreaterEqual(joined_implementer.count(plan_path), 1)
         self.assertIn("planning stage", joined_planner)
         self.assertIn("execution stage", joined_implementer)
@@ -1914,11 +1936,13 @@ class CommandAndLauncherTests(unittest.TestCase):
 
     def test_claude_payload_names_the_agent_tool_delegation_per_step(self):
         # The Agent tool cannot set effort, so the subagent is chosen by the matrix effort.
-        single = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L3"))
-        step = router.result_payload(single, router.stage_commands(single, "task"))["steps"][0]
-        self.assertEqual(step["agent"], {"subagent_type": "model-effort:effort-medium", "model": "sonnet"})
+        # L3 code changes are two-stage: the judge plans, the Sonnet implementer keeps its own effort.
+        planned = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L3"))
+        steps = router.result_payload(planned, router.stage_commands(planned, "task"))["steps"]
+        self.assertEqual(steps[0]["agent"], {"subagent_type": "model-effort:effort-high", "model": "opus"})
+        self.assertEqual(steps[-1]["agent"], {"subagent_type": "model-effort:effort-medium", "model": "sonnet"})
 
-        haiku = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L1"))
+        haiku = routed_fast_l1("claude-code")
         step = router.result_payload(haiku, router.stage_commands(haiku, "task"))["steps"][0]
         self.assertEqual(step["agent"], {"subagent_type": "model-effort:effort-none", "model": "haiku"})
 
@@ -1986,8 +2010,8 @@ class CommandAndLauncherTests(unittest.TestCase):
             with mock.patch.object(router, "classify_task", side_effect=AssertionError("must not reclassify")):
                 with contextlib.redirect_stdout(output):
                     self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
-        self.assertIn("scripts/pipeline.py", output.getvalue())
-        self.assertIn("--route-file", output.getvalue())
+        self.assertIn("codex exec", output.getvalue())
+        self.assertIn("gpt-5.6-sol", output.getvalue())
 
     def test_route_file_replays_v2_without_orchestration_fields(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
@@ -1995,6 +2019,10 @@ class CommandAndLauncherTests(unittest.TestCase):
         payload["schema_version"] = 2
         payload.pop("execution_strategy")
         payload.pop("orchestration_eligible")
+        payload["steps"] = [
+            {**step, "command": legacy_codex_command(step["command"], keep_sandbox=True)}
+            for step in payload["steps"]
+        ]
         with tempfile.TemporaryDirectory() as tmp:
             route_file = Path(tmp) / "route-v2.json"
             route_file.write_text(json.dumps(payload), encoding="utf-8")
@@ -2007,11 +2035,12 @@ class CommandAndLauncherTests(unittest.TestCase):
         # but a stored/user route file replayed WITHOUT --cleanup-plan-dir (the
         # launchers' explicit `--route-file <path>` mode) must never have its plan
         # dir deleted out from under the user.
+        result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
         for should_fail in (False, True):
             with self.subTest(should_fail=should_fail), tempfile.TemporaryDirectory() as tmp:
                 directory = Path(tmp)
-                run_result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
-                plan_dir = Path(run_result.plan_dir)
+                plan_dir = directory / "plan"
+                run_result = dataclasses.replace(result, plan_dir=str(plan_dir))
                 payload = router.result_payload(run_result, router.stage_commands(run_result, "restructure modules"))
                 route_file = directory / "route.json"
                 route_file.write_text(json.dumps(payload), encoding="utf-8")
@@ -2019,7 +2048,6 @@ class CommandAndLauncherTests(unittest.TestCase):
                 fake_codex = directory / "codex"
                 fake_codex.write_text(
                     f"#!{sys.executable}\nimport sys\n"
-                    f"if 'planning stage' in ' '.join(sys.argv[1:]): print({PLAN_JSON!r})\n"
                     f"if 'execution stage' in ' '.join(sys.argv[1:]) and {should_fail}:\n"
                     "    raise SystemExit(9)\n",
                     encoding="utf-8",
@@ -2032,8 +2060,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                     with contextlib.redirect_stdout(output):
                         self.assertEqual(router.main(["--route-file", str(route_file), "--cleanup-plan-dir"]), 0)
                 chain = output.getvalue().strip()
-                self.assertIn("scripts/pipeline.py", chain)
-                self.assertIn("--cleanup-plan-dir", chain)
+                self.assertIn("rm -rf", chain)
 
                 proc = subprocess.run(["bash", "-c", chain], capture_output=True, text=True, timeout=10, env=env)
                 self.assertEqual(proc.returncode, 9 if should_fail else 0, proc.stderr)
@@ -2041,13 +2068,13 @@ class CommandAndLauncherTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
-            run_result = routed(classifier=lambda _: classification("architectural_refactoring", "L3"))
-            plan_dir = Path(run_result.plan_dir)
+            plan_dir = directory / "plan"
+            run_result = dataclasses.replace(result, plan_dir=str(plan_dir))
             payload = router.result_payload(run_result, router.stage_commands(run_result, "restructure modules"))
             route_file = directory / "route.json"
             route_file.write_text(json.dumps(payload), encoding="utf-8")
             fake_codex = directory / "codex"
-            fake_codex.write_text(f"#!{sys.executable}\nprint({PLAN_JSON!r})\n", encoding="utf-8")
+            fake_codex.write_text(f"#!{sys.executable}\n", encoding="utf-8")
             fake_codex.chmod(0o755)
             env = {**os.environ, "PATH": f"{directory}{os.pathsep}{os.environ.get('PATH', '')}"}
 
@@ -2059,7 +2086,6 @@ class CommandAndLauncherTests(unittest.TestCase):
 
             subprocess.run(["bash", "-c", chain], capture_output=True, text=True, timeout=10, env=env, check=True)
             self.assertTrue(plan_dir.is_dir(), "stored route file's plan dir must be preserved")
-            __import__("shutil").rmtree(plan_dir, ignore_errors=True)
 
     def test_v2_and_v3_direct_replay_never_invokes_the_astra_adapter(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
@@ -2067,6 +2093,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         v2 = dict(v3, schema_version=2)
         v2.pop("execution_strategy")
         v2.pop("orchestration_eligible")
+        v2["steps"] = [{**step, "command": legacy_codex_command(step["command"], keep_sandbox=True)} for step in v2["steps"]]
         for payload in (v2, v3):
             with self.subTest(schema_version=payload["schema_version"]), tempfile.TemporaryDirectory() as tmp:
                 route_file = Path(tmp) / "route.json"
@@ -2101,7 +2128,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                             with mock.patch("builtins.input", side_effect=AssertionError("replay must not request approval")):
                                 with contextlib.redirect_stdout(output):
                                     self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
-                        self.assertIn("scripts/pipeline.py", output.getvalue())
+                        self.assertIn(result.stages[0]["model"], output.getvalue())
 
     def test_route_file_rejects_tampered_model_metadata(self):
         for task_type in ("implementation", "architectural_refactoring"):
@@ -2149,7 +2176,7 @@ class CommandAndLauncherTests(unittest.TestCase):
             )
             self.assertFalse(marker.exists())
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("scripts/pipeline.py", proc.stderr)
+        self.assertIn("gpt-5.6-sol", proc.stderr)
 
     def test_claude_launcher_replays_route_file_without_calling_claude(self):
         result = routed(platform="claude-code", classifier=lambda _: classification("review", "L3"))
@@ -2165,7 +2192,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env={**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1"},
             )
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("scripts/pipeline.py", proc.stderr)
+        self.assertIn("claude -p --model claude-opus-5", proc.stderr)
         self.assertNotIn("--agent", proc.stderr)
 
     def test_claude_and_antigravity_embed_level_instructions_without_installed_agents(self):
@@ -2182,23 +2209,29 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertNotIn("name: level-4-complex", " ".join(command))
 
     def test_claude_effort_omitted_for_haiku(self):
-        result_l1 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L1"))
+        result_l1 = routed_fast_l1("claude-code")
         self.assertEqual(result_l1.model, "claude-haiku-4-5")
         self.assertIsNone(result_l1.effort)
         command_l1 = router.shell_command(result_l1, "task", False)
         self.assertNotIn("--effort", command_l1)
 
+        # L2+ code changes are two-stage: the implementer is the last stage and owns the effort rule.
+        result_l2 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L2"))
+        implementer_l2 = result_l2.stages[-1]
+        self.assertEqual((implementer_l2["role"], implementer_l2["model"], implementer_l2["effort"]), ("implementer", "claude-haiku-4-5", None))
+        self.assertNotIn("--effort", router.stage_commands(result_l2, "task")[-1])
+
         result_l3 = routed(platform="claude-code", classifier=lambda _: classification("implementation", "L3"))
-        self.assertEqual(result_l3.model, "claude-sonnet-5")
-        self.assertEqual(result_l3.effort, "medium")
-        command_l3 = router.shell_command(result_l3, "task", False)
+        implementer_l3 = result_l3.stages[-1]
+        self.assertEqual((implementer_l3["model"], implementer_l3["effort"]), ("claude-sonnet-5", "medium"))
+        command_l3 = router.stage_commands(result_l3, "task")[-1]
         self.assertIn("--effort", command_l3)
         self.assertEqual(command_l3[command_l3.index("--effort") + 1], "medium")
 
     def test_two_stage_commands_are_platform_native(self):
         for platform, expected_head in (
             ("claude-code", ["claude", "-p", "--model", "claude-opus-5"]),
-            ("antigravity", ["agy", "--mode", "plan", "--sandbox", "--model", "Gemini 3.1 Pro (High)"]),
+            ("antigravity", ["agy", "--mode", "plan", "--sandbox", "--model"]),
         ):
             with self.subTest(platform=platform):
                 result = routed(platform=platform, classifier=lambda _: classification("architectural_refactoring", "L4"))
@@ -2207,9 +2240,9 @@ class CommandAndLauncherTests(unittest.TestCase):
                 self.assertEqual(planner[:len(expected_head)], expected_head)
                 self.assertEqual(" ".join(planner).count(plan_path), 0)
                 self.assertGreaterEqual(" ".join(implementer).count(plan_path), 1)
-                chain = router.command_chain_from_payload(self.route_payload(result, "task"), cleanup_plan_dir=True)
-                self.assertIn("scripts/pipeline.py", chain)
-                self.assertIn("--cleanup-plan-dir", chain)
+                chain = router.command_chain(result, "task")
+                self.assertTrue(chain.startswith("mkdir -p "))
+                self.assertIn("rm -rf ", chain)
 
     def _run_via_symlink(self, name: str, extra_env: dict[str, str] | None = None):
         source = ROOT / self.LAUNCHERS[name]
@@ -2243,7 +2276,7 @@ class CommandAndLauncherTests(unittest.TestCase):
             models.write_text("Gemini 3.8 Flash (High)\n", encoding="utf-8")
             proc = self._run_via_symlink("agy-route", {"MODEL_EFFORT_ROUTER_MODELS_FILE": str(models)})
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("scripts/pipeline.py", proc.stderr)
+        self.assertIn("Gemini 3.8 Flash (High)", proc.stderr)
 
     def test_launcher_reports_a_missing_bundle_clearly(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2264,10 +2297,34 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertNotIn('agy-route -- "<task>"', text)
                 self.assertNotIn("gemini-3.6-flash-low", text)
 
+    def test_antigravity_route_generation_command_is_not_hardcoded_interactive(self):
+        plugin = ROOT / "plugins" / "antigravity-model-effort-router"
+        for relative in ("GEMINI.md", "commands/route.toml"):
+            text = (plugin / relative).read_text(encoding="utf-8")
+            command = re.search(r"python3 <extension-root>/scripts/router\.py [^`]+`", text)
+            with self.subTest(path=relative):
+                self.assertIsNotNone(command)
+                self.assertNotIn("--interactive", command.group(0))
+
+    def test_documented_route_generation_command_works_for_two_stage_routes(self):
+        text = (ROOT / "plugins" / "antigravity-model-effort-router" / "commands" / "route.toml").read_text(encoding="utf-8")
+        command = re.search(r"python3 <extension-root>/scripts/router\.py ([^`]+)`", text).group(1)
+        # Mirror the documented argv; pinned type/level bypass the classifier and agy detection is dropped.
+        argv = [a for a in shlex.split(command) if a != "--detect-antigravity-models"]
+        argv = ["add a retry to the sync job" if a == "{{args}}" else a for a in argv]
+        argv += ["--task-type", "implementation", "--level", "L3", "--no-prompt"]
+        out, err = io.StringIO(), io.StringIO()
+        with tempfile.TemporaryDirectory() as state, mock.patch.dict(
+            os.environ, {"MODEL_EFFORT_ROUTER_STATE_DIR": state}
+        ), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            os.environ.pop("MODEL_EFFORT_ROUTER_SESSION", None)
+            code = router.main(argv)
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertEqual(json.loads(out.getvalue())["mode"], "two_stage")
+
     def test_readme_documents_the_current_preflight_contract(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("claude-sonnet-5", readme)
-        self.assertNotIn("claude-haiku-4-5", readme)
+        self.assertIn("claude-haiku-4-5", readme)
         self.assertNotIn("claude-haiku-4.5", readme)
         self.assertIn("unresolved_facts", readme)
         self.assertIn("DIFFICULTY_RULES", readme)
@@ -2292,16 +2349,21 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertIn("every `verification.recommended` ID and reason", primary)
                 self.assertIn("report each result or why it was not run", primary)
 
-    def test_claude_skill_delegates_single_stage_routes_and_pipelines_two_stage_routes(self):
-        # Live run: a nested `claude -p` executor cannot safely preserve the two-stage artifact contract.
+    def test_claude_skill_delegates_stored_steps_through_the_agent_tool(self):
+        # Live run: a nested `claude -p` executor cannot edit files and inherits a stale Bash cwd.
         primary = self._primary_section("claude")
         self.assertIn("Agent tool", primary)
         self.assertIn("steps[].agent.subagent_type", primary)
         self.assertIn("steps[].agent.model", primary)
         self.assertIn("last element of `steps[].command`", primary)
         self.assertIn("two_stage", primary)
-        self.assertIn("parent pipeline captures planner stdout", primary)
-        self.assertIn("bin/claude-route --route-file", primary)
+        # Only `pipeline == null` (read-only design/review) routes are delegated through the Agent tool;
+        # code changes run through pipeline.py, which owns the plan/implement/test/review stages.
+        self.assertIn("`pipeline` null", primary)
+        self.assertIn("`pipeline` non-null", primary)
+        self.assertIn("scripts/pipeline.py", primary)
+        self.assertIn("do not run those steps with the Agent tool", primary)
+        self.assertNotIn("claude-route", primary)
 
     def test_claude_skill_keeps_the_user_cwd_and_stops_on_fallback(self):
         # Live run: `cd` into the skill dir made the executor edit the plugin, not the user repo.
@@ -2343,7 +2405,7 @@ class RouteSkillContractTests(unittest.TestCase):
 
     def test_claude_skill_never_calls_a_stronger_classifier_for_unknown_facts(self):
         primary = self._primary_section("claude")
-        self.assertIn("`model` `sonnet`", primary)
+        self.assertIn("`model` `haiku`", primary)
         self.assertNotIn("`model` `opus`", primary)
 
     def test_antigravity_skill_replays_stored_steps_for_both_modes(self):
@@ -2352,51 +2414,71 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("steps[].command", primary)
         self.assertIn("two_stage", primary)
         self.assertIn("runs the executor only if the plan step succeeds", primary)
+        self.assertIn("scripts/pipeline.py", primary)
+        self.assertIn("MODEL_EFFORT_ROUTER_TEST_CMD", primary)
 
-    def test_bounded_fast_path_is_mechanical_and_consistent_across_skills(self):
-        # MEDIUM-B: the fast path must be gated on the stored route, not left to the
-        # parent's judgment, and must never mean the parent implements the task itself.
+    def test_route_skills_preserve_test_command_for_fast_path_before_replay(self):
+        for plugin in ("codex", "claude", "antigravity"):
+            text = (ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
+            with self.subTest(plugin=plugin):
+                export = text.find("export MODEL_EFFORT_ROUTER_TEST_CMD")
+                route = text.find("router.py")
+                replay = text.find("pipeline.py")
+                self.assertGreaterEqual(export, 0)
+                self.assertGreaterEqual(route, 0)
+                self.assertGreaterEqual(replay, 0)
+                self.assertLess(export, route)
+                self.assertLess(export, replay)
+                self.assertIn("trivial_edit", text)
+                self.assertIn("inspect", text.lower())
+                self.assertRegex(text.lower(), r"scope.{0,80}(preserv|expand|growth)")
+                self.assertRegex(text.lower(), r"inspect.{0,120}(modify|re-?classif)")
+
+    def test_code_change_workflow_is_stated_consistently_across_skills(self):
+        # The fast-path paragraph is gone: L1 code changes are single-stage with only the test gate,
+        # L2+ code changes plan from the design row and get a merged review, and the parent
+        # session never implements the task itself.
         for plugin in ("codex", "claude", "antigravity"):
             primary = self._primary_section(plugin)  # already whitespace-collapsed
             with self.subTest(plugin=plugin):
-                self.assertIn("bounded changes", primary)
-                self.assertIn("single-agent fast path", primary)
-                self.assertIn("effective_level` L1-L3", primary)
-                self.assertIn("empty `risk_flags`", primary)
-                self.assertIn("`security_review` or `migration_safety`", primary)
+                self.assertNotIn("single-agent fast path", primary)
+                self.assertNotIn("bounded changes", primary)
                 self.assertIn("verification.recommended", primary)
-                self.assertIn("`single` `mode`", primary)
+                self.assertIn("two_stage", primary)
+                self.assertIn("design row equals the implementer", primary)
+                self.assertIn("L1", primary)
+                self.assertRegex(primary, r"L1 (code change|stays single-stage)")
+                self.assertRegex(primary, r"(?i)re-route only if new evidence (materially )?raises scope or risk")
+                self.assertRegex(primary, r"never means the parent implements the task itself")
                 self.assertNotIn("fable", primary.lower())
                 self.assertNotIn("astra", primary.lower().replace("astra_adapter.py", ""))
-                self.assertIn("delegating once to the routed executor", primary)
-                self.assertIn("at most one review", primary)
-                self.assertIn("no multi-agent chains", primary)
-                self.assertIn("re-route only if new evidence raises scope or risk", primary)
-                self.assertIn("never means the parent implements the task itself", primary)
                 self.assertNotIn("implement directly", primary)
 
-        # The same hooks that carry the router into a session also carry the fast-path
-        # gate; both codex and claude have a hook, antigravity has none.
+        # The same hooks that carry the router into a session state the pipeline workflow and no
+        # fast path; both codex and claude have a hook, antigravity has none.
         for plugin in ("codex", "claude"):
             hook = ROOT / "plugins" / f"{plugin}-model-effort-router" / "scripts" / "routing_policy_hook.py"
             text = hook.read_text(encoding="utf-8")
-            for expected in ("bounded changes", "single-agent fast path", "L1-L3"):
+            for expected in ("pipeline.py --route-file" if plugin == "claude" else "codex-route --route-file", "pipeline-null routes"):
                 self.assertIn(expected, text)
+            for stale in ("bounded changes", "single-agent fast path", "L1-L3"):
+                self.assertNotIn(stale, text)
             self.assertNotIn("implement directly", text)
             self.assertNotIn("fable", text.lower())
             self.assertNotIn("astra", text.lower())
         self.assertFalse((ROOT / "plugins" / "antigravity-model-effort-router" / "scripts" / "routing_policy_hook.py").exists())
 
     def test_skills_and_policy_carry_the_role_pipeline(self):
-        # The judging model reviews once, a failed review re-classifies the fix, and
-        # escalation needs evidence rather than difficulty.
+        # The judging model reviews once, a failed review is fixed by the route's implementer
+        # (model-by-difficulty is planned), and escalation needs evidence rather than difficulty.
         judges = {"codex": "sol", "claude": "opus", "antigravity": "opus"}
         for plugin, judge in judges.items():
             skill = ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md"
             primary = " ".join(skill.read_text(encoding="utf-8").split()).lower()
             with self.subTest(plugin=plugin):
                 self.assertIn("merge", primary)
-                self.assertIn("re-classify the fix", primary)
+                self.assertIn("planned", primary)
+                self.assertIn("every fix uses the route's implementer", primary)
                 self.assertIn("reuse the stored route", primary)
                 self.assertIn("scope expansion", primary) if plugin != "antigravity" else self.assertIn("scope growth", primary)
                 self.assertIn(judge, primary)
@@ -2415,17 +2497,6 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertIn("orchestration_eligible", text)
                 self.assertIn("execution_strategy", text)
                 self.assertIn("v2-v7", text)
-
-    def test_in_session_skills_keep_two_stage_runs_in_the_parent_pipeline(self):
-        for plugin in ("codex", "claude"):
-            text = (ROOT / "plugins" / f"{plugin}-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
-            with self.subTest(plugin=plugin):
-                self.assertIn("single", text)
-                self.assertIn("parent pipeline", text)
-                self.assertIn("captures planner stdout", text)
-                self.assertIn("stage permissions", text)
-                self.assertIn("Schema v7 is current", text)
-                self.assertIn("Schema v6 remains legacy", text)
 
     def test_runtime_docs_match_the_current_matrix_and_classifier_contract(self):
         claude_skill = (ROOT / "plugins" / "claude-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
@@ -2454,9 +2525,9 @@ class RouteSkillContractTests(unittest.TestCase):
         claude = (ROOT / "plugins" / "claude-model-effort-router" / "README.md").read_text(encoding="utf-8")
         antigravity = (ROOT / "plugins" / "antigravity-model-effort-router" / "README.md").read_text(encoding="utf-8")
         self.assertIn("L1-L5", codex)
-        self.assertIn("gpt-5.6-luna` / medium", codex)
+        self.assertIn("gpt-5.6-luna` / low", codex)
         self.assertIn("elevated", codex)
-        self.assertIn("claude-sonnet-5` / medium", claude)
+        self.assertIn("claude-haiku-4-5` (no effort parameter)", claude)
         self.assertIn("Gemini 3.8 Flash (Medium)", antigravity)
         self.assertNotIn("gemini-3.6-flash-low", antigravity)
 
@@ -2493,7 +2564,20 @@ class ModelDetectionTests(unittest.TestCase):
 
 
 class BundleParityTests(unittest.TestCase):
-    SHARED = ("scripts/router.py", "scripts/pipeline.py", "scripts/route_reuse.py", "scripts/astra_adapter.py", "config/model-map.json", "config/classification-schema.json", "references/routing-policy.md")
+    SHARED = (
+        "scripts/router.py",
+        "scripts/classifier.py",
+        "scripts/rules.py",
+        "scripts/policy.py",
+        "scripts/commands.py",
+        "scripts/cli.py",
+        "scripts/pipeline.py",
+        "scripts/route_reuse.py",
+        "scripts/astra_adapter.py",
+        "config/model-map.json",
+        "config/classification-schema.json",
+        "references/routing-policy.md",
+    )
     PLUGINS = ("plugins/codex-model-effort-router", "plugins/claude-model-effort-router", "plugins/antigravity-model-effort-router")
 
     def test_plugin_copies_match_the_bundle_root(self):
@@ -2522,8 +2606,9 @@ class PaperthinIntegrationTests(unittest.TestCase):
         self.assertIn("leave the codebase cleaner than found", router.IMPLEMENTER_INSTRUCTIONS_TEMPLATE)
 
     def test_autobahn_scope_guard_injected_when_security_flags_active(self):
+        # An L1 security change is not a fast edit: the implementer is the last stage after the judge plan.
         result_sec = routed(classifier=lambda _: classification("implementation", "L1", flags={"security_sensitive": True}))
-        command = router.stage_commands(result_sec, "fix payment")[0]
+        command = router.stage_commands(result_sec, "fix payment")[-1]
         self.assertIn("Autobahn scope guard", " ".join(command))
 
         payload_sec = router.result_payload(result_sec, router.stage_commands(result_sec, "fix payment"))
@@ -2531,7 +2616,7 @@ class PaperthinIntegrationTests(unittest.TestCase):
         self.assertEqual(payload_sec["scope_guard"]["policy"], "autobahn_scope_carve")
         self.assertIn("security_sensitive", payload_sec["scope_guard"]["risk_flags"])
 
-        result_normal = routed(classifier=lambda _: classification("implementation", "L1"))
+        result_normal = routed_fast_l1("codex")
         command_normal = router.stage_commands(result_normal, "simple task")[0]
         self.assertNotIn("Autobahn scope guard", " ".join(command_normal))
         payload_normal = router.result_payload(result_normal, [command_normal])
