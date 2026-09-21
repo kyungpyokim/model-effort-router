@@ -209,7 +209,7 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L3_unknown_module_boundary_unresolved",
         task="Refactor session handling where module boundary impact is unknown",
         task_type="architectural_refactoring",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "crosses_module_boundary": "unknown"},
+        facts={"mechanical_only": "no", "files_touched": "2-5", "crosses_module_boundary": "unknown", "needs_new_structure": "no"},
         expected_level="L3",
         expected_unresolved=("crosses_module_boundary",),
     ),

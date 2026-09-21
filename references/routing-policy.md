@@ -83,7 +83,7 @@ Mixed tasks classify by their primary purpose. Design with sample code is `desig
 | Fact | Values | Meaning |
 |---|---|---|
 | `mechanical_only` | yes / no | Typos, renames, formatting, imports, comments, or docs with no behaviour change |
-| `files_touched` | 0 / 1 / 2-5 / 6+ / unknown | Files the work changes, including new and test files (not files only read); read-only design and review are 0 |
+| `files_touched` | 0 / 1 / 2-5 / 6+ / unknown | Files the work changes, including new and test files (not files only read); read-only design and review are 0; an implementation that runs an operation or changes production data is at least 1 even with no source diff; estimated from the work's described scope (a single named fix is 1 only when confined to one existing file with no separate test or new-file work described; a described production change that also touches a separate test or new file is 2-5, but a task whose entire scope is one test or one new file is still 1; a subsystem or protocol is 2-5; cross-cutting is 6+) even when no exact count is stated — `unknown` only when the task gives no scope signal at all, stricter than the general unknown default below |
 | `crosses_module_boundary` | yes / no / unknown | Spans modules or packages, or moves responsibilities between them |
 | `crosses_service_boundary` | yes / no / unknown | Work or diagnosis spans services, processes, or repositories |
 | `fix_or_result_known` | yes / no | The expected result or place to change is stated or evident, including choosing between explicitly named options; no when the goal or candidates must still be investigated or invented |

@@ -798,6 +798,36 @@ class ImpactFloorTests(unittest.TestCase):
         self.assertIn("recoverable subset", self.prompt_line("blast_radius"))
         self.assertIn("no error, alert, or failing test", self.prompt_line("silent_failure_material_harm"))
 
+    def test_prompt_defines_files_touched_guidance(self):
+        # This bullet has been patched three times this session for one reproduced regression each time (files_touched
+        # "0" rejected for an implementation, an "unknown" reply for a scoped task, unknown spreading past this fact);
+        # a loose pin here, like every other substantial fact bullet already has, keeps that guidance from silently
+        # regressing again undetected.
+        files_touched = self.prompt_line("files_touched")
+        self.assertIn("is at least 1", files_touched)
+        self.assertIn("Estimate files_touched from the work's described scope", files_touched)
+        self.assertIn("no exact count is stated", files_touched)
+        self.assertIn("only when it is confined to one existing file", files_touched)
+        self.assertIn("separate test or new file", files_touched)
+        # A task whose entire scope IS one test/new file (no separate production change) must
+        # stay 1, not 2-5 -- the "separate" clause above only fires alongside a distinct main change.
+        self.assertIn("whose entire scope is one test or one new file is still 1", files_touched)
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        self.assertIn("whose entire scope is one test or one new file is still 1", policy)
+
+    def test_files_touched_question_matches_scope_estimation_rules(self):
+        question = router.FACT_QUESTIONS["files_touched"]
+        self.assertIn("one existing file", question)
+        self.assertIn("separate test or new file", question)
+        self.assertIn("subsystem or protocol", question)
+        self.assertIn("cross-cutting", question)
+        self.assertIn("no scope signal", question)
+
+    def test_prompt_distinguishes_needs_new_structure_from_an_uncertain_existing_boundary(self):
+        # A refactor whose module-boundary impact is merely unknown is not itself "designing something new" --
+        # needs_new_structure was over-answered yes on exactly this shape of task (crosses_module_boundary=unknown).
+        self.assertIn("Refactoring existing code where a boundary's impact is uncertain is no", self.prompt_line("needs_new_structure"))
+
     def test_prompt_narrows_the_over_routing_definitions(self):
         self.assertIn("Laying out files inside one new module", self.prompt_line("needs_new_structure"))
         self.assertIn("choosing between explicitly named options", self.prompt_line("fix_or_result_known"))
