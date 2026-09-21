@@ -16,7 +16,7 @@ FALLBACK_TASK_TYPE = "implementation"
 
 PRIMARY_CLASSIFIER_CONFIG = {
     "codex": {"model": "gpt-5.6-luna", "effort": "low"},
-    "claude-code": {"model": "claude-haiku-4-5", "effort": None},
+    "claude-code": {"model": "claude-sonnet-5", "effort": None},
     "antigravity": {
         "patterns": [
             r"Gemini 3\.8 Flash \(Medium\)",

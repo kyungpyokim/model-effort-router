@@ -31,7 +31,7 @@ Then invoke:
 /model-effort:route <task>
 ```
 
-The router preflights each task with native `claude-haiku-4-5` (no effort parameter); facts that stay unknown get
+The router preflights each task with native `claude-sonnet-5` (no effort parameter); facts that stay unknown get
 one bounded same-model lookup, then a question to the user (exit `3`), never a stronger model. Claude's JSON-schema output is
 read from its `structured_output` result field. Safe mode,
 no tools, plan permissions, no session persistence, and a temporary working

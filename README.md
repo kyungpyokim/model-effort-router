@@ -44,7 +44,7 @@ platform, and an unknown fact is settled in this order:
 Classifier models by platform (no escalation model exists):
 
 - **Codex**: `gpt-5.6-luna` (low)
-- **Claude Code**: `claude-haiku-4-5` (no effort parameter)
+- **Claude Code**: `claude-sonnet-5` (no effort parameter)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON

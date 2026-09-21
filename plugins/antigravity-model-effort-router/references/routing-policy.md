@@ -12,7 +12,7 @@ and no self-reported confidence.
 ```text
 User Request
      │
-Classifier (Luna Low / Haiku / Gemini 3.8 Flash Med, or the in-session difficulty-assessor agent)
+Classifier (Luna Low / Sonnet / Gemini 3.8 Flash Med, or the in-session difficulty-assessor agent)
   -> task_type + 17 facts (yes / no / unknown, plus a security domain and blast radius) + evidence
      │
 DIFFICULTY_RULES (scripts/router.py)
@@ -56,7 +56,7 @@ fields; malformed v3+ files are rejected before execution.
 | Platform | Classifier |
 |---|---|
 | **Codex** | `gpt-5.6-luna` (low) |
-| **Claude Code** | `claude-haiku-4-5` (no effort parameter) |
+| **Claude Code** | `claude-sonnet-5` (no effort parameter) |
 | **Antigravity** | `Gemini 3.8 Flash (Medium)` |
 
 There is one classifier per platform. `unknown` and low classifier confidence never call a stronger classifier.

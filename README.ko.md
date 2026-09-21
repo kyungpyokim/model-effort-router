@@ -31,7 +31,7 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 플랫폼별 분류 모델(에스컬레이션 모델은 없습니다):
 
 - **Codex**: `gpt-5.6-luna` (low)
-- **Claude Code**: `claude-haiku-4-5` (effort 없음)
+- **Claude Code**: `claude-sonnet-5` (effort 없음)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)`
 
 각 사전 분류는 격리된 임시 디렉토리에서 실행되며 구조화된 JSON(`task_type`, `facts`, `delegability`, `evidence`, `reason`)을 검증한 뒤 프로필을 선택합니다. 읽기 전용인 `design` 및 `review` 작업의 경우 `files_touched`가 `0`으로 처리됩니다. Claude Code 또는 Codex 세션 내에서는 라우트 스킬이 인세션 `difficulty-assessor` 에이전트를 통해 동일한 프롬프트를 실행하고 `--classification-file`로 JSON을 전달합니다. 라우트 스킬은 이 1회 분류에서 저장소를 읽고(`--repo-aware`), `unresolved_facts`가 남으면 다른 모델을 부르는 대신 사용자에게 묻습니다. `--classification-file`의 `{"primary", "lookup"}` 엔벨로프는 같은 모델의 조회 1회를 첫 응답에 합칩니다.

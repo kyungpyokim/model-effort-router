@@ -230,7 +230,7 @@ class PlatformClassifierTests(unittest.TestCase):
 
     def test_a_fact_the_lookup_cannot_settle_stays_unresolved_and_never_raises_the_route(self):
         for platform, models in (
-            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-haiku-4-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
+            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-sonnet-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
         ):
             with self.subTest(platform=platform):
                 calls = []
@@ -333,10 +333,10 @@ class PlatformClassifierTests(unittest.TestCase):
             result = router.classify_task("add a settings page", platform="claude-code", timeout=7)
         command = run.call_args.args[0]
         self.assertEqual(command[:2], ["claude", "-p"])
-        self.assertEqual(command[command.index("--model") + 1], "claude-haiku-4-5")
+        self.assertEqual(command[command.index("--model") + 1], "claude-sonnet-5")
         self.assertNotIn("--effort", command)
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
-        self.assertEqual(result.source, "claude-haiku-4-5")
+        self.assertEqual(result.source, "claude-sonnet-5")
         self.assertEqual(Path(run.call_args.kwargs["cwd"]), ROOT / "config")
 
     def test_antigravity_uses_isolated_structured_json_classifier(self):
@@ -1743,7 +1743,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         reply = self._elevated_review_reply()
         cases = (
             ("codex-route", "codex", "gpt-5.6-luna", reply),
-            ("claude-route", "claude", "claude-haiku-4-5", json.dumps({"structured_output": json.loads(reply)})),
+            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(reply)})),
             ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(reply)})),
         )
         for launcher, executable, classifier_model, classifier_reply in cases:
@@ -2489,7 +2489,7 @@ class RouteSkillContractTests(unittest.TestCase):
 
     def test_readme_documents_the_current_preflight_contract(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("claude-haiku-4-5", readme)
+        self.assertIn("claude-sonnet-5", readme)
         self.assertNotIn("claude-haiku-4.5", readme)
         self.assertIn("unresolved_facts", readme)
         self.assertIn("DIFFICULTY_RULES", readme)
@@ -2692,7 +2692,7 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("L1-L5", codex)
         self.assertIn("gpt-5.6-luna` / low", codex)
         self.assertIn("elevated", codex)
-        self.assertIn("claude-haiku-4-5` (no effort parameter)", claude)
+        self.assertIn("claude-sonnet-5` (no effort parameter)", claude)
         self.assertIn("Gemini 3.8 Flash (Medium)", antigravity)
         self.assertNotIn("gemini-3.6-flash-low", antigravity)
 
