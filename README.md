@@ -138,8 +138,9 @@ implies a level, and `unknown` is missing information, not confirmed risk.
   flags force the **elevated** risk tier (which implies L5) with Autobahn scope
   guards; data migration and public API changes force an L4 floor. Review-only
   security work is floored by facts rather than flags: `reviews_security_sensitive_code`
-  gives at least L4 and a critical `security_domain` (payment, crypto, auth,
-  permissions, pii) at least L5, whatever the task type.
+  gives at least L4 and a bare `security_domain` of payment, crypto,
+  permissions, or pii at least L5. Bare auth has no L5 floor; confirmed auth
+  changes and reviews still reach the elevated tier / L4 as above, whatever the task type.
 - **`elevated` tier** (L5): a security/payment logic change, a critical domain whose
   trust boundary changes, an intermittent failure across services, or new structure
   across services with an open result. It raises the planning/judging stage effort to

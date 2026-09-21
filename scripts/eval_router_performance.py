@@ -222,6 +222,30 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         expected_level="L2",
         expected_unresolved=("changes_security_or_payment_logic",),
     ),
+    # security_domain_critical's bare-mention floor (BARE_DOMAIN_FLOOR_DOMAINS in rules.py), isolated from every
+    # other escalating fact: auth alone must not float the level, but payment/crypto/permissions/pii still do.
+    BenchmarkCase(
+        name="L2_bare_auth_domain_is_not_a_floor",
+        task="Reword the error message shown on a failed login attempt",
+        task_type="implementation",
+        facts={
+            "mechanical_only": "no", "files_touched": "1",
+            "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no",
+            "security_domain": "auth",
+        },
+        expected_level="L2",
+    ),
+    BenchmarkCase(
+        name="L5_bare_pii_domain_floors_at_l5",
+        task="Fix an off-by-one error in the customer PII export pagination logic",
+        task_type="implementation",
+        facts={
+            "mechanical_only": "no", "files_touched": "1",
+            "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no",
+            "security_domain": "pii",
+        },
+        expected_level="L5",
+    ),
 
     # L5 Cases (needs_new_structure, intermittent_or_concurrency, open result across modules)
     BenchmarkCase(

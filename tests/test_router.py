@@ -630,7 +630,9 @@ class SecurityReviewFloorTests(unittest.TestCase):
         self.assertEqual((claude.level, claude.model, claude.effort), ("L5", "claude-opus-5", "high"))
 
     def test_critical_domains_floor_at_l5_regardless_of_task_type(self):
-        for domain in ("payment", "auth", "crypto", "permissions", "pii"):
+        # auth is excluded: a bare domain mention with nothing else confirmed is not itself a critical-impact
+        # signal for auth (see test_bare_auth_domain_is_not_a_floor); payment/crypto/permissions/pii still are.
+        for domain in ("payment", "crypto", "permissions", "pii"):
             for task_type in router.TASK_TYPES:
                 with self.subTest(domain=domain, task_type=task_type):
                     output = classifier_output(task_type=task_type, raw=False, security_domain=domain)
@@ -640,6 +642,32 @@ class SecurityReviewFloorTests(unittest.TestCase):
                         continue
                     result = routed(classifier=lambda _: router.validate_classifier_output(output))
                     self.assertEqual(result.level, "L5")
+
+    def test_bare_auth_domain_is_not_a_floor(self):
+        # A domain guess alone (no confirmed security/payment change, no reviewed sensitive code) is not a
+        # critical-impact signal for auth: "the login problem" plausibly touches auth, but merely naming the
+        # domain must not floor a task that could be a one-line UI fix.
+        for value in ("unknown", "no"):
+            with self.subTest(changes_security_or_payment_logic=value):
+                level, tier, matched, _ = self.level_of(security_domain="auth", changes_security_or_payment_logic=value)
+                self.assertEqual((level, tier), ("L2", "standard"))
+                self.assertNotIn("L5:security_domain_critical", matched)
+
+    def test_bare_auth_domain_inspect_routes_on_the_cheap_fast_path(self):
+        # Unlike payment/crypto/permissions/pii (which still floor at L5 and trip the inspect guard --
+        # see test_critical_domains_floor_at_l5_regardless_of_task_type), a bare auth-domain inspect is
+        # not floored at all: it stays a standard L1-L2 read-only lookup and routes normally.
+        output = classifier_output(task_type="inspect", raw=False, files_touched="0", security_domain="auth")
+        result = routed(classifier=lambda _: router.validate_classifier_output(output))
+        self.assertEqual((result.level, result.risk_tier), ("L2", "standard"))
+
+    def test_confirmed_auth_change_still_floors_at_least_l4(self):
+        level, tier, matched, _ = self.level_of(changes_security_or_payment_logic="yes", security_domain="auth")
+        self.assertEqual((level, tier), ("L5", "elevated"))
+        self.assertIn("elevated:changes_security_or_payment_logic", matched)
+        reviewed = self.level_of(reviews_security_sensitive_code="yes", security_domain="auth")
+        self.assertEqual(reviewed[0], "L4")
+        self.assertIn("L4:reviews_security_sensitive_code", reviewed[2])
 
     def test_secrets_only_review_gets_the_l4_floor(self):
         level, _, matched, unresolved = self.level_of(reviews_security_sensitive_code="yes", security_domain="secrets")
@@ -686,6 +714,24 @@ class SecurityReviewFloorTests(unittest.TestCase):
         self.assertIn("seventeen bounded facts", readme)
         self.assertNotIn("13 facts", policy)
         self.assertIn("17 facts", policy)
+
+    def test_bare_auth_l5_floor_docs_match_runtime(self):
+        stale = "payment, crypto, auth, permissions, pii) floors at L5"
+        paths = [
+            ROOT / "references" / "routing-policy.md",
+            *(ROOT / "plugins" / f"{plugin}-model-effort-router" / "references" / "routing-policy.md"
+              for plugin in ("codex", "claude", "antigravity")),
+            ROOT / "README.md",
+            ROOT / "plugins" / "codex-model-effort-router" / "README.md",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                text = path.read_text(encoding="utf-8")
+                self.assertNotIn(stale, text)
+                self.assertIn("Bare auth has no L5 floor", text)
+        korean_readme = (ROOT / "README.ko.md").read_text(encoding="utf-8")
+        self.assertNotIn("payment, crypto, auth, permissions, pii", korean_readme)
+        self.assertIn("bare auth는 L5 바닥선이 없습니다", korean_readme)
 
 
 class ImpactFloorTests(unittest.TestCase):
@@ -790,6 +836,17 @@ class ImpactFloorTests(unittest.TestCase):
 
     def prompt_line(self, fact):
         return next(line for line in router.classifier_prompt("task").splitlines() if line.startswith(f"- {fact}:"))
+
+    def test_prompt_reconciles_moved_carveout_with_trust_boundary_redirect(self):
+        # changes_security_or_payment_logic's redirect ("moving that code across a service boundary
+        # does decide to move a trust boundary, and belongs there instead") is a dead end unless
+        # security_domain also keeps the domain for a boundary-crossing move: otherwise
+        # elevated:critical_domain_trust_boundary (which needs security_domain AND
+        # changes_trust_boundary=yes together) never fires and the redirect judges nothing.
+        domain_line = self.prompt_line("security_domain")
+        self.assertIn("moved across a trust or service boundary keeps its domain", domain_line)
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        self.assertIn("moved across a trust or service boundary keeps its domain", policy)
 
     def test_prompt_defines_impact_facts(self):
         self.assertIn("service-to-service authentication", self.prompt_line("changes_trust_boundary"))

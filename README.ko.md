@@ -86,7 +86,7 @@ L5 난이도에 `delegability: 2`를 만족하는 안전한 단일 Codex 라우�
 - **데이터 마이그레이션, 퍼블릭 API 변경** 플래그: 최소 **L4 바닥선** 강제
 - **보안 검토(Review-only) 작업**: 플래그 대신 팩트에 의해 바닥선이 결정됩니다.
   - `reviews_security_sensitive_code`가 감지되면 최소 **L4**
-  - 치명적인 보안 영역(`security_domain`: payment, crypto, auth, permissions, pii)의 경우 작업 유형과 무관하게 최소 **L5**
+  - 치명적인 보안 영역(`security_domain`: payment, crypto, permissions, pii)의 경우 작업 유형과 무관하게 최소 **L5**. bare auth는 L5 바닥선이 없습니다. 확인된 auth 변경은 elevated 티어에, auth 검토는 L4에 도달합니다.
 - **`elevated` 티어** (L5): 보안/결제 로직 변경, 신뢰 경계가 바뀌는 치명적 보안 영역, 서비스 간 간헐적 장애, 결과가 열려 있는 서비스 간 새 구조 설계. 계획/판단 단계의 effort를 Codex(Sol)와 Claude Code(Opus)에서는 `xhigh`로 올리고, effort 설정이 없는 Antigravity는 해당 단계를 Claude Opus Thinking으로 교체합니다.
 - **`critical` 티어** (L5): `irreversible_or_ledger_or_crypto` = yes(비가역 운영 데이터, 원장 정확성, 신규 암호 설계) 또는 `--critical` 플래그. 같은 단계를 `max`로 올립니다(Antigravity: Claude Opus Thinking). 명시적 yes에서만 발동하며 `unknown`은 발동하지 않습니다.
 - 2단계 라우트에서 구현 단계는 매트릭스 프로필을 그대로 유지하고, 계획/리뷰 단계만 상향됩니다. 티어 프로필은 `config/model-map.json`의 `tiers`에 있습니다.
