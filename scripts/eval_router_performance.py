@@ -508,25 +508,34 @@ def _pct(hit: int, total: int) -> float:
 def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict, platform: str, base_facts: dict[str, str]) -> dict:
     """Grade one classifier answer against its labels: fact agreement, level/tier, and the routed model+effort."""
     expected_facts = {**base_facts, **case.facts}
-    # Only labelled facts are graded: a fact the case does not label follows the classifier's own answer, so the
-    # corpus default ("nothing risky here") cannot fail routing or the profile for a fact nobody labelled.
-    graded_facts = {
-        **expected_facts,
-        **{name: value for name, value in actual.facts.items() if value is not None and name not in case.facts},
-    }
-    expected_level, expected_tier, _, expected_unresolved = router.evaluate_rules(graded_facts)
     per_fact = {name: {"expected": expected, "actual": actual.facts.get(name)} for name, expected in expected_facts.items()}
+    # Routing grades against the case's own declared outcome, never against evaluate_rules() re-run on a fact set
+    # blended with the classifier's own unlabelled-fact answers: that would let a wrong answer on any unlabelled
+    # fact silently redefine what counts as correct (an over-escalating classifier grading itself as accurate).
+    # A route with any unresolved fact is not executable, so the actual set must exactly match the case's
+    # declared unresolved set. Unknown-transition metrics remain labelled-fact-only in _tally_facts.
+    unresolved_match = set(actual.unresolved) == set(case.expected_unresolved)
     # task_type is graded on its own: implementation and local_refactoring route identically, so a swap must not fail routing.
     routing_match = (
-        actual.level == expected_level
-        and actual.risk_tier == expected_tier
-        and actual.unresolved == expected_unresolved
+        actual.level == case.expected_level
+        and actual.risk_tier == case.expected_tier
+        and unresolved_match
     )
+    # The profile check still follows the classifier's own answer on an unlabelled fact (e.g. requires_code_understanding,
+    # which never changes level/tier but does pick the implementer rung): grading it against a corpus default would
+    # fail a classifier for guessing something the case never labelled, on a fact routing itself doesn't depend on.
+    graded_facts = {
+        **expected_facts,
+        **{
+            name: actual.facts[name] for name in router.OPTIONAL_FACT_DEFAULTS
+            if name not in case.facts and actual.facts.get(name) is not None
+        },
+    }
     expected_classification = router.Classification(
-        task_type=case.task_type, level=expected_level, risk_flags=router.risk_flags_from_facts(graded_facts),
-        reason="labelled", source="test", facts=graded_facts, risk_tier=expected_tier,
+        task_type=case.task_type, level=case.expected_level, risk_flags=router.risk_flags_from_facts(graded_facts),
+        reason="labelled", source="test", facts=graded_facts, risk_tier=case.expected_tier,
     )
-    expected_profile = _route_profile(config, platform, case.task, expected_classification, expected_tier == "critical")
+    expected_profile = _route_profile(config, platform, case.task, expected_classification, case.expected_tier == "critical")
     actual_profile = _route_profile(config, platform, case.task, actual, actual.risk_tier == "critical")
     return {
         "name": case.name,
@@ -535,10 +544,10 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
         "passed": routing_match,
         "task_type_passed": actual.task_type == case.task_type,
         # A routing error on both sides is a broken config, never a match.
-        "profile_passed": "error" not in actual_profile and expected_profile == actual_profile,
+        "profile_passed": unresolved_match and "error" not in actual_profile and expected_profile == actual_profile,
         "expected": {
-            "task_type": case.task_type, "level": expected_level, "risk_tier": expected_tier,
-            "unresolved": list(expected_unresolved), "profile": expected_profile,
+            "task_type": case.task_type, "level": case.expected_level, "risk_tier": case.expected_tier,
+            "unresolved": list(case.expected_unresolved), "profile": expected_profile,
         },
         "actual": {
             "task_type": actual.task_type, "level": actual.level, "risk_tier": actual.risk_tier,

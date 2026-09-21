@@ -93,8 +93,26 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         labelled = sum("requires_code_understanding" in case.facts for case in eval_perf.GOLDEN_BENCHMARK_CASES)
         self.assertEqual(summary["unknown_transitions"]["expected_known_to_unknown"], labelled)
 
-    def test_facts_the_corpus_does_not_label_are_not_graded(self):
-        # The case labels only its own facts; the classifier's answer on the rest must not fail routing or count as a transition.
+    def test_an_unlabelled_fact_cannot_move_the_expected_level_or_tier(self):
+        # An unlabelled fact following the classifier's own answer must not let a WRONG classifier answer on that
+        # fact redefine what counts as correct: routing still grades against the case's own declared outcome, never
+        # against evaluate_rules(graded_facts). Otherwise a classifier that over-escalates on any unlabelled fact
+        # (here: a doc typo answered irreversible_or_ledger_or_crypto="yes") scores a perfect routing/profile match.
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L1_doc_typo_fix")
+        self.assertEqual((case.expected_level, case.expected_tier), ("L1", "standard"))
+        over_escalating = stub_classifier(lambda c: labelled_facts(c, irreversible_or_ledger_or_crypto="yes"))
+        summary = eval_perf.evaluate_classifier_benchmark(classifier=over_escalating, case_names=(case.name,))["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
+
+    def test_an_unlabelled_security_fact_cannot_redefine_the_expected_profile(self):
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L1_doc_typo_fix")
+        over_escalating = stub_classifier(lambda c: labelled_facts(c, changes_security_or_payment_logic="yes"))
+        summary = eval_perf.evaluate_classifier_benchmark(classifier=over_escalating, case_names=(case.name,))["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
+
+    def test_extra_unresolved_facts_fail_routing_and_profile_without_changing_transition_metrics(self):
+        # A route with any unresolved fact cannot execute, including one the corpus did not label. It must not
+        # count as a routing or profile pass, but unknown-transition metrics still cover labelled facts only.
         case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L5E_security_oauth_token_refresh")
         self.assertNotIn("crosses_module_boundary", case.facts)
         divergent = {"crosses_module_boundary": "unknown", "blast_radius": "broad", "changes_trust_boundary": "yes"}
@@ -103,14 +121,24 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         summary = eval_perf.evaluate_classifier_benchmark(
             classifier=stub_classifier(lambda c: labelled_facts(c, **divergent)), **kwargs,
         )["summary"]
-        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (100.0, 100.0))
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
         self.assertEqual(summary["unknown_transitions"], perfect["unknown_transitions"])
 
         # A labelled fact still fails routing: the classifier calling a security change harmless drops the tier.
+        # graded_facts feeds the profile check too, so the tier drop must also route to a different model+effort.
         missed = eval_perf.evaluate_classifier_benchmark(
             classifier=stub_classifier(lambda c: labelled_facts(c, changes_security_or_payment_logic="no")), **kwargs,
         )["summary"]
-        self.assertEqual(missed["routing_accuracy_pct"], 0.0)
+        self.assertEqual((missed["routing_accuracy_pct"], missed["profile_accuracy_pct"]), (0.0, 0.0))
+
+    def test_missing_expected_unresolved_fact_fails_routing_and_profile(self):
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L3_unknown_module_boundary_unresolved")
+        self.assertEqual(case.expected_unresolved, ("crosses_module_boundary",))
+        summary = eval_perf.evaluate_classifier_benchmark(
+            classifier=stub_classifier(lambda c: labelled_facts(c, crosses_module_boundary="no")),
+            case_names=(case.name,),
+        )["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
 
     def test_swapping_implementation_and_local_refactoring_does_not_fail_routing(self):
         swap = {"implementation": "local_refactoring", "local_refactoring": "implementation"}
@@ -149,6 +177,15 @@ class EvalRouterPerformanceTests(unittest.TestCase):
 
                 always_unknown = eval_perf.evaluate_classifier_benchmark(platform, classifier=answering(lambda c: "unknown"))["summary"]
                 self.assertLess(always_unknown["profile_accuracy_pct"], 100.0)
+
+    def test_unlabelled_optional_fact_follows_the_classifiers_own_answer_for_profile(self):
+        # requires_code_understanding is optional and rarely labelled; graded_facts must blend in the
+        # classifier's own answer for it, not the corpus default "unknown" -- otherwise a classifier that
+        # correctly answers "yes" scores a profile miss purely because the corpus never labelled this fact.
+        case_name = "L2_unknown_security_change_is_not_a_floor"
+        classifier = stub_classifier(lambda case: labelled_facts(case, requires_code_understanding="yes"))
+        summary = eval_perf.evaluate_classifier_benchmark("codex", classifier=classifier, case_names=(case_name,))["summary"]
+        self.assertEqual(summary["profile_accuracy_pct"], 100.0)
 
     def test_antigravity_has_no_refinements_so_its_profile_is_flagged_uninformative(self):
         summary = eval_perf.evaluate_classifier_benchmark(
