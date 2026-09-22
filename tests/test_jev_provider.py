@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import classifier
 import jev_provider
+import rules
 import route_reuse
 import router
 from rules import FACTS
@@ -608,6 +609,7 @@ def make_systemone_answers(overrides=None):
         "blast_radius": {"type": "choice", "choice": "narrow", "confidence": 0.95, "probabilities": {"narrow": 0.95}},
         "silent_failure_material_harm": {"type": "noul", "noul": 0.05},
         "requires_code_understanding": {"type": "noul", "noul": 0.1},
+        "task_type": {"type": "choice", "choice": "implementation", "confidence": 0.9, "probabilities": {"implementation": 0.9}},
     }
     if overrides:
         ans.update(overrides)
@@ -629,7 +631,9 @@ class JevSystemOneIntegrationTests(unittest.TestCase):
         self.assertEqual(req["model"], "custom-jev")
         self.assertEqual(req["state"], "refactor auth token handling")
         questions = req["questions"]
-        self.assertEqual(len(questions), 17)
+        self.assertEqual(len(questions), len(rules.FACTS) + 1)
+        self.assertEqual(questions["task_type"]["type"], "choice")
+        self.assertEqual(set(questions["task_type"]["criteria"]), set(rules.TASK_TYPES))
         self.assertEqual(questions["files_touched"]["type"], "choice")
         self.assertIn("criteria", questions["files_touched"])
         self.assertEqual(questions["security_domain"]["type"], "choice")
@@ -639,44 +643,42 @@ class JevSystemOneIntegrationTests(unittest.TestCase):
         self.assertEqual(questions["mechanical_only"]["type"], "noul")
         self.assertIn("instructions", questions["mechanical_only"])
 
-    def test_general_fact_boundary_values(self):
-        # crosses_module_boundary: yes >= 0.7, no <= 0.3, between is unknown
-        cases = [
-            (0.70, "yes"),
-            (0.69, "unknown"),
-            (0.31, "unknown"),
-            (0.30, "no"),
-        ]
-        for prob, expected in cases:
+    def test_general_fact_decision_point(self):
+        # A general fact reads as yes at or above 0.5 and no below it, with no uncertain band.
+        for prob, expected in ((0.50, "yes"), (0.49, "no"), (0.99, "yes"), (0.01, "no")):
             resp = make_systemone_answers({"crosses_module_boundary": {"type": "noul", "noul": prob}})
             parsed = jev_provider.parse_systemone_response(resp, "update feature")
-            self.assertEqual(
-                parsed["facts"]["crosses_module_boundary"], expected,
-                f"Expected {expected} for prob {prob}"
-            )
+            self.assertEqual(parsed["facts"]["crosses_module_boundary"], expected, f"prob {prob}")
 
-    def test_safety_fact_asymmetric_thresholds(self):
-        # changes_security_or_payment_logic: yes >= 0.6, no <= 0.1, between is unknown
-        cases = [
-            (0.60, "yes"),
-            (0.59, "unknown"),
-            (0.11, "unknown"),
-            (0.10, "no"),
-        ]
-        for prob, expected in cases:
+    def test_safety_fact_escalates_on_lighter_evidence(self):
+        # A fact whose yes escalates answers yes from 0.4, below the general 0.5 point.
+        for prob, expected in ((0.40, "yes"), (0.39, "no")):
             resp = make_systemone_answers({"changes_security_or_payment_logic": {"type": "noul", "noul": prob}})
             parsed = jev_provider.parse_systemone_response(resp, "fix login bug")
-            self.assertEqual(
-                parsed["facts"]["changes_security_or_payment_logic"], expected,
-                f"Expected {expected} for prob {prob}"
-            )
+            self.assertEqual(parsed["facts"]["changes_security_or_payment_logic"], expected, f"prob {prob}")
+
+    def test_mechanical_only_needs_high_confidence_to_drop_the_floor(self):
+        # mechanical_only is the only yes that drops the base below L2, so it takes a high bar.
+        for prob, expected, level in ((0.80, "yes", "L1"), (0.79, "no", "L2")):
+            resp = make_systemone_answers({"mechanical_only": {"type": "noul", "noul": prob}})
+            client = mock.Mock(return_value=resp)
+            res, _ = jev_provider.classify_task_jev_with_status("tidy a helper", client=client)
+            self.assertEqual(res.facts["mechanical_only"], expected, f"prob {prob}")
+            self.assertEqual(res.level, level, f"prob {prob}")
+
+    def test_probability_answers_never_manufacture_an_unknown(self):
+        # An unknown blocks the route and asks the user, so it may only come from the model's
+        # own "unknown" choice, never from a probability landing mid-scale.
+        resp = make_systemone_answers({f: {"type": "noul", "noul": 0.5} for f in rules.FACTS
+                                       if rules.FACTS[f] in (rules.YES_NO, rules.YES_NO_UNKNOWN)})
+        parsed = jev_provider.parse_systemone_response(resp, "task")
+        self.assertEqual([f for f, v in parsed["facts"].items() if v == "unknown"], [])
 
     def test_strict_yes_no_fact_never_emits_unknown(self):
         # mechanical_only only accepts ('yes', 'no')
         resp = make_systemone_answers({"mechanical_only": {"type": "noul", "noul": 0.5}})
         parsed = jev_provider.parse_systemone_response(resp, "task")
         self.assertIn(parsed["facts"]["mechanical_only"], ("yes", "no"))
-        self.assertNotEqual(parsed["facts"]["mechanical_only"], "unknown")
 
     def test_choice_mapping_valid_and_invalid_fallback(self):
         # Valid choice
@@ -740,26 +742,42 @@ class JevSystemOneIntegrationTests(unittest.TestCase):
         self.assertIsNone(res)
         self.assertEqual(failure_kind, "invalid_json")
 
-    def test_infer_task_type_and_delegability(self):
-        # Read-only task with files_touched == 0
+    def test_task_type_comes_from_jev_answer_not_task_keywords(self):
+        # A task whose text merely contains "review" is still the implementation Jev reported.
+        resp = make_systemone_answers()
+        client = mock.Mock(return_value=resp)
+        res, _ = jev_provider.classify_task_jev_with_status("Fix the pagination bug in the code review tool", client=client)
+        self.assertEqual(res.task_type, "implementation")
+
+        # Jev's own read-only answer is honoured.
         resp = make_systemone_answers({
             "files_touched": {"type": "choice", "choice": "0", "confidence": 0.99, "probabilities": {"0": 0.99}},
+            "task_type": {"type": "choice", "choice": "review", "confidence": 0.95, "probabilities": {"review": 0.95}},
         })
         client = mock.Mock(return_value=resp)
         res, _ = jev_provider.classify_task_jev_with_status("audit authentication code for vulnerabilities", client=client)
-        self.assertIsNotNone(res)
         self.assertEqual(res.task_type, "review")
+        self.assertEqual(res.facts["files_touched"], "0")
 
-        # Local refactoring
+    def test_unreadable_task_type_never_routes_to_a_read_only_type(self):
+        for answer in ({"type": "choice", "choice": "not-a-task-type", "confidence": 0.9, "probabilities": {}},
+                       {"type": "noul", "noul": 0.9}):
+            resp = make_systemone_answers({"task_type": answer})
+            client = mock.Mock(return_value=resp)
+            res, _ = jev_provider.classify_task_jev_with_status("review the login page copy", client=client)
+            self.assertEqual(res.task_type, "implementation")
+
+    def test_zero_files_with_a_code_change_type_drops_the_scope_claim(self):
         resp = make_systemone_answers({
-            "files_touched": {"type": "choice", "choice": "1", "confidence": 0.95, "probabilities": {"1": 0.95}},
+            "files_touched": {"type": "choice", "choice": "0", "confidence": 0.9, "probabilities": {"0": 0.9}},
         })
         client = mock.Mock(return_value=resp)
-        res, _ = jev_provider.classify_task_jev_with_status("refactor helper function in module", client=client)
-        self.assertIsNotNone(res)
-        self.assertEqual(res.task_type, "local_refactoring")
+        res, failure_kind = jev_provider.classify_task_jev_with_status("add a helper", client=client)
+        self.assertIsNone(failure_kind)
+        self.assertEqual(res.task_type, "implementation")
+        self.assertEqual(res.facts["files_touched"], "unknown")
 
-        # Risky task -> delegability 0
+    def test_delegability_from_facts(self):
         resp = make_systemone_answers({
             "changes_security_or_payment_logic": {"type": "noul", "noul": 0.95},
         })

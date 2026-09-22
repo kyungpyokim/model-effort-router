@@ -264,8 +264,22 @@ FACT_QUESTIONS: dict[str, str] = {
     "requires_code_understanding": "Does the work depend on reading existing code beyond the edit site?",
 }
 
-DEFAULT_BOOLEAN_THRESHOLDS: tuple[float, float] = (0.7, 0.3)
-SAFETY_BOOLEAN_THRESHOLDS: tuple[float, float] = (0.6, 0.1)
+# A probability answer becomes yes at or above the fact's decision point, and no below it.
+# There is deliberately no "uncertain" band in between: a manufactured unknown leaves the route
+# unresolved, which both blocks the route and asks the user about a fact the model did in fact
+# answer. A model that cannot tell says so itself, through the "unknown" choice its question offers.
+DEFAULT_DECISION_POINT = 0.5
+
+# Facts whose "yes" escalates: answer yes on the lighter evidence, since under-escalating costs more.
+SAFETY_DECISION_POINT = 0.4
+
+# Facts whose "yes" *lowers* the floor need the opposite treatment: mechanical_only is the only
+# answer that drops the base below L2, so it takes a high bar.
+# ponytail: 0.8 is fitted to the golden corpus, where the model's own answers for the two
+# cases either side of this line drift across 0.75 between runs; 0.8 keeps that drift on the
+# safe side at the cost of one L1 case reading as L2. Re-fit from a fresh probability dump
+# if the model changes.
+DEESCALATING_DECISION_POINT = 0.8
 
 SAFETY_FACTS: tuple[str, ...] = (
     "changes_security_or_payment_logic",
@@ -278,11 +292,42 @@ SAFETY_FACTS: tuple[str, ...] = (
     "intermittent_or_concurrency",
 )
 
-FACT_THRESHOLDS: dict[str, tuple[float, float]] = {
-    fact: SAFETY_BOOLEAN_THRESHOLDS for fact in SAFETY_FACTS
+DEESCALATING_FACTS: tuple[str, ...] = ("mechanical_only",)
+
+FACT_DECISION_POINTS: dict[str, float] = {
+    **{fact: SAFETY_DECISION_POINT for fact in SAFETY_FACTS},
+    **{fact: DEESCALATING_DECISION_POINT for fact in DEESCALATING_FACTS},
 }
 
 
-def get_fact_threshold(fact: str) -> tuple[float, float]:
-    """Return (yes_threshold, no_threshold) for a given fact."""
-    return FACT_THRESHOLDS.get(fact, DEFAULT_BOOLEAN_THRESHOLDS)
+def fact_decision_point(fact: str) -> float:
+    """Return the probability at or above which this fact reads as yes."""
+    return FACT_DECISION_POINTS.get(fact, DEFAULT_DECISION_POINT)
+
+
+TASK_TYPE_CRITERIA: dict[str, str] = {
+    "implementation": "Build or change code directly: features, APIs, UI work, bug fixes, tests.",
+    "design": "Decide structure or direction without editing code: architecture, API or data-model design, technology choice, implementation planning.",
+    "review": "Analyse existing code or plans to find problems: code, PR, security, performance, or design review. The work itself changes no code.",
+    "inspect": "Read-only lookup or explanation needing no judgement of correctness, safety or design: find where something is defined, explain what code does, check a setting.",
+    "local_refactoring": "Clean up internals while preserving behaviour and module boundaries: extract functions, renames, deduplication within one module.",
+    "architectural_refactoring": "Change module boundaries or system structure AND carry out the edits: module splits, dependency inversion, moving responsibilities between services.",
+}
+
+# A fact with no "unknown" option still has to resolve a probability that sits between the
+# thresholds. Resolve it toward the answer that does not lower the level: "yes" on
+# mechanical_only drops the base to L1 and "yes" on fix_or_result_known removes the L3 floor,
+# so uncertainty on those two must read as "no".
+STRICT_FACT_UNCERTAIN_DEFAULT: dict[str, str] = {
+    "mechanical_only": "no",
+    "fix_or_result_known": "no",
+    "needs_new_structure": "yes",
+}
+
+
+def resolve_uncertain_fact(fact: str) -> str:
+    """Return the safest answer for a fact whose probability landed between the thresholds."""
+    allowed = FACTS[fact]
+    if "unknown" in allowed:
+        return "unknown"
+    return STRICT_FACT_UNCERTAIN_DEFAULT[fact]

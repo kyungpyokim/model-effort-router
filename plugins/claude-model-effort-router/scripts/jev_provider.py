@@ -30,10 +30,9 @@ if TYPE_CHECKING:
 
 from route_reuse import is_jev_kill_switch_active, state_dir
 from rules import (
-    BLAST_RADIUS_CRITERIA, DEFAULT_BOOLEAN_THRESHOLDS, FACTS, FACT_QUESTIONS,
-    FACT_THRESHOLDS, FILES_TOUCHED_CRITERIA, SAFETY_BOOLEAN_THRESHOLDS,
-    SAFETY_FACTS, SECURITY_DOMAIN_CRITERIA, evaluate_rules, extract_json_payload,
-    get_fact_threshold, unknown_facts
+    BLAST_RADIUS_CRITERIA, FACTS, FACT_QUESTIONS, FILES_TOUCHED_CRITERIA,
+    READ_ONLY_TASK_TYPES, SECURITY_DOMAIN_CRITERIA, TASK_TYPE_CRITERIA, evaluate_rules,
+    extract_json_payload, fact_decision_point, resolve_uncertain_fact, unknown_facts
 )
 
 _default_validator: Callable[..., object] | None = None
@@ -159,6 +158,12 @@ def build_systemone_request(task: str, model: str | None = None) -> dict[str, ob
                 "type": "noul",
                 "instructions": FACT_QUESTIONS.get(fact, f"Is {fact} true?"),
             }
+    questions["task_type"] = {
+        "type": "choice",
+        "instructions": "Which single kind of work does this task ask for? Classify only what is asked: "
+                        "a request to look at, check or explain something is never widened into a fix.",
+        "criteria": TASK_TYPE_CRITERIA,
+    }
     return {
         "model": chosen_model,
         "state": task,
@@ -166,23 +171,19 @@ def build_systemone_request(task: str, model: str | None = None) -> dict[str, ob
     }
 
 
-def infer_task_type(task: str, facts: dict[str, str]) -> str:
-    """Deterministically derive task_type from the task text and evaluated facts."""
-    t_lower = task.lower()
-    if facts.get("files_touched") == "0":
-        if any(w in t_lower for w in ("review", "audit", "security")):
-            return "review"
-        if any(w in t_lower for w in ("design", "plan", "architecture", "rfc")):
-            return "design"
-        return "inspect"
+def read_task_type(answers: dict, facts: dict[str, str]) -> str:
+    """Take task_type from Jev's own choice answer, reconciled with files_touched.
 
-    if any(w in t_lower for w in ("review", "audit")):
-        return "review"
-    if "architectur" in t_lower and (facts.get("crosses_module_boundary") == "yes" or facts.get("needs_new_structure") == "yes"):
-        return "architectural_refactoring"
-    if "refactor" in t_lower:
-        return "local_refactoring"
-    return "implementation"
+    An unreadable answer falls back to implementation: guessing a read-only type for work that
+    may change files would route an editing task to a read-only worker."""
+    answer = answers.get("task_type")
+    choice = answer.get("choice") if isinstance(answer, dict) else None
+    task_type = choice if isinstance(choice, str) and choice in TASK_TYPE_CRITERIA else "implementation"
+    if facts["files_touched"] == "0" and task_type not in READ_ONLY_TASK_TYPES:
+        # The two answers disagree about whether anything is edited; keep the code-change type
+        # and drop the scope claim, since "0" files is only valid for read-only work.
+        facts["files_touched"] = "unknown"
+    return task_type
 
 
 def infer_delegability(facts: dict[str, str]) -> int:
@@ -223,23 +224,16 @@ def parse_systemone_response(response: dict[str, object], task: str) -> dict[str
             if isinstance(choice_val, str) and choice_val in allowed:
                 facts[fact] = choice_val
             else:
-                facts[fact] = "unknown" if "unknown" in allowed else allowed[0]
+                facts[fact] = resolve_uncertain_fact(fact)
         elif ans_type == "noul":
             noul_val = ans.get("noul")
             if not isinstance(noul_val, (int, float)):
                 raise ValueError(f"invalid noul value for fact: {fact}")
-            prob = float(noul_val)
-            yes_t, no_t = get_fact_threshold(fact)
-            if prob >= yes_t:
-                facts[fact] = "yes"
-            elif prob <= no_t:
-                facts[fact] = "no"
-            else:
-                facts[fact] = "unknown" if "unknown" in allowed else ("yes" if prob >= 0.5 else "no")
+            facts[fact] = "yes" if float(noul_val) >= fact_decision_point(fact) else "no"
         else:
             raise ValueError(f"unexpected answer type {ans_type} for fact {fact}")
 
-    task_type = infer_task_type(task, facts)
+    task_type = read_task_type(answers, facts)
     delegability = infer_delegability(facts)
     level, risk_tier, matched, _ = evaluate_rules(facts)
     if matched:
