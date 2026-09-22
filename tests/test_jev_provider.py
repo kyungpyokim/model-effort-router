@@ -198,6 +198,30 @@ class JevProviderTests(unittest.TestCase):
         self.assertIsNone(res)
         self.assertEqual(failure_kind, "response_too_large")
 
+    def test_unconfigured_validator_returns_status_without_raising(self):
+        os.environ[jev_provider.JEV_API_KEY_ENV] = "test-key"
+        client = mock.Mock(return_value=valid_jev_payload())
+        with mock.patch.object(jev_provider, "_default_validator", None):
+            res, failure_kind = jev_provider.classify_task_jev_with_status("task", client=client, validate_fn=None)
+            self.assertIsNone(res)
+            self.assertEqual(failure_kind, "validator_not_configured")
+
+    def test_extract_json_payload_picks_last_candidate_across_both_modules(self):
+        os.environ[jev_provider.JEV_API_KEY_ENV] = "test-key"
+        draft = {"task_type": "review", "facts": {"mechanical_only": "yes"}}
+        final = valid_jev_payload()
+        two_fences = f"Here is a draft:\n```json\n{json.dumps(draft)}\n```\nHere is the final answer:\n```json\n{json.dumps(final)}\n```"
+
+        from rules import extract_json_payload
+        self.assertEqual(extract_json_payload(two_fences), final)
+        self.assertEqual(classifier._extract_json_payload(two_fences), final)
+
+        client = mock.Mock(return_value=two_fences)
+        res, failure_kind = jev_provider.classify_task_jev_with_status("task", client=client)
+        self.assertIsNotNone(res)
+        self.assertIsNone(failure_kind)
+        self.assertEqual(res.task_type, final["task_type"])
+
     def test_redirect_handler_raises_http_error(self):
         handler = jev_provider.NoRedirectHandler()
         req = urllib.request.Request("http://localhost:8000")
