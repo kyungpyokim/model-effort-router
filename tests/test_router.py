@@ -517,6 +517,28 @@ class DifficultyRuleTests(unittest.TestCase):
         self.assertEqual((level, tier), ("L4", "standard"))   # the elevated cross-service rule needs an explicit yes
         self.assertEqual(self.level_of(irreversible_or_ledger_or_crypto="unknown")[1], "standard")  # never critical
 
+    def test_files_touched_one_is_routing_neutral_invariant(self):
+        """Invariant: files_touched='1' never acts as an escalation signal in DIFFICULTY_RULES.
+
+        The Jev contract guard leaves bare '1' as answered (rather than forcing it to unknown)
+        because '1' is routing-neutral (it leaves simple work at L2). If any future rule promotes
+        on files_touched='1', that guard policy silently breaks.
+        """
+        for rule_level, name, conditions in router.DIFFICULTY_RULES:
+            if "files_touched" in conditions:
+                self.assertNotIn(
+                    "1", conditions["files_touched"],
+                    f"Rule {rule_level}:{name} conditions on files_touched='1'; files_touched='1' must remain routing-neutral",
+                )
+        base_1 = self.level_of(files_touched="1")
+        base_0 = self.level_of(files_touched="0")
+        base_unk = self.level_of(files_touched="unknown")
+        self.assertEqual(base_1[:2], ("L2", "standard"))
+        self.assertEqual(base_0[:2], ("L2", "standard"))
+        self.assertEqual(base_unk[:2], ("L2", "standard"))
+        self.assertEqual(base_1[2], [])  # No matched rules
+
+
     def test_a_classifier_reply_with_unknown_values_is_accepted_and_reports_them(self):
         output = classifier_output(raw=False, intermittent_or_concurrency="unknown", irreversible_or_ledger_or_crypto="unknown")
         classification_ = router.validate_classifier_output(output)

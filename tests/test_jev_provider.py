@@ -726,6 +726,14 @@ class JevSystemOneIntegrationTests(unittest.TestCase):
         })
         parsed = jev_provider.parse_systemone_response(resp, "Fix a helper")
         self.assertEqual(parsed["facts"]["files_touched"], "1")
+        # Invariant: the guard policy in enforce_files_touched_contract explicitly assumes
+        # files_touched='1' is routing-neutral and never appears as an escalating condition in DIFFICULTY_RULES.
+        for rule_level, name, cond in rules.DIFFICULTY_RULES:
+            if "files_touched" in cond:
+                self.assertNotIn(
+                    "1", cond["files_touched"],
+                    f"DIFFICULTY_RULES {rule_level}:{name} conditions on files_touched='1'; guard assumption violated",
+                )
 
     def test_17_facts_and_5_field_contract_passes_validation(self):
         resp = make_systemone_answers({
