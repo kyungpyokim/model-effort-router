@@ -31,7 +31,7 @@ Then invoke:
 /model-effort:route <task>
 ```
 
-The router preflights each task with native `claude-haiku-4-5` (no effort parameter); facts that stay unknown get
+The router preflights each task with native `claude-sonnet-5` (no effort parameter); facts that stay unknown get
 one bounded same-model lookup, then a question to the user (exit `3`), never a stronger model. Claude's JSON-schema output is
 read from its `structured_output` result field. Safe mode,
 no tools, plan permissions, no session persistence, and a temporary working
@@ -53,7 +53,9 @@ at L2, where the design row (opus high) equals the implementer, so no planner is
 the route stays single-stage. There the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). A gated `trivial_edit` is single-stage with its deterministic test gate; otherwise L1 uses the regular workflow. At L2, `requires_code_understanding` = yes swaps the
 `haiku` implementer for `sonnet low`.
 Read-only design and review use `files_touched: 0`; files only read for context do not
-count. The `elevated` and `critical` risk tiers imply L5 and raise only the
+count. One existing file with no separate test/new-file work is `1`; a separate test/new
+file or subsystem/protocol is `2-5`, cross-cutting work is `6+`, and `unknown` means no
+scope signal. The `elevated` and `critical` risk tiers imply L5 and raise only the
 planning and review stages (the implementer keeps its matrix profile)
 to `xhigh` / `max`; `--critical` forces the critical tier and `--level` accepts
 `L1`-`L5` only. Rules never drive difficulty on their own: the keyword "security"

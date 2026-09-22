@@ -20,13 +20,16 @@ planner is inserted and the route stays single-stage. There the review judge is 
 `requires_code_understanding` = yes swaps `luna med` for `luna high`. The `elevated` and
 `critical` risk tiers imply L5 and raise only the planning and review stages to `xhigh` / `max`
 (the implementer keeps its matrix profile). Read-only
-design and review use `files_touched: 0`; files only read for context do not count.
+design and review use `files_touched: 0`; files only read for context do not count. One
+existing file with no separate test/new-file work is `1`; a separate test/new file or
+subsystem/protocol is `2-5`, cross-cutting work is `6+`, and `unknown` means no scope signal.
 
 Security-related risk flags (security_sensitive, authentication,
 authorization, payment) force the elevated tier (L5) before the matrix lookup. Review-only
 security work floors through facts instead: `reviews_security_sensitive_code`
-at L4 and a critical `security_domain` (payment, crypto, auth, permissions, pii)
-at L5, whatever the task type. A critical domain whose trust boundary changes is
+at L4 and a bare `security_domain` of payment, crypto, permissions, or pii at L5.
+Bare auth has no L5 floor; confirmed auth changes and reviews still reach the elevated
+tier and L4 respectively. A critical domain whose trust boundary changes is
 elevated; `irreversible_or_ledger_or_crypto` = yes or `--critical` is the critical
 tier. Rules never drive difficulty on their own: the keyword "security" alone implies
 no level, and `unknown` is missing information, not confirmed risk. `--level`

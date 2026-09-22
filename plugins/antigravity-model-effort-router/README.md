@@ -57,6 +57,9 @@ schema-constrained JSON. The launcher detects available models with `agy models`
 before classification and starts the selected profile. Classifier failures
 safely select L3.
 In Antigravity, effort is represented in names such as `Gemini ... Flash (Low)` or `Claude ... (Thinking)` rather than a separate `--effort` flag.
+For `files_touched`, one existing file with no separate test/new-file work is `1`; a separate
+test/new file or subsystem/protocol is `2-5`, cross-cutting work is `6+`, and `unknown` means
+no scope signal (read-only work is `0`).
 
 Levels are L1-L5. A separate risk tier (`elevated` for security/payment logic changes
 and similar, `critical` for irreversible/ledger/crypto work or `--critical`) implies L5

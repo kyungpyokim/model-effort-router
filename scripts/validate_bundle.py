@@ -73,6 +73,7 @@ def main() -> int:
     for plugin in (codex, claude, agy):
         require(plugin / "scripts" / "pipeline.py")
         require(plugin / "scripts" / "route_reuse.py")
+        require(plugin / "scripts" / "jev_provider.py")
     codex_hooks = read_json(codex / "hooks" / "hooks.json")["hooks"]
     assert set(codex_hooks) == {"SessionStart"}
     handler = codex_hooks["SessionStart"][0]["hooks"][0]

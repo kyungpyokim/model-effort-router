@@ -76,12 +76,14 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         self.assertGreater(summary["unknown_transitions"]["expected_unknown_to_unknown"], 0)
 
         unknown_only = eval_perf.evaluate_classifier_benchmark(
-            classifier=classifier, case_names=("L3_unknown_module_boundary_unresolved",),
+            classifier=classifier, case_names=("L2_unknown_module_boundary_and_scope",),
         )
-        self.assertEqual([case["name"] for case in unknown_only["cases"]], ["L3_unknown_module_boundary_unresolved"])
+        self.assertEqual([case["name"] for case in unknown_only["cases"]], ["L2_unknown_module_boundary_and_scope"])
 
+        # Post-audit every corpus case labels every fact, so "labelled" and "all" are now the same
+        # set; a classifier biased toward the safe default scores identically on both.
         biased = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(lambda case: eval_perf._base_facts()))["summary"]
-        self.assertLess(biased["labelled_fact_accuracy_pct"], biased["all_fact_agreement_pct"])
+        self.assertEqual(biased["labelled_fact_accuracy_pct"], biased["all_fact_agreement_pct"])
 
     def test_a_classifier_that_omits_the_optional_fact_only_regresses_on_labelled_cases(self):
         def omitting(case):
@@ -92,6 +94,98 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         summary = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(omitting))["summary"]
         labelled = sum("requires_code_understanding" in case.facts for case in eval_perf.GOLDEN_BENCHMARK_CASES)
         self.assertEqual(summary["unknown_transitions"]["expected_known_to_unknown"], labelled)
+
+    def test_an_unlabelled_fact_cannot_move_the_expected_level_or_tier(self):
+        # An unlabelled fact following the classifier's own answer must not let a WRONG classifier answer on that
+        # fact redefine what counts as correct: routing still grades against the case's own declared outcome, never
+        # against evaluate_rules(graded_facts). Otherwise a classifier that over-escalates on any unlabelled fact
+        # (here: a doc typo answered irreversible_or_ledger_or_crypto="yes") scores a perfect routing/profile match.
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L1_doc_typo_fix")
+        self.assertEqual((case.expected_level, case.expected_tier), ("L1", "standard"))
+        over_escalating = stub_classifier(lambda c: labelled_facts(c, irreversible_or_ledger_or_crypto="yes"))
+        summary = eval_perf.evaluate_classifier_benchmark(classifier=over_escalating, case_names=(case.name,))["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
+
+    def test_an_unlabelled_security_fact_cannot_redefine_the_expected_profile(self):
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L1_doc_typo_fix")
+        over_escalating = stub_classifier(lambda c: labelled_facts(c, changes_security_or_payment_logic="yes"))
+        summary = eval_perf.evaluate_classifier_benchmark(classifier=over_escalating, case_names=(case.name,))["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
+
+    def test_extra_unresolved_facts_fail_routing_and_profile(self):
+        # A route with any unresolved fact cannot execute, including on a fact the corpus explicitly
+        # decided (crosses_module_boundary="no" here): the classifier's own "unknown" answer still
+        # blocks the route regardless of what the corpus labelled.
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L5E_security_oauth_token_refresh")
+        self.assertEqual(case.facts["crosses_module_boundary"], "no")
+        divergent = {"crosses_module_boundary": "unknown", "blast_radius": "broad", "changes_trust_boundary": "yes"}
+        kwargs = {"case_names": (case.name,)}
+        summary = eval_perf.evaluate_classifier_benchmark(
+            classifier=stub_classifier(lambda c: labelled_facts(c, **divergent)), **kwargs,
+        )["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
+
+    def test_missing_a_labelled_fact_that_solely_elevates_the_tier_fails_routing(self):
+        # A synthetic case where changes_security_or_payment_logic is the ONLY elevator: audited real
+        # cases with the same tier often carry several independent elevating facts at once (broad
+        # blast radius + silent harm, a critical domain, etc.), so missing just one of them no longer
+        # isolates this specific fact's effect on routing. graded_facts feeds the profile check too, so
+        # the tier drop must also route to a different model+effort.
+        synthetic = eval_perf.BenchmarkCase(
+            name="synthetic_sole_elevator",
+            task="synthetic task for single-fact tier coverage",
+            task_type="implementation",
+            facts={
+                "mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes",
+                "changes_security_or_payment_logic": "yes",
+            },
+            expected_level="L2", expected_tier="elevated",
+        )
+
+        def missed_security_fact(task, platform):
+            facts = {**eval_perf._base_facts(), **synthetic.facts, "changes_security_or_payment_logic": "no"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": synthetic.task_type, "facts": facts, "delegability": 0, "evidence": [], "reason": "stub",
+            })
+
+        with mock.patch.object(eval_perf, "GOLDEN_BENCHMARK_CASES", [synthetic]):
+            missed = eval_perf.evaluate_classifier_benchmark(classifier=missed_security_fact)["summary"]
+        self.assertEqual((missed["routing_accuracy_pct"], missed["profile_accuracy_pct"]), (0.0, 0.0))
+
+    def test_a_fact_the_corpus_never_labels_does_not_move_unknown_transition_metrics(self):
+        # Every real corpus case labels every routing-relevant fact now (the point of the audit), so
+        # this exercises _tally_facts's "an unlabelled fact is skipped" behaviour with a synthetic
+        # case that deliberately leaves one unlabelled, rather than relying on a corpus gap.
+        synthetic = eval_perf.BenchmarkCase(
+            name="synthetic_unlabelled_fact",
+            task="synthetic task for unlabelled-fact coverage",
+            task_type="implementation",
+            facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes"},
+            expected_level="L2",
+        )
+
+        def classify(task, platform):
+            facts = {**eval_perf._base_facts(), **synthetic.facts, "crosses_module_boundary": "unknown"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": synthetic.task_type, "facts": facts, "delegability": 0, "evidence": [], "reason": "stub",
+            })
+
+        with mock.patch.object(eval_perf, "GOLDEN_BENCHMARK_CASES", [synthetic]):
+            summary = eval_perf.evaluate_classifier_benchmark(classifier=classify)["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
+        self.assertEqual(summary["unknown_transitions"], {
+            "expected_unknown_to_unknown": 0, "expected_unknown_to_known": 0, "expected_known_to_unknown": 0,
+        })
+
+    def test_missing_expected_unresolved_fact_fails_routing_and_profile(self):
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L2_unknown_module_boundary_and_scope")
+        self.assertEqual(set(case.expected_unresolved), {"crosses_module_boundary", "files_touched"})
+        # Resolving only one of the two still leaves the route blocked.
+        summary = eval_perf.evaluate_classifier_benchmark(
+            classifier=stub_classifier(lambda c: labelled_facts(c, crosses_module_boundary="no")),
+            case_names=(case.name,),
+        )["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
 
     def test_swapping_implementation_and_local_refactoring_does_not_fail_routing(self):
         swap = {"implementation": "local_refactoring", "local_refactoring": "implementation"}
@@ -130,6 +224,15 @@ class EvalRouterPerformanceTests(unittest.TestCase):
 
                 always_unknown = eval_perf.evaluate_classifier_benchmark(platform, classifier=answering(lambda c: "unknown"))["summary"]
                 self.assertLess(always_unknown["profile_accuracy_pct"], 100.0)
+
+    def test_unlabelled_optional_fact_follows_the_classifiers_own_answer_for_profile(self):
+        # requires_code_understanding is optional and rarely labelled; graded_facts must blend in the
+        # classifier's own answer for it, not the corpus default "unknown" -- otherwise a classifier that
+        # correctly answers "yes" scores a profile miss purely because the corpus never labelled this fact.
+        case_name = "L2_unknown_security_change_is_not_a_floor"
+        classifier = stub_classifier(lambda case: labelled_facts(case, requires_code_understanding="yes"))
+        summary = eval_perf.evaluate_classifier_benchmark("codex", classifier=classifier, case_names=(case_name,))["summary"]
+        self.assertEqual(summary["profile_accuracy_pct"], 100.0)
 
     def test_antigravity_has_no_refinements_so_its_profile_is_flagged_uninformative(self):
         summary = eval_perf.evaluate_classifier_benchmark(
@@ -189,6 +292,51 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         # Efforts are per stage: the Sol plan (high) first, then the implementer, which carries the refined rung.
         self.assertEqual(by_name["L2U_pattern_following_validation"]["platform_routes"]["codex"]["efforts"], ["high", "high"])
         self.assertEqual(by_name["L2U_add_optional_field"]["platform_routes"]["codex"]["efforts"], ["high", "medium"])
+
+    def test_classifier_benchmark_safety_metrics_and_provider_attribution(self):
+        def jev_classifier(task, platform):
+            case = CASE_BY_TASK[task]
+            facts = labelled_facts(case)
+            return eval_perf.router.validate_classifier_output({
+                "task_type": case.task_type, "facts": facts, "delegability": 0, "evidence": [], "reason": "jev",
+            }, source="jev")
+
+        benchmark = eval_perf.evaluate_classifier_benchmark(classifier=jev_classifier, limit=5)
+        summary = benchmark["summary"]
+        self.assertIn("safety_violations", summary)
+        self.assertIn("downward_level_discrepancies", summary)
+        self.assertIn("by_provider", summary)
+        self.assertIn("jev", summary["by_provider"])
+        jev_stats = summary["by_provider"]["jev"]
+        self.assertEqual(jev_stats["graded_cases"], 5)
+        self.assertEqual(jev_stats["safety_violations"], 0)
+        self.assertEqual(jev_stats["downward_level_pct"], 0.0)
+
+    def test_downward_level_discrepancy_counts_as_safety_violation(self):
+        def l1_downgrader(task, platform):
+            facts = {**eval_perf._base_facts(), "mechanical_only": "yes", "files_touched": "1"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": "implementation", "facts": facts, "delegability": 0, "evidence": [], "reason": "downgraded to L1",
+            }, source="test")
+
+        higher_cases = [c.name for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.expected_level in ("L3", "L4", "L5")]
+        benchmark = eval_perf.evaluate_classifier_benchmark(classifier=l1_downgrader, case_names=tuple(higher_cases[:3]))
+        summary = benchmark["summary"]
+        self.assertGreater(summary["downward_level_discrepancies"], 0)
+        self.assertEqual(summary["safety_violations"], summary["downward_level_discrepancies"])
+
+    def test_inspect_misclassification_counts_as_safety_violation(self):
+        def inspect_spoofer(task, platform):
+            facts = {**eval_perf._base_facts(), "files_touched": "0"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": "inspect", "facts": facts, "delegability": 0, "evidence": [], "reason": "spoofed as inspect",
+            }, source="test")
+
+        non_inspect_cases = [c.name for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.task_type != "inspect"]
+        benchmark = eval_perf.evaluate_classifier_benchmark(classifier=inspect_spoofer, case_names=tuple(non_inspect_cases[:2]))
+        summary = benchmark["summary"]
+        self.assertGreater(summary["inspect_misclassifications"], 0)
+        self.assertEqual(summary["safety_violations"], summary["inspect_misclassifications"])
 
 
 class EvalModelEffortTests(unittest.TestCase):

@@ -44,12 +44,14 @@ platform, and an unknown fact is settled in this order:
 Classifier models by platform (no escalation model exists):
 
 - **Codex**: `gpt-5.6-luna` (low)
-- **Claude Code**: `claude-haiku-4-5` (no effort parameter)
+- **Claude Code**: `claude-sonnet-5` (no effort parameter)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)`
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
 (task_type, facts, delegability, evidence, reason) before selecting a profile. `files_touched`
-accepts `0` for read-only design and review work. In a Claude Code
+is `1` only for one existing file with no separate test/new-file work; a separate test/new
+file or subsystem/protocol is `2-5`, cross-cutting work is `6+`, and `unknown` means no scope
+signal. Read-only design and review use `0`. In a Claude Code
 or Codex session the route skill runs the same prompt through an in-session
 `difficulty-assessor` agent instead and passes its JSON with `--classification-file`. The
 route skill reads the repository in that single pass (`--repo-aware`), and asks the user about
@@ -138,8 +140,9 @@ implies a level, and `unknown` is missing information, not confirmed risk.
   flags force the **elevated** risk tier (which implies L5) with Autobahn scope
   guards; data migration and public API changes force an L4 floor. Review-only
   security work is floored by facts rather than flags: `reviews_security_sensitive_code`
-  gives at least L4 and a critical `security_domain` (payment, crypto, auth,
-  permissions, pii) at least L5, whatever the task type.
+  gives at least L4 and a bare `security_domain` of payment, crypto,
+  permissions, or pii at least L5. Bare auth has no L5 floor; confirmed auth
+  changes and reviews still reach the elevated tier / L4 as above, whatever the task type.
 - **`elevated` tier** (L5): a security/payment logic change, a critical domain whose
   trust boundary changes, an intermittent failure across services, or new structure
   across services with an open result. It raises the planning/judging stage effort to

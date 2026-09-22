@@ -23,6 +23,7 @@ router = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = router
 SPEC.loader.exec_module(router)
+classifier = sys.modules["classifier"]
 CONFIG = router.load_config(ROOT / "config" / "model-map.json")
 
 NO_FLAGS = {flag: False for flag in router.RISK_FLAGS}
@@ -229,7 +230,7 @@ class PlatformClassifierTests(unittest.TestCase):
 
     def test_a_fact_the_lookup_cannot_settle_stays_unresolved_and_never_raises_the_route(self):
         for platform, models in (
-            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-haiku-4-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
+            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-sonnet-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
         ):
             with self.subTest(platform=platform):
                 calls = []
@@ -332,10 +333,10 @@ class PlatformClassifierTests(unittest.TestCase):
             result = router.classify_task("add a settings page", platform="claude-code", timeout=7)
         command = run.call_args.args[0]
         self.assertEqual(command[:2], ["claude", "-p"])
-        self.assertEqual(command[command.index("--model") + 1], "claude-haiku-4-5")
+        self.assertEqual(command[command.index("--model") + 1], "claude-sonnet-5")
         self.assertNotIn("--effort", command)
         self.assertEqual(json.loads(command[command.index("--json-schema") + 1]), router.CLASSIFIER_SCHEMA)
-        self.assertEqual(result.source, "claude-haiku-4-5")
+        self.assertEqual(result.source, "claude-sonnet-5")
         self.assertEqual(Path(run.call_args.kwargs["cwd"]), ROOT / "config")
 
     def test_antigravity_uses_isolated_structured_json_classifier(self):
@@ -385,6 +386,48 @@ class PlatformClassifierTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertEqual(result.source, "fallback")
         self.assertEqual(result.failure_kind, "invalid_json")
+
+    def test_fallback_reason_names_the_validation_error(self):
+        # Well-formed JSON that fails validation is not a parse failure: the reason must say which rule it broke.
+        self.assertEqual(classifier.MAX_REASON_CHARS, 200)
+        rejected = classifier_output(task_type="implementation", files_touched="0")
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, rejected, "")):
+            result = router.classify_task("task")
+        self.assertEqual((result.source, result.failure_kind), ("fallback", "invalid_json"))
+        self.assertIn("files_touched", result.reason)
+        # Bounded once, not twice: the closing marker must survive alongside the validation detail.
+        self.assertTrue(result.reason.endswith("; safe fallback applied"))
+
+        # The rejected value itself lands in the ValueError text (facts[name]!r), and that text reaches this
+        # reason unmodified — it's shown in stderr and the route rationale, so a bad reply's own field value could
+        # otherwise inject terminal escapes or flood the log. Bound the length and escape control characters.
+        hostile = classifier_output(task_type="implementation", files_touched="\x1b[31m" + "x" * 2000)
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, hostile, "")):
+            poisoned = router.classify_task("task")
+        self.assertLessEqual(len(poisoned.reason), classifier.MAX_REASON_CHARS)
+        self.assertNotIn("\x1b", poisoned.reason)
+
+    def test_a_successful_classification_also_bounds_and_escapes_its_reason(self):
+        # The reason field a well-formed response supplies is free text from the model, and it reaches the same
+        # sinks (stderr, the route rationale) as a rejected reply's detail — it needs the same guard, not just the
+        # validation-failure path.
+        hostile_reason = "\x1b[31m" + "y" * 2000
+        output = classifier_output(reason=hostile_reason)
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, output, "")):
+            result = router.classify_task("task")
+        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertLessEqual(len(result.reason), classifier.MAX_REASON_CHARS)
+        self.assertNotIn("\x1b", result.reason)
+
+    def test_a_successful_classification_bounds_and_escapes_evidence(self):
+        payload = json.loads(classifier_output())
+        payload["evidence"] = ["\x1b[31m" + "e" * 2000]
+        with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(payload), "")):
+            result = router.classify_task("task")
+        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertEqual(len(result.evidence), 1)
+        self.assertLessEqual(len(result.evidence[0]), classifier.MAX_REASON_CHARS)
+        self.assertNotIn("\x1b", result.evidence[0])
 
     def test_schema_validation_rejects_bad_values(self):
         valid = classifier_output(raw=False)
@@ -587,7 +630,9 @@ class SecurityReviewFloorTests(unittest.TestCase):
         self.assertEqual((claude.level, claude.model, claude.effort), ("L5", "claude-opus-5", "high"))
 
     def test_critical_domains_floor_at_l5_regardless_of_task_type(self):
-        for domain in ("payment", "auth", "crypto", "permissions", "pii"):
+        # auth is excluded: a bare domain mention with nothing else confirmed is not itself a critical-impact
+        # signal for auth (see test_bare_auth_domain_is_not_a_floor); payment/crypto/permissions/pii still are.
+        for domain in ("payment", "crypto", "permissions", "pii"):
             for task_type in router.TASK_TYPES:
                 with self.subTest(domain=domain, task_type=task_type):
                     output = classifier_output(task_type=task_type, raw=False, security_domain=domain)
@@ -597,6 +642,32 @@ class SecurityReviewFloorTests(unittest.TestCase):
                         continue
                     result = routed(classifier=lambda _: router.validate_classifier_output(output))
                     self.assertEqual(result.level, "L5")
+
+    def test_bare_auth_domain_is_not_a_floor(self):
+        # A domain guess alone (no confirmed security/payment change, no reviewed sensitive code) is not a
+        # critical-impact signal for auth: "the login problem" plausibly touches auth, but merely naming the
+        # domain must not floor a task that could be a one-line UI fix.
+        for value in ("unknown", "no"):
+            with self.subTest(changes_security_or_payment_logic=value):
+                level, tier, matched, _ = self.level_of(security_domain="auth", changes_security_or_payment_logic=value)
+                self.assertEqual((level, tier), ("L2", "standard"))
+                self.assertNotIn("L5:security_domain_critical", matched)
+
+    def test_bare_auth_domain_inspect_routes_on_the_cheap_fast_path(self):
+        # Unlike payment/crypto/permissions/pii (which still floor at L5 and trip the inspect guard --
+        # see test_critical_domains_floor_at_l5_regardless_of_task_type), a bare auth-domain inspect is
+        # not floored at all: it stays a standard L1-L2 read-only lookup and routes normally.
+        output = classifier_output(task_type="inspect", raw=False, files_touched="0", security_domain="auth")
+        result = routed(classifier=lambda _: router.validate_classifier_output(output))
+        self.assertEqual((result.level, result.risk_tier), ("L2", "standard"))
+
+    def test_confirmed_auth_change_still_floors_at_least_l4(self):
+        level, tier, matched, _ = self.level_of(changes_security_or_payment_logic="yes", security_domain="auth")
+        self.assertEqual((level, tier), ("L5", "elevated"))
+        self.assertIn("elevated:changes_security_or_payment_logic", matched)
+        reviewed = self.level_of(reviews_security_sensitive_code="yes", security_domain="auth")
+        self.assertEqual(reviewed[0], "L4")
+        self.assertIn("L4:reviews_security_sensitive_code", reviewed[2])
 
     def test_secrets_only_review_gets_the_l4_floor(self):
         level, _, matched, unresolved = self.level_of(reviews_security_sensitive_code="yes", security_domain="secrets")
@@ -643,6 +714,24 @@ class SecurityReviewFloorTests(unittest.TestCase):
         self.assertIn("seventeen bounded facts", readme)
         self.assertNotIn("13 facts", policy)
         self.assertIn("17 facts", policy)
+
+    def test_bare_auth_l5_floor_docs_match_runtime(self):
+        stale = "payment, crypto, auth, permissions, pii) floors at L5"
+        paths = [
+            ROOT / "references" / "routing-policy.md",
+            *(ROOT / "plugins" / f"{plugin}-model-effort-router" / "references" / "routing-policy.md"
+              for plugin in ("codex", "claude", "antigravity")),
+            ROOT / "README.md",
+            ROOT / "plugins" / "codex-model-effort-router" / "README.md",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                text = path.read_text(encoding="utf-8")
+                self.assertNotIn(stale, text)
+                self.assertIn("Bare auth has no L5 floor", text)
+        korean_readme = (ROOT / "README.ko.md").read_text(encoding="utf-8")
+        self.assertNotIn("payment, crypto, auth, permissions, pii", korean_readme)
+        self.assertIn("bare auth는 L5 바닥선이 없습니다", korean_readme)
 
 
 class ImpactFloorTests(unittest.TestCase):
@@ -748,12 +837,53 @@ class ImpactFloorTests(unittest.TestCase):
     def prompt_line(self, fact):
         return next(line for line in router.classifier_prompt("task").splitlines() if line.startswith(f"- {fact}:"))
 
+    def test_prompt_reconciles_moved_carveout_with_trust_boundary_redirect(self):
+        # changes_security_or_payment_logic's redirect ("moving that code across a service boundary
+        # does decide to move a trust boundary, and belongs there instead") is a dead end unless
+        # security_domain also keeps the domain for a boundary-crossing move: otherwise
+        # elevated:critical_domain_trust_boundary (which needs security_domain AND
+        # changes_trust_boundary=yes together) never fires and the redirect judges nothing.
+        domain_line = self.prompt_line("security_domain")
+        self.assertIn("moved across a trust or service boundary keeps its domain", domain_line)
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        self.assertIn("moved across a trust or service boundary keeps its domain", policy)
+
     def test_prompt_defines_impact_facts(self):
         self.assertIn("service-to-service authentication", self.prompt_line("changes_trust_boundary"))
         self.assertIn("covered by reviews_security_sensitive_code", self.prompt_line("changes_trust_boundary"))
         self.assertIn("all users or tenants", self.prompt_line("blast_radius"))
         self.assertIn("recoverable subset", self.prompt_line("blast_radius"))
         self.assertIn("no error, alert, or failing test", self.prompt_line("silent_failure_material_harm"))
+
+    def test_prompt_defines_files_touched_guidance(self):
+        # This bullet has been patched three times this session for one reproduced regression each time (files_touched
+        # "0" rejected for an implementation, an "unknown" reply for a scoped task, unknown spreading past this fact);
+        # a loose pin here, like every other substantial fact bullet already has, keeps that guidance from silently
+        # regressing again undetected.
+        files_touched = self.prompt_line("files_touched")
+        self.assertIn("is at least 1", files_touched)
+        self.assertIn("Estimate files_touched from the work's described scope", files_touched)
+        self.assertIn("no exact count is stated", files_touched)
+        self.assertIn("only when it is confined to one existing file", files_touched)
+        self.assertIn("separate test or new file", files_touched)
+        # A task whose entire scope IS one test/new file (no separate production change) must
+        # stay 1, not 2-5 -- the "separate" clause above only fires alongside a distinct main change.
+        self.assertIn("whose entire scope is one test or one new file is still 1", files_touched)
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        self.assertIn("whose entire scope is one test or one new file is still 1", policy)
+
+    def test_files_touched_question_matches_scope_estimation_rules(self):
+        question = router.FACT_QUESTIONS["files_touched"]
+        self.assertIn("one existing file", question)
+        self.assertIn("separate test or new file", question)
+        self.assertIn("subsystem or protocol", question)
+        self.assertIn("cross-cutting", question)
+        self.assertIn("no scope signal", question)
+
+    def test_prompt_distinguishes_needs_new_structure_from_an_uncertain_existing_boundary(self):
+        # A refactor whose module-boundary impact is merely unknown is not itself "designing something new" --
+        # needs_new_structure was over-answered yes on exactly this shape of task (crosses_module_boundary=unknown).
+        self.assertIn("Refactoring existing code where a boundary's impact is uncertain is no", self.prompt_line("needs_new_structure"))
 
     def test_prompt_narrows_the_over_routing_definitions(self):
         self.assertIn("Laying out files inside one new module", self.prompt_line("needs_new_structure"))
@@ -762,6 +892,13 @@ class ImpactFloorTests(unittest.TestCase):
         irreversible = self.prompt_line("irreversible_or_ledger_or_crypto")
         self.assertIn("can be rolled back is no", irreversible)
         self.assertIn("JWT", irreversible)
+
+    def test_prompt_excludes_writing_new_tests_from_security_review(self):
+        # Live eval: "Add unit test suite covering user authentication helper utilities" was answered
+        # reviews_security_sensitive_code=yes / security_domain=auth by a live classifier -- writing NEW
+        # test code is not reviewing, auditing, or judging existing security-sensitive code.
+        self.assertIn("Writing new tests for such code is not itself a review", self.prompt_line("reviews_security_sensitive_code"))
+        self.assertIn("writing new tests for it is not itself a review", self.prompt_line("security_domain"))
 
     def test_prompt_adds_the_eval_false_positive_examples(self):
         # 40-case eval: recoverable fixes, single-module layouts, and internal endpoints over-routed.
@@ -919,6 +1056,16 @@ class ExternalClassificationTests(unittest.TestCase):
         self.assertEqual((code, out), (2, ""))
         self.assertIn("invalid classification file", err)
 
+    def test_invalid_classification_file_error_is_bounded_and_escaped(self):
+        # This ValueError is built from the reply's own rejected field value (facts[name]!r), the same
+        # model-controlled text _bounded guards on the subprocess path -- this sink must not bypass it.
+        legacy = classifier_output(raw=False, files_touched="\x1b[31m" + "x" * 2000)
+        with mock.patch.object(router.sys, "stdin", io.StringIO(json.dumps(legacy))):
+            code, out, err = self.run_main(["fix", "--platform", "codex", "--classification-file", "-"])
+        self.assertEqual((code, out), (2, ""))
+        self.assertNotIn("\x1b", err)
+        self.assertLessEqual(len(err), classifier.MAX_REASON_CHARS + len("invalid classification file: \n"))
+
     def test_classification_file_prose_before_fenced_json(self):
         # Live failure: haiku assessor replies with prose (sometimes containing inline
         # `backticks` and **bold**) before the ```json block instead of bare/fenced JSON alone.
@@ -1071,6 +1218,24 @@ class UnresolvedFactsTests(unittest.TestCase):
     def test_an_old_session_record_with_needs_context_still_blocks_reuse(self):
         record = {"workspace": "/w", "saved_at": time.time(), "task_type": "implementation", "risk_flags": {}, "needs_context": True}
         self.assertIn("unresolved", " ".join(router.route_reuse.reuse_blockers(record, "/w", "also fix x", True)))
+
+    def test_reused_evidence_is_bounded_and_escaped(self):
+        # evidence normally reaches Classification only through validate_classifier_output, which bounds and
+        # escapes each item. A reused route rebuilds it straight from the stored session record instead --
+        # a stale record written before this guard existed (or a tampered one) must not bypass it.
+        hostile = "\x1b[31m" + "z" * 2000
+        record = {
+            "task_type": "implementation", "level": "L2", "risk_tier": "standard",
+            "risk_flags": {flag: False for flag in router.RISK_FLAGS}, "facts": {}, "matched_rules": [],
+            "evidence": [hostile], "saved_at": time.time(),
+        }
+        with mock.patch.object(router.route_reuse, "load_record", return_value=record), \
+             mock.patch.object(router.route_reuse, "reuse_blockers", return_value=[]):
+            classification, _, reason = router.load_reused_classification("s", "/w", "task")
+        self.assertEqual(reason, "")
+        self.assertEqual(len(classification.evidence), 1)
+        self.assertLessEqual(len(classification.evidence[0]), classifier.MAX_REASON_CHARS)
+        self.assertNotIn("\x1b", classification.evidence[0])
 
     def test_merge_lookup_and_apply_answers_are_pure(self):
         first = router.validate_classifier_output(classifier_output(raw=False, **self.UNKNOWN))
@@ -1578,7 +1743,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         reply = self._elevated_review_reply()
         cases = (
             ("codex-route", "codex", "gpt-5.6-luna", reply),
-            ("claude-route", "claude", "claude-haiku-4-5", json.dumps({"structured_output": json.loads(reply)})),
+            ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(reply)})),
             ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(reply)})),
         )
         for launcher, executable, classifier_model, classifier_reply in cases:
@@ -2324,7 +2489,7 @@ class RouteSkillContractTests(unittest.TestCase):
 
     def test_readme_documents_the_current_preflight_contract(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("claude-haiku-4-5", readme)
+        self.assertIn("claude-sonnet-5", readme)
         self.assertNotIn("claude-haiku-4.5", readme)
         self.assertIn("unresolved_facts", readme)
         self.assertIn("DIFFICULTY_RULES", readme)
@@ -2527,7 +2692,7 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("L1-L5", codex)
         self.assertIn("gpt-5.6-luna` / low", codex)
         self.assertIn("elevated", codex)
-        self.assertIn("claude-haiku-4-5` (no effort parameter)", claude)
+        self.assertIn("claude-sonnet-5` (no effort parameter)", claude)
         self.assertIn("Gemini 3.8 Flash (Medium)", antigravity)
         self.assertNotIn("gemini-3.6-flash-low", antigravity)
 

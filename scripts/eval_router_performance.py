@@ -24,6 +24,13 @@ sys.modules[spec.name] = router
 spec.loader.exec_module(router)
 
 
+# Every fact DIFFICULTY_RULES conditions on: the set that can move level or tier.
+# requires_code_understanding is deliberately excluded (it only picks the implementer rung).
+ROUTING_RELEVANT_FACTS = frozenset(
+    fact for _rule_level, _name, conditions in router.DIFFICULTY_RULES for fact in conditions
+) | {"mechanical_only", "files_touched"}
+
+
 @dataclass(frozen=True)
 class BenchmarkCase:
     name: str
@@ -42,29 +49,31 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L1_doc_typo_fix",
         task="Fix documentation typo in README.md",
         task_type="implementation",
-        facts={"mechanical_only": "yes", "files_touched": "1", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "yes", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
         expected_level="L1",
     ),
     BenchmarkCase(
         name="L1_unused_import_cleanup",
         task="Remove unused imports in main.py",
         task_type="local_refactoring",
-        facts={"mechanical_only": "yes", "files_touched": "1", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "yes", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
         expected_level="L1",
     ),
     BenchmarkCase(
         name="L1_code_formatting",
         task="Run code formatter and fix whitespace styling in single module",
         task_type="local_refactoring",
-        facts={"mechanical_only": "yes", "files_touched": "1", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "yes", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
         expected_level="L1",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
         name="L1_rename_local_variable",
         task="Rename local variable foo to bar in helper function",
         task_type="local_refactoring",
-        facts={"mechanical_only": "yes", "files_touched": "1", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "yes", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
         expected_level="L1",
+        expected_unresolved=("files_touched",),
     ),
 
     # L2 Cases (base level, 1 file touched, clear fix)
@@ -72,28 +81,28 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L2_simple_bug_fix",
         task="Fix off-by-one error in pagination calculation in view.py",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L2",
     ),
     BenchmarkCase(
         name="L2_single_file_helper",
         task="Add helper function to parse date string in utils.py",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "no"},
+        facts={"mechanical_only": "no", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
         expected_level="L2",
     ),
     BenchmarkCase(
         name="L2_review_small_pr",
         task="Review 5-line PR fixing a typo and null check",
         task_type="review",
-        facts={"mechanical_only": "no", "files_touched": "0", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "0", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
         expected_level="L2",
     ),
     BenchmarkCase(
         name="L2_local_extract_function",
         task="Extract duplicate validation logic into a local function in validator.py",
         task_type="local_refactoring",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L2",
     ),
 
@@ -103,72 +112,76 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L2U_pattern_following_validation",
         task="Add input validation to create_user in api/users.py, following how create_order in api/orders.py validates its input",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L2",
     ),
     BenchmarkCase(
         name="L2U_fix_after_reading_call_sites",
         task="Fix the off-by-one in paginate() in utils.py, but first check how its callers pass the page index so the fix does not break them",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L2",
     ),
     BenchmarkCase(
         name="L2U_match_existing_retry_semantics",
         task="In report.py, make the error branch of fetch_report() use the same error set that the existing _is_transient() helper in that file already checks",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L2",
     ),
     BenchmarkCase(
         name="L2U_add_optional_field",
         task="Add an optional nickname string field with default None to the User dataclass in dto.py",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "no"},
+        facts={"mechanical_only": "no", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "unknown", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
         expected_level="L2",
+        expected_unresolved=("changes_public_api_contract",),
     ),
     BenchmarkCase(
         name="L2U_standalone_helper",
         task="Add a standalone function clamp(value, low, high) that returns value limited to the range, to utils.py",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "no"},
+        facts={"mechanical_only": "no", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
         expected_level="L2",
     ),
     BenchmarkCase(
         name="L2U_test_for_stated_behaviour",
         task="Add a unit test in tests/test_math.py asserting that add(2, 3) returns 5",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes", "requires_code_understanding": "no"},
+        facts={"mechanical_only": "no", "files_touched": "1", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
         expected_level="L2",
     ),
 
     # L3 Cases (files_touched 2-5 or unknown fix/result)
     BenchmarkCase(
-        name="L3_multifile_feature",
+        name="L2_multifile_feature_scope_unknown",
         task="Implement user profile avatar upload across controller, service, and template",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "fix_or_result_known": "yes"},
-        expected_level="L3",
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
+        expected_level="L2",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
         name="L3_open_ended_investigation",
         task="Investigate why some background tasks finish slowly in worker pool",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "no"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "no", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L3",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
-        name="L3_unit_tests_addition",
+        name="L2_unit_test_suite_scope_unknown",
         task="Add unit test suite covering user authentication helper utilities",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "fix_or_result_known": "yes"},
-        expected_level="L3",
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
+        expected_level="L2",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
         name="L3_local_refactor_three_files",
         task="Refactor string parsing utils across 3 related test files",
         task_type="local_refactoring",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "2-5", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L3",
     ),
 
@@ -177,50 +190,71 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L4_cross_module_refactor",
         task="Move billing helpers from core module to billing module and update call sites",
         task_type="architectural_refactoring",
-        facts={"mechanical_only": "no", "files_touched": "6+", "crosses_module_boundary": "yes", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "yes", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L4",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
         name="L4_public_api_change",
         task="Change REST API response envelope from data/error to standard RFC7807 problem details",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "changes_public_api_contract": "yes", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "yes", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "yes", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "broad", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L4",
+        expected_unresolved=("files_touched",),
         expected_risk_flags=("public_api_change",),
     ),
     BenchmarkCase(
         name="L4_db_data_migration",
         task="Add database migration script to split users full_name into first_name and last_name",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "changes_persisted_data": "yes", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "yes", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "broad", "silent_failure_material_harm": "unknown", "requires_code_understanding": "yes"},
         expected_level="L4",
+        expected_unresolved=("files_touched", "silent_failure_material_harm"),
         expected_risk_flags=("data_migration",),
     ),
     BenchmarkCase(
         name="L4_large_scale_files_change",
         task="Update deprecated logger calls across 15 files in backend",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "6+", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "6+", "crosses_module_boundary": "yes", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L4",
     ),
     BenchmarkCase(
         # An unknown fact never floors the level: it is reported as unresolved (a question for
         # the user), and the level comes from the explicit facts (files_touched=2-5 gives L3).
-        name="L3_unknown_module_boundary_unresolved",
+        name="L2_unknown_module_boundary_and_scope",
         task="Refactor session handling where module boundary impact is unknown",
         task_type="architectural_refactoring",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "crosses_module_boundary": "unknown"},
-        expected_level="L3",
-        expected_unresolved=("crosses_module_boundary",),
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "unknown", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
+        expected_level="L2",
+        expected_unresolved=("files_touched", "crosses_module_boundary"),
     ),
 
     BenchmarkCase(
         name="L2_unknown_security_change_is_not_a_floor",
         task="Fix the login problem",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "changes_security_or_payment_logic": "unknown", "irreversible_or_ledger_or_crypto": "unknown"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "unknown", "reviews_security_sensitive_code": "no", "security_domain": "auth", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L2",
-        expected_unresolved=("changes_security_or_payment_logic", "irreversible_or_ledger_or_crypto"),
+        expected_unresolved=("files_touched", "changes_security_or_payment_logic"),
+    ),
+    # security_domain_critical's bare-mention floor (BARE_DOMAIN_FLOOR_DOMAINS in rules.py), isolated from every
+    # other escalating fact: auth alone must not float the level, but payment/crypto/permissions/pii still do.
+    BenchmarkCase(
+        name="L2_bare_auth_domain_is_not_a_floor",
+        task="Reword the error message shown on a failed login attempt",
+        task_type="implementation",
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "auth", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "no"},
+        expected_level="L2",
+        expected_unresolved=("files_touched",),
+    ),
+    BenchmarkCase(
+        name="L5_bare_pii_domain_floors_at_l5",
+        task="Fix an off-by-one error in the customer PII export pagination logic",
+        task_type="implementation",
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "pii", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "unknown", "requires_code_understanding": "yes"},
+        expected_level="L5",
+        expected_unresolved=("files_touched", "silent_failure_material_harm"),
     ),
 
     # L5 Cases (needs_new_structure, intermittent_or_concurrency, open result across modules)
@@ -228,29 +262,33 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L5_new_plugin_architecture",
         task="Design and implement new dynamic plugin loading architecture with isolated contexts",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "6+", "needs_new_structure": "yes", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "yes", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "yes", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
         name="L5_concurrency_race_condition",
         task="Fix intermittent race condition causing deadlocks in thread pool queue",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "intermittent_or_concurrency": "yes", "fix_or_result_known": "no"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "no", "intermittent_or_concurrency": "yes", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
         name="L5_open_result_across_modules",
         task="Diagnose mysterious memory leak spanning cache module and worker daemon",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "fix_or_result_known": "no", "crosses_module_boundary": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
         name="L5_architectural_design",
         task="Design architecture for migrating from monolithic event bus to distributed messaging",
         task_type="design",
-        facts={"mechanical_only": "no", "files_touched": "0", "needs_new_structure": "yes", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "0", "crosses_module_boundary": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "yes", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "yes", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
+        expected_tier="elevated",
     ),
 
     # Elevated-tier cases (changes_security_or_payment_logic, intermittent across services)
@@ -258,36 +296,40 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L5E_security_oauth_token_refresh",
         task="Revamp OAuth 2.0 refresh token rotation and JWT signature validation",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "changes_security_or_payment_logic": "yes", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "yes", "reviews_security_sensitive_code": "no", "security_domain": "auth", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
         expected_tier="elevated",
+        expected_unresolved=("files_touched",),
         expected_risk_flags=("security_sensitive", "authentication"),
     ),
     BenchmarkCase(
         name="L5E_payment_stripe_integration",
         task="Implement Stripe webhook signature verification and checkout session payment handler",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "changes_security_or_payment_logic": "yes", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "yes", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "yes", "reviews_security_sensitive_code": "no", "security_domain": "payment", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
         expected_tier="elevated",
+        expected_unresolved=("files_touched",),
         expected_risk_flags=("security_sensitive", "payment"),
     ),
     BenchmarkCase(
         name="L5E_security_rbac_authorization",
         task="Update role-based access control (RBAC) permission check middleware",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "changes_security_or_payment_logic": "yes", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "yes", "reviews_security_sensitive_code": "no", "security_domain": "permissions", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "yes", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
         expected_tier="elevated",
+        expected_unresolved=("files_touched",),
         expected_risk_flags=("security_sensitive", "authorization"),
     ),
     BenchmarkCase(
         name="L5E_cross_service_intermittent_bug",
         task="Investigate intermittent distributed transaction failure across auth and order microservices",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "6+", "intermittent_or_concurrency": "yes", "crosses_service_boundary": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "intermittent_or_concurrency": "yes", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "unknown", "changes_public_api_contract": "no", "changes_persisted_data": "unknown", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
         expected_tier="elevated",
+        expected_unresolved=("files_touched", "security_domain", "changes_persisted_data"),
     ),
 
     # MEDIUM-A regression: the approval-gate carve-out must stay narrow. A
@@ -299,31 +341,18 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L2_model_tier_approval_confirmation",
         task="Add a confirmation prompt before running an expensive high-tier model, gated behind a --yes flag",
         task_type="implementation",
-        facts={
-            "mechanical_only": "no",
-            "files_touched": "1",
-            "fix_or_result_known": "yes",
-            "changes_security_or_payment_logic": "no",
-            "reviews_security_sensitive_code": "no",
-            "security_domain": "none",
-            "requires_code_understanding": "yes",
-        },
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L2",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
         name="L5E_deploy_approval_bypass_removed",
         task="Remove the --approved bypass on the production deploy approval gate so deploys can no longer skip user consent",
         task_type="implementation",
-        facts={
-            "mechanical_only": "no",
-            "files_touched": "1",
-            "fix_or_result_known": "yes",
-            "changes_security_or_payment_logic": "yes",
-            "reviews_security_sensitive_code": "yes",
-            "security_domain": "permissions",
-        },
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "yes", "reviews_security_sensitive_code": "yes", "security_domain": "permissions", "changes_public_api_contract": "yes", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "yes", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "no"},
         expected_level="L5",
         expected_tier="elevated",
+        expected_unresolved=("files_touched",),
         expected_risk_flags=("security_sensitive",),
     ),
 
@@ -333,16 +362,17 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L5E_multi_service_frontier_redesign",
         task="Solve chronic cross-service data inconsistency with unknown root cause requiring new cross-repo protocol",
         task_type="architectural_refactoring",
-        facts={"mechanical_only": "no", "files_touched": "6+", "needs_new_structure": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "silent_failure_material_harm": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "intermittent_or_concurrency": "no", "needs_new_structure": "yes", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "unknown", "changes_persisted_data": "unknown", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "yes", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
         expected_tier="elevated",
+        expected_unresolved=("files_touched", "changes_public_api_contract", "changes_persisted_data"),
     ),
     BenchmarkCase(
         # A novel consensus protocol across multi-region sync: cross-service open design, elevated tier.
         name="L5E_distributed_consensus_design",
         task="Design novel distributed consensus protocol replacing legacy multi-region sync mechanism",
         task_type="design",
-        facts={"mechanical_only": "no", "files_touched": "0", "needs_new_structure": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "blast_radius": "broad"},
+        facts={"mechanical_only": "no", "files_touched": "0", "crosses_module_boundary": "yes", "crosses_service_boundary": "yes", "fix_or_result_known": "no", "intermittent_or_concurrency": "no", "needs_new_structure": "yes", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "yes", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
         expected_tier="elevated",
     ),
@@ -352,15 +382,16 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L5C_ledger_balance_reconciliation",
         task="Implement double-entry financial ledger balance settlement and invariant verification",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "2-5", "irreversible_or_ledger_or_crypto": "yes", "fix_or_result_known": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "yes", "reviews_security_sensitive_code": "no", "security_domain": "payment", "changes_public_api_contract": "no", "changes_persisted_data": "yes", "irreversible_or_ledger_or_crypto": "yes", "changes_trust_boundary": "no", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
         expected_tier="critical",
+        expected_unresolved=("files_touched",),
     ),
     BenchmarkCase(
         name="L5C_crypto_key_derivation",
         task="Design cryptographic key derivation and zero-knowledge proof verification pipeline",
         task_type="design",
-        facts={"mechanical_only": "no", "files_touched": "0", "irreversible_or_ledger_or_crypto": "yes", "needs_new_structure": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "0", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "no", "intermittent_or_concurrency": "no", "needs_new_structure": "yes", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "crypto", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "yes", "changes_trust_boundary": "no", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
         expected_tier="critical",
     ),
@@ -368,9 +399,10 @@ GOLDEN_BENCHMARK_CASES: list[BenchmarkCase] = [
         name="L5C_irreversible_database_purge",
         task="Execute irreversible GDPR permanent data erasure on production partition tables",
         task_type="implementation",
-        facts={"mechanical_only": "no", "files_touched": "1", "irreversible_or_ledger_or_crypto": "yes", "changes_persisted_data": "yes"},
+        facts={"mechanical_only": "no", "files_touched": "unknown", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "pii", "changes_public_api_contract": "no", "changes_persisted_data": "yes", "irreversible_or_ledger_or_crypto": "yes", "changes_trust_boundary": "no", "blast_radius": "broad", "silent_failure_material_harm": "yes", "requires_code_understanding": "yes"},
         expected_level="L5",
         expected_tier="critical",
+        expected_unresolved=("files_touched",),
     ),
 ]
 
@@ -508,42 +540,73 @@ def _pct(hit: int, total: int) -> float:
 def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict, platform: str, base_facts: dict[str, str]) -> dict:
     """Grade one classifier answer against its labels: fact agreement, level/tier, and the routed model+effort."""
     expected_facts = {**base_facts, **case.facts}
-    expected_level, expected_tier, _, expected_unresolved = router.evaluate_rules(expected_facts)
     per_fact = {name: {"expected": expected, "actual": actual.facts.get(name)} for name, expected in expected_facts.items()}
+    # Routing grades against the case's own declared outcome, never against evaluate_rules() re-run on a fact set
+    # blended with the classifier's own unlabelled-fact answers: that would let a wrong answer on any unlabelled
+    # fact silently redefine what counts as correct (an over-escalating classifier grading itself as accurate).
+    # A route with any unresolved fact is not executable, so the actual set must exactly match the case's
+    # declared unresolved set. Unknown-transition metrics remain labelled-fact-only in _tally_facts.
+    unresolved_match = set(actual.unresolved) == set(case.expected_unresolved)
     # task_type is graded on its own: implementation and local_refactoring route identically, so a swap must not fail routing.
     routing_match = (
-        actual.level == expected_level
-        and actual.risk_tier == expected_tier
-        and actual.unresolved == expected_unresolved
+        actual.level == case.expected_level
+        and actual.risk_tier == case.expected_tier
+        and unresolved_match
     )
-    # An unlabelled requires_code_understanding must not be graded on the corpus default: for the profile check
-    # that fact follows the classifier's own answer.
-    profile_facts = dict(expected_facts)
-    if "requires_code_understanding" not in case.facts:
-        profile_facts["requires_code_understanding"] = actual.facts.get("requires_code_understanding", "unknown")
+    # The profile check still follows the classifier's own answer on an unlabelled fact (e.g. requires_code_understanding,
+    # which never changes level/tier but does pick the implementer rung): grading it against a corpus default would
+    # fail a classifier for guessing something the case never labelled, on a fact routing itself doesn't depend on.
+    graded_facts = {
+        **expected_facts,
+        **{
+            name: actual.facts[name] for name in router.OPTIONAL_FACT_DEFAULTS
+            if name not in case.facts and actual.facts.get(name) is not None
+        },
+    }
     expected_classification = router.Classification(
-        task_type=case.task_type, level=expected_level, risk_flags=router.risk_flags_from_facts(expected_facts),
-        reason="labelled", source="test", facts=profile_facts, risk_tier=expected_tier,
+        task_type=case.task_type, level=case.expected_level, risk_flags=router.risk_flags_from_facts(graded_facts),
+        reason="labelled", source="test", facts=graded_facts, risk_tier=case.expected_tier,
     )
-    expected_profile = _route_profile(config, platform, case.task, expected_classification, expected_tier == "critical")
+    expected_profile = _route_profile(config, platform, case.task, expected_classification, case.expected_tier == "critical")
     actual_profile = _route_profile(config, platform, case.task, actual, actual.risk_tier == "critical")
+
+    downward_level = router.LEVELS.index(actual.level) < router.LEVELS.index(case.expected_level)
+    downward_tier = router.RISK_TIERS.index(actual.risk_tier) < router.RISK_TIERS.index(case.expected_tier)
+    expected_flags = router.risk_flags_from_facts(expected_facts)
+    missing_flags = [flag for flag, exp in expected_flags.items() if exp and not actual.risk_flags.get(flag, False)]
+    inspect_misclassification = actual.task_type == "inspect" and case.task_type != "inspect"
+    unknown_facts_count = sum(1 for v in actual.facts.values() if v == "unknown")
+
     return {
         "name": case.name,
         "source": actual.source,
         "graded": True,
+        # A case where every routing-relevant fact was explicitly decided is fair grading ground for
+        # routing accuracy; one that still leans on the "no/none/narrow" default for some fact would
+        # let the classifier's own (possibly reasonable) read of that unaddressed fact fail the case
+        # even when the fact was never actually settled by a human.
+        "fully_labelled": ROUTING_RELEVANT_FACTS.issubset(case.facts),
         "passed": routing_match,
         "task_type_passed": actual.task_type == case.task_type,
         # A routing error on both sides is a broken config, never a match.
-        "profile_passed": "error" not in actual_profile and expected_profile == actual_profile,
+        "profile_passed": unresolved_match and "error" not in actual_profile and expected_profile == actual_profile,
         "expected": {
-            "task_type": case.task_type, "level": expected_level, "risk_tier": expected_tier,
-            "unresolved": list(expected_unresolved), "profile": expected_profile,
+            "task_type": case.task_type, "level": case.expected_level, "risk_tier": case.expected_tier,
+            "unresolved": list(case.expected_unresolved), "profile": expected_profile,
         },
         "actual": {
             "task_type": actual.task_type, "level": actual.level, "risk_tier": actual.risk_tier,
             "unresolved": list(actual.unresolved), "profile": actual_profile,
         },
         "facts": per_fact,
+        "safety": {
+            "downward_level": downward_level,
+            "downward_tier": downward_tier,
+            "missing_flags": missing_flags,
+            "inspect_misclassification": inspect_misclassification,
+            "unknown_facts_count": unknown_facts_count,
+            "safety_violation": downward_tier or bool(missing_flags) or downward_level or inspect_misclassification,
+        },
     }
 
 
@@ -556,8 +619,8 @@ def _tally_facts(case: BenchmarkCase, graded: dict, tally: dict) -> None:
             counts = tally["per_fact"].setdefault(name, {"matches": 0, "total": 0})
             counts["matches"] += agree
             counts["total"] += 1
-        if item["actual"] is None:
-            continue  # a missing fact resolved nothing, and is not a regression either
+        if item["actual"] is None or name not in case.facts:
+            continue  # a missing fact resolved nothing, and an unlabelled one has no expected answer to move away from
         if item["expected"] == "unknown":
             tally["unknown"]["expected_unknown_to_unknown" if item["actual"] == "unknown" else "expected_unknown_to_known"] += 1
         elif item["actual"] == "unknown":
@@ -618,6 +681,33 @@ def evaluate_classifier_benchmark(
     total = len(graded_cases)
     labelled_matches = sum(counts["matches"] for counts in tally["per_fact"].values())
     labelled_total = sum(counts["total"] for counts in tally["per_fact"].values())
+
+    downward_levels = sum(item.get("safety", {}).get("downward_level", False) for item in graded_cases)
+    downward_tiers = sum(item.get("safety", {}).get("downward_tier", False) for item in graded_cases)
+    safety_violations = sum(item.get("safety", {}).get("safety_violation", False) for item in graded_cases)
+    inspect_misclassifications = sum(item.get("safety", {}).get("inspect_misclassification", False) for item in graded_cases)
+    total_unknowns = sum(item.get("safety", {}).get("unknown_facts_count", 0) for item in graded_cases)
+    total_facts = total * len(router.FACTS)
+
+    by_provider = {}
+    for src in sorted(set(item["source"] for item in results if item.get("source"))):
+        src_cases = [item for item in graded_cases if item.get("source") == src]
+        src_total = len(src_cases)
+        if src_total:
+            by_provider[src] = {
+                "graded_cases": src_total,
+                "passed_cases": sum(item["passed"] for item in src_cases),
+                "routing_accuracy_pct": _pct(sum(item["passed"] for item in src_cases), src_total),
+                "safety_violations": sum(item.get("safety", {}).get("safety_violation", False) for item in src_cases),
+                "downward_level_pct": _pct(sum(item.get("safety", {}).get("downward_level", False) for item in src_cases), src_total),
+                "downward_tier_discrepancies": sum(item.get("safety", {}).get("downward_tier", False) for item in src_cases),
+                "inspect_misclassifications": sum(item.get("safety", {}).get("inspect_misclassification", False) for item in src_cases),
+                "unknown_facts_pct": _pct(sum(item.get("safety", {}).get("unknown_facts_count", 0) for item in src_cases), src_total * len(router.FACTS)),
+            }
+
+    fully_labelled_cases = [item for item in graded_cases if item["fully_labelled"]]
+    fl_total = len(fully_labelled_cases)
+
     return {
         "summary": {
             "platform": platform,
@@ -625,6 +715,13 @@ def evaluate_classifier_benchmark(
             "graded_cases": total,
             "passed_cases": sum(item["passed"] for item in graded_cases),
             "routing_accuracy_pct": _pct(sum(item["passed"] for item in graded_cases), total),
+            # Scoped to cases where every routing-relevant fact was explicitly decided, not
+            # defaulted: the classifier's actual routing skill, without corpus gaps counting
+            # against it. See "fully_labelled" on each case.
+            "fully_labelled_cases": fl_total,
+            "routing_accuracy_on_fully_labelled_pct": _pct(
+                sum(item["passed"] for item in fully_labelled_cases), fl_total
+            ),
             "task_type_accuracy_pct": _pct(sum(item["task_type_passed"] for item in graded_cases), total),
             "profile_accuracy_pct": _pct(sum(item["profile_passed"] for item in graded_cases), total),
             # Without refinements on this platform the profile cannot see an implementer-rung miss.
@@ -637,6 +734,14 @@ def evaluate_classifier_benchmark(
             "classifier_calls": len(cases),
             "seconds": round(time.perf_counter() - started, 1),
             "unknown_transitions": tally["unknown"],
+            "safety_violations": safety_violations,
+            "downward_level_discrepancies": downward_levels,
+            "downward_level_discrepancy_pct": _pct(downward_levels, total),
+            "downward_tier_discrepancies": downward_tiers,
+            "inspect_misclassifications": inspect_misclassifications,
+            "unknown_facts_count": total_unknowns,
+            "unknown_facts_pct": _pct(total_unknowns, total_facts),
+            "by_provider": by_provider,
         },
         "cases": results,
     }
@@ -671,10 +776,22 @@ def print_report(data: dict) -> None:
               f"{classifier_summary['labelled_fact_accuracy_pct']}% labelled facts "
               f"({classifier_summary['passed_cases']}/{classifier_summary['graded_cases']} graded), "
               f"task_type {classifier_summary['task_type_accuracy_pct']}%")
+        print(f" Routing on fully-labelled cases: {classifier_summary['routing_accuracy_on_fully_labelled_pct']}% "
+              f"({classifier_summary['fully_labelled_cases']}/{classifier_summary['graded_cases']} cases have every routing fact decided)")
         print(f" Model+effort profile match: {classifier_summary['profile_accuracy_pct']}%"
               f"{'' if classifier_summary['refinement_coverage'] else ' (no refinements on this platform: not informative)'}, "
               f"classifier fallbacks: {classifier_summary['classifier_fallbacks']}, "
               f"calls: {classifier_summary['classifier_calls']}, {classifier_summary['seconds']}s")
+        print(f" Safety: {classifier_summary.get('safety_violations', 0)} violations, "
+              f"downward level {classifier_summary.get('downward_level_discrepancy_pct', 0.0)}%, "
+              f"downward tier {classifier_summary.get('downward_tier_discrepancies', 0)}, "
+              f"inspect misclassifications: {classifier_summary.get('inspect_misclassifications', 0)}")
+        print(f" Unknown facts: {classifier_summary.get('unknown_facts_pct', 0.0)}% "
+              f"({classifier_summary.get('unknown_facts_count', 0)} total)")
+        if classifier_summary.get("by_provider"):
+            for prov, pstats in classifier_summary["by_provider"].items():
+                print(f"  [{prov}] {pstats['routing_accuracy_pct']}% routing ({pstats['passed_cases']}/{pstats['graded_cases']}), "
+                      f"safety violations: {pstats['safety_violations']}, unknown: {pstats['unknown_facts_pct']}%")
         print(f" requires_code_understanding (expected->actual): {classifier_summary['code_understanding_confusion'] or 'no labelled cases'}")
         print(" Unknown transitions: "
               f"expected→unknown={transitions['expected_unknown_to_unknown']}, "
