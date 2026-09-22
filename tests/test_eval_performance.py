@@ -76,9 +76,9 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         self.assertGreater(summary["unknown_transitions"]["expected_unknown_to_unknown"], 0)
 
         unknown_only = eval_perf.evaluate_classifier_benchmark(
-            classifier=classifier, case_names=("L3_unknown_module_boundary_unresolved",),
+            classifier=classifier, case_names=("L2_unknown_module_boundary_and_scope",),
         )
-        self.assertEqual([case["name"] for case in unknown_only["cases"]], ["L3_unknown_module_boundary_unresolved"])
+        self.assertEqual([case["name"] for case in unknown_only["cases"]], ["L2_unknown_module_boundary_and_scope"])
 
         # Post-audit every corpus case labels every fact, so "labelled" and "all" are now the same
         # set; a classifier biased toward the safe default scores identically on both.
@@ -178,8 +178,9 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         })
 
     def test_missing_expected_unresolved_fact_fails_routing_and_profile(self):
-        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L3_unknown_module_boundary_unresolved")
-        self.assertEqual(case.expected_unresolved, ("crosses_module_boundary",))
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L2_unknown_module_boundary_and_scope")
+        self.assertEqual(set(case.expected_unresolved), {"crosses_module_boundary", "files_touched"})
+        # Resolving only one of the two still leaves the route blocked.
         summary = eval_perf.evaluate_classifier_benchmark(
             classifier=stub_classifier(lambda c: labelled_facts(c, crosses_module_boundary="no")),
             case_names=(case.name,),

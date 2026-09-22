@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 from route_reuse import is_jev_kill_switch_active, state_dir
 from rules import (
-    BLAST_RADIUS_CRITERIA, FACTS, FACT_QUESTIONS, FILES_TOUCHED_CRITERIA, NOUL_CRITERIA,
+    BLAST_RADIUS_CRITERIA, FACTS, FACT_QUESTIONS, FILES_TOUCHED_CRITERIA, FILES_TOUCHED_INSTRUCTIONS, NOUL_CRITERIA,
     READ_ONLY_TASK_TYPES, SECURITY_DOMAIN_CRITERIA, TASK_TYPE_CRITERIA, evaluate_rules,
     extract_json_payload, fact_decision_point, resolve_uncertain_fact, unknown_facts
 )
@@ -138,7 +138,7 @@ def build_systemone_request(task: str, model: str | None = None) -> dict[str, ob
         if fact == "files_touched":
             questions[fact] = {
                 "type": "choice",
-                "instructions": FACT_QUESTIONS.get(fact, "How many files will the work change?"),
+                "instructions": FILES_TOUCHED_INSTRUCTIONS,
                 "criteria": FILES_TOUCHED_CRITERIA,
             }
         elif fact == "security_domain":

@@ -221,11 +221,21 @@ _extract_json_payload = extract_json_payload
 
 FILES_TOUCHED_CRITERIA: dict[str, str] = {
     "0": "Read-only design, review or inspect work that changes no file. An implementation that runs an operation or changes production data is never 0, even when no source file changes.",
-    "1": "One clearly bounded change confined to one existing file, with no separate test or new file described. A task whose entire scope is one test, or one new file, is also 1.",
-    "2-5": "The described work changes a production file and also touches a separate test or new file, or it changes an existing mechanism, protocol or subsystem end-to-end rather than one isolated call site.",
-    "6+": "A cross-cutting effort spanning many files or more than one service.",
-    "unknown": "The task gives no scope signal at all. Estimate from the described scope rather than answering unknown merely because no exact number is stated, and never because the task says some other aspect is undecided.",
+    "1": "The task names or lists exactly one file to change, or an actual diff or file list is available and shows exactly one.",
+    "2-5": "The task names or lists 2 to 5 files to change, or an actual diff or file list is available and shows that range.",
+    "6+": "The task names or lists 6 or more files to change, or an actual diff or file list is available and shows that many.",
+    "unknown": "None of the above: the work is not read-only, and neither the task text nor an available diff or file list states how many files or which ones change. This is the default for a one-line task description with no file count, file list, or diff attached — pick this rather than a bucket inferred from the described scope, size, or complexity of the change.",
 }
+
+# The instructions Jev receives for files_touched. Deliberately does not ask it to estimate scope
+# from complexity or wording (the CLI classifier's prompt does, for a different, repo-aware path):
+# a bare one-line task description carries no evidence a probability answer can be calibrated
+# against, and guessing from it is exactly the failure mode this contract exists to rule out.
+FILES_TOUCHED_INSTRUCTIONS = (
+    "How many files does the work change? Read-only work is 0. Otherwise, answer only from a stated "
+    "file count, a named file list, or an attached diff — never from how big, complex, or involved "
+    "the described change sounds. If none of those is present, answer unknown."
+)
 
 SECURITY_DOMAIN_CRITERIA: dict[str, str] = {
     "none": "No security-sensitive area touched, or only mentioned/renamed without behaviour change.",
