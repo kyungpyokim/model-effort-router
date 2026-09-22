@@ -80,8 +80,10 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         )
         self.assertEqual([case["name"] for case in unknown_only["cases"]], ["L3_unknown_module_boundary_unresolved"])
 
+        # Post-audit every corpus case labels every fact, so "labelled" and "all" are now the same
+        # set; a classifier biased toward the safe default scores identically on both.
         biased = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(lambda case: eval_perf._base_facts()))["summary"]
-        self.assertLess(biased["labelled_fact_accuracy_pct"], biased["all_fact_agreement_pct"])
+        self.assertEqual(biased["labelled_fact_accuracy_pct"], biased["all_fact_agreement_pct"])
 
     def test_a_classifier_that_omits_the_optional_fact_only_regresses_on_labelled_cases(self):
         def omitting(case):
@@ -110,26 +112,70 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         summary = eval_perf.evaluate_classifier_benchmark(classifier=over_escalating, case_names=(case.name,))["summary"]
         self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
 
-    def test_extra_unresolved_facts_fail_routing_and_profile_without_changing_transition_metrics(self):
-        # A route with any unresolved fact cannot execute, including one the corpus did not label. It must not
-        # count as a routing or profile pass, but unknown-transition metrics still cover labelled facts only.
+    def test_extra_unresolved_facts_fail_routing_and_profile(self):
+        # A route with any unresolved fact cannot execute, including on a fact the corpus explicitly
+        # decided (crosses_module_boundary="no" here): the classifier's own "unknown" answer still
+        # blocks the route regardless of what the corpus labelled.
         case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L5E_security_oauth_token_refresh")
-        self.assertNotIn("crosses_module_boundary", case.facts)
+        self.assertEqual(case.facts["crosses_module_boundary"], "no")
         divergent = {"crosses_module_boundary": "unknown", "blast_radius": "broad", "changes_trust_boundary": "yes"}
         kwargs = {"case_names": (case.name,)}
-        perfect = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(labelled_facts), **kwargs)["summary"]
         summary = eval_perf.evaluate_classifier_benchmark(
             classifier=stub_classifier(lambda c: labelled_facts(c, **divergent)), **kwargs,
         )["summary"]
         self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
-        self.assertEqual(summary["unknown_transitions"], perfect["unknown_transitions"])
 
-        # A labelled fact still fails routing: the classifier calling a security change harmless drops the tier.
-        # graded_facts feeds the profile check too, so the tier drop must also route to a different model+effort.
-        missed = eval_perf.evaluate_classifier_benchmark(
-            classifier=stub_classifier(lambda c: labelled_facts(c, changes_security_or_payment_logic="no")), **kwargs,
-        )["summary"]
+    def test_missing_a_labelled_fact_that_solely_elevates_the_tier_fails_routing(self):
+        # A synthetic case where changes_security_or_payment_logic is the ONLY elevator: audited real
+        # cases with the same tier often carry several independent elevating facts at once (broad
+        # blast radius + silent harm, a critical domain, etc.), so missing just one of them no longer
+        # isolates this specific fact's effect on routing. graded_facts feeds the profile check too, so
+        # the tier drop must also route to a different model+effort.
+        synthetic = eval_perf.BenchmarkCase(
+            name="synthetic_sole_elevator",
+            task="synthetic task for single-fact tier coverage",
+            task_type="implementation",
+            facts={
+                "mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes",
+                "changes_security_or_payment_logic": "yes",
+            },
+            expected_level="L2", expected_tier="elevated",
+        )
+
+        def missed_security_fact(task, platform):
+            facts = {**eval_perf._base_facts(), **synthetic.facts, "changes_security_or_payment_logic": "no"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": synthetic.task_type, "facts": facts, "delegability": 0, "evidence": [], "reason": "stub",
+            })
+
+        with mock.patch.object(eval_perf, "GOLDEN_BENCHMARK_CASES", [synthetic]):
+            missed = eval_perf.evaluate_classifier_benchmark(classifier=missed_security_fact)["summary"]
         self.assertEqual((missed["routing_accuracy_pct"], missed["profile_accuracy_pct"]), (0.0, 0.0))
+
+    def test_a_fact_the_corpus_never_labels_does_not_move_unknown_transition_metrics(self):
+        # Every real corpus case labels every routing-relevant fact now (the point of the audit), so
+        # this exercises _tally_facts's "an unlabelled fact is skipped" behaviour with a synthetic
+        # case that deliberately leaves one unlabelled, rather than relying on a corpus gap.
+        synthetic = eval_perf.BenchmarkCase(
+            name="synthetic_unlabelled_fact",
+            task="synthetic task for unlabelled-fact coverage",
+            task_type="implementation",
+            facts={"mechanical_only": "no", "files_touched": "1", "fix_or_result_known": "yes"},
+            expected_level="L2",
+        )
+
+        def classify(task, platform):
+            facts = {**eval_perf._base_facts(), **synthetic.facts, "crosses_module_boundary": "unknown"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": synthetic.task_type, "facts": facts, "delegability": 0, "evidence": [], "reason": "stub",
+            })
+
+        with mock.patch.object(eval_perf, "GOLDEN_BENCHMARK_CASES", [synthetic]):
+            summary = eval_perf.evaluate_classifier_benchmark(classifier=classify)["summary"]
+        self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
+        self.assertEqual(summary["unknown_transitions"], {
+            "expected_unknown_to_unknown": 0, "expected_unknown_to_known": 0, "expected_known_to_unknown": 0,
+        })
 
     def test_missing_expected_unresolved_fact_fails_routing_and_profile(self):
         case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L3_unknown_module_boundary_unresolved")
