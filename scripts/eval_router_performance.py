@@ -271,12 +271,24 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
     # fact silently redefine what counts as correct (an over-escalating classifier grading itself as accurate).
     # A route with any unresolved fact is not executable, so the actual set must exactly match the case's
     # declared unresolved set. Unknown-transition metrics remain labelled-fact-only in _tally_facts.
-    unresolved_match = set(actual.unresolved) == set(case.expected_unresolved)
+    unresolved_expected = set(case.expected_unresolved)
+    unresolved_actual = set(actual.unresolved)
+    # The Jev SystemOne path asks a noul fact as a probability and can only answer yes or no, so a
+    # labelled unknown on one of those facts is unrepresentable there rather than a classifier miss:
+    # scoring it would measure the output schema, not the model. Exclude exactly those facts from the
+    # comparison, count them separately in the summary, and still compare every fact the path can
+    # leave unknown (choice facts, and anything the classifier's own answer left open). Strict
+    # accuracy, which counts an unrepresentable unknown as a miss, stays in the summary beside it.
+    unrepresentable = unresolved_expected & set(router.NOUL_FACTS) if actual.source == "jev" else set()
+    expected_comparable = unresolved_expected - unrepresentable
+    actual_comparable = unresolved_actual - unrepresentable
+    unresolved_applicable = bool(expected_comparable) or bool(actual_comparable)
+    unresolved_match = (actual_comparable == expected_comparable) if unresolved_applicable else None
     # task_type is graded on its own: implementation and local_refactoring route identically, so a swap must not fail routing.
     routing_match = (
         actual.level == case.expected_level
         and actual.risk_tier == case.expected_tier
-        and unresolved_match
+        and unresolved_match is not False
     )
     # The profile check still follows the classifier's own answer on an unlabelled fact (e.g. requires_code_understanding,
     # which never changes level/tier but does pick the implementer rung): grading it against a corpus default would
@@ -321,6 +333,10 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
         # even when the fact was never actually settled by a human.
         "fully_labelled": ROUTING_RELEVANT_FACTS.issubset(case.facts),
         "passed": routing_match,
+        "unresolved_match": unresolved_match,
+        "unresolved_match_strict": unresolved_expected == unresolved_actual,
+        "unresolved_applicable": unresolved_applicable,
+        "unresolved_noul_unrepresentable": sorted(unrepresentable),
         "task_type_passed": actual.task_type == case.task_type,
         "level_passed": actual.level == case.expected_level,
         "tier_passed": actual.risk_tier == case.expected_tier,
@@ -331,7 +347,7 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
         "actual_matched": actual_matched,
         "promoting_rules": promoting_rules,
         # A routing error on both sides is a broken config, never a match.
-        "profile_passed": unresolved_match and "error" not in actual_profile and expected_profile == actual_profile,
+        "profile_passed": unresolved_match is not False and "error" not in actual_profile and expected_profile == actual_profile,
         "expected": {
             "task_type": case.task_type, "level": case.expected_level, "risk_tier": case.expected_tier,
             "unresolved": list(case.expected_unresolved), "profile": expected_profile,
@@ -430,6 +446,14 @@ def evaluate_classifier_benchmark(
     inspect_misclassifications = sum(item.get("safety", {}).get("inspect_misclassification", False) for item in graded_cases)
     total_unknowns = sum(item.get("safety", {}).get("unknown_facts_count", 0) for item in graded_cases)
     total_facts = total * len(router.FACTS)
+    unresolved_applicable_cases = sum(1 for item in graded_cases if item.get("unresolved_applicable"))
+    unresolved_matched_cases = sum(1 for item in graded_cases if item.get("unresolved_match") is True)
+    noul_unrepresentable_facts = sum(len(item.get("unresolved_noul_unrepresentable", [])) for item in graded_cases)
+    noul_unrepresentable_cases = sum(1 for item in graded_cases if item.get("unresolved_noul_unrepresentable"))
+    strict_passed = sum(
+        1 for item in graded_cases
+        if item["level_passed"] and item["tier_passed"] and item.get("unresolved_match_strict")
+    )
 
     by_provider = {}
     for src in sorted(set(item["source"] for item in results if item.get("source"))):
@@ -457,6 +481,13 @@ def evaluate_classifier_benchmark(
             "total_benchmark_cases": len(cases),
             "graded_cases": total,
             "passed_cases": sum(item["passed"] for item in graded_cases),
+            # The previous routing rule, kept visible: it also demanded that a labelled unknown the
+            # live path cannot answer (a noul fact, yes/no only) came back unknown.
+            "routing_accuracy_strict_pct": _pct(strict_passed, total),
+            "unresolved_applicable_cases": unresolved_applicable_cases,
+            "unresolved_matched_cases": unresolved_matched_cases,
+            "noul_unknown_unrepresentable_cases": noul_unrepresentable_cases,
+            "noul_unknown_unrepresentable_facts": noul_unrepresentable_facts,
             "routing_accuracy_pct": _pct(sum(item["passed"] for item in graded_cases), total),
             # Scoped to cases where every routing-relevant fact was explicitly decided, not
             # defaulted: the classifier's actual routing skill, without corpus gaps counting
@@ -532,6 +563,12 @@ def print_report(data: dict) -> None:
               f"inspect misclassifications: {classifier_summary.get('inspect_misclassifications', 0)}")
         print(f" Unknown facts: {classifier_summary.get('unknown_facts_pct', 0.0)}% "
               f"({classifier_summary.get('unknown_facts_count', 0)} total)")
+        print(f" Unresolved (ASK) agreement: {classifier_summary.get('unresolved_matched_cases', 0)}/"
+              f"{classifier_summary.get('unresolved_applicable_cases', 0)} applicable cases matched; "
+              f"noul labelled unknowns unrepresentable on this path: "
+              f"{classifier_summary.get('noul_unknown_unrepresentable_facts', 0)} fact(s) in "
+              f"{classifier_summary.get('noul_unknown_unrepresentable_cases', 0)} case(s); "
+              f"strict routing (counts them as misses): {classifier_summary.get('routing_accuracy_strict_pct', 0.0)}%")
         print(f" Level accuracy: {classifier_summary.get('level_accuracy_pct', 0.0)}%, "
               f"tier accuracy: {classifier_summary.get('tier_accuracy_pct', 0.0)}%, "
               f"±1 level: {classifier_summary.get('level_plus_minus_1_accuracy_pct', 0.0)}%")

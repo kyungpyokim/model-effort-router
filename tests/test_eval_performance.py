@@ -187,6 +187,66 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         )["summary"]
         self.assertEqual((summary["routing_accuracy_pct"], summary["profile_accuracy_pct"]), (0.0, 0.0))
 
+    def test_a_labelled_unknown_the_live_noul_path_cannot_answer_is_reported_not_scored(self):
+        # The Jev path asks a noul fact as a probability: yes or no, never unknown. A case whose
+        # label leaves such a fact open cannot match the unresolved set there, and scoring it would
+        # measure the output schema, not the classifier. It is excluded, counted separately, and the
+        # strict number stays beside the relaxed one.
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L2U_add_optional_field")
+        self.assertEqual(set(case.expected_unresolved), {"changes_public_api_contract"})
+
+        def live_like(task, platform):
+            return eval_perf.router.validate_classifier_output({
+                "task_type": case.task_type,
+                "facts": labelled_facts(case, changes_public_api_contract="no"),
+                "delegability": 0, "evidence": [], "reason": "jev",
+            }, source="jev")
+
+        benchmark = eval_perf.evaluate_classifier_benchmark(classifier=live_like, case_names=(case.name,))
+        graded = benchmark["cases"][0]
+        summary = benchmark["summary"]
+        self.assertIsNone(graded["unresolved_match"])
+        self.assertFalse(graded["unresolved_applicable"])
+        self.assertEqual(graded["unresolved_noul_unrepresentable"], ["changes_public_api_contract"])
+        self.assertTrue(graded["passed"])
+        self.assertEqual((summary["noul_unknown_unrepresentable_facts"], summary["noul_unknown_unrepresentable_cases"]), (1, 1))
+        self.assertEqual((summary["unresolved_matched_cases"], summary["unresolved_applicable_cases"]), (0, 0))
+        self.assertEqual(summary["routing_accuracy_pct"], 100.0)
+        self.assertEqual(summary["routing_accuracy_strict_pct"], 0.0)
+
+        # The same answer on a path that can express unknown (the stub path) is still a routing miss.
+        def stub_answer(task, platform):
+            return eval_perf.router.validate_classifier_output({
+                "task_type": case.task_type,
+                "facts": labelled_facts(case, changes_public_api_contract="no"),
+                "delegability": 0, "evidence": [], "reason": "stub",
+            }, source="test")
+
+        strict = eval_perf.evaluate_classifier_benchmark(classifier=stub_answer, case_names=(case.name,))["summary"]
+        self.assertEqual((strict["routing_accuracy_pct"], strict["unresolved_applicable_cases"]), (0.0, 1))
+
+    def test_a_representable_labelled_unknown_still_fails_when_the_live_answer_resolves_it(self):
+        # files_touched is a choice fact, so the live path can leave it unknown: resolving it against
+        # a label that keeps it open is a real miss and must not be excused by the noul exclusion.
+        case = next(c for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.name == "L2_unknown_module_boundary_and_scope")
+        self.assertEqual(set(case.expected_unresolved), {"crosses_module_boundary", "files_touched"})
+
+        def live_like(task, platform):
+            return eval_perf.router.validate_classifier_output({
+                "task_type": case.task_type,
+                "facts": labelled_facts(case, files_touched="1"),
+                "delegability": 0, "evidence": [], "reason": "jev",
+            }, source="jev")
+
+        benchmark = eval_perf.evaluate_classifier_benchmark(classifier=live_like, case_names=(case.name,))
+        graded = benchmark["cases"][0]
+        summary = benchmark["summary"]
+        self.assertEqual(graded["unresolved_noul_unrepresentable"], ["crosses_module_boundary"])
+        self.assertTrue(graded["unresolved_applicable"])
+        self.assertFalse(graded["unresolved_match"])
+        self.assertFalse(graded["passed"])
+        self.assertEqual((summary["unresolved_matched_cases"], summary["unresolved_applicable_cases"]), (0, 1))
+
     def test_swapping_implementation_and_local_refactoring_does_not_fail_routing(self):
         swap = {"implementation": "local_refactoring", "local_refactoring": "implementation"}
         summary = eval_perf.evaluate_classifier_benchmark(

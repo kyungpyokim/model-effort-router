@@ -30,7 +30,7 @@ from commands import refuse_interactive_two_stage
 
 from policy import (AGY_MODEL_RE, MODEL_RE, SAFE_ORCHESTRATION_LEVELS, SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY, _valid_candidate, _valid_matrix_entry, _valid_stage, apply_refinement, apply_tier, choose_candidate, is_orchestration_eligible, load_config, load_matrix, load_refinements, load_tier_profile, materialise_stages, model_ok, positive_finite_float, resolve_stages)
 
-from rules import (CODE_CHANGE_TASK_TYPES, CRITICAL_SECURITY_DOMAINS, DIFFICULTY_RULES, EFFORT_ORDER, FACTS, LEVEL_NAMES, LEVELS, OPTIONAL_FACT_DEFAULTS, READ_ONLY_TASK_TYPES, RISK_FLAGS, RISK_TIERS, SECURITY_DOMAINS, SECURITY_FLOOR_FLAGS, TASK_TYPES, TIER_LEVEL, YES_NO, YES_NO_UNKNOWN, apply_risk_escalation, evaluate_rules, higher_level, higher_tier, normalise_level, normalise_task_type, raise_effort, risk_flags_from_facts, unknown_facts, unresolved_facts)
+from rules import (CODE_CHANGE_TASK_TYPES, CRITICAL_SECURITY_DOMAINS, DIFFICULTY_RULES, EFFORT_ORDER, FACTS, LEVEL_NAMES, LEVELS, NOUL_FACTS, OPTIONAL_FACT_DEFAULTS, READ_ONLY_TASK_TYPES, RISK_FLAGS, RISK_TIERS, SECURITY_DOMAINS, SECURITY_FLOOR_FLAGS, TASK_TYPES, TIER_LEVEL, YES_NO, YES_NO_UNKNOWN, apply_risk_escalation, evaluate_rules, higher_level, higher_tier, normalise_level, normalise_task_type, raise_effort, risk_flags_from_facts, unknown_facts, unresolved_facts)
 
 from cli import (  # noqa: E402
     _prompt_axis, default_config_path, main as _cli_main, parse_answer, parse_args, prompt_manual_classification, prompt_unresolved,

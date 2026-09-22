@@ -642,6 +642,13 @@ class JevSystemOneIntegrationTests(unittest.TestCase):
         self.assertIn("criteria", questions["blast_radius"])
         self.assertEqual(questions["mechanical_only"]["type"], "noul")
         self.assertIn("instructions", questions["mechanical_only"])
+        # The live benchmark reports a labelled unknown on a noul fact as unrepresentable rather than
+        # scoring it (rules.NOUL_FACTS), so the two sets must agree with what is actually asked here.
+        for fact in rules.CHOICE_FACTS:
+            self.assertEqual(questions[fact]["type"], "choice", fact)
+        for fact in rules.NOUL_FACTS:
+            self.assertEqual(questions[fact]["type"], "noul", fact)
+        self.assertEqual(set(rules.CHOICE_FACTS) | set(rules.NOUL_FACTS), set(rules.FACTS))
 
     def test_general_fact_decision_point(self):
         # A general fact reads as yes at or above 0.5 and no below it, with no uncertain band.

@@ -291,6 +291,14 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
     },
 }
 
+# Facts the Jev SystemOne path asks as multiple-choice questions, each with its own criteria dict
+# above; every other fact is asked as a noul probability that can answer only yes or no. A labelled
+# "unknown" on a noul fact is unrepresentable on that path, so the live benchmark reports it as such
+# instead of scoring it as a miss (see evaluate_classifier_benchmark).
+CHOICE_FACTS: tuple[str, ...] = ("files_touched", "security_domain", "blast_radius")
+
+NOUL_FACTS: tuple[str, ...] = tuple(name for name in FACTS if name not in CHOICE_FACTS)
+
 FACT_QUESTIONS: dict[str, str] = {
     "mechanical_only": "Is this purely mechanical work (rename, format, move, no judgement)?",
     "files_touched": "How many files will the work change: 1 only for one existing file with no separate test or new file; 2-5 for a separate test or new file or subsystem or protocol; 6+ if cross-cutting; unknown only with no scope signal (0 read-only)?",
