@@ -135,9 +135,8 @@ def reuse_blockers(
     return blockers
 
 
-def load_record(session: str) -> dict | None:
-    """The session's record, or None when it is missing, foreign, a symlink, oversized, or unparsable."""
-    path = record_path(session)
+def _load_path(path: Path) -> dict | None:
+    """Read a record file verifying regular file, ownership, size, and schema version."""
     try:
         info = path.lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_size > MAX_RECORD_BYTES:
@@ -148,9 +147,13 @@ def load_record(session: str) -> dict | None:
     return record if isinstance(record, dict) and record.get("version") == RECORD_VERSION else None
 
 
-def _write_record(session: str, record: dict) -> None:
+def load_record(session: str) -> dict | None:
+    """The session's record, or None when it is missing, foreign, a symlink, oversized, or unparsable."""
+    return _load_path(record_path(session))
+
+
+def _write_path(path: Path, record: dict) -> None:
     """Atomic private write: a temp file in the same directory, then rename (never follows a planted symlink)."""
-    path = record_path(session)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd, temp = tempfile.mkstemp(dir=path.parent, prefix=".session-")
     try:
@@ -161,6 +164,10 @@ def _write_record(session: str, record: dict) -> None:
         with contextlib.suppress(OSError):
             os.unlink(temp)
         raise
+
+
+def _write_record(session: str, record: dict) -> None:
+    _write_path(record_path(session), record)
 
 
 def save_record(session: str, cwd: str, classification: dict, saved_at: float | None = None, reuses: int = 0) -> None:
@@ -198,15 +205,15 @@ def sweep_invalidate_jev_records() -> int:
     s_dir = state_dir()
     if not s_dir.exists():
         return count
-    for path in s_dir.glob("*.json"):
-        try:
-            record = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(record, dict) and record.get("origin") == "jev" and not record.get("blocked"):
-                record["blocked"] = "Jev kill switch active"
-                path.write_text(json.dumps(record), encoding="utf-8")
+    for path in s_dir.glob("session-*.json"):
+        record = _load_path(path)
+        if record and record.get("origin") == "jev" and not record.get("blocked"):
+            record["blocked"] = "Jev kill switch active"
+            try:
+                _write_path(path, record)
                 count += 1
-        except Exception:
-            continue
+            except OSError:
+                continue
     return count
 
 

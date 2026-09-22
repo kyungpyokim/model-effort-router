@@ -16,19 +16,29 @@ import json
 import os
 import queue
 import random
+import re
 import socket
-import sys
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
-import classifier
+if TYPE_CHECKING:
+    from classifier import Classification
+
 from route_reuse import is_jev_kill_switch_active, state_dir
 from rules import unknown_facts
+
+_default_validator: Callable[..., object] | None = None
+
+
+def set_default_validator(fn: Callable[..., object]) -> None:
+    """Register the classifier schema validator without a circular runtime import."""
+    global _default_validator
+    _default_validator = fn
 
 JEV_STAGE_ENV = "MODEL_EFFORT_ROUTER_JEV_STAGE"
 JEV_API_KEY_ENV = "MODEL_EFFORT_ROUTER_JEV_API_KEY"
@@ -137,13 +147,28 @@ def _default_http_client(task: str, timeout: float, api_key: str, endpoint: str)
     return _run_with_daemon_thread_deadline(_fetch_jev_http, timeout, req, timeout)
 
 
+def _extract_json(raw: str) -> object:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+    if m:
+        return json.loads(m.group(1))
+    start, end = raw.find("{"), raw.rfind("}")
+    if start != -1 and end != -1 and start < end:
+        return json.loads(raw[start:end + 1])
+    raise ValueError("no json object in string")
+
+
 def classify_task_jev_with_status(
     task: str,
     timeout: float | None = None,
     api_key: str | None = None,
     endpoint: str | None = None,
     client: Callable[..., object] | None = None,
-) -> tuple[classifier.Classification | None, str | None]:
+    validate_fn: Callable[..., object] | None = None,
+) -> tuple[Classification | None, str | None]:
     """Invoke Jev to classify a task and return (classification, failure_kind)."""
     if is_jev_kill_switch_active():
         return None, "kill_switch_active"
@@ -183,7 +208,7 @@ def classify_task_jev_with_status(
         if isinstance(raw_output, str):
             if len(raw_output) > MAX_RESPONSE_BYTES:
                 return None, "response_too_large"
-            payload = classifier._extract_json_payload(raw_output)
+            payload = _extract_json(raw_output)
         elif isinstance(raw_output, dict):
             payload = raw_output
         else:
@@ -191,8 +216,11 @@ def classify_task_jev_with_status(
     except Exception:
         return None, "invalid_json"
 
+    validator = validate_fn or _default_validator
+    if validator is None:
+        raise RuntimeError("classifier validator not configured")
     try:
-        result = classifier.validate_classifier_output(payload, source="jev")
+        result = validator(payload, source="jev")
         return result, None
     except Exception:
         return None, "validation_error"
@@ -204,20 +232,21 @@ def classify_task_jev(
     api_key: str | None = None,
     endpoint: str | None = None,
     client: Callable[..., object] | None = None,
-) -> classifier.Classification | None:
+    validate_fn: Callable[..., object] | None = None,
+) -> Classification | None:
     """Invoke Jev to classify a task.
 
     Returns Classification with source="jev" on success, or None on failure.
     """
     result, _ = classify_task_jev_with_status(
-        task, timeout=timeout, api_key=api_key, endpoint=endpoint, client=client
+        task, timeout=timeout, api_key=api_key, endpoint=endpoint, client=client, validate_fn=validate_fn
     )
     return result
 
 
 def _run_shadow_inline(
     task: str,
-    primary_result: classifier.Classification,
+    primary_result: Classification,
     client: Callable[..., object] | None = None,
 ) -> None:
     """Execute the shadow comparison and write to log file."""
@@ -270,7 +299,7 @@ def _run_shadow_inline(
 
 def run_shadow_if_enabled(
     task: str,
-    primary_result: classifier.Classification,
+    primary_result: Classification,
     client: Callable[..., object] | None = None,
     blocking: bool = False,
 ) -> None:

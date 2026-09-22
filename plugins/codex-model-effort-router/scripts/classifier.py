@@ -263,6 +263,8 @@ def validate_classifier_output(payload: object, source: str = "classifier") -> C
         delegability=delegability,
     )
 
+jev_provider.set_default_validator(validate_classifier_output)
+
 def read_classification_file(path: str) -> Classification:
     """Validate a classification produced outside the router (e.g. a spawned Codex worker).
 
