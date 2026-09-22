@@ -26,7 +26,14 @@ MAX_REUSES = 10
 MAX_RECORD_BYTES = 65536
 STATE_DIR_ENV = "MODEL_EFFORT_ROUTER_STATE_DIR"
 SESSION_ENV = "MODEL_EFFORT_ROUTER_SESSION"
+JEV_KILL_SWITCH_ENV = "MODEL_EFFORT_ROUTER_JEV_KILL_SWITCH"
 RECORD_VERSION = 1
+
+
+def is_jev_kill_switch_active() -> bool:
+    """Return True if the Jev kill switch is set in the environment."""
+    return os.environ.get(JEV_KILL_SWITCH_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+
 
 _EN_MODIFY = "fix|implement|add|change|update|refactor|rename|remove|delete|create|write|build|patch"
 _KO_MODIFY = "수정|구현|추가|변경|리팩터|리팩토링|삭제|만들|고치|고쳐|작성|개선|적용|교체|제거|바꿔|바꾸"
@@ -99,6 +106,8 @@ def reuse_blockers(
         blockers.append(f"reused {MAX_REUSES} times already")
     if record.get("blocked"):
         blockers.append(f"an earlier run invalidated it ({record['blocked']})")
+    if is_jev_kill_switch_active() and record.get("origin") == "jev":
+        blockers.append("Jev kill switch active for Jev-originated route")
     if record.get("unresolved") or record.get("needs_context"):  # needs_context: records written before the unknown policy
         blockers.append("the stored route still had unresolved facts")
     if explicit_task_type and explicit_task_type != record["task_type"]:
@@ -173,3 +182,31 @@ def mark_outcome(session: str, replans: int, exit_code: int) -> None:
         return
     record["blocked"] = "re-planned" if replans else f"exit {exit_code}"
     _write_record(session, record)
+
+
+def invalidate_record(session: str, reason: str) -> None:
+    """Permanently mark a session record as blocked so it can never be reused."""
+    record = load_record(session)
+    if record is not None:
+        record["blocked"] = reason
+        _write_record(session, record)
+
+
+def sweep_invalidate_jev_records() -> int:
+    """Sweep the state directory and permanently invalidate all stored Jev-originated records."""
+    count = 0
+    s_dir = state_dir()
+    if not s_dir.exists():
+        return count
+    for path in s_dir.glob("*.json"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(record, dict) and record.get("origin") == "jev" and not record.get("blocked"):
+                record["blocked"] = "Jev kill switch active"
+                path.write_text(json.dumps(record), encoding="utf-8")
+                count += 1
+        except Exception:
+            continue
+    return count
+
+
