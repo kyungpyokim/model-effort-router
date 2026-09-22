@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from router import RouteResult
 
 import route_reuse
+import jev_provider
 from classifier import (
     CLASSIFIER_SCHEMA,
     CLASSIFIER_TIMEOUT_SECONDS,
@@ -211,6 +212,8 @@ def main(argv: list[str] | None = None, router: object | None = None) -> int:
         except RuntimeError as exc:
             print(f"model detection failed ({exc}); using configured fallbacks", file=sys.stderr)
     manual_bypass = explicit_task_type is not None and (args.critical or args.level is not None)
+    if route_reuse.is_jev_kill_switch_active():
+        route_reuse.sweep_invalidate_jev_records()
 
     classification = external
     session = args.session or os.environ.get(route_reuse.SESSION_ENV)
@@ -262,8 +265,9 @@ def main(argv: list[str] | None = None, router: object | None = None) -> int:
         return 2
     if session and result.source not in ("fallback", "manual") and not result.unresolved:
         delegability = classification.delegability if classification is not None else 0
+        origin = stored.get("origin", result.source) if (stored and reuse_info and reuse_info.get("reused")) else result.source
         route_reuse.save_record(
-            session, os.getcwd(), router.session_record(result, delegability),
+            session, os.getcwd(), router.session_record(result, delegability, origin=origin),
             saved_at=stored.get("saved_at") if reuse_info and reuse_info["reused"] else None,
             reuses=int(stored.get("reuses", 0)) + 1 if reuse_info and reuse_info["reused"] else 0,
         )
@@ -302,6 +306,8 @@ def main(argv: list[str] | None = None, router: object | None = None) -> int:
         sys.stderr.write("Unresolved facts (answer with --answer FACT=VALUE, or on a terminal when prompted):\n")
         for fact in result.unresolved:
             sys.stderr.write(f"  {fact}: {FACT_QUESTIONS[fact]} [{'/'.join(v for v in FACTS[fact] if v != 'unknown')}]\n")
+    if classification is not None and not args.repo_aware and classification.source not in ("fallback", "manual", "reused"):
+        jev_provider.run_shadow_if_enabled(args.task, classification, blocking=False)
     if result.source == "fallback":
         return 1
     return EXIT_NEEDS_ANSWER if result.unresolved else 0

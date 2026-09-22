@@ -33,13 +33,7 @@ from policy import (AGY_MODEL_RE, MODEL_RE, SAFE_ORCHESTRATION_LEVELS, SAFE_ORCH
 from rules import (CODE_CHANGE_TASK_TYPES, CRITICAL_SECURITY_DOMAINS, DIFFICULTY_RULES, EFFORT_ORDER, FACTS, LEVEL_NAMES, LEVELS, OPTIONAL_FACT_DEFAULTS, READ_ONLY_TASK_TYPES, RISK_FLAGS, RISK_TIERS, SECURITY_DOMAINS, SECURITY_FLOOR_FLAGS, TASK_TYPES, TIER_LEVEL, YES_NO, YES_NO_UNKNOWN, apply_risk_escalation, evaluate_rules, higher_level, higher_tier, normalise_level, normalise_task_type, raise_effort, risk_flags_from_facts, unknown_facts, unresolved_facts)
 
 from cli import (  # noqa: E402
-    _prompt_axis,
-    default_config_path,
-    main as _cli_main,
-    parse_answer,
-    parse_args,
-    prompt_manual_classification,
-    prompt_unresolved,
+    _prompt_axis, default_config_path, main as _cli_main, parse_answer, parse_args, prompt_manual_classification, prompt_unresolved,
 )
 
 SCHEMA_VERSION = 7
@@ -49,12 +43,9 @@ SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, 3, 4, 5, 6, SCHEMA_VERSION)
 WORKFLOW_MIN_LEVEL = "L2"
 
 PIPELINE_LIMITS = {"max_test_fixes": 2, "review_fixes_before_replan": 1, "max_replans": 1}
-
 TEST_COMMAND_ENV = "MODEL_EFFORT_ROUTER_TEST_CMD"
-
 ROUTER_PLAN_DIR_RE = re.compile(r"^codex-route-[0-9a-f]{8}$")
 ROUTER_PLAN_MARKER = ".model-effort-router-plan"
-
 INSPECT_MAX_LEVEL = "L2"
 
 TRIVIAL_EDIT_TASK_TYPES = ("implementation", "local_refactoring")
@@ -251,22 +242,24 @@ def load_reused_classification(
     except (KeyError, TypeError, ValueError, AttributeError):
         return None, None, "stored route is invalid"
     if blockers:
+        if any("kill switch" in b for b in blockers):
+            route_reuse.invalidate_record(session, "Jev kill switch active")
         return None, record, "; ".join(blockers)
     classification = Classification(
         task_type=task_type, level=level, risk_flags=dict(flags),
         reason=f"route reused from the session (reuse {reuses + 1}); the classifier was not called",
         source="reused", facts={str(k): str(v) for k, v in facts.items()}, matched_rules=tuple(str(r) for r in rules),
-        risk_tier=tier,
-        evidence=tuple(_bounded(str(e)) for e in record.get("evidence", [])), delegability=delegability,
+        risk_tier=tier, evidence=tuple(_bounded(str(e)) for e in record.get("evidence", [])), delegability=delegability,
     )
     return classification, record, ""
 
-def session_record(result: RouteResult, delegability: int) -> dict:
+def session_record(result: RouteResult, delegability: int, origin: str | None = None) -> dict:
     return {
         "task_type": result.task_type, "level": result.level, "risk_tier": result.risk_tier,
         "risk_flags": dict(result.risk_flags), "facts": dict(result.facts),
         "matched_rules": list(result.matched_rules), "unresolved": list(result.unresolved),
         "evidence": list(result.evidence), "delegability": delegability,
+        "origin": origin if origin is not None else result.source,
     }
 
 def read_available_models(command: str = "agy", timeout: float = DETECT_TIMEOUT_SECONDS) -> list[str]:

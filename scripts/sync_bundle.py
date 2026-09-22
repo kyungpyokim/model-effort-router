@@ -10,6 +10,7 @@ from pathlib import Path
 SHARED = (
     "scripts/router.py",
     "scripts/classifier.py",
+    "scripts/jev_provider.py",
     "scripts/rules.py",
     "scripts/policy.py",
     "scripts/commands.py",

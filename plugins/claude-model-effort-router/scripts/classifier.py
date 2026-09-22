@@ -9,8 +9,10 @@ import subprocess
 import sys
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Callable
 
 from rules import (FACTS, OPTIONAL_FACT_DEFAULTS, RISK_FLAGS, TASK_TYPES, evaluate_rules, normalise_task_type, risk_flags_from_facts, unknown_facts, unresolved_facts)
+import jev_provider
 
 FALLBACK_TASK_TYPE = "implementation"
 
@@ -441,12 +443,17 @@ def classify_task(
     command: str | None = None,
     repo_aware: bool = False,
     available_models: list[str] | None = None,
+    jev_client: Callable[..., object] | None = None,
 ) -> Classification:
     """Run the platform's semantic preflight, falling back to safe defaults.
 
     One model class classifies. Facts that stay unknown get at most one bounded read-only lookup by the
     same classifier (skipped when the first pass already read the repository); anything still unknown is
     reported in ``unresolved`` for the caller to ask the user. A stronger model is never called."""
+    if not repo_aware and jev_provider.jev_stage() == "primary":
+        jev_result = jev_provider.classify_task_jev(task, client=jev_client)
+        if jev_result is not None:
+            return jev_result
     config = PRIMARY_CLASSIFIER_CONFIG[platform]
     repo_path = Path.cwd()
 
