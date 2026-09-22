@@ -246,6 +246,51 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         self.assertEqual(by_name["L2U_pattern_following_validation"]["platform_routes"]["codex"]["efforts"], ["high", "high"])
         self.assertEqual(by_name["L2U_add_optional_field"]["platform_routes"]["codex"]["efforts"], ["high", "medium"])
 
+    def test_classifier_benchmark_safety_metrics_and_provider_attribution(self):
+        def jev_classifier(task, platform):
+            case = CASE_BY_TASK[task]
+            facts = labelled_facts(case)
+            return eval_perf.router.validate_classifier_output({
+                "task_type": case.task_type, "facts": facts, "delegability": 0, "evidence": [], "reason": "jev",
+            }, source="jev")
+
+        benchmark = eval_perf.evaluate_classifier_benchmark(classifier=jev_classifier, limit=5)
+        summary = benchmark["summary"]
+        self.assertIn("safety_violations", summary)
+        self.assertIn("downward_level_discrepancies", summary)
+        self.assertIn("by_provider", summary)
+        self.assertIn("jev", summary["by_provider"])
+        jev_stats = summary["by_provider"]["jev"]
+        self.assertEqual(jev_stats["graded_cases"], 5)
+        self.assertEqual(jev_stats["safety_violations"], 0)
+        self.assertEqual(jev_stats["downward_level_pct"], 0.0)
+
+    def test_downward_level_discrepancy_counts_as_safety_violation(self):
+        def l1_downgrader(task, platform):
+            facts = {**eval_perf._base_facts(), "mechanical_only": "yes", "files_touched": "1"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": "implementation", "facts": facts, "delegability": 0, "evidence": [], "reason": "downgraded to L1",
+            }, source="test")
+
+        higher_cases = [c.name for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.expected_level in ("L3", "L4", "L5")]
+        benchmark = eval_perf.evaluate_classifier_benchmark(classifier=l1_downgrader, case_names=tuple(higher_cases[:3]))
+        summary = benchmark["summary"]
+        self.assertGreater(summary["downward_level_discrepancies"], 0)
+        self.assertEqual(summary["safety_violations"], summary["downward_level_discrepancies"])
+
+    def test_inspect_misclassification_counts_as_safety_violation(self):
+        def inspect_spoofer(task, platform):
+            facts = {**eval_perf._base_facts(), "files_touched": "0"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": "inspect", "facts": facts, "delegability": 0, "evidence": [], "reason": "spoofed as inspect",
+            }, source="test")
+
+        non_inspect_cases = [c.name for c in eval_perf.GOLDEN_BENCHMARK_CASES if c.task_type != "inspect"]
+        benchmark = eval_perf.evaluate_classifier_benchmark(classifier=inspect_spoofer, case_names=tuple(non_inspect_cases[:2]))
+        summary = benchmark["summary"]
+        self.assertGreater(summary["inspect_misclassifications"], 0)
+        self.assertEqual(summary["safety_violations"], summary["inspect_misclassifications"])
+
 
 class EvalModelEffortTests(unittest.TestCase):
     def test_collect_profiles_and_audit(self):

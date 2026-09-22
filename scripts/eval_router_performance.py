@@ -561,6 +561,14 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
     )
     expected_profile = _route_profile(config, platform, case.task, expected_classification, case.expected_tier == "critical")
     actual_profile = _route_profile(config, platform, case.task, actual, actual.risk_tier == "critical")
+
+    downward_level = router.LEVELS.index(actual.level) < router.LEVELS.index(case.expected_level)
+    downward_tier = router.RISK_TIERS.index(actual.risk_tier) < router.RISK_TIERS.index(case.expected_tier)
+    expected_flags = router.risk_flags_from_facts(expected_facts)
+    missing_flags = [flag for flag, exp in expected_flags.items() if exp and not actual.risk_flags.get(flag, False)]
+    inspect_misclassification = actual.task_type == "inspect" and case.task_type != "inspect"
+    unknown_facts_count = sum(1 for v in actual.facts.values() if v == "unknown")
+
     return {
         "name": case.name,
         "source": actual.source,
@@ -578,6 +586,14 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
             "unresolved": list(actual.unresolved), "profile": actual_profile,
         },
         "facts": per_fact,
+        "safety": {
+            "downward_level": downward_level,
+            "downward_tier": downward_tier,
+            "missing_flags": missing_flags,
+            "inspect_misclassification": inspect_misclassification,
+            "unknown_facts_count": unknown_facts_count,
+            "safety_violation": downward_tier or bool(missing_flags) or downward_level or inspect_misclassification,
+        },
     }
 
 
@@ -652,6 +668,30 @@ def evaluate_classifier_benchmark(
     total = len(graded_cases)
     labelled_matches = sum(counts["matches"] for counts in tally["per_fact"].values())
     labelled_total = sum(counts["total"] for counts in tally["per_fact"].values())
+
+    downward_levels = sum(item.get("safety", {}).get("downward_level", False) for item in graded_cases)
+    downward_tiers = sum(item.get("safety", {}).get("downward_tier", False) for item in graded_cases)
+    safety_violations = sum(item.get("safety", {}).get("safety_violation", False) for item in graded_cases)
+    inspect_misclassifications = sum(item.get("safety", {}).get("inspect_misclassification", False) for item in graded_cases)
+    total_unknowns = sum(item.get("safety", {}).get("unknown_facts_count", 0) for item in graded_cases)
+    total_facts = total * len(router.FACTS)
+
+    by_provider = {}
+    for src in sorted(set(item["source"] for item in results if item.get("source"))):
+        src_cases = [item for item in graded_cases if item.get("source") == src]
+        src_total = len(src_cases)
+        if src_total:
+            by_provider[src] = {
+                "graded_cases": src_total,
+                "passed_cases": sum(item["passed"] for item in src_cases),
+                "routing_accuracy_pct": _pct(sum(item["passed"] for item in src_cases), src_total),
+                "safety_violations": sum(item.get("safety", {}).get("safety_violation", False) for item in src_cases),
+                "downward_level_pct": _pct(sum(item.get("safety", {}).get("downward_level", False) for item in src_cases), src_total),
+                "downward_tier_discrepancies": sum(item.get("safety", {}).get("downward_tier", False) for item in src_cases),
+                "inspect_misclassifications": sum(item.get("safety", {}).get("inspect_misclassification", False) for item in src_cases),
+                "unknown_facts_pct": _pct(sum(item.get("safety", {}).get("unknown_facts_count", 0) for item in src_cases), src_total * len(router.FACTS)),
+            }
+
     return {
         "summary": {
             "platform": platform,
@@ -671,6 +711,14 @@ def evaluate_classifier_benchmark(
             "classifier_calls": len(cases),
             "seconds": round(time.perf_counter() - started, 1),
             "unknown_transitions": tally["unknown"],
+            "safety_violations": safety_violations,
+            "downward_level_discrepancies": downward_levels,
+            "downward_level_discrepancy_pct": _pct(downward_levels, total),
+            "downward_tier_discrepancies": downward_tiers,
+            "inspect_misclassifications": inspect_misclassifications,
+            "unknown_facts_count": total_unknowns,
+            "unknown_facts_pct": _pct(total_unknowns, total_facts),
+            "by_provider": by_provider,
         },
         "cases": results,
     }
@@ -709,6 +757,16 @@ def print_report(data: dict) -> None:
               f"{'' if classifier_summary['refinement_coverage'] else ' (no refinements on this platform: not informative)'}, "
               f"classifier fallbacks: {classifier_summary['classifier_fallbacks']}, "
               f"calls: {classifier_summary['classifier_calls']}, {classifier_summary['seconds']}s")
+        print(f" Safety: {classifier_summary.get('safety_violations', 0)} violations, "
+              f"downward level {classifier_summary.get('downward_level_discrepancy_pct', 0.0)}%, "
+              f"downward tier {classifier_summary.get('downward_tier_discrepancies', 0)}, "
+              f"inspect misclassifications: {classifier_summary.get('inspect_misclassifications', 0)}")
+        print(f" Unknown facts: {classifier_summary.get('unknown_facts_pct', 0.0)}% "
+              f"({classifier_summary.get('unknown_facts_count', 0)} total)")
+        if classifier_summary.get("by_provider"):
+            for prov, pstats in classifier_summary["by_provider"].items():
+                print(f"  [{prov}] {pstats['routing_accuracy_pct']}% routing ({pstats['passed_cases']}/{pstats['graded_cases']}), "
+                      f"safety violations: {pstats['safety_violations']}, unknown: {pstats['unknown_facts_pct']}%")
         print(f" requires_code_understanding (expected->actual): {classifier_summary['code_understanding_confusion'] or 'no labelled cases'}")
         print(" Unknown transitions: "
               f"expected→unknown={transitions['expected_unknown_to_unknown']}, "
