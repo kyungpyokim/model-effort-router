@@ -681,13 +681,13 @@ class JevSystemOneIntegrationTests(unittest.TestCase):
         self.assertIn(parsed["facts"]["mechanical_only"], ("yes", "no"))
 
     def test_choice_mapping_valid_and_invalid_fallback(self):
-        # Valid choice
+        # Valid choice (explicit file evidence keeps the escalating bucket)
         resp = make_systemone_answers({
             "security_domain": {"type": "choice", "choice": "auth", "confidence": 0.9, "probabilities": {"auth": 0.9}},
             "files_touched": {"type": "choice", "choice": "2-5", "confidence": 0.85, "probabilities": {"2-5": 0.85}},
             "blast_radius": {"type": "choice", "choice": "broad", "confidence": 0.8, "probabilities": {"broad": 0.8}},
         })
-        parsed = jev_provider.parse_systemone_response(resp, "auth change")
+        parsed = jev_provider.parse_systemone_response(resp, "auth change across 3 files")
         self.assertEqual(parsed["facts"]["security_domain"], "auth")
         self.assertEqual(parsed["facts"]["files_touched"], "2-5")
         self.assertEqual(parsed["facts"]["blast_radius"], "broad")
@@ -702,6 +702,30 @@ class JevSystemOneIntegrationTests(unittest.TestCase):
         self.assertEqual(parsed["facts"]["security_domain"], "unknown")
         self.assertEqual(parsed["facts"]["files_touched"], "unknown")
         self.assertEqual(parsed["facts"]["blast_radius"], "unknown")
+
+    def test_files_touched_escalating_bucket_without_evidence_forces_unknown(self):
+        # A guessed 2-5/6+ on a bare one-line task is a scope inference, not evidence:
+        # it must not promote L2 work to L3/L4 on its own.
+        for bucket in ("2-5", "6+"):
+            resp = make_systemone_answers({
+                "files_touched": {"type": "choice", "choice": bucket, "confidence": 0.9, "probabilities": {bucket: 0.9}},
+            })
+            parsed = jev_provider.parse_systemone_response(resp, "Implement user profile avatar upload")
+            self.assertEqual(parsed["facts"]["files_touched"], "unknown", f"bucket {bucket}")
+            self.assertIn("forced to unknown", parsed["reason"])
+        # Explicit evidence keeps the bucket: a stated count or a named path.
+        for task in ("auth change across 3 files", "Fix pagination in view.py and api.py", "Update logger calls across 15 files"):
+            resp = make_systemone_answers({
+                "files_touched": {"type": "choice", "choice": "2-5", "confidence": 0.9, "probabilities": {"2-5": 0.9}},
+            })
+            parsed = jev_provider.parse_systemone_response(resp, task)
+            self.assertEqual(parsed["facts"]["files_touched"], "2-5", f"task {task!r}")
+        # A bare "1" is routing-neutral and stays: forcing it unknown would only block an executable L2.
+        resp = make_systemone_answers({
+            "files_touched": {"type": "choice", "choice": "1", "confidence": 0.9, "probabilities": {"1": 0.9}},
+        })
+        parsed = jev_provider.parse_systemone_response(resp, "Fix a helper")
+        self.assertEqual(parsed["facts"]["files_touched"], "1")
 
     def test_17_facts_and_5_field_contract_passes_validation(self):
         resp = make_systemone_answers({

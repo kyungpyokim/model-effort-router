@@ -16,6 +16,7 @@ import json
 import os
 import queue
 import random
+import re
 import socket
 import threading
 import time
@@ -207,6 +208,52 @@ def infer_delegability(facts: dict[str, str]) -> int:
     return 1
 
 
+# A Jev files_touched bucket only counts when the task text itself carries the
+# evidence FILES_TOUCHED_CRITERIA requires: a stated count, a named file list,
+# or an attached diff. Scope words ("subsystem", "cross-cutting", "across
+# services") are not evidence. Without evidence the bucket is a scope guess,
+# and a guessed 2-5/6+ promotes L2 work straight to L3/L4.
+_FILES_TOUCHED_PATH_RE = re.compile(
+    r"[\w\-./]+\.(py|ts|tsx|js|jsx|go|rs|java|kt|rb|php|md|yaml|yml|toml|json|sql|html|css|sh|txt|cfg|ini)\b",
+    re.IGNORECASE,
+)
+_FILES_TOUCHED_COUNT_RE = re.compile(
+    r"\b\d+\s*(files?|modules?|services?|places?)\b"
+    r"|\b\d+\s*\+"
+    r"|\b2-5\b|\b6\+\b"
+    r"|\bacross\s+\d+\b"
+    r"|\b(one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty)\b[\w\s,]{0,20}\bfiles?\b",
+    re.IGNORECASE,
+)
+
+
+def files_touched_has_explicit_evidence(task: str) -> bool:
+    """Whether the task text states a file count or names files.
+
+    This is the deterministic side of the files_touched contract: the model may
+    not infer a bucket from described scope, size, or complexity. Only a stated
+    count ("across 4 files", "15 files"), a named path ("view.py"), or a diff
+    counts as evidence.
+    """
+    return bool(_FILES_TOUCHED_PATH_RE.search(task) or _FILES_TOUCHED_COUNT_RE.search(task))
+
+
+def enforce_files_touched_contract(task: str, facts: dict[str, str], task_type: str) -> bool:
+    """Force unknown when Jev guessed an escalating bucket without evidence.
+
+    Only the escalating buckets (2-5, 6+) are guarded: they raise the level to
+    L3/L4 on their own. A bare "1" stays as answered — it is routing-neutral
+    (L2 either way) and forcing it to unknown would only block an executable
+    route with a question. Returns True when the fact was forced.
+    """
+    if task_type in READ_ONLY_TASK_TYPES:
+        return False
+    if facts.get("files_touched") in ("2-5", "6+") and not files_touched_has_explicit_evidence(task):
+        facts["files_touched"] = "unknown"
+        return True
+    return False
+
+
 def parse_systemone_response(response: dict[str, object], task: str) -> dict[str, object]:
     """Parse a SystemOne response, apply thresholds, and build a 5-field Classification payload."""
     if not isinstance(response, dict):
@@ -240,12 +287,15 @@ def parse_systemone_response(response: dict[str, object], task: str) -> dict[str
             raise ValueError(f"unexpected answer type {ans_type} for fact {fact}")
 
     task_type = read_task_type(answers, facts)
+    files_forced = enforce_files_touched_contract(task, facts, task_type)
     delegability = infer_delegability(facts)
     level, risk_tier, matched, _ = evaluate_rules(facts)
     if matched:
         reason = f"Jev SystemOne facts evaluated: {', '.join(matched)}"
     else:
         reason = f"Jev SystemOne classified {task_type} at {level} ({risk_tier})"
+    if files_forced:
+        reason += "; files_touched forced to unknown (no stated count, file list, or diff)"
 
     evidence = [f"{k}={v}" for k, v in facts.items() if v in ("yes", "broad", "6+", "2-5")][:5]
     if not evidence:
