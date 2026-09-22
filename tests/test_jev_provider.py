@@ -438,6 +438,23 @@ class JevSessionReuseAndKillSwitchTests(unittest.TestCase):
                 r3 = route_reuse.load_record("sess_other")
                 self.assertIsNone(r3.get("blocked"))
 
+    def test_sweep_invalidate_does_not_follow_symlinks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "state"
+            state_dir.mkdir(mode=0o700)
+            outside_target = Path(tmpdir) / "outside.json"
+            outside_target.write_text("DO_NOT_OVERWRITE", encoding="utf-8")
+
+            # Plant symlink in state_dir pointing to external target
+            symlink_path = state_dir / "session-planted.json"
+            symlink_path.symlink_to(outside_target)
+
+            with mock.patch.dict(os.environ, {route_reuse.STATE_DIR_ENV: str(state_dir)}):
+                invalidated = route_reuse.sweep_invalidate_jev_records()
+                self.assertEqual(invalidated, 0)
+                # Ensure symlink target was NOT touched/overwritten
+                self.assertEqual(outside_target.read_text(encoding="utf-8"), "DO_NOT_OVERWRITE")
+                self.assertTrue(symlink_path.is_symlink())
 
 
 class JevShadowRunnerTests(unittest.TestCase):
