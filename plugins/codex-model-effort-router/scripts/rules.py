@@ -277,6 +277,10 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
         "true": "Typos, renames, formatting, imports, comments, or documentation, with no behaviour change and no judgement.",
         "false": "Anything needing a judgement about behaviour, including extracting or deduplicating logic.",
     },
+    "silent_failure_material_harm": {
+        "true": "A mistake could go unnoticed (no error, alert, or failing test) while causing data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency.",
+        "false": "A mistake produces an error, alert, or failing test, or cannot cause silent material damage; refactorings, documentation, tests, or cosmetic changes even when touching sensitive code.",
+    },
 }
 
 FACT_QUESTIONS: dict[str, str] = {
