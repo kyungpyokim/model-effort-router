@@ -238,7 +238,7 @@ FILES_TOUCHED_INSTRUCTIONS = (
 )
 
 SECURITY_DOMAIN_CRITERIA: dict[str, str] = {
-    "none": "No security-sensitive area touched, or only mentioned/renamed without behaviour change.",
+    "none": "No security-sensitive area whose behaviour the work changes or whose correctness or safety it judges, or only mentioned/renamed without behaviour change. Also none when the task only adds or names a user, customer, profile, or account entity, field, avatar, or similar feature without touching how personal data is accessed, exported, erased, or protected; renames, moves, or relocates code that lives in or is named after billing, order, checkout, discount, or invoice without changing its behaviour; diagnoses or fixes a rounding or precision defect in an amount calculation without moving money or rewriting the pricing, discount, or tax rule; inspects certificate expiry or lists SAN entries without designing or judging cryptography; or splits or reshapes a field such as a name without changing privacy or access handling.",
     "auth": "User authentication, login, credentials, session management.",
     "payment": "Monetary consequence, charges, refunds, ledger correctness, obligations.",
     "secrets": "API keys, tokens, secret management, encryption keys.",
