@@ -338,6 +338,49 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         self.assertGreater(summary["inspect_misclassifications"], 0)
         self.assertEqual(summary["safety_violations"], summary["inspect_misclassifications"])
 
+    def test_direction_metrics_split_over_under_and_tier_only(self):
+        perfect = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(labelled_facts))["summary"]
+        self.assertEqual((perfect["level_accuracy_pct"], perfect["tier_accuracy_pct"], perfect["level_plus_minus_1_accuracy_pct"]), (100.0, 100.0, 100.0))
+        self.assertEqual((perfect["over_route_count"], perfect["under_route_count"], perfect["tier_only_mismatch_count"]), (0, 0, 0))
+        self.assertEqual(perfect["cost_inflation"], 1.0)
+        self.assertEqual(perfect["critical_recall_pct"], 100.0)
+        self.assertEqual(perfect["elevated_recall_pct"], 100.0)
+        self.assertEqual((perfect["fact_fp_counts"], perfect["fact_fn_counts"]), ({}, {}))
+
+        # Correlated silent+blast FP on one L2 promotes L2->L5 via the joint rule.
+        def over_cautious(task, platform):
+            case = CASE_BY_TASK[task]
+            facts = labelled_facts(case)
+            if case.name == "L2_simple_bug_fix":
+                facts = {**facts, "blast_radius": "broad", "silent_failure_material_harm": "yes"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": case.task_type, "facts": facts, "delegability": 0, "evidence": [], "reason": "stub",
+            })
+
+        over = eval_perf.evaluate_classifier_benchmark(classifier=over_cautious, case_names=("L2_simple_bug_fix",))["summary"]
+        self.assertEqual((over["over_route_count"], over["under_route_count"]), (1, 0))
+        self.assertEqual(over["max_over_route_distance"], 3)
+        self.assertEqual(over["mean_over_route_distance"], 3.0)
+        self.assertGreater(over["cost_inflation"], 1.0)
+        self.assertIn("elevated:broad_blast_radius_with_silent_harm", over["promoting_rule_counts"])
+        self.assertEqual(over["fact_fp_counts"].get("silent_failure_material_harm"), 1)
+        self.assertEqual(over["fact_fp_counts"].get("blast_radius"), 1)
+        # A single jump of 3 still lands outside the ±1 band.
+        self.assertEqual(over["level_plus_minus_1_accuracy_pct"], 0.0)
+
+        # Silent FP alone on a narrow case does not promote: the joint rule needs both.
+        def silent_only(task, platform):
+            case = CASE_BY_TASK[task]
+            facts = labelled_facts(case)
+            if case.name == "L2_simple_bug_fix":
+                facts = {**facts, "silent_failure_material_harm": "yes"}
+            return eval_perf.router.validate_classifier_output({
+                "task_type": case.task_type, "facts": facts, "delegability": 0, "evidence": [], "reason": "stub",
+            })
+
+        silent = eval_perf.evaluate_classifier_benchmark(classifier=silent_only, case_names=("L2_simple_bug_fix",))["summary"]
+        self.assertEqual((silent["over_route_count"], silent["level_accuracy_pct"]), (0, 100.0))
+
 
 class EvalModelEffortTests(unittest.TestCase):
     def test_collect_profiles_and_audit(self):

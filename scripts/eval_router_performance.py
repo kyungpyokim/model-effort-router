@@ -168,6 +168,100 @@ def _pct(hit: int, total: int) -> float:
     return round((hit / total) * 100, 2) if total else 0.0
 
 
+# Relative cost proxy for routing economics (not real billing): level weights
+# double per rung, and the elevated/critical planning uplift multiplies. It answers
+# "how much more expensive is the actual routing than the labelled routing?"
+LEVEL_COST = {"L1": 1.0, "L2": 2.0, "L3": 4.0, "L4": 8.0, "L5": 16.0}
+TIER_MULT = {"standard": 1.0, "elevated": 1.5, "critical": 2.0}
+
+
+def _route_cost(level: str, tier: str) -> float:
+    return LEVEL_COST.get(level, 2.0) * TIER_MULT.get(tier, 1.0)
+
+
+def _routing_direction_metrics(graded_cases: list[dict]) -> dict:
+    """Failure decomposition and cost metrics over graded routing outcomes.
+
+    Splits misses into over-route (actual level above expected), under-route
+    (below), and tier-only (same level, different tier); measures how far
+    over-routes jump, tier recall for the expensive tiers, cost inflation under
+    the LEVEL_COST proxy, which rules most often caused the promotion, and
+    false-positive counts for the facts that escalate.
+    """
+    total = len(graded_cases)
+    level_hits = sum(1 for g in graded_cases if g.get("level_passed", g["expected"]["level"] == g["actual"]["level"]))
+    tier_hits = sum(1 for g in graded_cases if g.get("tier_passed", g["expected"]["risk_tier"] == g["actual"]["risk_tier"]))
+    within_one = sum(1 for g in graded_cases if abs(g.get("level_distance", 0)) <= 1)
+    over_cases = [g for g in graded_cases if g.get("level_distance", 0) > 0]
+    under_cases = [g for g in graded_cases if g.get("level_distance", 0) < 0]
+    tier_only = sum(1 for g in graded_cases if g.get("tier_only_mismatch", False))
+    distances = [g.get("level_distance", 0) for g in graded_cases]
+    over_distances = [g.get("level_distance", 0) for g in over_cases]
+
+    expected_critical = [g for g in graded_cases if g["expected"]["risk_tier"] == "critical"]
+    expected_elevated = [g for g in graded_cases if g["expected"]["risk_tier"] == "elevated"]
+    critical_recall = sum(1 for g in expected_critical if g["actual"]["risk_tier"] == "critical")
+    elevated_recall = sum(1 for g in expected_elevated if g["actual"]["risk_tier"] in ("elevated", "critical"))
+
+    expected_cost = sum(_route_cost(g["expected"]["level"], g["expected"]["risk_tier"]) for g in graded_cases)
+    actual_cost = sum(_route_cost(g["actual"]["level"], g["actual"]["risk_tier"]) for g in graded_cases)
+
+    promoting: dict[str, int] = {}
+    for g in graded_cases:
+        for rule in g.get("promoting_rules", []):
+            promoting[rule] = promoting.get(rule, 0) + 1
+
+    fp_counts: dict[str, int] = {}
+    fn_counts: dict[str, int] = {}
+
+    def tally_fp(fact: str, is_fp, is_fn) -> None:
+        for g in graded_cases:
+            item = g.get("facts", {}).get(fact)
+            if not item:
+                continue
+            exp, act = item.get("expected"), item.get("actual")
+            if is_fp(exp, act):
+                fp_counts[fact] = fp_counts.get(fact, 0) + 1
+            if is_fn(exp, act):
+                fn_counts[fact] = fn_counts.get(fact, 0) + 1
+
+    tally_fp("silent_failure_material_harm", lambda e, a: e != "yes" and a == "yes", lambda e, a: e == "yes" and a != "yes")
+    tally_fp("blast_radius", lambda e, a: e != "broad" and a == "broad", lambda e, a: e == "broad" and a != "broad")
+    tally_fp("files_touched", lambda e, a: e in ("0", "1", "unknown") and a in ("2-5", "6+"), lambda e, a: e in ("2-5", "6+") and a not in ("2-5", "6+"))
+    tally_fp("crosses_module_boundary", lambda e, a: e != "yes" and a == "yes", lambda e, a: e == "yes" and a != "yes")
+    tally_fp("crosses_service_boundary", lambda e, a: e != "yes" and a == "yes", lambda e, a: e == "yes" and a != "yes")
+    tally_fp("changes_security_or_payment_logic", lambda e, a: e != "yes" and a == "yes", lambda e, a: e == "yes" and a != "yes")
+    tally_fp("reviews_security_sensitive_code", lambda e, a: e != "yes" and a == "yes", lambda e, a: e == "yes" and a != "yes")
+    tally_fp("changes_public_api_contract", lambda e, a: e != "yes" and a == "yes", lambda e, a: e == "yes" and a != "yes")
+    tally_fp("changes_persisted_data", lambda e, a: e != "yes" and a == "yes", lambda e, a: e == "yes" and a != "yes")
+    tally_fp("needs_new_structure", lambda e, a: e != "yes" and a == "yes", lambda e, a: e == "yes" and a != "yes")
+    tally_fp("intermittent_or_concurrency", lambda e, a: e != "yes" and a == "yes", lambda e, a: e == "yes" and a != "yes")
+
+    return {
+        "level_accuracy_pct": _pct(level_hits, total),
+        "tier_accuracy_pct": _pct(tier_hits, total),
+        "level_plus_minus_1_accuracy_pct": _pct(within_one, total),
+        "over_route_count": len(over_cases),
+        "over_route_pct": _pct(len(over_cases), total),
+        "under_route_count": len(under_cases),
+        "under_route_pct": _pct(len(under_cases), total),
+        "tier_only_mismatch_count": tier_only,
+        "mean_signed_level_distance": round(sum(distances) / total, 3) if total else 0.0,
+        "mean_over_route_distance": round(sum(over_distances) / len(over_distances), 3) if over_distances else 0.0,
+        "max_over_route_distance": max(over_distances) if over_distances else 0,
+        "critical_recall_pct": _pct(critical_recall, len(expected_critical)),
+        "critical_recall_counts": [critical_recall, len(expected_critical)],
+        "elevated_recall_pct": _pct(elevated_recall, len(expected_elevated)),
+        "elevated_recall_counts": [elevated_recall, len(expected_elevated)],
+        "expected_cost": round(expected_cost, 2),
+        "actual_cost": round(actual_cost, 2),
+        "cost_inflation": round(actual_cost / expected_cost, 3) if expected_cost else 0.0,
+        "promoting_rule_counts": dict(sorted(promoting.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "fact_fp_counts": dict(sorted(fp_counts.items())),
+        "fact_fn_counts": dict(sorted(fn_counts.items())),
+    }
+
+
 def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict, platform: str, base_facts: dict[str, str]) -> dict:
     """Grade one classifier answer against its labels: fact agreement, level/tier, and the routed model+effort."""
     expected_facts = {**base_facts, **case.facts}
@@ -203,10 +297,19 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
 
     downward_level = router.LEVELS.index(actual.level) < router.LEVELS.index(case.expected_level)
     downward_tier = router.RISK_TIERS.index(actual.risk_tier) < router.RISK_TIERS.index(case.expected_tier)
+    level_distance = router.LEVELS.index(actual.level) - router.LEVELS.index(case.expected_level)
+    upward_level = level_distance > 0
+    tier_only_mismatch = level_distance == 0 and actual.risk_tier != case.expected_tier
     expected_flags = router.risk_flags_from_facts(expected_facts)
     missing_flags = [flag for flag, exp in expected_flags.items() if exp and not actual.risk_flags.get(flag, False)]
     inspect_misclassification = actual.task_type == "inspect" and case.task_type != "inspect"
     unknown_facts_count = sum(1 for v in actual.facts.values() if v == "unknown")
+    try:
+        _, _, expected_matched, _ = router.evaluate_rules(expected_facts)
+    except Exception:
+        expected_matched = []
+    actual_matched = list(actual.matched_rules or ())
+    promoting_rules = [r for r in actual_matched if r not in expected_matched]
 
     return {
         "name": case.name,
@@ -219,6 +322,14 @@ def _grade_case(case: BenchmarkCase, actual: router.Classification, config: dict
         "fully_labelled": ROUTING_RELEVANT_FACTS.issubset(case.facts),
         "passed": routing_match,
         "task_type_passed": actual.task_type == case.task_type,
+        "level_passed": actual.level == case.expected_level,
+        "tier_passed": actual.risk_tier == case.expected_tier,
+        "level_distance": level_distance,
+        "upward_level": upward_level,
+        "tier_only_mismatch": tier_only_mismatch,
+        "expected_matched": list(expected_matched),
+        "actual_matched": actual_matched,
+        "promoting_rules": promoting_rules,
         # A routing error on both sides is a broken config, never a match.
         "profile_passed": unresolved_match and "error" not in actual_profile and expected_profile == actual_profile,
         "expected": {
@@ -338,6 +449,7 @@ def evaluate_classifier_benchmark(
 
     fully_labelled_cases = [item for item in graded_cases if item["fully_labelled"]]
     fl_total = len(fully_labelled_cases)
+    direction = _routing_direction_metrics(graded_cases)
 
     return {
         "summary": {
@@ -373,6 +485,7 @@ def evaluate_classifier_benchmark(
             "unknown_facts_count": total_unknowns,
             "unknown_facts_pct": _pct(total_unknowns, total_facts),
             "by_provider": by_provider,
+            **direction,
         },
         "cases": results,
     }
@@ -419,6 +532,28 @@ def print_report(data: dict) -> None:
               f"inspect misclassifications: {classifier_summary.get('inspect_misclassifications', 0)}")
         print(f" Unknown facts: {classifier_summary.get('unknown_facts_pct', 0.0)}% "
               f"({classifier_summary.get('unknown_facts_count', 0)} total)")
+        print(f" Level accuracy: {classifier_summary.get('level_accuracy_pct', 0.0)}%, "
+              f"tier accuracy: {classifier_summary.get('tier_accuracy_pct', 0.0)}%, "
+              f"±1 level: {classifier_summary.get('level_plus_minus_1_accuracy_pct', 0.0)}%")
+        print(f" Failure split: over-route {classifier_summary.get('over_route_count', 0)} "
+              f"({classifier_summary.get('over_route_pct', 0.0)}%), "
+              f"under-route {classifier_summary.get('under_route_count', 0)}, "
+              f"tier-only {classifier_summary.get('tier_only_mismatch_count', 0)}; "
+              f"mean signed distance {classifier_summary.get('mean_signed_level_distance', 0.0)}, "
+              f"mean over distance {classifier_summary.get('mean_over_route_distance', 0.0)}, "
+              f"max over {classifier_summary.get('max_over_route_distance', 0)}")
+        print(f" Tier recall: critical {classifier_summary.get('critical_recall_pct', 0.0)}% "
+              f"({ '/'.join(map(str, classifier_summary.get('critical_recall_counts', [0, 0])))}), "
+              f"elevated {classifier_summary.get('elevated_recall_pct', 0.0)}% "
+              f"({ '/'.join(map(str, classifier_summary.get('elevated_recall_counts', [0, 0])))})")
+        print(f" Cost (proxy L1=1 L2=2 L3=4 L4=8 L5=16 x tier): expected {classifier_summary.get('expected_cost', 0.0)}, "
+              f"actual {classifier_summary.get('actual_cost', 0.0)}, "
+              f"inflation x{classifier_summary.get('cost_inflation', 0.0)}")
+        if classifier_summary.get("promoting_rule_counts"):
+            top = list(classifier_summary["promoting_rule_counts"].items())[:5]
+            print(" Top promoting rules: " + ", ".join(f"{k} x{v}" for k, v in top))
+        if classifier_summary.get("fact_fp_counts"):
+            print(f" Fact FP: {classifier_summary['fact_fp_counts']}")
         if classifier_summary.get("by_provider"):
             for prov, pstats in classifier_summary["by_provider"].items():
                 print(f"  [{prov}] {pstats['routing_accuracy_pct']}% routing ({pstats['passed_cases']}/{pstats['graded_cases']}), "
