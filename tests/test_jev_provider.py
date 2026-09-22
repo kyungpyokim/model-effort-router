@@ -588,5 +588,186 @@ class JevUnknownRepromptRegressionTests(unittest.TestCase):
                         mock_save.assert_not_called()
 
 
+def make_systemone_answers(overrides=None):
+    """Build a baseline dictionary of valid answers for all 17 facts."""
+    ans = {
+        "mechanical_only": {"type": "noul", "noul": 0.05},
+        "files_touched": {"type": "choice", "choice": "1", "confidence": 0.95, "probabilities": {"1": 0.95}},
+        "crosses_module_boundary": {"type": "noul", "noul": 0.1},
+        "crosses_service_boundary": {"type": "noul", "noul": 0.05},
+        "fix_or_result_known": {"type": "noul", "noul": 0.95},
+        "intermittent_or_concurrency": {"type": "noul", "noul": 0.05},
+        "needs_new_structure": {"type": "noul", "noul": 0.05},
+        "changes_security_or_payment_logic": {"type": "noul", "noul": 0.05},
+        "reviews_security_sensitive_code": {"type": "noul", "noul": 0.05},
+        "security_domain": {"type": "choice", "choice": "none", "confidence": 0.95, "probabilities": {"none": 0.95}},
+        "changes_public_api_contract": {"type": "noul", "noul": 0.05},
+        "changes_persisted_data": {"type": "noul", "noul": 0.05},
+        "irreversible_or_ledger_or_crypto": {"type": "noul", "noul": 0.05},
+        "changes_trust_boundary": {"type": "noul", "noul": 0.05},
+        "blast_radius": {"type": "choice", "choice": "narrow", "confidence": 0.95, "probabilities": {"narrow": 0.95}},
+        "silent_failure_material_harm": {"type": "noul", "noul": 0.05},
+        "requires_code_understanding": {"type": "noul", "noul": 0.1},
+    }
+    if overrides:
+        ans.update(overrides)
+    return {"model": "jev-latest", "answers": ans, "usage": {"input_tokens": 50, "output_tokens": 10}}
+
+
+class JevSystemOneIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self._env_patcher = mock.patch.dict(os.environ, {
+            jev_provider.JEV_STAGE_ENV: "primary",
+            jev_provider.JEV_API_KEY_ENV: "test-systemone-key",
+            jev_provider.JEV_ENDPOINT_ENV: "https://api.typesafe.ai/v1/systemone",
+        })
+        self._env_patcher.start()
+        self.addCleanup(self._env_patcher.stop)
+
+    def test_build_systemone_request_structure(self):
+        req = jev_provider.build_systemone_request("refactor auth token handling", model="custom-jev")
+        self.assertEqual(req["model"], "custom-jev")
+        self.assertEqual(req["state"], "refactor auth token handling")
+        questions = req["questions"]
+        self.assertEqual(len(questions), 17)
+        self.assertEqual(questions["files_touched"]["type"], "choice")
+        self.assertIn("criteria", questions["files_touched"])
+        self.assertEqual(questions["security_domain"]["type"], "choice")
+        self.assertIn("criteria", questions["security_domain"])
+        self.assertEqual(questions["blast_radius"]["type"], "choice")
+        self.assertIn("criteria", questions["blast_radius"])
+        self.assertEqual(questions["mechanical_only"]["type"], "noul")
+        self.assertIn("instructions", questions["mechanical_only"])
+
+    def test_general_fact_boundary_values(self):
+        # crosses_module_boundary: yes >= 0.7, no <= 0.3, between is unknown
+        cases = [
+            (0.70, "yes"),
+            (0.69, "unknown"),
+            (0.31, "unknown"),
+            (0.30, "no"),
+        ]
+        for prob, expected in cases:
+            resp = make_systemone_answers({"crosses_module_boundary": {"type": "noul", "noul": prob}})
+            parsed = jev_provider.parse_systemone_response(resp, "update feature")
+            self.assertEqual(
+                parsed["facts"]["crosses_module_boundary"], expected,
+                f"Expected {expected} for prob {prob}"
+            )
+
+    def test_safety_fact_asymmetric_thresholds(self):
+        # changes_security_or_payment_logic: yes >= 0.6, no <= 0.1, between is unknown
+        cases = [
+            (0.60, "yes"),
+            (0.59, "unknown"),
+            (0.11, "unknown"),
+            (0.10, "no"),
+        ]
+        for prob, expected in cases:
+            resp = make_systemone_answers({"changes_security_or_payment_logic": {"type": "noul", "noul": prob}})
+            parsed = jev_provider.parse_systemone_response(resp, "fix login bug")
+            self.assertEqual(
+                parsed["facts"]["changes_security_or_payment_logic"], expected,
+                f"Expected {expected} for prob {prob}"
+            )
+
+    def test_strict_yes_no_fact_never_emits_unknown(self):
+        # mechanical_only only accepts ('yes', 'no')
+        resp = make_systemone_answers({"mechanical_only": {"type": "noul", "noul": 0.5}})
+        parsed = jev_provider.parse_systemone_response(resp, "task")
+        self.assertIn(parsed["facts"]["mechanical_only"], ("yes", "no"))
+        self.assertNotEqual(parsed["facts"]["mechanical_only"], "unknown")
+
+    def test_choice_mapping_valid_and_invalid_fallback(self):
+        # Valid choice
+        resp = make_systemone_answers({
+            "security_domain": {"type": "choice", "choice": "auth", "confidence": 0.9, "probabilities": {"auth": 0.9}},
+            "files_touched": {"type": "choice", "choice": "2-5", "confidence": 0.85, "probabilities": {"2-5": 0.85}},
+            "blast_radius": {"type": "choice", "choice": "broad", "confidence": 0.8, "probabilities": {"broad": 0.8}},
+        })
+        parsed = jev_provider.parse_systemone_response(resp, "auth change")
+        self.assertEqual(parsed["facts"]["security_domain"], "auth")
+        self.assertEqual(parsed["facts"]["files_touched"], "2-5")
+        self.assertEqual(parsed["facts"]["blast_radius"], "broad")
+
+        # Invalid choice falls back to unknown
+        resp = make_systemone_answers({
+            "security_domain": {"type": "choice", "choice": "invalid_domain", "confidence": 0.9, "probabilities": {}},
+            "files_touched": {"type": "choice", "choice": "100", "confidence": 0.9, "probabilities": {}},
+            "blast_radius": {"type": "choice", "choice": "huge", "confidence": 0.9, "probabilities": {}},
+        })
+        parsed = jev_provider.parse_systemone_response(resp, "task")
+        self.assertEqual(parsed["facts"]["security_domain"], "unknown")
+        self.assertEqual(parsed["facts"]["files_touched"], "unknown")
+        self.assertEqual(parsed["facts"]["blast_radius"], "unknown")
+
+    def test_17_facts_and_5_field_contract_passes_validation(self):
+        resp = make_systemone_answers({
+            "changes_public_api_contract": {"type": "noul", "noul": 0.95},
+        })
+        client = mock.Mock(return_value=resp)
+        result, failure_kind = jev_provider.classify_task_jev_with_status("update public API", client=client)
+        self.assertIsNone(failure_kind)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.source, "jev")
+        self.assertEqual(result.facts["changes_public_api_contract"], "yes")
+        self.assertEqual(result.level, "L4")
+        self.assertTrue(result.risk_flags["public_api_change"])
+        self.assertIsInstance(result.reason, str)
+        self.assertTrue(len(result.reason) > 0)
+        self.assertIsInstance(result.evidence, tuple)
+        self.assertIn(result.delegability, (0, 1, 2))
+
+    def test_malformed_systemone_response_fails_safely_to_fallback(self):
+        # Missing answers
+        client = mock.Mock(return_value={"model": "jev-latest"})
+        res, failure_kind = jev_provider.classify_task_jev_with_status("task", client=client)
+        self.assertIsNone(res)
+        self.assertEqual(failure_kind, "invalid_json")
+
+        # Missing one fact
+        incomplete = make_systemone_answers()
+        del incomplete["answers"]["mechanical_only"]
+        client = mock.Mock(return_value=incomplete)
+        res, failure_kind = jev_provider.classify_task_jev_with_status("task", client=client)
+        self.assertIsNone(res)
+        self.assertEqual(failure_kind, "invalid_json")
+
+        # Non-numeric noul
+        bad_noul = make_systemone_answers({"mechanical_only": {"type": "noul", "noul": "not-a-number"}})
+        client = mock.Mock(return_value=bad_noul)
+        res, failure_kind = jev_provider.classify_task_jev_with_status("task", client=client)
+        self.assertIsNone(res)
+        self.assertEqual(failure_kind, "invalid_json")
+
+    def test_infer_task_type_and_delegability(self):
+        # Read-only task with files_touched == 0
+        resp = make_systemone_answers({
+            "files_touched": {"type": "choice", "choice": "0", "confidence": 0.99, "probabilities": {"0": 0.99}},
+        })
+        client = mock.Mock(return_value=resp)
+        res, _ = jev_provider.classify_task_jev_with_status("audit authentication code for vulnerabilities", client=client)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.task_type, "review")
+
+        # Local refactoring
+        resp = make_systemone_answers({
+            "files_touched": {"type": "choice", "choice": "1", "confidence": 0.95, "probabilities": {"1": 0.95}},
+        })
+        client = mock.Mock(return_value=resp)
+        res, _ = jev_provider.classify_task_jev_with_status("refactor helper function in module", client=client)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.task_type, "local_refactoring")
+
+        # Risky task -> delegability 0
+        resp = make_systemone_answers({
+            "changes_security_or_payment_logic": {"type": "noul", "noul": 0.95},
+        })
+        client = mock.Mock(return_value=resp)
+        res, _ = jev_provider.classify_task_jev_with_status("update payment gateway logic", client=client)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.delegability, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

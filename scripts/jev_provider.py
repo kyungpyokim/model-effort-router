@@ -29,7 +29,12 @@ if TYPE_CHECKING:
     from classifier import Classification
 
 from route_reuse import is_jev_kill_switch_active, state_dir
-from rules import extract_json_payload, unknown_facts
+from rules import (
+    BLAST_RADIUS_CRITERIA, DEFAULT_BOOLEAN_THRESHOLDS, FACTS, FACT_QUESTIONS,
+    FACT_THRESHOLDS, FILES_TOUCHED_CRITERIA, SAFETY_BOOLEAN_THRESHOLDS,
+    SAFETY_FACTS, SECURITY_DOMAIN_CRITERIA, evaluate_rules, extract_json_payload,
+    get_fact_threshold, unknown_facts
+)
 
 _default_validator: Callable[..., object] | None = None
 
@@ -46,7 +51,9 @@ JEV_ENDPOINT_ENV = "MODEL_EFFORT_ROUTER_JEV_ENDPOINT"
 JEV_TIMEOUT_ENV = "MODEL_EFFORT_ROUTER_JEV_TIMEOUT"
 JEV_SHADOW_LOG_ENV = "MODEL_EFFORT_ROUTER_JEV_SHADOW_LOG"
 JEV_SAMPLE_RATE_ENV = "MODEL_EFFORT_ROUTER_JEV_SAMPLE_RATE"
+JEV_MODEL_ENV = "MODEL_EFFORT_ROUTER_JEV_MODEL"
 
+DEFAULT_JEV_MODEL = "jev-latest"
 DEFAULT_JEV_TIMEOUT = 10.0
 DEFAULT_SHADOW_SAMPLE_RATE = 0.1
 MAX_RESPONSE_BYTES = 65536
@@ -124,6 +131,135 @@ def _run_with_daemon_thread_deadline(fn: Callable[..., object], timeout: float, 
     raise val
 
 
+def build_systemone_request(task: str, model: str | None = None) -> dict[str, object]:
+    """Build the SystemOne POST /v1/systemone request body with 17 fact questions."""
+    chosen_model = model or os.environ.get(JEV_MODEL_ENV, DEFAULT_JEV_MODEL)
+    questions: dict[str, dict[str, object]] = {}
+    for fact in FACTS:
+        if fact == "files_touched":
+            questions[fact] = {
+                "type": "choice",
+                "instructions": FACT_QUESTIONS.get(fact, "How many files will the work change?"),
+                "criteria": FILES_TOUCHED_CRITERIA,
+            }
+        elif fact == "security_domain":
+            questions[fact] = {
+                "type": "choice",
+                "instructions": FACT_QUESTIONS.get(fact, "Which security-sensitive area does the work touch?"),
+                "criteria": SECURITY_DOMAIN_CRITERIA,
+            }
+        elif fact == "blast_radius":
+            questions[fact] = {
+                "type": "choice",
+                "instructions": FACT_QUESTIONS.get(fact, "What is the blast radius?"),
+                "criteria": BLAST_RADIUS_CRITERIA,
+            }
+        else:
+            questions[fact] = {
+                "type": "noul",
+                "instructions": FACT_QUESTIONS.get(fact, f"Is {fact} true?"),
+            }
+    return {
+        "model": chosen_model,
+        "state": task,
+        "questions": questions,
+    }
+
+
+def infer_task_type(task: str, facts: dict[str, str]) -> str:
+    """Deterministically derive task_type from the task text and evaluated facts."""
+    t_lower = task.lower()
+    if facts.get("files_touched") == "0":
+        if any(w in t_lower for w in ("review", "audit", "security")):
+            return "review"
+        if any(w in t_lower for w in ("design", "plan", "architecture", "rfc")):
+            return "design"
+        return "inspect"
+
+    if any(w in t_lower for w in ("review", "audit")):
+        return "review"
+    if "architectur" in t_lower and (facts.get("crosses_module_boundary") == "yes" or facts.get("needs_new_structure") == "yes"):
+        return "architectural_refactoring"
+    if "refactor" in t_lower:
+        return "local_refactoring"
+    return "implementation"
+
+
+def infer_delegability(facts: dict[str, str]) -> int:
+    """Deterministically derive delegability (0, 1, or 2) from evaluated facts."""
+    if (
+        facts.get("changes_security_or_payment_logic") == "yes"
+        or facts.get("reviews_security_sensitive_code") == "yes"
+        or facts.get("irreversible_or_ledger_or_crypto") == "yes"
+        or facts.get("changes_persisted_data") == "yes"
+        or facts.get("intermittent_or_concurrency") == "yes"
+    ):
+        return 0
+    if facts.get("mechanical_only") == "yes" and facts.get("files_touched") in ("0", "1"):
+        return 2
+    return 1
+
+
+def parse_systemone_response(response: dict[str, object], task: str) -> dict[str, object]:
+    """Parse a SystemOne response, apply thresholds, and build a 5-field Classification payload."""
+    if not isinstance(response, dict):
+        raise ValueError("response must be a dictionary")
+    answers = response.get("answers")
+    if not isinstance(answers, dict):
+        raise ValueError("response missing answers dictionary")
+
+    facts: dict[str, str] = {}
+    for fact in FACTS:
+        if fact not in answers:
+            raise ValueError(f"missing answer for fact: {fact}")
+        ans = answers[fact]
+        if not isinstance(ans, dict) or "type" not in ans:
+            raise ValueError(f"invalid answer format for fact: {fact}")
+
+        ans_type = ans["type"]
+        allowed = FACTS[fact]
+        if ans_type == "choice":
+            choice_val = ans.get("choice")
+            if isinstance(choice_val, str) and choice_val in allowed:
+                facts[fact] = choice_val
+            else:
+                facts[fact] = "unknown" if "unknown" in allowed else allowed[0]
+        elif ans_type == "noul":
+            noul_val = ans.get("noul")
+            if not isinstance(noul_val, (int, float)):
+                raise ValueError(f"invalid noul value for fact: {fact}")
+            prob = float(noul_val)
+            yes_t, no_t = get_fact_threshold(fact)
+            if prob >= yes_t:
+                facts[fact] = "yes"
+            elif prob <= no_t:
+                facts[fact] = "no"
+            else:
+                facts[fact] = "unknown" if "unknown" in allowed else ("yes" if prob >= 0.5 else "no")
+        else:
+            raise ValueError(f"unexpected answer type {ans_type} for fact {fact}")
+
+    task_type = infer_task_type(task, facts)
+    delegability = infer_delegability(facts)
+    level, risk_tier, matched, _ = evaluate_rules(facts)
+    if matched:
+        reason = f"Jev SystemOne facts evaluated: {', '.join(matched)}"
+    else:
+        reason = f"Jev SystemOne classified {task_type} at {level} ({risk_tier})"
+
+    evidence = [f"{k}={v}" for k, v in facts.items() if v in ("yes", "broad", "6+", "2-5")][:5]
+    if not evidence:
+        evidence = [f"task: {task[:60].strip()}"]
+
+    return {
+        "task_type": task_type,
+        "facts": facts,
+        "delegability": delegability,
+        "reason": reason,
+        "evidence": evidence,
+    }
+
+
 def _default_http_client(task: str, timeout: float, api_key: str, endpoint: str) -> object:
     """Call external Jev endpoint via standard HTTP POST with wall-clock deadline."""
     parsed = urllib.parse.urlparse(endpoint)
@@ -133,7 +269,8 @@ def _default_http_client(task: str, timeout: float, api_key: str, endpoint: str)
     if not (is_https or is_local_http):
         raise ValueError(f"Jev endpoint must use HTTPS or localhost: {endpoint}")
 
-    req_body = json.dumps({"task": task}).encode("utf-8")
+    req_payload = build_systemone_request(task)
+    req_body = json.dumps(req_payload).encode("utf-8")
     req = urllib.request.Request(
         endpoint,
         data=req_body,
@@ -193,9 +330,15 @@ def classify_task_jev_with_status(
         if isinstance(raw_output, str):
             if len(raw_output) > MAX_RESPONSE_BYTES:
                 return None, "response_too_large"
-            payload = extract_json_payload(raw_output)
-        elif isinstance(raw_output, dict):
-            payload = raw_output
+            raw_output = extract_json_payload(raw_output)
+
+        if isinstance(raw_output, dict):
+            if "answers" in raw_output:
+                payload = parse_systemone_response(raw_output, task)
+            elif "facts" in raw_output and "task_type" in raw_output:
+                payload = raw_output
+            else:
+                return None, "invalid_json"
         else:
             return None, "invalid_payload_type"
     except Exception:
