@@ -249,9 +249,9 @@ SECURITY_DOMAIN_CRITERIA: dict[str, str] = {
 }
 
 BLAST_RADIUS_CRITERIA: dict[str, str] = {
-    "narrow": "Stays within one component, feature, or a recoverable subset.",
-    "broad": "Affects many services, all users/tenants, production data at large, or money system-wide.",
-    "unknown": "Cannot be settled from task text.",
+    "narrow": "Stays within one component, feature, or a recoverable subset, as the task describes it. A single-file or single-component task is narrow even when the component matters; a hypothetical worst case is never broad.",
+    "broad": "The task itself describes system-wide reach: many services, all users/tenants, production data at large, or money system-wide. Broad needs evidence in the text, not a worst case.",
+    "unknown": "Cannot be settled from task text; the reach is plausibly system-wide but unsettled.",
 }
 
 # What counts as yes or no, for the facts a bare question leaves ambiguous. The wording follows
@@ -278,8 +278,8 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
         "false": "Anything needing a judgement about behaviour, including extracting or deduplicating logic.",
     },
     "silent_failure_material_harm": {
-        "true": "A mistake could go unnoticed (no error, alert, or failing test) while causing data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency.",
-        "false": "A mistake produces an error, alert, or failing test, or cannot cause silent material damage; refactorings, documentation, tests, or cosmetic changes even when touching sensitive code.",
+        "true": "Both are evident from the task: a mistake would go unnoticed (no error, alert, or failing test) AND it causes data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency through a mechanism the task describes or necessarily implies (persisted-data write or delete, money movement, auth or access change, unchecked cross-service propagation).",
+        "false": "A mistake produces an error, alert, or failing test, or no material-harm mechanism is described or necessarily implied. Mechanical work, refactorings, documentation, tests, cosmetic changes, read-only inspect/design/review work that changes nothing, and single-component fixes with visible failures are no even when touching sensitive code. A merely hypothetical worst case is no; unknown only when the area is plausibly involved but the text cannot settle it.",
     },
 }
 
@@ -298,8 +298,8 @@ FACT_QUESTIONS: dict[str, str] = {
     "changes_persisted_data": "Does the work change stored data, a database schema, or run a data migration?",
     "irreversible_or_ledger_or_crypto": "Is the change irreversible on production data, or does it touch ledger correctness or design new cryptography?",
     "changes_trust_boundary": "Does the work change where trust is established or delegated between components, services, or tenants?",
-    "blast_radius": "If this went wrong, would it affect one component (narrow) or many services, users, or money system-wide (broad)?",
-    "silent_failure_material_harm": "Could a mistake go unnoticed while causing data loss, wrong money movement, or a security exposure?",
+    "blast_radius": "From the scope the task describes, would a wrong result stay within one component, feature, or recoverable subset (narrow) or reach many services, all users/tenants, production data at large, or money system-wide (broad)? Answer narrow for single-file or single-component work; a hypothetical worst case is never broad.",
+    "silent_failure_material_harm": "Is there a concrete path in the described work where a mistake would go unnoticed (no error, alert, or failing test) AND cause data loss, wrong money movement, security exposure, or cross-service inconsistency? Answer no unless both the silence and the harm mechanism are evident from the task; a hypothetical worst case is no.",
     "requires_code_understanding": "Does the work depend on reading existing code beyond the edit site?",
 }
 
