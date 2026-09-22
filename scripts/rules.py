@@ -277,9 +277,13 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
         "true": "Typos, renames, formatting, imports, comments, or documentation, with no behaviour change and no judgement.",
         "false": "Anything needing a judgement about behaviour, including extracting or deduplicating logic.",
     },
-    "silent_failure_material_harm": {
+"silent_failure_material_harm": {
         "true": "Both are evident from the task: a mistake would go unnoticed (no error, alert, or failing test) AND it causes data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency through a mechanism the task describes or necessarily implies (persisted-data write or delete, money movement, auth or access change, unchecked cross-service propagation).",
-        "false": "A mistake produces an error, alert, or failing test, or no material-harm mechanism is described or necessarily implied. Mechanical work, refactorings, documentation, tests, cosmetic changes, read-only inspect/design/review work that changes nothing, and single-component fixes with visible failures are no even when touching sensitive code. A merely hypothetical worst case is no; unknown only when the area is plausibly involved but the text cannot settle it.",
+        "false": "A mistake produces an error, alert, or failing test, or no material-harm mechanism is described or necessarily implied. Mechanical work, refactorings, documentation, tests, cosmetic changes, and single-component fixes with visible failures are no even when touching sensitive code. A merely hypothetical worst case is no; unknown only when the area is plausibly involved but the text cannot settle it.",
+    },
+    "changes_public_api_contract": {
+        "true": "The task explicitly changes a stable interface consumed outside the implementation boundary, such as a public HTTP/GraphQL request or response contract, exported SDK/library API, or user-facing CLI command/flag semantics.",
+        "false": "The task only changes internal functions, private/module interfaces, implementation details, internal call sites, refactoring structure, or behavior behind an unchanged external contract. Do not infer a public API change merely because the task mentions 'API', 'interface', 'endpoint implementation', or function signatures.",
     },
 }
 
