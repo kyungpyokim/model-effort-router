@@ -258,8 +258,8 @@ BLAST_RADIUS_CRITERIA: dict[str, str] = {
 # the CLI classifier's own definitions so both providers answer the same question.
 NOUL_CRITERIA: dict[str, dict[str, str]] = {
     "fix_or_result_known": {
-        "true": "The expected result, or the place to change, is stated or evident, including a choice between explicitly named options.",
-        "false": "The goal or the candidate solutions must still be investigated or invented.",
+        "true": "The expected result, or the place to change, is stated or evident, including a choice between explicitly named options. Yes means either the requested fix is already concretely identified (for example a typo, spelling, or link fix in a named file), or the inspection or search target is explicitly specified (for example inspect, check, or read a named metric, log, dashboard, or status). The observed value or root cause does not need to be known in advance.",
+        "false": "The goal or the candidate solutions must still be investigated or invented. A task that only names a search scope without a concrete fix or an explicitly specified check target — such as find why, track down, or locate the cause with no named place to change or check — is no.",
     },
     "crosses_module_boundary": {
         "true": "The work moves responsibilities or contracts between modules/packages, or creates/removes a module boundary. Extraction, consolidation, isolation, or split of a module boundary where the interface contract changes. NOT merely reading, using, or touching code in multiple modules.",
