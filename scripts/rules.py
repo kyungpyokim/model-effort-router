@@ -101,56 +101,6 @@ DIFFICULTY_RULES = (
 
 READ_ONLY_TASK_TYPES = ("design", "review", "inspect")
 
-def is_read_only_inspect(task_type: str, facts: dict[str, str]) -> bool:
-    """Read-only inspect tasks: query/analysis/explanation without code modification."""
-    if task_type in READ_ONLY_TASK_TYPES and facts.get("files_touched") in ("0", ""):
-        return True
-    return False
-
-def is_trivial_edit_fast_path(task_type: str, risk_tier: str, facts: dict[str, str]) -> bool:
-    """Check if task satisfies all 6 Trivial Edit Fast Path criteria:
-    - normal/standard risk tier
-    - requires_code_understanding == no
-    - mechanical_only == yes
-    - files_touched in ('0', '1')
-    - no module/service boundary crossing
-    - no new structure needed
-    - no security, payment, data migration, public API, trust boundary changes
-    - narrow blast radius & no silent failure harm
-    """
-    if task_type not in CODE_CHANGE_TASK_TYPES:
-        return False
-    if normalise_tier(risk_tier) != "standard":
-        return False
-    if facts.get("requires_code_understanding") == "yes":
-        return False
-    if facts.get("mechanical_only") != "yes":
-        return False
-    if facts.get("files_touched") not in ("0", "1"):
-        return False
-    if facts.get("crosses_module_boundary") == "yes" or facts.get("crosses_service_boundary") == "yes":
-        return False
-    if facts.get("needs_new_structure") == "yes":
-        return False
-    if facts.get("changes_security_or_payment_logic") == "yes":
-        return False
-    if facts.get("reviews_security_sensitive_code") == "yes":
-        return False
-    if facts.get("security_domain") not in ("none", ""):
-        return False
-    if facts.get("changes_public_api_contract") == "yes":
-        return False
-    if facts.get("changes_persisted_data") == "yes":
-        return False
-    if facts.get("irreversible_or_ledger_or_crypto") == "yes":
-        return False
-    if facts.get("changes_trust_boundary") == "yes":
-        return False
-    if facts.get("blast_radius") == "broad":
-        return False
-    if facts.get("silent_failure_material_harm") == "yes":
-        return False
-    return True
 
 def normalise_level(level: str) -> str:
     value = level.upper()
