@@ -10,7 +10,13 @@ from pathlib import Path
 
 
 def load_router(root: Path):
-    spec = importlib.util.spec_from_file_location("router", root / "scripts" / "router.py")
+    path = root / "scripts" / "router.py"
+    # Reuse a router already loaded from this file: executing it again registers a second module
+    # under the same name, orphaning the first copy so patched instances and tests split apart.
+    loaded = sys.modules.get("router")
+    if loaded is not None and getattr(loaded, "__file__", None) == str(path):
+        return loaded
+    spec = importlib.util.spec_from_file_location("router", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[spec.name] = module

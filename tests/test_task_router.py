@@ -16,7 +16,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_script(name: str):
-    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
+    path = ROOT / "scripts" / f"{name}.py"
+    # Reuse an already-loaded copy: executing the same file twice registers a second module under
+    # the same name, orphaning the first copy so patches and tests split across two instances.
+    loaded = sys.modules.get(name)
+    if loaded is not None and getattr(loaded, "__file__", None) == str(path):
+        return loaded
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[spec.name] = module

@@ -398,6 +398,45 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         self.assertGreater(summary["inspect_misclassifications"], 0)
         self.assertEqual(summary["safety_violations"], summary["inspect_misclassifications"])
 
+    def test_benchmarks_discard_the_plan_dirs_they_create(self):
+        # The harness routes hundreds of cases and never runs the plan chain, so a leaked plan
+        # directory per two-stage route used to pile up until an 8-hex name collided. Twice in a
+        # row here: cleanup must be per call, not a one-off at the end of a run.
+        created: list[str] = []
+        original_route = eval_perf.router.route
+
+        def tracking_route(*args, **kwargs):
+            result = original_route(*args, **kwargs)
+            if result.plan_dir:
+                created.append(result.plan_dir)
+            return result
+
+        with mock.patch.object(eval_perf.router, "route", tracking_route):
+            eval_perf.evaluate_rules_benchmark()
+            eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(labelled_facts), limit=5)
+            eval_perf.evaluate_rules_benchmark()
+
+        self.assertTrue(created, "expected the benchmarks to route two-stage cases")
+        self.assertEqual([path for path in created if Path(path).exists()], [])
+
+    def test_a_failing_grade_still_discards_the_plan_dirs_it_created(self):
+        created: list[str] = []
+        original_route = eval_perf.router.route
+
+        def tracking_route(*args, **kwargs):
+            result = original_route(*args, **kwargs)
+            if result.plan_dir:
+                created.append(result.plan_dir)
+            return result
+
+        with mock.patch.object(eval_perf.router, "route", tracking_route):
+            with mock.patch.object(eval_perf, "_tally_facts", side_effect=RuntimeError("boom")):
+                with self.assertRaises(RuntimeError):
+                    eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(labelled_facts), limit=3)
+
+        self.assertTrue(created, "expected the benchmark to route two-stage cases")
+        self.assertEqual([path for path in created if Path(path).exists()], [])
+
     def test_direction_metrics_split_over_under_and_tier_only(self):
         perfect = eval_perf.evaluate_classifier_benchmark(classifier=stub_classifier(labelled_facts))["summary"]
         self.assertEqual((perfect["level_accuracy_pct"], perfect["tier_accuracy_pct"], perfect["level_plus_minus_1_accuracy_pct"]), (100.0, 100.0, 100.0))

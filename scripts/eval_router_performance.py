@@ -18,10 +18,16 @@ ROUTER_PATH = BUNDLE_ROOT / "scripts" / "router.py"
 CONFIG_PATH = BUNDLE_ROOT / "config" / "model-map.json"
 
 spec = importlib.util.spec_from_file_location("router", ROUTER_PATH)
-router = importlib.util.module_from_spec(spec)
-assert spec.loader is not None
-sys.modules[spec.name] = router
-spec.loader.exec_module(router)
+# Reuse a router already loaded from this file: executing it again registers a second module
+# under the same name, orphaning the first copy so patches and tests split across two instances.
+_loaded_router = sys.modules.get("router")
+if _loaded_router is not None and getattr(_loaded_router, "__file__", None) == str(ROUTER_PATH):
+    router = _loaded_router
+else:
+    router = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = router
+    spec.loader.exec_module(router)
 
 
 # Every fact DIFFICULTY_RULES conditions on: the set that can move level or tier.
@@ -36,6 +42,9 @@ if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
 from benchmark_corpus import BenchmarkCase, GOLDEN_BENCHMARK_CASES
+
+# Discards the two-stage plan directories this benchmark creates but never runs; see plan_dirs.
+import plan_dirs  # noqa: E402
 
 
 _FACT_DEFAULT_OVERRIDES = {
@@ -108,12 +117,17 @@ def evaluate_rules_benchmark() -> dict:
                 classifier=lambda _t, c=mock_classification: c,
                 critical=(tier == "critical"),
             )
-            platform_routes[plat] = {
-                "level": route_res.level,
-                "stages": [s["model"] for s in route_res.stages],
-                "efforts": [s["effort"] for s in route_res.stages],
-                "mode": route_res.mode,
-            }
+            try:
+                platform_routes[plat] = {
+                    "level": route_res.level,
+                    "stages": [s["model"] for s in route_res.stages],
+                    "efforts": [s["effort"] for s in route_res.stages],
+                    "mode": route_res.mode,
+                }
+            finally:
+                # The benchmark never runs the plan chain, so the directory it created is
+                # discarded immediately; leaked ones piled up into name collisions.
+                plan_dirs.discard_plan_dir(route_res.plan_dir)
 
         results.append({
             "name": case.name,
@@ -161,7 +175,12 @@ def _route_profile(config: dict, platform: str, task: str, classification: route
         result = router.route(task, platform, config, classifier=lambda _t: classification, critical=critical)
     except ValueError as exc:
         return {"error": str(exc)}
-    return {"mode": result.mode, "stages": [(stage["model"], stage["effort"]) for stage in result.stages]}
+    try:
+        return {"mode": result.mode, "stages": [(stage["model"], stage["effort"]) for stage in result.stages]}
+    finally:
+        # Only the profile is graded here, so the two-stage plan directory is discarded as soon
+        # as it is read, including when the caller raises while building the profile.
+        plan_dirs.discard_plan_dir(result.plan_dir)
 
 
 def _pct(hit: int, total: int) -> float:

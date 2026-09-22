@@ -19,11 +19,18 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("router", ROOT / "scripts" / "router.py")
-router = importlib.util.module_from_spec(SPEC)
-assert SPEC.loader is not None
-sys.modules[SPEC.name] = router
-SPEC.loader.exec_module(router)
+# Reuse a router already loaded from this file: executing it again registers a second module
+# under the same name, orphaning the first copy so patches and tests split across two instances.
+_loaded_router = sys.modules.get("router")
+if _loaded_router is not None and getattr(_loaded_router, "__file__", None) == str(ROOT / "scripts" / "router.py"):
+    router = _loaded_router
+else:
+    router = importlib.util.module_from_spec(SPEC)
+    assert SPEC.loader is not None
+    sys.modules[SPEC.name] = router
+    SPEC.loader.exec_module(router)
 classifier = sys.modules["classifier"]
+import plan_dirs  # noqa: E402  (scripts is on sys.path through the router load above)
 CONFIG = router.load_config(ROOT / "config" / "model-map.json")
 
 NO_FLAGS = {flag: False for flag in router.RISK_FLAGS}
@@ -2434,6 +2441,15 @@ class CommandAndLauncherTests(unittest.TestCase):
     def _run_via_symlink(self, name: str, extra_env: dict[str, str] | None = None):
         source = ROOT / self.LAUNCHERS[name]
         fake_payload = classifier_output(task_type="implementation", level="L1")
+        plan_dirs_before = plan_dirs.router_plan_dirs()
+        try:
+            return self._run_launcher_subprocess(source, name, fake_payload, extra_env)
+        finally:
+            # The launcher routes in a subprocess, so its two-stage plan dir cannot be handed back
+            # for discard_plan_dir; sweep the dirs that appeared while it ran instead.
+            plan_dirs.sweep_plan_dirs(plan_dirs_before)
+
+    def _run_launcher_subprocess(self, source: Path, name: str, fake_payload: str, extra_env: dict[str, str] | None):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             fake_codex = directory / "codex"
