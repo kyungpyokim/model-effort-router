@@ -11,7 +11,11 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
-from rules import (FACTS, OPTIONAL_FACT_DEFAULTS, RISK_FLAGS, TASK_TYPES, evaluate_rules, normalise_task_type, risk_flags_from_facts, unknown_facts, unresolved_facts)
+from rules import (
+    FACTS, OPTIONAL_FACT_DEFAULTS, RISK_FLAGS, TASK_TYPES, evaluate_rules,
+    extract_json_payload, normalise_task_type, risk_flags_from_facts, unknown_facts,
+    unresolved_facts
+)
 import jev_provider
 
 FALLBACK_TASK_TYPE = "implementation"
@@ -114,8 +118,6 @@ FACT_QUESTIONS = {
     "requires_code_understanding": "Does the work depend on reading existing code beyond the edit site?",
 }
 
-_FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
-
 @dataclass(frozen=True)
 class Classification:
     task_type: str
@@ -178,45 +180,7 @@ def classifier_prompt(task: str, repo_path: Path | None = None, unknown: tuple[s
     escaped_task = task.replace("</task>", "<\\/task>")
     return prompt + f"<task>\n{escaped_task}\n</task>"
 
-def _extract_json_payload(raw: str) -> object:
-    """Best-effort JSON extraction from an assessor reply.
-
-    Tries, in order: the whole stripped reply; the last fenced ```json``` block; the
-    last top-level {...} object found by scanning for '{' and decoding from there.
-    Assessor replies sometimes lead with prose (occasionally containing stray '{' or
-    inline backticks) before the real fenced JSON, so the last candidate of each kind
-    wins over the first.
-    """
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        first_error = exc
-    fences = _FENCED_JSON_RE.findall(raw)
-    if fences:
-        try:
-            return json.loads(fences[-1])
-        except json.JSONDecodeError:
-            pass
-    decoder = json.JSONDecoder()
-    last_object = None
-    i = 0
-    while i < len(raw):
-        if raw[i] != "{":
-            i += 1
-            continue
-        try:
-            obj, end = decoder.raw_decode(raw, i)
-        except json.JSONDecodeError:
-            i += 1
-            continue
-        # Skip past this object instead of scanning inside it, so a nested dict
-        # (e.g. the "facts" object) never shadows the outer, real payload.
-        if isinstance(obj, dict):
-            last_object = obj
-        i = end
-    if last_object is not None:
-        return last_object
-    raise first_error
+_extract_json_payload = extract_json_payload
 
 def _bounded(text: str) -> str:
     """Escapes control characters (no raw ANSI/terminal injection from hostile text) without altering ordinary
@@ -453,7 +417,9 @@ def classify_task(
     same classifier (skipped when the first pass already read the repository); anything still unknown is
     reported in ``unresolved`` for the caller to ask the user. A stronger model is never called."""
     if not repo_aware and jev_provider.jev_stage() == "primary":
-        jev_result = jev_provider.classify_task_jev(task, client=jev_client)
+        jev_result = jev_provider.classify_task_jev(
+            task, client=jev_client, validate_fn=validate_classifier_output
+        )
         if jev_result is not None:
             return jev_result
     config = PRIMARY_CLASSIFIER_CONFIG[platform]

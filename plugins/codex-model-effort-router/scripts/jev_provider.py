@@ -16,7 +16,6 @@ import json
 import os
 import queue
 import random
-import re
 import socket
 import threading
 import time
@@ -30,7 +29,7 @@ if TYPE_CHECKING:
     from classifier import Classification
 
 from route_reuse import is_jev_kill_switch_active, state_dir
-from rules import unknown_facts
+from rules import extract_json_payload, unknown_facts
 
 _default_validator: Callable[..., object] | None = None
 
@@ -147,20 +146,6 @@ def _default_http_client(task: str, timeout: float, api_key: str, endpoint: str)
     return _run_with_daemon_thread_deadline(_fetch_jev_http, timeout, req, timeout)
 
 
-def _extract_json(raw: str) -> object:
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        pass
-    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
-    if m:
-        return json.loads(m.group(1))
-    start, end = raw.find("{"), raw.rfind("}")
-    if start != -1 and end != -1 and start < end:
-        return json.loads(raw[start:end + 1])
-    raise ValueError("no json object in string")
-
-
 def classify_task_jev_with_status(
     task: str,
     timeout: float | None = None,
@@ -208,7 +193,7 @@ def classify_task_jev_with_status(
         if isinstance(raw_output, str):
             if len(raw_output) > MAX_RESPONSE_BYTES:
                 return None, "response_too_large"
-            payload = _extract_json(raw_output)
+            payload = extract_json_payload(raw_output)
         elif isinstance(raw_output, dict):
             payload = raw_output
         else:
@@ -218,7 +203,7 @@ def classify_task_jev_with_status(
 
     validator = validate_fn or _default_validator
     if validator is None:
-        raise RuntimeError("classifier validator not configured")
+        return None, "validator_not_configured"
     try:
         result = validator(payload, source="jev")
         return result, None

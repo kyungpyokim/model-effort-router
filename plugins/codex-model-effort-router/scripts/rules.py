@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import re
+
 LEVELS = ("L1", "L2", "L3", "L4", "L5")
 
 LEVEL_NAMES = {
@@ -168,3 +171,50 @@ def apply_risk_escalation(level: str, risk_tier: str, risk_flags: dict[str, bool
     if risk_tier != "standard":
         level = higher_level(level, TIER_LEVEL)
     return level, risk_tier
+
+
+_FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+
+
+def extract_json_payload(raw: str) -> object:
+    """Best-effort JSON extraction from an assessor reply.
+
+    Tries, in order: the whole stripped reply; the last fenced ```json``` block; the
+    last top-level {...} object found by scanning for '{' and decoding from there.
+    Assessor replies sometimes lead with prose (occasionally containing stray '{' or
+    inline backticks) before the real fenced JSON, so the last candidate of each kind
+    wins over the first.
+    """
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        first_error = exc
+    fences = _FENCED_JSON_RE.findall(raw)
+    if fences:
+        try:
+            return json.loads(fences[-1])
+        except json.JSONDecodeError:
+            pass
+    decoder = json.JSONDecoder()
+    last_object = None
+    i = 0
+    while i < len(raw):
+        if raw[i] != "{":
+            i += 1
+            continue
+        try:
+            obj, end = decoder.raw_decode(raw, i)
+        except json.JSONDecodeError:
+            i += 1
+            continue
+        # Skip past this object instead of scanning inside it, so a nested dict
+        # (e.g. the "facts" object) never shadows the outer, real payload.
+        if isinstance(obj, dict):
+            last_object = obj
+        i = end
+    if last_object is not None:
+        return last_object
+    raise first_error
+
+
+_extract_json_payload = extract_json_payload
