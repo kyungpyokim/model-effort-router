@@ -220,11 +220,11 @@ def extract_json_payload(raw: str) -> object:
 _extract_json_payload = extract_json_payload
 
 FILES_TOUCHED_CRITERIA: dict[str, str] = {
-    "0": "Read-only work (design, review, inspect) that changes no files.",
-    "1": "Changes exactly one existing file with no separate test or new file.",
-    "2-5": "Changes a separate test or new file, or an existing mechanism/subsystem end-to-end.",
-    "6+": "Cross-cutting change spanning many files or multiple services.",
-    "unknown": "The task gives no scope signal at all.",
+    "0": "Read-only design, review or inspect work that changes no file. An implementation that runs an operation or changes production data is never 0, even when no source file changes.",
+    "1": "One clearly bounded change confined to one existing file, with no separate test or new file described. A task whose entire scope is one test, or one new file, is also 1.",
+    "2-5": "The described work changes a production file and also touches a separate test or new file, or it changes an existing mechanism, protocol or subsystem end-to-end rather than one isolated call site.",
+    "6+": "A cross-cutting effort spanning many files or more than one service.",
+    "unknown": "The task gives no scope signal at all. Estimate from the described scope rather than answering unknown merely because no exact number is stated, and never because the task says some other aspect is undecided.",
 }
 
 SECURITY_DOMAIN_CRITERIA: dict[str, str] = {
@@ -242,6 +242,31 @@ BLAST_RADIUS_CRITERIA: dict[str, str] = {
     "narrow": "Stays within one component, feature, or a recoverable subset.",
     "broad": "Affects many services, all users/tenants, production data at large, or money system-wide.",
     "unknown": "Cannot be settled from task text.",
+}
+
+# What counts as yes or no, for the facts a bare question leaves ambiguous. The wording follows
+# the CLI classifier's own definitions so both providers answer the same question.
+NOUL_CRITERIA: dict[str, dict[str, str]] = {
+    "fix_or_result_known": {
+        "true": "The expected result, or the place to change, is stated or evident, including a choice between explicitly named options.",
+        "false": "The goal or the candidate solutions must still be investigated or invented.",
+    },
+    "crosses_module_boundary": {
+        "true": "The work spans more than one module or package, or moves responsibilities between them.",
+        "false": "The work stays inside one module or package, even when it touches several files there.",
+    },
+    "requires_code_understanding": {
+        "true": "Doing the work right depends on reading existing code beyond the edit site: callers or callees, existing behaviour, invariants, how state flows.",
+        "false": "The edit is self-contained and evident from the task text: a new standalone helper, adding a field or parameter, a clear one-line change, a test for stated behaviour.",
+    },
+    "needs_new_structure": {
+        "true": "A new architecture, protocol, cross-module or cross-service boundary, or data-migration strategy must be designed with open choices.",
+        "false": "The change fits inside the existing structure. Laying out files inside one new module, or moving code along a boundary the task already states, is false; so is a refactor whose boundary impact is merely uncertain.",
+    },
+    "mechanical_only": {
+        "true": "Typos, renames, formatting, imports, comments, or documentation, with no behaviour change and no judgement.",
+        "false": "Anything needing a judgement about behaviour, including extracting or deduplicating logic.",
+    },
 }
 
 FACT_QUESTIONS: dict[str, str] = {

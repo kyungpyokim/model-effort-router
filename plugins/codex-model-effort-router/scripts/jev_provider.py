@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 from route_reuse import is_jev_kill_switch_active, state_dir
 from rules import (
-    BLAST_RADIUS_CRITERIA, FACTS, FACT_QUESTIONS, FILES_TOUCHED_CRITERIA,
+    BLAST_RADIUS_CRITERIA, FACTS, FACT_QUESTIONS, FILES_TOUCHED_CRITERIA, NOUL_CRITERIA,
     READ_ONLY_TASK_TYPES, SECURITY_DOMAIN_CRITERIA, TASK_TYPE_CRITERIA, evaluate_rules,
     extract_json_payload, fact_decision_point, resolve_uncertain_fact, unknown_facts
 )
@@ -158,6 +158,8 @@ def build_systemone_request(task: str, model: str | None = None) -> dict[str, ob
                 "type": "noul",
                 "instructions": FACT_QUESTIONS.get(fact, f"Is {fact} true?"),
             }
+            if fact in NOUL_CRITERIA:
+                questions[fact]["criteria"] = NOUL_CRITERIA[fact]
     questions["task_type"] = {
         "type": "choice",
         "instructions": "Which single kind of work does this task ask for? Classify only what is asked: "
@@ -179,7 +181,11 @@ def read_task_type(answers: dict, facts: dict[str, str]) -> str:
     answer = answers.get("task_type")
     choice = answer.get("choice") if isinstance(answer, dict) else None
     task_type = choice if isinstance(choice, str) and choice in TASK_TYPE_CRITERIA else "implementation"
-    if facts["files_touched"] == "0" and task_type not in READ_ONLY_TASK_TYPES:
+    if task_type in READ_ONLY_TASK_TYPES:
+        # Read-only work changes no file by definition, whatever scope the model read into the
+        # implementation the task would eventually need. The validator enforces the same pairing.
+        facts["files_touched"] = "0"
+    elif facts["files_touched"] == "0":
         # The two answers disagree about whether anything is edited; keep the code-change type
         # and drop the scope claim, since "0" files is only valid for read-only work.
         facts["files_touched"] = "unknown"
