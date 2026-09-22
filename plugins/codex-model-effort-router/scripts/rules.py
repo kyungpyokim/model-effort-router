@@ -265,6 +265,10 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
         "true": "The work moves responsibilities or contracts between modules/packages, or creates/removes a module boundary. Extraction, consolidation, isolation, or split of a module boundary where the interface contract changes. NOT merely reading, using, or touching code in multiple modules.",
         "false": "The work stays inside one module boundary. Reading, using types from, or editing several files within the same module is false. A refactor whose boundary impact is merely uncertain is false.",
     },
+    "crosses_service_boundary": {
+        "true": "The task changes behavior, contracts, communication, or data flow across independently deployed services/processes, such as modifying an inter-service API, RPC/message contract, service-to-service dependency, or coordination semantics.",
+        "false": "The task only changes modules, packages, components, or call sites within one service; merely mentions multiple services; or changes implementation behind an unchanged cross-service contract.",
+    },
     "requires_code_understanding": {
         "true": "Doing the work right depends on reading existing code beyond the edit site: callers or callees, existing behaviour, invariants, how state flows.",
         "false": "The edit is self-contained and evident from the task text: a new standalone helper, adding a field or parameter, a clear one-line change, a test for stated behaviour.",
@@ -277,9 +281,13 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
         "true": "Typos, renames, formatting, imports, comments, or documentation, with no behaviour change and no judgement.",
         "false": "Anything needing a judgement about behaviour, including extracting or deduplicating logic.",
     },
-    "silent_failure_material_harm": {
+"silent_failure_material_harm": {
         "true": "Both are evident from the task: a mistake would go unnoticed (no error, alert, or failing test) AND it causes data loss or corruption, wrong money movement, security exposure, or cross-service inconsistency through a mechanism the task describes or necessarily implies (persisted-data write or delete, money movement, auth or access change, unchecked cross-service propagation).",
-        "false": "A mistake produces an error, alert, or failing test, or no material-harm mechanism is described or necessarily implied. Mechanical work, refactorings, documentation, tests, cosmetic changes, read-only inspect/design/review work that changes nothing, and single-component fixes with visible failures are no even when touching sensitive code. A merely hypothetical worst case is no; unknown only when the area is plausibly involved but the text cannot settle it.",
+        "false": "A mistake produces an error, alert, or failing test, or no material-harm mechanism is described or necessarily implied. Mechanical work, refactorings, documentation, tests, cosmetic changes, and single-component fixes with visible failures are no even when touching sensitive code. A merely hypothetical worst case is no; unknown only when the area is plausibly involved but the text cannot settle it.",
+    },
+    "changes_public_api_contract": {
+        "true": "The task explicitly changes a stable interface consumed outside the implementation boundary, such as a public HTTP/GraphQL request or response contract, exported SDK/library API, or user-facing CLI command/flag semantics.",
+        "false": "The task only changes internal functions, private/module interfaces, implementation details, internal call sites, refactoring structure, or behavior behind an unchanged external contract. Do not infer a public API change merely because the task mentions 'API', 'interface', 'endpoint implementation', or function signatures.",
     },
 }
 

@@ -265,6 +265,10 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
         "true": "The work moves responsibilities or contracts between modules/packages, or creates/removes a module boundary. Extraction, consolidation, isolation, or split of a module boundary where the interface contract changes. NOT merely reading, using, or touching code in multiple modules.",
         "false": "The work stays inside one module boundary. Reading, using types from, or editing several files within the same module is false. A refactor whose boundary impact is merely uncertain is false.",
     },
+    "crosses_service_boundary": {
+        "true": "The task changes behavior, contracts, communication, or data flow across independently deployed services/processes, such as modifying an inter-service API, RPC/message contract, service-to-service dependency, or coordination semantics.",
+        "false": "The task only changes modules, packages, components, or call sites within one service; merely mentions multiple services; or changes implementation behind an unchanged cross-service contract.",
+    },
     "requires_code_understanding": {
         "true": "Doing the work right depends on reading existing code beyond the edit site: callers or callees, existing behaviour, invariants, how state flows.",
         "false": "The edit is self-contained and evident from the task text: a new standalone helper, adding a field or parameter, a clear one-line change, a test for stated behaviour.",
