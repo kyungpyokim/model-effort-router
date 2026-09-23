@@ -299,7 +299,7 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
     },
     "intermittent_or_concurrency": {
         "true": "The task names a defect whose cause is concurrency or timing correctness: races, deadlocks, ordering, interleaved retries or distributed transactions, or shared-state correctness across threads, processes, or services. The defect is intermittent or timing-dependent and the task states or necessarily implies that concurrency or timing is why: an intermittent race, a deadlock, or a distributed transaction failure is yes. The concurrency cause is what makes it yes, not the word intermittent by itself.",
-        "false": "Symptoms with no stated concurrency or timing cause are no: occasional slowness or a performance anomaly, an unexplained spike, a leak or inconsistency whose cause is not yet known, a test that fails intermittently in a test run, or a rate-limiting, backoff, idempotency, or retry policy. Designing or reviewing a concurrency mechanism, lock, detector, or protocol is no: this fact is about a defect in existing behaviour, not about building or judging something that will handle timing.",
+        "false": "Symptoms with no stated concurrency or timing cause are no: occasional slowness or a performance anomaly, an unexplained spike, a leak or inconsistency whose cause is not yet known, a test that fails intermittently in a test run, or a rate-limiting, backoff, idempotency, or retry policy. Designing or reviewing a concurrency mechanism, lock, detector, watchdog, or protocol is no even when it names deadlocks, races, or ordering: this fact is about a defect in existing behaviour, not about new machinery for handling timing.",
     },
 }
 

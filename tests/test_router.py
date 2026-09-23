@@ -922,7 +922,7 @@ class ImpactFloorTests(unittest.TestCase):
         intermittent = self.prompt_line("intermittent_or_concurrency")
         self.assertIn("Symptoms with no stated concurrency or timing cause are no", intermittent)
         self.assertIn("a test that fails intermittently in a test run", intermittent)
-        self.assertIn("Designing or reviewing a concurrency mechanism, lock, detector, or protocol is no", intermittent)
+        self.assertIn("Designing or reviewing a concurrency mechanism, lock, detector, watchdog, or protocol is no", intermittent)
         criteria_false = sys.modules["rules"].NOUL_CRITERIA["intermittent_or_concurrency"]["false"]
         self.assertIn("Symptoms with no stated concurrency or timing cause are no", criteria_false)
         self.assertIn("rate-limiting, backoff, idempotency, or retry policy", criteria_false)
