@@ -243,7 +243,7 @@ SECURITY_DOMAIN_CRITERIA: dict[str, str] = {
     "payment": "Monetary consequence, charges, refunds, ledger correctness, obligations.",
     "secrets": "API keys, tokens, secret management, encryption keys.",
     "crypto": "Cryptographic algorithms, protocols, key exchange, encryption/decryption.",
-    "permissions": "Access control boundaries, RBAC, tenant isolation, permissions.",
+    "permissions": "Access control between principals or identities — users, roles, tenants, customers, credentials, or equivalent authorization boundaries (RBAC, tenant isolation, ACLs). Validating or sanitizing paths, files, URLs, network destinations, redirects, or other untrusted input is not a permissions change.",
     "pii": "Personal identifiable information, user data privacy.",
     "unknown": "Security area is plausibly involved but unsettled.",
 }
