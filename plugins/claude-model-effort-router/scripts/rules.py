@@ -297,6 +297,10 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
         "true": "The work designs, changes, or decides where trust is established or delegated between components, services, tenants, or principals (service-to-service authentication, token propagation, permission delegation, isolation boundaries), including deciding whether to move such a boundary.",
         "false": "This fact is about the work the task asks you to do, not the artifact under review: reviewing existing boundary code — including a pull request that adds or changes a boundary, isolation, or allowlist rule — is no here and is covered by reviews_security_sensitive_code; moving code inside one trust zone is no, and so is a rename, extraction, or refactoring whose trust impact is unchanged.",
     },
+    "intermittent_or_concurrency": {
+        "true": "The task names a defect whose cause is concurrency or timing correctness: races, deadlocks, ordering, interleaved retries or distributed transactions, or shared-state correctness across threads, processes, or services. The defect is intermittent or timing-dependent and the task states or necessarily implies that concurrency or timing is why: an intermittent race, a deadlock, or a distributed transaction failure is yes. The concurrency cause is what makes it yes, not the word intermittent by itself.",
+        "false": "Symptoms with no stated concurrency or timing cause are no: occasional slowness or a performance anomaly, an unexplained spike, a leak or inconsistency whose cause is not yet known, a test that fails intermittently in a test run, or a rate-limiting, backoff, idempotency, or retry policy. Designing or reviewing a concurrency mechanism, lock, detector, or protocol is no: this fact is about a defect in existing behaviour, not about building or judging something that will handle timing.",
+    },
 }
 
 # Facts the Jev SystemOne path asks as multiple-choice questions, each with its own criteria dict
