@@ -606,10 +606,20 @@ class DifficultyRuleTests(unittest.TestCase):
         irreversible_line = next(
             line for line in prompt.splitlines() if line.startswith("- irreversible_or_ledger_or_crypto:")
         )
-        self.assertIn("designing new cryptographic algorithms", irreversible_line)
+        self.assertIn("designing or changing signing, encryption, or key-management schemes", irreversible_line)
         self.assertIn("JWT", irreversible_line)
-        self.assertIn("token rotation", irreversible_line)
-        self.assertIn("is no", irreversible_line)
+        self.assertIn("auth-token handling that uses an existing library", irreversible_line)
+        self.assertIn("hashing work factors", irreversible_line)
+        self.assertIn("not cryptographic operations", irreversible_line)
+        # Existing-library signing, verification, and hashing, and rounding-precision defects in
+        # amount calculations, stay out: both were load-bearing carve-outs when the crypto axis
+        # was made explicit.
+        self.assertIn("signing, verification, hashing, or auth-token handling", irreversible_line)
+        self.assertIn("rounding or precision defect", irreversible_line)
+        # A consensus, replication, or sync protocol is not crypto/ledger/irreversible by itself;
+        # only the cryptography the task itself designs counts, so signed messages still land yes.
+        self.assertIn("consensus, synchronization, replication", irreversible_line)
+        self.assertIn("none of these by itself", irreversible_line)
 
     def test_prompt_replaces_permissive_unknown_guidance(self):
         prompt = router.classifier_prompt("task")
