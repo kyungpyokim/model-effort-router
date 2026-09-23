@@ -314,6 +314,14 @@ CASES_L4_L5: list[BenchmarkCase] = [
         expected_level="L5",
         expected_tier="critical",
     ),
+    # Label-vs-definition tension, needs adjudication: this design family is labelled
+    # fix_or_result_known=yes with needs_new_structure=no (one difficulty carrier only, since the
+    # critical domain and irreversible facts already floor these cases at L5), while the current
+    # definitions read a named single-component design as an open one and answer fix=no with
+    # ns=yes. The semantically equivalent positive anchors (L5C_crypto_key_derivation and
+    # L5C_audit_immutable_hash_chain) carry the opposite labels on the same shape, so no rule
+    # separates the two groups without memorising case names. The labels stay ground truth and the
+    # classifier is not special-cased; revisit in a corpus-level adjudication.
     BenchmarkCase(
         name="L5C_crypto_hardware_wallet_design",
         task="Design cryptographic signature protocol for hardware security module token vault",
