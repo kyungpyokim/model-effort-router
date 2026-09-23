@@ -2728,6 +2728,26 @@ class RouteSkillContractTests(unittest.TestCase):
                 self.assertIn("execution_strategy", text)
                 self.assertIn("v2-v7", text)
 
+    def test_the_policy_freezes_the_benchmark_ceiling(self):
+        # docs/routing-ceiling.md records the accepted benchmark failures and their unfreeze
+        # conditions; the policy links it, the bundle carries a validated copy, and every accepted
+        # case is named, so a later pass cannot silently re-open them as "regressions to fix".
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        self.assertIn("docs/routing-ceiling.md", policy)
+        ceiling = (ROOT / "docs" / "routing-ceiling.md").read_text(encoding="utf-8")
+        for case in ("L1_inspect_git_clean_status", "L2_unknown_module_boundary_and_scope",
+                     "L2_unknown_security_change_is_not_a_floor", "L3_add_feature_controller_service",
+                     "L3_extract_shared_utility_three_files", "L5E_cross_service_intermittent_bug",
+                     "L5_new_plugin_architecture"):
+            self.assertIn(case, ceiling)
+        # Five over-routes plus two level-correct failures, each with its own unfreeze condition.
+        self.assertEqual(ceiling.count("**Unfreeze when.**"), 7)
+        for plugin in ("codex", "claude", "antigravity"):
+            copy = ROOT / "plugins" / f"{plugin}-model-effort-router" / "docs" / "routing-ceiling.md"
+            self.assertTrue(copy.exists(), f"missing {copy}")
+            self.assertEqual(copy.read_bytes(), (ROOT / "docs" / "routing-ceiling.md").read_bytes(),
+                             f"{copy} is stale; run scripts/sync_bundle.py")
+
     def test_runtime_docs_match_the_current_matrix_and_classifier_contract(self):
         claude_skill = (ROOT / "plugins" / "claude-model-effort-router" / "skills" / "route" / "SKILL.md").read_text(encoding="utf-8")
         claude_readme = (ROOT / "plugins" / "claude-model-effort-router" / "README.md").read_text(encoding="utf-8")

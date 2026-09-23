@@ -80,6 +80,11 @@ def main() -> int:
         require(plugin / "scripts" / "pipeline.py")
         require(plugin / "scripts" / "route_reuse.py")
         require(plugin / "scripts" / "jev_provider.py")
+        # The policy links the ceiling doc; the bundle copy must exist or the link dangles.
+        require(plugin / "docs" / "routing-ceiling.md")
+        assert (plugin / "docs" / "routing-ceiling.md").read_bytes() == (root / "docs" / "routing-ceiling.md").read_bytes(), (
+            f"{plugin.name}/docs/routing-ceiling.md is stale; run scripts/sync_bundle.py"
+        )
     codex_hooks = read_json(codex / "hooks" / "hooks.json")["hooks"]
     assert set(codex_hooks) == {"SessionStart"}
     handler = codex_hooks["SessionStart"][0]["hooks"][0]

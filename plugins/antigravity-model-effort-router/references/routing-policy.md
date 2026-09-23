@@ -4,6 +4,8 @@
 
 The Model Effort Router classifies coding tasks by difficulty and risk, routing them to a matching model and reasoning-effort profile. The v7 route schema uses a 5-level scale (`L1` through `L5`) plus a separate **risk tier** (`standard`, `elevated`, `critical`; route JSON field `risk_tier`), one bounded same-model lookup (then a question to the user) when a fact is unknown, and deterministic Python mapping. The former L6, L7, and Critical Override levels no longer exist: their intent lives on as the `elevated` and `critical` tiers, which imply L5 and raise the effort of the planning/judging stage only.
 
+**Known accuracy ceiling.** The benchmark's accepted failures — five over-routes and two level-correct failures, each with its unfreeze condition — are frozen in [`docs/routing-ceiling.md`](../docs/routing-ceiling.md). Do not re-tune the definitions against those cases without evidence that satisfies the stated condition; that file is the record of why they were left alone.
+
 ## Classification Architecture
 
 The classifier answers facts; code decides the level. There are no difficulty scores

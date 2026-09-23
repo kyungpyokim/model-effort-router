@@ -21,6 +21,7 @@ SHARED = (
     "config/model-map.json",
     "config/classification-schema.json",
     "references/routing-policy.md",
+    "docs/routing-ceiling.md",
 )
 PLUGINS = (
     "plugins/codex-model-effort-router",
