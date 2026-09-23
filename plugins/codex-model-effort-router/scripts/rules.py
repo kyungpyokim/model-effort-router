@@ -266,8 +266,8 @@ NOUL_CRITERIA: dict[str, dict[str, str]] = {
         "false": "The work stays inside one module boundary. Reading, using types from, or editing several files within the same module is false. A refactor whose boundary impact is merely uncertain is false. A single-module investigation, or an investigate, debug, or inspect task that names no second boundary, is no however unclear the cause is.",
     },
     "crosses_service_boundary": {
-        "true": "The task changes behavior, contracts, communication, or data flow across independently deployed services/processes, such as modifying an inter-service API, RPC/message contract, service-to-service dependency, or coordination semantics.",
-        "false": "The task only changes modules, packages, components, or call sites within one service; merely mentions multiple services; or changes implementation behind an unchanged cross-service contract.",
+        "true": "The task changes behaviour, contracts, communication, or data flow across independently deployed services or processes — modifying an inter-service API, RPC or message contract, service-to-service dependency, or coordination semantics — or diagnoses a failure that spans more than one deployed process. Answer yes only when the deployed boundary itself is involved: what changes is the contract, dependency, or coordination between them, or the failure being diagnosed lies across them.",
+        "false": "The task only changes modules, packages, components, or call sites within one service; merely mentions services, service files, repositories, or a build, release, or CI pipeline; changes one deployment's public API format or a name, type, or file that contains \"service\"; moves or renames code across files that ship in one deployment; or changes implementation behind an unchanged cross-service contract. A pipeline, build, or CI stage is not a deployed process, and neither is a repository.",
     },
     "requires_code_understanding": {
         "true": "Doing the work right depends on reading existing code beyond the edit site: callers or callees, existing behaviour, invariants, how state flows.",
@@ -315,7 +315,7 @@ FACT_QUESTIONS: dict[str, str] = {
     "mechanical_only": "Is this purely mechanical work (rename, format, move, no judgement)?",
     "files_touched": "How many files will the work change: 1 only for one existing file with no separate test or new file; 2-5 for a separate test or new file or subsystem or protocol; 6+ if cross-cutting; unknown only with no scope signal (0 read-only)?",
     "crosses_module_boundary": "Does the work move responsibilities or contracts between modules, or create/remove a module boundary (extract, consolidate, isolate, split)? Answer no for merely reading, using, or editing code in multiple modules within one boundary.",
-    "crosses_service_boundary": "Does the work or its diagnosis span more than one service, process, or repository?",
+    "crosses_service_boundary": "Does the work change behaviour, contracts, communication, or data flow across independently deployed services or processes — an inter-service API, RPC or message contract, service-to-service dependency, or coordination semantics — or diagnose a failure that spans more than one deployed process? Naming services, service files, modules, repositories, or a build, release, or CI pipeline is not crossing a service boundary, and a rename, refactor, or public API format change across files that ship in one deployment stays inside one service.",
     "fix_or_result_known": "Is the fix or the expected result already known?",
     "intermittent_or_concurrency": "Is this a timing-dependent or concurrency defect (races, deadlocks, ordering)?",
     "needs_new_structure": "Does the work need a new design or structure rather than a change within the existing one?",
