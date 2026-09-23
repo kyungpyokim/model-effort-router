@@ -174,6 +174,13 @@ CASES_L4_L5: list[BenchmarkCase] = [
         expected_level="L5",
         expected_unresolved=("files_touched", "silent_failure_material_harm"),
     ),
+    # Label-vs-definition tension, needs adjudication: this case is labelled
+    # changes_trust_boundary=no while the task introduces isolated execution contexts, and the
+    # current definition explicitly treats isolation boundaries as trust boundaries. Live Jev
+    # returns yes at high confidence (0.85-0.89) across runs, and the policy file already counts
+    # sandbox and allowlist rules as permission boundaries, so no classifier exception is coded
+    # here: excluding this case would narrow the general trust-boundary semantics to fit one
+    # corpus outlier. The elevated tier this produces stays mismatched (standard expected).
     BenchmarkCase(
         name="L5_new_plugin_architecture",
         task="Design and implement new dynamic plugin loading architecture with isolated contexts",
