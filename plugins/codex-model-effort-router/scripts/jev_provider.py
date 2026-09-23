@@ -164,7 +164,9 @@ def build_systemone_request(task: str, model: str | None = None) -> dict[str, ob
     questions["task_type"] = {
         "type": "choice",
         "instructions": "Which single kind of work does this task ask for? Classify only what is asked: "
-                        "a request to look at, check or explain something is never widened into a fix.",
+                        "a request to look at, check or explain something is never widened into a fix; but a "
+                        "request to find, determine, or diagnose why something fails, crashes, or is "
+                        "inconsistent asks for a defect's cause, so it is implementation.",
         "criteria": TASK_TYPE_CRITERIA,
     }
     return {

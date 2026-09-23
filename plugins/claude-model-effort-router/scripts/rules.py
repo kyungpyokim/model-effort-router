@@ -373,10 +373,10 @@ def fact_decision_point(fact: str) -> float:
 
 
 TASK_TYPE_CRITERIA: dict[str, str] = {
-    "implementation": "Build or change code directly: features, APIs, UI work, bug fixes, tests.",
+    "implementation": "Build or change code directly: features, APIs, UI work, bug fixes, tests. Finding the cause of a defect or anomaly in existing behaviour — find, determine, diagnose, investigate, or analyse why something fails, crashes, is slow, or is inconsistent — is implementation when that defect is the subject and no report-only deliverable is stated: the scope is unknown until it is diagnosed, and the fix is the expected outcome.",
     "design": "Decide structure or direction without editing code: architecture, API or data-model design, technology choice, implementation planning.",
     "review": "Analyse existing code or plans to find problems: code, PR, security, performance, or design review. The work itself changes no code.",
-    "inspect": "Read-only lookup or explanation needing no judgement of correctness, safety or design: find where something is defined, explain what code does, check a setting.",
+    "inspect": "Read-only lookup or explanation needing no judgement of correctness, safety or design: find where something is defined, explain what code does, check a setting. Inspecting a state, metric, log, or artifact stays inspect — including which errors a log or dashboard contains, whether something is wired up, or what a diff changed: the deliverable is what the artifact says, not why the behaviour is wrong.",
     "local_refactoring": "Clean up internals while preserving behaviour and module boundaries: extract functions, renames, deduplication within one module.",
     "architectural_refactoring": "Change module boundaries or system structure AND carry out the edits: module splits, dependency inversion, moving responsibilities between services.",
 }

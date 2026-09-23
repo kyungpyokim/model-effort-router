@@ -70,13 +70,14 @@ There is one classifier per platform. `unknown` and low classifier confidence ne
 
 | `task_type` | Meaning |
 |---|---|
-| `implementation` | Build or change code directly: features, APIs, UI work, bug fixes, tests |
+| `implementation` | Build or change code directly: features, APIs, UI work, bug fixes, tests. Finding the cause of a defect or anomaly in existing behaviour (find, determine, diagnose, investigate, or analyse why something fails, crashes, is slow, or is inconsistent) is `implementation` when that defect is the subject and no report-only deliverable is stated: the scope is unknown until it is diagnosed, and the fix is the expected outcome |
 | `design` | Decide structure or direction without editing code: architecture, API or data-model design, technology choice, planning |
 | `review` | Analyse existing code or plans to find problems: code, PR, security, performance, design review |
+| `inspect` | Read-only lookup or explanation needing no judgement of correctness, safety or design: find where something is defined, explain what code does, check a setting. Inspecting a state, metric, log, or artifact stays `inspect` — including which errors a log or dashboard contains, whether something is wired up, or what a diff changed: the deliverable is what the artifact says, not why the behaviour is wrong |
 | `local_refactoring` | Clean internals while preserving behaviour and module boundaries: extract functions, renames, deduplication, simplification in one module |
 | `architectural_refactoring` | Change module boundaries or system structure AND carry out the resulting edits: module splits, dependency inversion, state-management changes, data-layer redesign |
 
-Mixed tasks classify by their primary purpose. Design with sample code is `design`; implementation that needs small judgement calls is `implementation`; structural change followed by real multi-file edits is `architectural_refactoring`.
+Mixed tasks classify by their primary purpose. Design with sample code is `design`; implementation that needs small judgement calls is `implementation`; structural change followed by real multi-file edits is `architectural_refactoring`. A request to find or diagnose why a defect happens is `implementation` (the fix is the outcome, scope unknown until diagnosed); inspecting a metric, log, or artifact is `inspect` even when a problem is visible; reviewing a given code, PR, or plan artifact is `review`.
 
 ### Facts
 
