@@ -20,7 +20,8 @@ in no case.
 | Routing accuracy (exact: level + tier + unresolved contract) | 93% (93/100) |
 | Strict routing accuracy (also counts live-path noul unknowns as misses) | 89% |
 | Routing on fully labelled cases | 93% |
-| Level accuracy | 95% (98% within ±1) |
+| Level accuracy | 95% |
+| Level accuracy within ±1 | 98% |
 | Tier accuracy | 98% |
 | Over-route | 5 (mean distance 1.4, max 2) |
 | Under-route | 0 |
