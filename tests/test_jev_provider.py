@@ -710,6 +710,26 @@ class JevSystemOneIntegrationTests(unittest.TestCase):
         self.assertEqual(parsed["facts"]["files_touched"], "unknown")
         self.assertEqual(parsed["facts"]["blast_radius"], "unknown")
 
+    def test_files_touched_instructions_accept_units_and_exclude_scope_words(self):
+        # Parity with the enforcement regex: a stated count may name files, modules, services,
+        # packages, or components ("across 3 parser modules"), while containment ("in a single
+        # module") and speculative counts ("three candidate files") are scope statements, not
+        # counts -- live eval had the first shape answered unknown and the second answered 1.
+        instructions = rules.FILES_TOUCHED_INSTRUCTIONS
+        self.assertIn("files, modules, services, packages, or components", instructions)
+        self.assertIn("only read, checked, or named as callers", instructions)
+        self.assertIn("description of containment", instructions)
+        self.assertIn("possible, candidate, potential, or proposed", instructions)
+        for bucket in ("1", "2-5", "6+"):
+            self.assertRegex(rules.FILES_TOUCHED_CRITERIA[bucket], r"modules?, services?, packages?, or components?")
+        self.assertIn("description of containment", rules.FILES_TOUCHED_CRITERIA["unknown"])
+        # Both providers ask the question from the same rule set.
+        self.assertIn("modules, services, packages, or components", rules.FACT_QUESTIONS["files_touched"])
+        prompt_line = next(line for line in router.classifier_prompt("task").splitlines() if line.startswith("- files_touched:"))
+        self.assertIn("modules, services, packages, or components", prompt_line)
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        self.assertIn("modules, services, packages, or components", policy)
+
     def test_files_touched_escalating_bucket_without_evidence_forces_unknown(self):
         # A guessed 2-5/6+ on a bare one-line task is a scope inference, not evidence:
         # it must not promote L2 work to L3/L4 on its own.
@@ -721,12 +741,27 @@ class JevSystemOneIntegrationTests(unittest.TestCase):
             self.assertEqual(parsed["facts"]["files_touched"], "unknown", f"bucket {bucket}")
             self.assertIn("forced to unknown", parsed["reason"])
         # Explicit evidence keeps the bucket: a stated count or a named path.
-        for task in ("auth change across 3 files", "Fix pagination in view.py and api.py", "Update logger calls across 15 files"):
+        # The count may name the units the criteria accept (files, modules, services,
+        # packages, components) and a qualifier may sit between number and noun.
+        for task in ("auth change across 3 files", "Fix pagination in view.py and api.py", "Update logger calls across 15 files",
+                     "Extract duplicate date formatting code across 3 parser modules",
+                     "Rename helper function calculate_discount across 4 checkout files",
+                     "Rename UserProfileDTO across 10 service files",
+                     "rename the handler across three packages"):
             resp = make_systemone_answers({
                 "files_touched": {"type": "choice", "choice": "2-5", "confidence": 0.9, "probabilities": {"2-5": 0.9}},
             })
             parsed = jev_provider.parse_systemone_response(resp, task)
             self.assertEqual(parsed["facts"]["files_touched"], "2-5", f"task {task!r}")
+        # A speculative count is not a stated count: "possible", "candidate", or
+        # "proposed" units are not files the work changes.
+        for task in ("update three possible modules", "update three candidate files",
+                     "update across 3 candidate files", "update 3 possible services"):
+            resp = make_systemone_answers({
+                "files_touched": {"type": "choice", "choice": "2-5", "confidence": 0.9, "probabilities": {"2-5": 0.9}},
+            })
+            parsed = jev_provider.parse_systemone_response(resp, task)
+            self.assertEqual(parsed["facts"]["files_touched"], "unknown", f"task {task!r}")
         # A bare "1" is routing-neutral and stays: forcing it unknown would only block an executable L2.
         resp = make_systemone_answers({
             "files_touched": {"type": "choice", "choice": "1", "confidence": 0.9, "probabilities": {"1": 0.9}},

@@ -219,12 +219,19 @@ _FILES_TOUCHED_PATH_RE = re.compile(
     r"[\w\-./]+\.(py|ts|tsx|js|jsx|go|rs|java|kt|rb|php|md|yaml|yml|toml|json|sql|html|css|sh|txt|cfg|ini)\b",
     re.IGNORECASE,
 )
+# The count may name files, modules, services, packages, or components (the same
+# units FILES_TOUCHED_CRITERIA accepts), and a short qualifier may sit between the
+# number and the noun ("3 parser modules", "4 checkout files"). A count that is only
+# speculative ("three possible modules", "3 candidate files") is not a stated count.
+_FILES_TOUCHED_COUNT_NOUN = r"(?:files?|modules?|services?|packages?|components?|places?)"
+_FILES_TOUCHED_SPECULATIVE = r"(?:possible|candidate|potential|proposed)"
 _FILES_TOUCHED_COUNT_RE = re.compile(
-    r"\b\d+\s*(files?|modules?|services?|places?)\b"
-    r"|\b\d+\s*\+"
+    r"\b\d+\s*\+"
     r"|\b2-5\b|\b6\+\b"
-    r"|\bacross\s+\d+\b"
-    r"|\b(one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty)\b[\w\s,]{0,20}\bfiles?\b",
+    r"|\bacross\s+\d+\s+(?!" + _FILES_TOUCHED_SPECULATIVE + r"\b)"
+    r"|\b\d+\s+(?:(?!" + _FILES_TOUCHED_SPECULATIVE + r"\b)[\w-]+\s+){0,2}" + _FILES_TOUCHED_COUNT_NOUN + r"\b"
+    r"|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty)\b"
+    r"(?:\s+(?!" + _FILES_TOUCHED_SPECULATIVE + r"\b)[\w,-]+){0,3}\s+" + _FILES_TOUCHED_COUNT_NOUN + r"\b",
     re.IGNORECASE,
 )
 

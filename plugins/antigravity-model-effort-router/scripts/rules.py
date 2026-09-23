@@ -221,10 +221,10 @@ _extract_json_payload = extract_json_payload
 
 FILES_TOUCHED_CRITERIA: dict[str, str] = {
     "0": "Read-only design, review or inspect work that changes no file. An implementation that runs an operation or changes production data is never 0, even when no source file changes.",
-    "1": "The task names or lists exactly one file to change, or an actual diff or file list is available and shows exactly one.",
-    "2-5": "The task names or lists 2 to 5 files to change, or an actual diff or file list is available and shows that range.",
-    "6+": "The task names or lists 6 or more files to change, or an actual diff or file list is available and shows that many.",
-    "unknown": "None of the above: the work is not read-only, and neither the task text nor an available diff or file list states how many files or which ones change. This is the default for a one-line task description with no file count, file list, or diff attached — pick this rather than a bucket inferred from the described scope, size, or complexity of the change.",
+    "1": "The task names or lists exactly one file, module, service, package, or component to change, or an actual diff or file list is available and shows exactly one.",
+    "2-5": "The task names or lists 2 to 5 files, modules, services, packages, or components to change, or an actual diff or file list is available and shows that range.",
+    "6+": "The task names or lists 6 or more files, modules, services, packages, or components to change, or an actual diff or file list is available and shows that many.",
+    "unknown": "None of the above: the work is not read-only, and neither the task text nor an available diff or file list states how many files or which ones change. Files that are only read, checked, or named as callers are not changed files; a description of containment (in a single module, inside one component) is a scope statement, not a stated count; and a count that is only possible, candidate, potential, or proposed is not a stated count either. This is the default for a one-line task description with no file count, file list, or diff attached — pick this rather than a bucket inferred from the described scope, size, or complexity of the change.",
 }
 
 # The instructions Jev receives for files_touched. Deliberately does not ask it to estimate scope
@@ -233,8 +233,13 @@ FILES_TOUCHED_CRITERIA: dict[str, str] = {
 # against, and guessing from it is exactly the failure mode this contract exists to rule out.
 FILES_TOUCHED_INSTRUCTIONS = (
     "How many files does the work change? Read-only work is 0. Otherwise, answer only from a stated "
-    "file count, a named file list, or an attached diff — never from how big, complex, or involved "
-    "the described change sounds. If none of those is present, answer unknown."
+    "count of the files, modules, services, packages, or components to change, a named file or module "
+    "list, or an attached diff — never from how big, complex, or involved the described change sounds. "
+    "Count only what the work changes: files that are only read, checked, or named as callers do not "
+    "count, and a caution not to break them adds no files. A description of containment — in a single "
+    "module, inside one component — is a scope statement, not a stated count. A count that is only "
+    "possible, candidate, potential, or proposed is not a stated count either. If none of those is "
+    "present, answer unknown."
 )
 
 SECURITY_DOMAIN_CRITERIA: dict[str, str] = {
@@ -313,7 +318,7 @@ NOUL_FACTS: tuple[str, ...] = tuple(name for name in FACTS if name not in CHOICE
 
 FACT_QUESTIONS: dict[str, str] = {
     "mechanical_only": "Is this purely mechanical work with no behaviour change and nothing to coordinate — a typo, formatting, comment, documentation, or import fix, a rename that stays inside one function or file, a version string or metadata edit, or deleting an unused private symbol? A rename, move, or update that must be propagated beyond where the identifier lives is not mechanical: references, imports, call sites, or tests in more than one file or module, or a public, exported, or cross-file name that other code depends on. Anything needing a judgement about behaviour, including extracting or deduplicating logic, is no.",
-    "files_touched": "How many files will the work change: 1 only for one existing file with no separate test or new file; 2-5 for a separate test or new file or subsystem or protocol; 6+ if cross-cutting; unknown only with no scope signal (0 read-only)?",
+    "files_touched": "How many files, modules, services, packages, or components will the work create or edit — counting new and test files, and not files only read for context: 1 only for one existing file with no separate test or new file; 2-5 for a separate test or new file or subsystem or protocol; 6+ if cross-cutting; unknown only with no scope signal (0 read-only)?",
     "crosses_module_boundary": "Does the work move responsibilities or contracts between modules, or create/remove a module boundary (extract, consolidate, isolate, split)? Answer no for merely reading, using, or editing code in multiple modules within one boundary.",
     "crosses_service_boundary": "Does the work change behaviour, contracts, communication, or data flow across independently deployed services or processes — an inter-service API, RPC or message contract, service-to-service dependency, or coordination semantics — or diagnose a failure that spans more than one deployed process? Naming services, service files, modules, repositories, or a build, release, or CI pipeline is not crossing a service boundary, and a rename, refactor, or public API format change across files that ship in one deployment stays inside one service.",
     "fix_or_result_known": "Is the fix or the expected result already known?",
