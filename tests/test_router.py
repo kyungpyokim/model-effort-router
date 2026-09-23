@@ -917,7 +917,15 @@ class ImpactFloorTests(unittest.TestCase):
     def test_prompt_narrows_the_over_routing_definitions(self):
         self.assertIn("Laying out files inside one new module", self.prompt_line("needs_new_structure"))
         self.assertIn("choosing between explicitly named options", self.prompt_line("fix_or_result_known"))
-        self.assertIn("Occasional slowness or failures with no timing or concurrency aspect stated are no", self.prompt_line("intermittent_or_concurrency"))
+        # The symptom words (slow, intermittent, spike, leak) are not the signal, the concurrency or
+        # timing cause is; the Jev path asks the same question from NOUL_CRITERIA, so pin both sides.
+        intermittent = self.prompt_line("intermittent_or_concurrency")
+        self.assertIn("Symptoms with no stated concurrency or timing cause are no", intermittent)
+        self.assertIn("a test that fails intermittently in a test run", intermittent)
+        self.assertIn("Designing or reviewing a concurrency mechanism, lock, detector, or protocol is no", intermittent)
+        criteria_false = sys.modules["rules"].NOUL_CRITERIA["intermittent_or_concurrency"]["false"]
+        self.assertIn("Symptoms with no stated concurrency or timing cause are no", criteria_false)
+        self.assertIn("rate-limiting, backoff, idempotency, or retry policy", criteria_false)
         irreversible = self.prompt_line("irreversible_or_ledger_or_crypto")
         self.assertIn("can be rolled back is no", irreversible)
         self.assertIn("JWT", irreversible)
