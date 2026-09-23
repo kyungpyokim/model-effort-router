@@ -1,4 +1,4 @@
-# Model Effort Router (v3.0.0)
+# Model Effort Router (v3.1.0)
 
 English | [한국어](README.ko.md)
 

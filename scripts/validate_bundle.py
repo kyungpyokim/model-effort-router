@@ -72,7 +72,7 @@ def main() -> int:
 
     c_manifest = read_json(codex / ".codex-plugin" / "plugin.json")
     assert c_manifest["name"] == "model-effort"
-    assert c_manifest["version"] == "3.0.0"
+    assert c_manifest["version"] == "3.1.0"
     require(codex / "skills" / "route" / "SKILL.md")
     require(codex / "hooks" / "hooks.json")
     require(codex / "scripts" / "routing_policy_hook.py")
@@ -97,7 +97,7 @@ def main() -> int:
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
     assert a_manifest["name"] == "model-effort"
-    assert a_manifest["version"] == "3.0.0"
+    assert a_manifest["version"] == "3.1.0"
     require(claude / "skills" / "route" / "SKILL.md")
     require(claude / "scripts" / "routing_policy_hook.py")
     claude_hooks = read_json(claude / "hooks" / "hooks.json")["hooks"]
@@ -156,7 +156,12 @@ def main() -> int:
 
     g_manifest = read_json(agy / "gemini-extension.json")
     assert g_manifest["name"] == "model-effort"
-    assert g_manifest["version"] == "3.0.0"
+    assert g_manifest["version"] == "3.1.0"
+    # The Antigravity bundle ships two version-bearing manifests; a release that bumps only one
+    # reports a stale version to whichever client reads the other.
+    agy_plugin = read_json(agy / "plugin.json")
+    assert agy_plugin["name"] == "model-effort"
+    assert agy_plugin["version"] == g_manifest["version"], "antigravity plugin.json and gemini-extension.json versions differ"
     require(agy / "skills" / "route" / "SKILL.md")
     require(agy / "GEMINI.md")
     require(agy / "commands" / "route.toml")
