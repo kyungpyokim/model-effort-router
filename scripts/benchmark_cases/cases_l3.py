@@ -37,6 +37,11 @@ CASES_L3: list[BenchmarkCase] = [
         facts={"mechanical_only": "no", "files_touched": "2-5", "crosses_module_boundary": "no", "crosses_service_boundary": "no", "fix_or_result_known": "yes", "intermittent_or_concurrency": "no", "needs_new_structure": "no", "changes_security_or_payment_logic": "no", "reviews_security_sensitive_code": "no", "security_domain": "none", "changes_public_api_contract": "no", "changes_persisted_data": "no", "irreversible_or_ledger_or_crypto": "no", "changes_trust_boundary": "no", "blast_radius": "narrow", "silent_failure_material_harm": "no", "requires_code_understanding": "yes"},
         expected_level="L3",
     ),
+    # Label-policy tension, needs adjudication: policy counts "determining the amount charged
+    # (price, discount, or tax calculation)" as payment, and promo-code validation decides whether
+    # a discount applies, yet this case is labelled security_domain=none. It is inert for routing
+    # (the route is already L5 through the security/payment FP), so the criteria were left alone;
+    # revisit the policy or the label once a few more promo/pricing cases accumulate.
     BenchmarkCase(
         name="L3_add_feature_controller_service",
         task="Add promo code validation logic across cart_controller.py and promo_service.py",
