@@ -313,6 +313,14 @@ CASES_L4_L5: list[BenchmarkCase] = [
         expected_tier="critical",
         expected_unresolved=("files_touched",),
     ),
+    # changes_persisted_data label tension: this design introduces a new append-only audit ledger,
+    # which the live classifier reads as a durable record store and answers yes at 0.65, while the
+    # label says no -- the corpus treats a design of a new log structure as no stored-data change
+    # because no existing records or schema move. The label stays ground truth and the definition
+    # is not narrowed further: an "audit-log designs are no" clause would be case-directed and
+    # would also drag the financial ledger, settlement, custody, and purge designs (all expected
+    # yes) down with it. Route is unaffected either way, since the crypto design already floors at
+    # L5/critical.
     BenchmarkCase(
         name="L5C_audit_immutable_hash_chain",
         task="Design cryptographic append-only merkle tree audit ledger for compliance events",

@@ -955,15 +955,24 @@ class ImpactFloorTests(unittest.TestCase):
         self.assertIn("a new endpoint consumed only by your own frontend", public_api)
         self.assertIn("is no", public_api)
 
-    def test_prompt_and_policy_settle_persisted_data_from_listed_files(self):
+    def test_prompt_and_policy_treat_migration_files_as_evidence_not_requirement(self):
         # Eval finding: tasks that named only UI or service files still answered
-        # changes_persisted_data = unknown and took the L4 migration floor.
+        # changes_persisted_data = unknown and took the L4 migration floor. The file list stays a
+        # strong signal, but live eval showed design work with no migration file answering yes, so
+        # it is evidence rather than a requirement and the state semantics decide.
         policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
         persisted_row = next(line for line in policy.splitlines() if line.startswith("| `changes_persisted_data`"))
         for text in (self.prompt_line("changes_persisted_data"), persisted_row):
-            self.assertIn("lists the files to change", text)
-            self.assertIn("migration, schema, or repository/data-access file", text)
-            self.assertIn("no", text)
+            self.assertIn("lists files and none of them is a migration, schema, or repository file", text)
+            self.assertIn("strong evidence for yes but is not required", text)
+            # The no-side is now state semantics: infrastructure, control-plane, and layer-spanning
+            # work is out even when a repository file is mentioned.
+            self.assertIn("consensus, replication, synchronization, locking, scheduling, or messaging protocols", text)
+            self.assertIn("only spans files, layers, or services", text)
+            self.assertIn("uploads, serves, or renders files or media", text)
+            # A durable system of record stays yes even when the task asks for its design.
+            self.assertIn("ownership and asset records", text)
+            self.assertIn("design or architecture of how those records are written", text)
 
     def test_prompt_and_policy_define_payment_by_monetary_consequence(self):
         prompt = router.classifier_prompt("task")
@@ -1199,7 +1208,7 @@ class UnresolvedFactsTests(unittest.TestCase):
     def test_a_terminal_asks_the_questions_directly(self):
         code, out, err = self.route(tty=True, typed="no\nno\n")
         self.assertEqual((code, json.loads(out)["unresolved_facts"]), (0, []))
-        self.assertIn("Does the work change stored data", err)
+        self.assertIn("Does the work change what is stored", err)
 
     def test_no_prompt_keeps_a_terminal_from_asking(self):
         code, out, _ = self.route("--no-prompt", tty=True, typed="no\nno\n")
