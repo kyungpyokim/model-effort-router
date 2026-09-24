@@ -10,7 +10,6 @@ import statistics
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 
 BUNDLE_ROOT = Path(__file__).resolve().parent.parent

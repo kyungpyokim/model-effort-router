@@ -486,7 +486,9 @@ class RouteFileArgvGrammarTests(PipelineCase):
         def git(*args):
             subprocess.run(["git", *args], cwd=self.work, env=env, check=True, capture_output=True)
         (self.work / "a.txt").write_text("a")
-        git("init", "-q"); git("add", "."); git("commit", "-qm", "init")
+        git("init", "-q")
+        git("add", ".")
+        git("commit", "-qm", "init")
         base = pipeline.git_head(str(self.work))
         self.assertEqual(pipeline.git_diff(str(self.work), base)[1], False)
         (self.work / "a.txt").write_text("changed")

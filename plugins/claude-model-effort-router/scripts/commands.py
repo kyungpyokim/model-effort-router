@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, NoReturn
 if TYPE_CHECKING:
     from router import RouteResult
 
-from policy import AGENT_NAME_RE, AGY_MODEL_RE, MODEL_RE, model_ok
+from policy import model_ok
 
 from rules import CODE_CHANGE_TASK_TYPES, EFFORT_ORDER, LEVEL_NAMES, RISK_FLAGS, SECURITY_FLOOR_FLAGS
 
@@ -327,7 +327,6 @@ def validate_argv(
         return
     if not model_ok(platform, model):
         fail("bad model")
-    tail = [*(["--effort", effort] if effort else [])]
     if not legacy:
         try:
             expected = [

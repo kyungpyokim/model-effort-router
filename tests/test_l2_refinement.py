@@ -139,7 +139,8 @@ class L2RefinementTests(unittest.TestCase):
             matrix = CONFIG["platforms"][platform]["matrix"]["implementation"]["L2"]
             ref = CONFIG["platforms"][platform]["refinements"][0]["stage"]
             rank = {"haiku": 0, "luna": 0, "sonnet": 1, "terra": 1}
-            model_rank = lambda name: next(v for k, v in rank.items() if k in name)
+            def model_rank(name):
+                return next(v for k, v in rank.items() if k in name)
             self.assertGreaterEqual(
                 (model_rank(ref["model"]), router.EFFORT_ORDER.index(ref["effort"])),
                 (model_rank(matrix["model"]), router.EFFORT_ORDER.index(matrix.get("effort") or "low")),

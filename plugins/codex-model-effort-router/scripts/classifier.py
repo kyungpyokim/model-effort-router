@@ -273,7 +273,8 @@ def classify_task_single(
                 if effort:
                     launch.extend(["--config", f'model_reasoning_effort="{effort}"'])
                 launch.append(prompt)
-                unwrap = lambda raw: json.loads(raw)
+                def unwrap(raw):
+                    return json.loads(raw)
             elif platform == "claude-code":
                 launch = [
                     executable,
@@ -298,7 +299,8 @@ def classify_task_single(
                     "--no-session-persistence",
                     prompt,
                 ])
-                unwrap = lambda raw: json.loads(raw)["structured_output"]
+                def unwrap(raw):
+                    return json.loads(raw)["structured_output"]
             else:
                 launch = [
                     executable,
@@ -321,7 +323,8 @@ def classify_task_single(
                     "--print",
                     prompt,
                 ])
-                unwrap = lambda raw: json.loads(raw)["structured_output"]
+                def unwrap(raw):
+                    return json.loads(raw)["structured_output"]
 
             try:
                 proc = subprocess.run(

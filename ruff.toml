@@ -1,0 +1,13 @@
+# Deliberate patterns this repository relies on:
+#   - scripts and tests insert the scripts directory into sys.path before importing siblings (E402);
+#   - classifier.py, cli.py, commands.py and router.py re-export the rules/classifier/command surfaces
+#     that tests, plugins, and the route skills import through them (F401).
+# Everything else runs on ruff's defaults (E4, E7, E9, F).
+[lint.per-file-ignores]
+"scripts/router.py" = ["E402", "F401"]
+"scripts/classifier.py" = ["F401"]
+"scripts/cli.py" = ["F401"]
+"scripts/commands.py" = ["F401"]
+"scripts/benchmark_corpus.py" = ["E402"]
+"scripts/eval_router_performance.py" = ["E402"]
+"tests/*" = ["E402"]

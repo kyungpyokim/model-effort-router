@@ -1,6 +1,5 @@
 from pathlib import Path
 from unittest import mock
-import copy
 import contextlib
 import dataclasses
 import hashlib
@@ -1450,9 +1449,9 @@ class MatrixTests(unittest.TestCase):
                     with self.subTest(cell=f"{platform}/{task_type}/{level}"):
                         if task_type == "inspect" and router.LEVELS.index(level) > router.LEVELS.index(router.INSPECT_MAX_LEVEL):
                             with self.assertRaisesRegex(ValueError, "standard L1-L2"):
-                                routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
+                                routed(platform=platform, classifier=lambda _, t=task_type, lv=level: classification(t, lv))
                             continue
-                        result = routed(platform=platform, classifier=lambda _, t=task_type, l=level: classification(t, l))
+                        result = routed(platform=platform, classifier=lambda _, t=task_type, lv=level: classification(t, lv))
                         self.assertEqual(result.task_type, task_type)
                         self.assertEqual((result.level, result.risk_tier), (level, "standard"))
                         if (task_type, level) in self.EXPECTED_SINGLE[platform]:
@@ -1481,7 +1480,7 @@ class MatrixTests(unittest.TestCase):
                     for tier in router.RISK_TIERS:
                         if tier != "standard" and level != "L5":
                             continue
-                        result = routed(platform=platform, classifier=lambda _, t=task_type, l=level, k=tier: classification(t, l, risk_tier=k))
+                        result = routed(platform=platform, classifier=lambda _, t=task_type, lv=level, k=tier: classification(t, lv, risk_tier=k))
                         implementers = [s["model"] for s in result.stages if s["role"] != "planner"]
                         with self.subTest(platform=platform, task_type=task_type, level=level, tier=tier):
                             self.assertTrue(implementers)
