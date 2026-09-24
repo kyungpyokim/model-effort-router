@@ -641,6 +641,14 @@ class DifficultyRuleTests(unittest.TestCase):
         self.assertIn("reviews_security_sensitive_code", changes_line)
         review_line = next(line for line in prompt.splitlines() if line.startswith("- reviews_security_sensitive_code:"))
         self.assertIn("regardless of whether code is changed", review_line)
+        # A review of untrusted-input defence (escaping, injection, path traversal, SSRF) is a
+        # security review even when the security_domain exclusions keep the domain none; four
+        # corpus cases pin that shape, and judging the two facts together under-routed them.
+        self.assertIn("Judge this fact independently of security_domain", review_line)
+        self.assertIn("output escaping", review_line)
+        self.assertIn("protects against attacks", review_line)
+        policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
+        self.assertIn("judged independently of `security_domain`", policy)
         domain_line = next(line for line in prompt.splitlines() if line.startswith("- security_domain:"))
         self.assertIn("payment over crypto over auth over permissions over pii over secrets", domain_line)
         facts_schema = router.CLASSIFIER_SCHEMA["properties"]["facts"]
@@ -895,21 +903,27 @@ class ImpactFloorTests(unittest.TestCase):
         self.assertIn("no error, alert, or failing test", self.prompt_line("silent_failure_material_harm"))
 
     def test_prompt_defines_files_touched_guidance(self):
-        # This bullet has been patched three times this session for one reproduced regression each time (files_touched
-        # "0" rejected for an implementation, an "unknown" reply for a scoped task, unknown spreading past this fact);
-        # a loose pin here, like every other substantial fact bullet already has, keeps that guidance from silently
-        # regressing again undetected.
+        # The bullet used to license scope estimation ("Estimate files_touched from the work's described
+        # scope"), which conflicted with the corpus contract (39 of 100 live cases are labelled unknown)
+        # and with the Jev instructions: it let a classifier answer a bucket from how big the change
+        # sounded, and a downward guess disables the unresolved-fact ASK. Both providers now answer
+        # from evidence only, so a bare one-line description is unknown.
         files_touched = self.prompt_line("files_touched")
         self.assertIn("is at least 1", files_touched)
-        self.assertIn("Estimate files_touched from the work's described scope", files_touched)
-        self.assertIn("no exact count is stated", files_touched)
-        self.assertIn("only when it is confined to one existing file", files_touched)
-        self.assertIn("separate test or new file", files_touched)
-        # A task whose entire scope IS one test/new file (no separate production change) must
-        # stay 1, not 2-5 -- the "separate" clause above only fires alongside a distinct main change.
-        self.assertIn("whose entire scope is one test or one new file is still 1", files_touched)
+        self.assertIn("never unknown, even when no file count is stated", files_touched)
+        self.assertIn("answer only from evidence", files_touched)
+        self.assertIn("a named file, module, service, package, or component list", files_touched)
+        self.assertIn("instead of named artifacts is scope, not a list", files_touched)
+        self.assertIn("never a bucket inferred from the described scope", files_touched)
+        # The evidence rule is scoped to this fact: the first live A/B showed it leaking into
+        # read-only reviews (files_touched unknown instead of 0) and into other facts (spurious
+        # unknown on crosses_module_boundary), so both guards are pinned.
+        self.assertIn("This rule governs files_touched alone", files_touched)
         policy = (ROOT / "references" / "routing-policy.md").read_text(encoding="utf-8")
-        self.assertIn("whose entire scope is one test or one new file is still 1", policy)
+        self.assertIn("answered only from evidence", policy)
+        self.assertIn("never a bucket inferred from scope", policy)
+        self.assertIn("never `unknown`, even when no file count is stated", policy)
+        self.assertIn("governs `files_touched` alone", policy)
 
     def test_files_touched_question_matches_scope_estimation_rules(self):
         question = router.FACT_QUESTIONS["files_touched"]

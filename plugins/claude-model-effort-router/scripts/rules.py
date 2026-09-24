@@ -228,9 +228,12 @@ FILES_TOUCHED_CRITERIA: dict[str, str] = {
 }
 
 # The instructions Jev receives for files_touched. Deliberately does not ask it to estimate scope
-# from complexity or wording (the CLI classifier's prompt does, for a different, repo-aware path):
-# a bare one-line task description carries no evidence a probability answer can be calibrated
-# against, and guessing from it is exactly the failure mode this contract exists to rule out.
+# from complexity or wording: a bare one-line task description carries no evidence a probability
+# answer can be calibrated against, and guessing from it is exactly the failure mode this contract
+# exists to rule out. The CLI classifier's prompt now states the same evidence rule (a stated count,
+# a named file list, a diff, or the repository reads its repo-aware pass allows), and the
+# deterministic jev_provider.enforce_files_touched_contract guard backstops the escalating buckets
+# on the Jev path.
 FILES_TOUCHED_INSTRUCTIONS = (
     "How many files does the work change? Read-only work is 0. Otherwise, answer only from a stated "
     "count of the files, modules, services, packages, or components to change, a named file or module "
