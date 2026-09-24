@@ -223,6 +223,51 @@ so a future pass does not rediscover them as new findings:
   0.98 minimum over five repeats by `571676e`), and `files_touched` on `L2_simple_bug_fix` (quiet in
   the recorded runs after `6c3a204` but it has drawn both buckets in earlier sessions).
 
+## Task-type boundary family (profile-only; no level, tier, or exact effect)
+
+Measured 2026-09-25 against the same corpus, stage, and platform. The classifier misses 8 of 100
+task-type labels. The level and tier rules never read `task_type`, so the exact score is unaffected —
+but the model+effort profile follows those misses, because `task_type` picks the matrix row: the
+baseline's task-type 92% and profile 92% are the same eight cases.
+
+| Case | Corpus | Live answer | Shape |
+|---|---|---|---|
+| `L1_markdown_link_fix` | local_refactoring | implementation | code-noise tidy-up (broken link) |
+| `L1_comment_spelling_fix` | local_refactoring | implementation | code-noise tidy-up (comment) |
+| `L1_trailing_whitespace_cleanup` | local_refactoring | implementation | code-noise tidy-up (whitespace) |
+| `L3_refactor_logger_four_files` | local_refactoring | implementation | format standardization |
+| `L4_sdk_breaking_method_rename` | architectural_refactoring | implementation | exported-interface rename |
+| `L4_consolidate_validation_schemas` | architectural_refactoring | local_refactoring | cross-module consolidation |
+| `L5E_multi_service_frontier_redesign` | architectural_refactoring | implementation | new cross-service structure |
+| `L5C_cryptographic_key_rotation` | architectural_refactoring | implementation | at-rest protection scheme change |
+
+Six wording variants were measured on a 45-case focused harness (the mechanical, local, and
+architectural families, every design case, and every `changes_public_api_contract=yes` case as
+guards):
+
+- widening `local_refactoring` toward code-noise tidy-ups (4 variants): every variant either failed
+  to move the three tidy-up cases or dragged `L1_doc_typo_fix`, `L1_license_header_update`,
+  `L1_bump_version_string`, or `L4_large_scale_files_change` across the boundary;
+- widening `architectural_refactoring` textually: fixed 4 targets but flipped
+  `L3_extract_shared_utility_three_files`, `L4_rename_type_across_ten_files`, and
+  `L4_large_scale_files_change` to architectural_refactoring;
+- fact-gating the two cleanest clauses (`changes_public_api_contract` yes plus a behaviour-preserving
+  rename; `needs_new_structure` yes with `crosses_service_boundary` yes): the gated clauses fired as
+  intended, yet the same three cases still flipped — the added detail itself reads as a structural
+  signal ("across 3 parser modules", "across 10 service files", "across 15 files").
+
+Two label pairs are contradictory under any single wording: `L4_consolidate_validation_schemas`
+(architectural) against `L3_extract_shared_utility_three_files` (local) — both deduplicate code
+across modules — and `L1_comment_spelling_fix` (local) against `L1_doc_typo_fix` (implementation) —
+both correct a misspelling in text. Every measured variant traded one for the other.
+
+**Why accepted.** The route's level, tier, flags, and safety metrics are unaffected, and forcing
+these labels costs a regression on anchors the corpus values more (the design family, the
+internal-rename family, the propagation case). The definitions stay as they are.
+
+**Unfreeze when.** The corpus adjudicates a contradictory pair or relabels the tidy-up family, or a
+wording is validated on the 45-case harness with zero flips of the design and public-contract guards.
+
 ## Policy
 
 > The remaining accepted failures are policy and corpus tensions, not active classifier defects.

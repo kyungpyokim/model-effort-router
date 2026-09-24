@@ -2754,8 +2754,9 @@ class RouteSkillContractTests(unittest.TestCase):
                      "L3_extract_shared_utility_three_files", "L5E_cross_service_intermittent_bug",
                      "L5_new_plugin_architecture"):
             self.assertIn(case, ceiling)
-        # Five over-routes plus two level-correct failures, each with its own unfreeze condition.
-        self.assertEqual(ceiling.count("**Unfreeze when.**"), 7)
+        # Five over-routes plus two level-correct failures, each with its own unfreeze condition,
+        # plus the task-type boundary family recorded on 2026-09-25.
+        self.assertEqual(ceiling.count("**Unfreeze when.**"), 8)
         for plugin in ("codex", "claude", "antigravity"):
             copy = ROOT / "plugins" / f"{plugin}-model-effort-router" / "docs" / "routing-ceiling.md"
             self.assertTrue(copy.exists(), f"missing {copy}")
