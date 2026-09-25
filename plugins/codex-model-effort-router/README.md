@@ -10,7 +10,7 @@ routes it through the v5 `task_type × level` matrix in `config/model-map.json`:
 |---|---|---|---|---|---|
 | implementation / local_refactoring | luna med | sol high -> luna med | sol high -> luna xhigh | sol high -> luna xhigh | sol high -> luna xhigh |
 | design / review | luna med | sol high | sol high | sol high | sol high |
-| architectural_refactoring | luna med | sol high | sol high -> luna xhigh | sol xhigh -> luna xhigh | sol xhigh -> luna xhigh |
+| architectural_refactoring | luna med | sol high | sol high -> luna xhigh | sol high -> luna xhigh | sol high -> luna xhigh |
 
 `A -> B` is the success-dependent planner-to-implementer chain. Every non-fast code change
 (`implementation`, `local_refactoring`, `architectural_refactoring`) gets its planner from the

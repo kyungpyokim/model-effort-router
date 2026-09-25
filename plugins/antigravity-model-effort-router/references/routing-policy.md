@@ -175,7 +175,7 @@ payment              data_migration      public_api_change
 | design | luna med | sol high | sol high | sol high | sol high |
 | review | luna med | sol high | sol high | sol high | sol high |
 | local_refactoring | luna med | luna med (luna high with `requires_code_understanding`) | luna xhigh | luna xhigh | sol high → luna xhigh |
-| architectural_refactoring | luna med | sol high | sol high → luna xhigh | sol xhigh → luna xhigh | sol xhigh → luna xhigh |
+| architectural_refactoring | luna med | sol high | sol high → luna xhigh | sol high → luna xhigh | sol high → luna xhigh |
 
 ### Claude Code Matrix
 
@@ -213,7 +213,7 @@ Effective code-change routes (standard risk; `implementation` and `local_refacto
 | Platform | task_type | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
 | Codex | implementation / local_refactoring | sol high → luna med (luna high with `requires_code_understanding`) | sol high → luna xhigh | sol high → luna xhigh | sol high → luna xhigh |
-| Codex | architectural_refactoring | sol high (single) | sol high → luna xhigh | sol xhigh → luna xhigh | sol xhigh → luna xhigh |
+| Codex | architectural_refactoring | sol high (single) | sol high → luna xhigh | sol high → luna xhigh | sol high → luna xhigh |
 | Claude Code | implementation / local_refactoring | opus high → haiku (sonnet low with `requires_code_understanding`) | opus high → sonnet med | opus high → sonnet high | opus high → sonnet high |
 | Claude Code | architectural_refactoring | opus high (single) | opus high → sonnet med | opus xhigh → sonnet high | opus xhigh → sonnet high |
 | Antigravity | all three | Flash High (single) | Pro High → Flash High | Pro High → Sonnet Thinking | Pro High → Sonnet Thinking |
@@ -230,6 +230,7 @@ Risk tiers modify these rows at the planning/judging stages only (the planner an
 - `Pro High` on Antigravity resolves availability-driven: preferred `Gemini 3.1 Pro (High)` → `Gemini .* Pro (High)` → `Claude Sonnet .* (Thinking)`.
 - On Claude Code, `sonnet` is `claude-sonnet-5` (medium at L3, high at L4), `haiku` is `claude-haiku-4-5` without an effort parameter, and `opus` is `claude-opus-5-5`. On Codex, `luna` is `gpt-6-luna` (raised to `xhigh` for the L3+ implementation and refactoring rows) and `sol` is `gpt-6-sol`.
 - Effort ceilings: Luna low/medium/high/xhigh (L3+ implementation and refactoring rows run Luna xhigh); Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Luna high and Sonnet low are routed only through the L2 refinement (`refinements` in the config, applied after the matrix lookup to single-stage `implementation` and `local_refactoring` routes at L2): `requires_code_understanding` = yes -> Luna high (Codex) / Sonnet low (Claude Code); no or unknown -> the matrix profile, Luna medium / Haiku. `unknown` is missing information, not evidence, so it keeps the cheaper profile; a failing test gate or the fix loop covers a wrong guess. L3 stays Luna xhigh / Sonnet medium and higher levels are unchanged. Antigravity defines no refinement. Reused session routes keep the stored fact. A refinement is keyed on the post-escalation level, so an explicit `--level L2` on a mechanical task can reach it. It replaces the whole matrix entry, so a refinement stage must carry its own `fallback_model` or `candidates` if the entry it replaces had them, and a refinement that lowers the same model's effort is refused.
+- **Measured effort calibration (2026-09-25).** gpt-6-sol completed every measured task at `high`: a 250-case brute-force-checked interval optimizer, an edge-case duration parser (49 cases), a bug-repair task with a 9-case contract, and the L4/L5 planning stage on a seeded repository (13/13 rubric: schema, all four analysis sections, 3-5 steps, pytest validation, rollback notes, real-file grounding, zero hallucinated paths). `xhigh` repeated the same 100% scores and only spent 1.6-2.6x the reasoning tokens, so the default Codex rows hold `high`; `xhigh` stays a risk-tier raise and `max` stays critical-only. The A/B ran the repo's own planner prompt read-only under a clean `CODEX_HOME`.
 
 ## Execution roles and pipeline
 

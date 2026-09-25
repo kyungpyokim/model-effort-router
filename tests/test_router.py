@@ -1418,8 +1418,8 @@ class MatrixTests(unittest.TestCase):
             ("implementation", "L5"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "xhigh")],
             ("local_refactoring", "L5"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "xhigh")],
             ("architectural_refactoring", "L3"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "xhigh")],
-            ("architectural_refactoring", "L4"): [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-6-luna", "xhigh")],
-            ("architectural_refactoring", "L5"): [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-6-luna", "xhigh")],
+            ("architectural_refactoring", "L4"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "xhigh")],
+            ("architectural_refactoring", "L5"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "xhigh")],
         },
         "claude-code": {
             **{(kind, level): [("planner", "claude-opus-5-5", "high"), ("implementer", *impl)]
