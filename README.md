@@ -49,9 +49,14 @@ Classifier models by platform (no escalation model exists):
 
 Each preflight runs in an isolated temporary directory and validates structured JSON
 (task_type, facts, delegability, evidence, reason) before selecting a profile. `files_touched`
-is `1` only for one existing file with no separate test/new-file work; a separate test/new
-file or subsystem/protocol is `2-5`, cross-cutting work is `6+`, and `unknown` means no scope
-signal. Read-only design and review use `0`. In a Claude Code
+is `0` for read-only design, review, and inspect work (never `unknown`), and at least `1` for
+an implementation that runs an operation or changes production data even with no source diff.
+For work that changes files the bucket (`1`, `2-5`, `6+`) is answered only from evidence — a
+stated count, a named file, module, service, package, or component list, an attached diff, or
+what the repository-aware reads show — never from the described scope, size, or complexity:
+role and layer words are scope, not a count, and a count that is only possible or proposed is
+not a stated count. No scope signal is `unknown`; on the Jev path a deterministic guard forces
+`unknown` for a guessed `2-5`/`6+` bucket without explicit evidence. In a Claude Code
 or Codex session the route skill runs the same prompt through an in-session
 `difficulty-assessor` agent instead and passes its JSON with `--classification-file`. The
 route skill reads the repository in that single pass (`--repo-aware`), and asks the user about
@@ -108,7 +113,7 @@ is, `state.json`) stay separate. Details: `references/routing-policy.md`.
 
 ### Live classifier benchmark
 
-`scripts/eval_router_performance.py --live-classifier --platform codex|claude-code|antigravity [--case NAME ...] [--limit N]` sends the labelled corpus to the real classifier and reports routing accuracy (level, tier, unresolved facts) and task-type accuracy, model+effort profile agreement (so a Luna medium vs Luna high or Haiku vs Sonnet low miss is visible), labelled-fact accuracy per fact, the `requires_code_understanding` confusion counts, unknown transitions, classifier fallbacks, calls and seconds. It spends real model usage, so it is opt-in. A case that does not label `requires_code_understanding` is graded on the classifier's own answer for that fact when comparing profiles.
+`scripts/eval_router_performance.py --live-classifier --platform codex|claude-code|antigravity [--case NAME ...] [--limit N]` sends the labelled corpus to the real classifier and reports routing accuracy (level, tier, unresolved facts) and task-type accuracy, model+effort profile agreement (so a Luna medium vs Luna high or Haiku vs Sonnet low miss is visible), labelled-fact accuracy per fact, the `requires_code_understanding` confusion counts, unknown transitions, classifier fallbacks, calls and seconds. It spends real model usage, so it is opt-in. A case that does not label `requires_code_understanding` is graded on the classifier's own answer for that fact when comparing profiles. `task_type` never feeds the level or tier rules: it selects the matrix row, so a task-type miss moves the model+effort profile and not the route (the frozen tension is in `docs/routing-ceiling.md`).
 
 ### Route reuse
 
@@ -143,6 +148,9 @@ implies a level, and `unknown` is missing information, not confirmed risk.
   gives at least L4 and a bare `security_domain` of payment, crypto,
   permissions, or pii at least L5. Bare auth has no L5 floor; confirmed auth
   changes and reviews still reach the elevated tier / L4 as above, whatever the task type.
+  Reviews of code that defends against attacks on untrusted input — output escaping,
+  injection defence, path-traversal prevention, request-forgery protection, unsafe URL or
+  destination handling — count even when `security_domain` stays `none`.
 - **`elevated` tier** (L5): a security/payment logic change, a critical domain whose
   trust boundary changes, an intermittent failure across services, or new structure
   across services with an open result. It raises the planning/judging stage effort to
@@ -292,9 +300,20 @@ The optional `orchestration.codex` policy is fail-closed. `enabled: false` is
 the shipped default and does not change `execution_strategy`; it only preserves
 candidate metadata for a later adapter release.
 
+## Docs
+
+- [references/routing-policy.md](references/routing-policy.md) - the full rule set, fact
+  definitions, and per-platform matrices.
+- [docs/routing-ceiling.md](docs/routing-ceiling.md) - the frozen live-benchmark ceiling:
+  every accepted failure, its reason, and the condition that would unfreeze it.
+- [docs/2026-09-25-final-verification.md](docs/2026-09-25-final-verification.md) - the measured
+  verification report for the 2026-09-25 round.
+- [docs/2026-09-25-work-history.md](docs/2026-09-25-work-history.md) - that round's work log.
+
 ## Validate
 
 ```bash
+ruff check scripts tests        # ruff.toml pins the deliberate E402/F401 exceptions
 python3 scripts/validate_bundle.py
 python3 -m unittest discover -s tests -v
 ```

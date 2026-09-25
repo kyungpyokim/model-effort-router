@@ -18,7 +18,7 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 
 ## 계단식 사전 분류기 (Cascading preflight classifier)
 
-분류기(Classifier)는 난이도를 직접 채점하지 않습니다. 작업에 대한 **16가지 명확한 팩트(Fact)**만을 답변합니다.
+분류기(Classifier)는 난이도를 직접 채점하지 않습니다. 작업에 대한 **17가지 명확한 팩트(Fact)**만을 답변합니다.
 (수정 파일 수, 모듈/서비스 경계 초과 여부, 결과/해결책 인지 여부, 새로운 아키텍처 구조 필요 여부, 보안/결제 로직 변경 또는 검토 여부, 보안 도메인, 퍼블릭 API 변경, 영속 데이터 변경, 비가역적 변경, 신뢰 경계(Trust boundary) 변경, 영향 반경(Blast radius), 무음 실패로 인한 중대한 피해 여부)
 
 `scripts/router.py`에 정의된 `DIFFICULTY_RULES`가 이 팩트들을 바탕으로 최종 난이도 레벨을 결정합니다. 일치하는 가장 높은 규칙이 적용되며, 라우트 JSON의 `matched_rules`에 해당 규칙 이름이 기록됩니다.
@@ -34,7 +34,7 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 - **Claude Code**: `claude-sonnet-5` (effort 없음)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)`
 
-각 사전 분류는 격리된 임시 디렉토리에서 실행되며 구조화된 JSON(`task_type`, `facts`, `delegability`, `evidence`, `reason`)을 검증한 뒤 프로필을 선택합니다. 읽기 전용인 `design` 및 `review` 작업의 경우 `files_touched`가 `0`으로 처리됩니다. Claude Code 또는 Codex 세션 내에서는 라우트 스킬이 인세션 `difficulty-assessor` 에이전트를 통해 동일한 프롬프트를 실행하고 `--classification-file`로 JSON을 전달합니다. 라우트 스킬은 이 1회 분류에서 저장소를 읽고(`--repo-aware`), `unresolved_facts`가 남으면 다른 모델을 부르는 대신 사용자에게 묻습니다. `--classification-file`의 `{"primary", "lookup"}` 엔벨로프는 같은 모델의 조회 1회를 첫 응답에 합칩니다.
+각 사전 분류는 격리된 임시 디렉토리에서 실행되며 구조화된 JSON(`task_type`, `facts`, `delegability`, `evidence`, `reason`)을 검증한 뒤 프로필을 선택합니다. `files_touched`는 읽기 전용 `design`/`review`/`inspect` 작업이면 `0`(unknown 아님)이고, 파일을 바꾸는 작업에서는 증거로만 버킷(`1` / `2-5` / `6+`)을 정합니다 — 명시된 개수, 파일·모듈·서비스·패키지·컴포넌트 목록, 첨부 diff, 저장소 인식 조회 결과. 서술된 범위·규모·복잡도로는 버킷을 고르지 않으며(역할·레이어 단어는 개수가 아님), 범위 신호가 없으면 `unknown`입니다. Jev 경로에서는 증거 없는 `2-5`/`6+` 추정을 결정론적 가드가 `unknown`으로 되돌립니다. Claude Code 또는 Codex 세션 내에서는 라우트 스킬이 인세션 `difficulty-assessor` 에이전트를 통해 동일한 프롬프트를 실행하고 `--classification-file`로 JSON을 전달합니다. 라우트 스킬은 이 1회 분류에서 저장소를 읽고(`--repo-aware`), `unresolved_facts`가 남으면 다른 모델을 부르는 대신 사용자에게 묻습니다. `--classification-file`의 `{"primary", "lookup"}` 엔벨로프는 같은 모델의 조회 1회를 첫 응답에 합칩니다.
 
 사전 분류 프로세스가 0이 아닌 종료 코드로 끝나면 1회 재시도하며, 타임아웃 발생 시에는 재시도하지 않습니다. 재시도 후에도 실패하거나 실행할 수 없거나 잘못된 JSON을 반환하는 경우:
 
@@ -87,6 +87,7 @@ L5 난이도에 `delegability: 2`를 만족하는 안전한 단일 Codex 라우�
 - **보안 검토(Review-only) 작업**: 플래그 대신 팩트에 의해 바닥선이 결정됩니다.
   - `reviews_security_sensitive_code`가 감지되면 최소 **L4**
   - 치명적인 보안 영역(`security_domain`: payment, crypto, permissions, pii)의 경우 작업 유형과 무관하게 최소 **L5**. bare auth는 L5 바닥선이 없습니다. 확인된 auth 변경은 elevated 티어에, auth 검토는 L4에 도달합니다.
+  - 입력 방어(출력 이스케이프, injection 방어, path traversal 방지, 요청 위조 방지, 안전하지 않은 URL·목적지 처리) 코드를 검토하는 작업은 `security_domain`이 `none`이어도 보안 민감 코드 리뷰로 계산됩니다.
 - **`elevated` 티어** (L5): 보안/결제 로직 변경, 신뢰 경계가 바뀌는 치명적 보안 영역, 서비스 간 간헐적 장애, 결과가 열려 있는 서비스 간 새 구조 설계. 계획/판단 단계의 effort를 Codex(Sol)와 Claude Code(Opus)에서는 `xhigh`로 올리고, effort 설정이 없는 Antigravity는 해당 단계를 Claude Opus Thinking으로 교체합니다.
 - **`critical` 티어** (L5): `irreversible_or_ledger_or_crypto` = yes(비가역 운영 데이터, 원장 정확성, 신규 암호 설계) 또는 `--critical` 플래그. 같은 단계를 `max`로 올립니다(Antigravity: Claude Opus Thinking). 명시적 yes에서만 발동하며 `unknown`은 발동하지 않습니다.
 - 2단계 라우트에서 구현 단계는 매트릭스 프로필을 그대로 유지하고, 계획/리뷰 단계만 상향됩니다. 티어 프로필은 `config/model-map.json`의 `tiers`에 있습니다.
@@ -191,9 +192,17 @@ plugins/codex-model-effort-router/bin/codex-route -- "<작업 내용>"
 
 ---
 
+## 문서 (Docs)
+
+- [references/routing-policy.md](references/routing-policy.md) — 전체 규칙, 팩트 정의, 플랫폼별 매트릭스
+- [docs/routing-ceiling.md](docs/routing-ceiling.md) — 동결된 라이브 벤치마크 천장: 수용된 실패와 사유, 해제(unfreeze) 조건
+- [docs/2026-09-25-final-verification.md](docs/2026-09-25-final-verification.md) — 2026-09-25 라운드 최종 검증 리포트
+- [docs/2026-09-25-work-history.md](docs/2026-09-25-work-history.md) — 같은 라운드 작업 히스토리
+
 ## 검증 (Validate)
 
 ```bash
+ruff check scripts tests        # ruff.toml이 의도적 E402/F401 예외를 고정합니다
 python3 scripts/validate_bundle.py
 python3 -m unittest discover -s tests -v
 ```
