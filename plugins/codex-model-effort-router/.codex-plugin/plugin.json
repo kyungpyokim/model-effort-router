@@ -29,6 +29,10 @@
       "Route this coding task to the right model and effort.",
       "Classify this task from L1 to L5 before implementation."
     ],
-    "brandColor": "#111827"
+    "brandColor": "#111827",
+    "composerIcon": "./assets/composer-icon.svg",
+    "logo": "./assets/logo.svg",
+    "logoDark": "./assets/logo-dark.svg",
+    "screenshots": []
   }
 }
