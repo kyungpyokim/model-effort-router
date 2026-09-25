@@ -8,9 +8,9 @@ routes it through the v5 `task_type × level` matrix in `config/model-map.json`:
 
 | task type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation / local_refactoring | luna med | sol high -> luna med | sol high -> terra med | sol high -> terra high | sol high -> terra high |
+| implementation / local_refactoring | luna med | sol high -> luna med | sol high -> luna xhigh | sol high -> luna xhigh | sol high -> luna xhigh |
 | design / review | luna med | sol high | sol high | sol high | sol high |
-| architectural_refactoring | luna med | sol high | sol high -> terra med | sol xhigh -> terra high | sol xhigh -> terra high |
+| architectural_refactoring | luna med | sol high | sol high -> luna xhigh | sol xhigh -> luna xhigh | sol xhigh -> luna xhigh |
 
 `A -> B` is the success-dependent planner-to-implementer chain. Every non-fast code change
 (`implementation`, `local_refactoring`, `architectural_refactoring`) gets its planner from the
@@ -40,8 +40,8 @@ accepts `L1`-`L5` only.
 
 ## Execution roles and pipeline
 
-Goal: **Sol thinks and verifies, Luna and Terra implement.** Sol designs,
-verifies, and reviews; Luna/Terra implement and fix; the launcher runs the tests with no
+Goal: **Sol thinks and verifies, Luna implements.** Sol designs,
+verifies, and reviews; Luna implements and fixes; the launcher runs the tests with no
 model; re-promote to Sol when the implementation hits a new design problem. Classification
 stays on Luna.
 
@@ -55,7 +55,7 @@ stays on Luna.
   sent only the requirement, approved plan, git diff, test results, and key code.
 - On review FAIL the reviewer does not fix it: the route's implementer fixes it (every fix
   uses the route's implementer today), then the review runs again; the next failure re-plans
-  once. Re-classifying each planned step and each fix to pick Luna / Terra / Sol by
+  once. Re-classifying each planned step and each fix to pick Luna / Sol by
   difficulty is planned, not implemented.
 - An implementer that finds something outside the plan stops and returns evidence
   (scope expansion, architecture or public API change, DB migration, security

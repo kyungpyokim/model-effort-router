@@ -328,7 +328,7 @@ class PipelineFailClosedTests(PipelineCase):
             pipeline.run_route(self.payload(), ["true"], str(self.work))
         text = err.getvalue()
         self.assertIn("phase=plan model=gpt-6-sol effort=high", text)
-        self.assertIn("phase=implement model=gpt-5.6-terra effort=high", text)
+        self.assertIn("phase=implement model=gpt-6-luna effort=xhigh", text)
         self.assertIn("phase=review model=gpt-6-sol effort=high attempt=1", text)
         self.assertNotIn("command:", text)
 
@@ -510,8 +510,8 @@ class PipelinePlanTests(unittest.TestCase):
                 payload = self.payload("codex", critical=tier == "critical")
                 pipe = payload["pipeline"]
                 self.assertEqual((pipe["review"]["effort"], pipe["replan"]["effort"]), (effort, effort))
-                self.assertEqual(payload["steps"][-1]["effort"], "high")
-                self.assertEqual(payload["steps"][-1]["model"], "gpt-5.6-terra")
+                self.assertEqual(payload["steps"][-1]["effort"], "xhigh")
+                self.assertEqual(payload["steps"][-1]["model"], "gpt-6-luna")
 
     def test_claude_review_is_opus_and_carries_the_agent_delegation(self):
         payload = self.payload("claude-code", critical=True)

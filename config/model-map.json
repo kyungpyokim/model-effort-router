@@ -66,12 +66,12 @@
             "effort": "medium"
           },
           "L3": {
-            "model": "gpt-5.6-terra",
-            "effort": "medium"
+            "model": "gpt-6-luna",
+            "effort": "xhigh"
           },
           "L4": {
-            "model": "gpt-5.6-terra",
-            "effort": "high"
+            "model": "gpt-6-luna",
+            "effort": "xhigh"
           },
           "L5": {
             "stages": [
@@ -82,8 +82,8 @@
               },
               {
                 "role": "implementer",
-                "model": "gpt-5.6-terra",
-                "effort": "high"
+                "model": "gpt-6-luna",
+                "effort": "xhigh"
               }
             ]
           }
@@ -164,12 +164,12 @@
             "effort": "medium"
           },
           "L3": {
-            "model": "gpt-5.6-terra",
-            "effort": "medium"
+            "model": "gpt-6-luna",
+            "effort": "xhigh"
           },
           "L4": {
-            "model": "gpt-5.6-terra",
-            "effort": "high"
+            "model": "gpt-6-luna",
+            "effort": "xhigh"
           },
           "L5": {
             "stages": [
@@ -180,8 +180,8 @@
               },
               {
                 "role": "implementer",
-                "model": "gpt-5.6-terra",
-                "effort": "high"
+                "model": "gpt-6-luna",
+                "effort": "xhigh"
               }
             ]
           }
@@ -204,8 +204,8 @@
               },
               {
                 "role": "implementer",
-                "model": "gpt-5.6-terra",
-                "effort": "medium"
+                "model": "gpt-6-luna",
+                "effort": "xhigh"
               }
             ]
           },
@@ -218,8 +218,8 @@
               },
               {
                 "role": "implementer",
-                "model": "gpt-5.6-terra",
-                "effort": "high"
+                "model": "gpt-6-luna",
+                "effort": "xhigh"
               }
             ]
           },
@@ -232,8 +232,8 @@
               },
               {
                 "role": "implementer",
-                "model": "gpt-5.6-terra",
-                "effort": "high"
+                "model": "gpt-6-luna",
+                "effort": "xhigh"
               }
             ]
           }

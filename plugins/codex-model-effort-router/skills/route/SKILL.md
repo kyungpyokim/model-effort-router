@@ -65,7 +65,7 @@ Schema v7 records facts, `risk_tier`, and `orchestration_eligible` as handoff me
 preserves original verified artifacts; respect
 `execution_strategy: direct` because direct v2-v7 route-file replay never invokes it.
 
-Pipeline guidance (Sol thinks and verifies, Luna and Terra implement). `pipeline.py` enforces:
+Pipeline guidance (Sol thinks and verifies, Luna implements). `pipeline.py` enforces:
 
 - Follow-up questions in the same task reuse the stored route; do not route again.
   Re-classify only when the task type changes (for example inspect to modify), the scope
@@ -87,7 +87,7 @@ Pipeline guidance (Sol thinks and verifies, Luna and Terra implement). `pipeline
   change, or a plan/code-structure mismatch. "It is hard" or "I am unsure" alone is not a reason
   to escalate.
 - Planned (Phase 3), not enforced yet: choosing the fix model by fix difficulty after a review
-  FAIL (simple to Luna medium, ordinary logic to Terra, design problem to Sol). Today every fix
+  FAIL (simple to Luna medium, ordinary logic to Luna xhigh, design problem to Sol). Today every fix
   uses the route's implementer.
 
 The result's `verification` object is recommendation metadata only. The

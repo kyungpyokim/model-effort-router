@@ -25,8 +25,8 @@ class PlanWorkflowTests(unittest.TestCase):
     def test_l2_to_l4_code_changes_plan_with_the_judge_and_implement_cheaply(self):
         cases = (
             ("codex", "L2", {}, (SOL, "high"), ("gpt-6-luna", "high")),
-            ("codex", "L3", {"files_touched": "2-5"}, (SOL, "high"), ("gpt-5.6-terra", "medium")),
-            ("codex", "L4", {"crosses_module_boundary": "yes"}, (SOL, "high"), ("gpt-5.6-terra", "high")),
+            ("codex", "L3", {"files_touched": "2-5"}, (SOL, "high"), ("gpt-6-luna", "xhigh")),
+            ("codex", "L4", {"crosses_module_boundary": "yes"}, (SOL, "high"), ("gpt-6-luna", "xhigh")),
             ("claude-code", "L3", {"files_touched": "2-5"}, (OPUS, "high"), ("claude-sonnet-5", "medium")),
             ("claude-code", "L4", {"crosses_module_boundary": "yes"}, (OPUS, "high"), ("claude-sonnet-5", "high")),
         )

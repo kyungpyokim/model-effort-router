@@ -59,7 +59,7 @@ class L2RefinementTests(unittest.TestCase):
                 self.assertEqual(self.profile(routed("claude-code", understanding=understanding))[0], "claude-haiku-4-5")
 
     def test_the_fact_never_changes_the_level_or_other_rungs(self):
-        for platform, l3, l4 in (("codex", ("gpt-5.6-terra", "medium"), ("gpt-5.6-terra", "high")),
+        for platform, l3, l4 in (("codex", ("gpt-6-luna", "xhigh"), ("gpt-6-luna", "xhigh")),
                                  ("claude-code", ("claude-sonnet-5", "medium"), ("claude-sonnet-5", "high"))):
             with self.subTest(platform=platform):
                 self.assertEqual(self.profile(routed(platform, files_touched="2-5")), l3)
@@ -138,7 +138,7 @@ class L2RefinementTests(unittest.TestCase):
         for platform in ("codex", "claude-code"):
             matrix = CONFIG["platforms"][platform]["matrix"]["implementation"]["L2"]
             ref = CONFIG["platforms"][platform]["refinements"][0]["stage"]
-            rank = {"haiku": 0, "luna": 0, "sonnet": 1, "terra": 1}
+            rank = {"haiku": 0, "luna": 0, "sonnet": 1}
             def model_rank(name):
                 return next(v for k, v in rank.items() if k in name)
             self.assertGreaterEqual(

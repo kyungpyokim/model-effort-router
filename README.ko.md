@@ -8,11 +8,11 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 - **`task_type` 축**: `implementation`, `design`, `review`, `local_refactoring`, `architectural_refactoring`
 - **`level` (난이도) 축**: `L1` ~ `L5`. 여기에 별도의 **리스크 티어**(`standard` / `elevated` / `critical`)가 있어 고위험 작업의 계획/판단 단계 effort를 끌어올립니다.
 - 각 플랫폼별 고유 모델 및 추론 강도에 매핑:
-  - **Codex**: luna / terra / sol
+  - **Codex**: luna / sol
   - **Claude Code**: haiku / sonnet / opus
   - **Antigravity**: Flash / Pro / Sonnet Thinking / Opus Thinking
 
-전체 원칙: **중요한 판단에는 상위 모델 토큰을 쓰고, 이미 결정된 작업은 충분한 가장 저렴한 모델로 실행합니다.** Codex는 "Sol이 생각하고 검증하며, Luna와 Terra가 구현한다." Claude Code는 "Opus가 생각하고 검증하며, Haiku와 Sonnet이 구현한다." 자세한 내용은 [실행 역할과 파이프라인](#실행-역할과-파이프라인)을 참고하세요.
+전체 원칙: **중요한 판단에는 상위 모델 토큰을 쓰고, 이미 결정된 작업은 충분한 가장 저렴한 모델로 실행합니다.** Codex는 "Sol이 생각하고 검증하며, Luna가 구현한다." Claude Code는 "Opus가 생각하고 검증하며, Haiku와 Sonnet이 구현한다." 자세한 내용은 [실행 역할과 파이프라인](#실행-역할과-파이프라인)을 참고하세요.
 
 ---
 
@@ -110,7 +110,7 @@ python3 scripts/router.py --platform antigravity --detect-antigravity-models --f
 
 `trivial_edit` Fast Path를 통과한 경우를 제외한 모든 코드 변경(`implementation`, `local_refactoring`, `architectural_refactoring`)은 성공 여부에 따라 체인 형태로 실행되며, 계획·리뷰 판정 모델은 `max(level, L2)`의 플랫폼 행에서 가져옵니다. 예외: 파생된 계획자의 모델과 effort가 구현 모델과 같으면 계획 단계를 넣지 않고 단일 stage로 남습니다(Codex/Claude Code의 L2 `architectural_refactoring`, 그리고 Antigravity의 모든 L2 코드 변경). 이 행들은 review 판정 모델이 구현 모델과 같으므로, reviewer 분리(Phase 3)가 들어오기 전까지 review는 자기 검토(self-review)입니다. `trivial_edit`만 계획과 리뷰를 건너뜁니다.
 1. 계획 모델(Codex `sol`, Claude Code `opus`, Antigravity Pro)이 임시 실행 디렉토리에 구조화된 계획 JSON을 작성합니다.
-2. 구현 모델(`luna`/`terra` 또는 `sonnet`)이 계획서와 저장소를 읽고 계획의 검증 명령과 함께 구현을 진행합니다. 구현 모델은 새로운 설계 결정을 내리지 않으며, 계획 밖의 문제를 발견하면 멈추고 계획 모델을 위한 에스컬레이션 근거를 반환합니다.
+2. 구현 모델(`luna` 또는 `sonnet`)이 계획서와 저장소를 읽고 계획의 검증 명령과 함께 구현을 진행합니다. 구현 모델은 새로운 설계 결정을 내리지 않으며, 계획 밖의 문제를 발견하면 멈추고 계획 모델을 위한 에스컬레이션 근거를 반환합니다.
 
 임시 실행 디렉토리는 성공 시 자동 삭제되며, 실패 시에는 분석을 위해 보존됩니다 (`--keep-plan` 옵션으로 강제 보존 가능).
 
@@ -122,11 +122,11 @@ python3 scripts/router.py --platform codex --task-type architectural_refactoring
 
 ## 실행 역할과 파이프라인
 
-계획·설계·검증·리뷰에는 강한 모델을, 구현·수정·테스트에는 저렴한 모델을 씁니다. 모델과 effort는 역할 + 난이도 + 리스크로 결정됩니다. 같은 L4라도 설계/리뷰/검증이면 Sol/Opus, 구현이면 Terra high / Sonnet high로 매핑됩니다. 역할은 기존 task_type에 대응합니다: 설계 = `design`, 리뷰 = `review`, 구현 = `implementation`, `local_refactoring`, `architectural_refactoring`(Fast Path가 아닌 코드 변경에서 `design` 행이 계획하고 `review` 행이 리뷰). 분류 자체는 저렴한 모델이 계속 담당합니다.
+계획·설계·검증·리뷰에는 강한 모델을, 구현·수정·테스트에는 저렴한 모델을 씁니다. 모델과 effort는 역할 + 난이도 + 리스크로 결정됩니다. 같은 L4라도 설계/리뷰/검증이면 Sol/Opus, 구현이면 Luna xhigh / Sonnet high로 매핑됩니다. 역할은 기존 task_type에 대응합니다: 설계 = `design`, 리뷰 = `review`, 구현 = `implementation`, `local_refactoring`, `architectural_refactoring`(Fast Path가 아닌 코드 변경에서 `design` 행이 계획하고 `review` 행이 리뷰). 분류 자체는 저렴한 모델이 계속 담당합니다.
 
 ```text
 요청 -> 분류(저렴) -> 계획 (Fast Path가 아닌 코드 변경, max(level, L2)의 design 행 판단 모델: Sol / Opus)
-     -> 구현 (라우트의 구현 모델: Luna / Terra / Haiku / Sonnet)
+     -> 구현 (라우트의 구현 모델: Luna / Haiku / Sonnet)
           새로운 설계 문제 발견? 중단 -> 근거 반환 -> 재계획
      -> 결정적 테스트 (런처, 모델 호출 없음)
      -> Fast Path가 아닌 코드 변경: Sol / Opus 검증+리뷰 1회
@@ -142,7 +142,7 @@ python3 scripts/router.py --platform codex --task-type architectural_refactoring
 - **리뷰 FAIL 시** 리뷰어는 직접 고치지 않습니다. 라우트의 구현 모델이 수정하고 다시 리뷰를 받습니다(난이도별 수정 모델은 계획 단계).
 - **에스컬레이션은 근거 기반**입니다. 구현 모델이 계획 밖의 문제를 발견하면 멈추고 근거(범위 확대, 아키텍처 변경, 퍼블릭 API 변경, DB 마이그레이션, 보안 경계 변경, 계획과 코드 구조 불일치)를 반환합니다. "어렵다", "확신이 없다"만으로는 유효한 사유가 아닙니다.
 - **후속 질문은 저장된 라우트를 재사용**합니다. 작업 유형이 바뀌거나(예: INSPECT -> MODIFY), 범위가 크게 늘거나, 새로운 위험 증거가 나오거나, 승인된 설계를 구현할 수 없다는 사실이 드러날 때만 다시 분류합니다.
-- **Effort 상한**: Luna는 Low/Medium/High(Luna High로 부족하면 Luna XHigh가 아니라 Terra로), Terra는 Medium/High, Sol은 High/XHigh/Max. Claude Code는 Haiku(단순), Sonnet(일반~복잡 구현), Opus(계획/설계/검증/리뷰). Luna High와 Sonnet Low는 L2 세분화로만 라우팅됩니다: 단순 구현이지만 기존 코드 이해가 필요하면(`requires_code_understanding` = yes) Luna High / Sonnet Low, 아니면 L2는 Luna Medium / Haiku 그대로입니다.
+- **Effort 상한**: Luna는 Low/Medium/High/XHigh(L3 이상 구현·리팩터링은 Luna XHigh), Sol은 High/XHigh/Max. Claude Code는 Haiku(단순), Sonnet(일반~복잡 구현), Opus(계획/설계/검증/리뷰). Luna High와 Sonnet Low는 L2 세분화로만 라우팅됩니다: 단순 구현이지만 기존 코드 이해가 필요하면(`requires_code_understanding` = yes) Luna High / Sonnet Low, 아니면 L2는 Luna Medium / Haiku 그대로입니다.
 - **토큰 절약**: Sol/Opus는 판단에만 사용, 코딩은 위임, 검증+리뷰는 상위 모델 1회 호출로 통합, 같은 범위는 재분류하지 않음, 큰 출력을 다시 보내지 않음(요구사항+계획+diff+테스트 결과+핵심 코드만), 단순한 불확실성이 아니라 새로운 증거가 있을 때만 재분류.
 
 전체 규칙과 매트릭스는 [references/routing-policy.md](references/routing-policy.md)를 참고하세요.

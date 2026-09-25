@@ -9,12 +9,12 @@ All three platforms share the same two-dimensional routing: a `task_type` axis
 (implementation, design, review, local_refactoring, architectural_refactoring)
 and the difficulty level (L1–L5), plus a separate risk tier (`standard`,
 `elevated`, `critical`) that raises the planning/judging effort for high-risk work.
-Both are mapped onto each platform's own models (Codex: luna/terra/sol —
+Both are mapped onto each platform's own models (Codex: luna/sol —
 Claude Code: haiku/sonnet/opus — Antigravity: Flash/Pro/Sonnet Thinking/Opus Thinking).
 
 Overall principle: spend top-model tokens on important judgement, and run
 already-decided work on the cheapest sufficient model. Codex: **Sol thinks and
-verifies, Luna and Terra implement.** Claude Code: **Opus thinks and verifies,
+verifies, Luna implements.** Claude Code: **Opus thinks and verifies,
 Haiku and Sonnet implement.** See [Execution roles and pipeline](#execution-roles-and-pipeline).
 
 ## Preflight classifier
@@ -191,7 +191,7 @@ chain, with plan and review judges taken from `max(level, L2)`. The exception: w
 derived planner's model and effort equal the implementer's, no planner is inserted and the route
 stays single-stage (Codex and Claude Code `architectural_refactoring` at L2, and every
 Antigravity L2 code change). On those rows the review judge is the same model as the implementer, so the review is a self-review until reviewer separation lands (Phase 3). A gated trivial edit is the only code-change fast path that skips plan and review. The planner (Codex `sol`, Claude Code `opus`, Antigravity Pro) writes a structured plan JSON
-into a temporary run directory, then the implementer (`luna`/`terra`, or
+into a temporary run directory, then the implementer (`luna`, or
 `sonnet`) reads the plan plus the repository and implements it with the plan's
 validation commands. The implementer does not make new design decisions: it stops
 and returns escalation evidence for the planner instead. The run directory is
@@ -206,7 +206,7 @@ python3 scripts/router.py --platform codex --task-type architectural_refactoring
 
 Use strong models for plan, design, verify, and review; cheap models for implement,
 fix, and test. Role + difficulty + risk decide the model and effort: the same L4
-maps to Sol/Opus for design, review, or verification and to Terra high / Sonnet
+maps to Sol/Opus for design, review, or verification and to Luna xhigh / Sonnet
 high for implementation. Roles map onto the existing task types: design =
 `design`, review = `review`, implementation = `implementation`, `local_refactoring`,
 and `architectural_refactoring` (every non-fast code change is planned by the `design` row and reviewed by the
@@ -214,7 +214,7 @@ and `architectural_refactoring` (every non-fast code change is planned by the `d
 
 ```text
 request -> classify (cheap) -> plan (every non-fast code change; design-row judge at max(level, L2), Sol / Opus)
-        -> implement (the route's implementer: Luna / Terra / Haiku / Sonnet)
+        -> implement (the route's implementer: Luna / Haiku / Sonnet)
              new design problem? stop -> evidence -> re-plan
         -> deterministic tests (launcher, no model)
         -> ONE Sol / Opus verification + review for every non-fast code change
@@ -246,8 +246,8 @@ a cheaper or stronger fixer (model-by-difficulty routing).
 - **Follow-ups reuse the stored route.** Re-classify only when the task type changes
   (for example INSPECT to MODIFY), the scope grows a lot, new risk evidence appears, or
   a fact shows the approved design cannot be implemented.
-- **Effort ceilings.** Luna low/medium/high (beyond Luna high, move to Terra rather than
-  Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Claude Code: Haiku for simple work,
+- **Effort ceilings.** Luna low/medium/high/xhigh (L3+ implementation and refactoring work
+  runs Luna xhigh); Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Claude Code: Haiku for simple work,
   Sonnet for general-to-complex implementation, Opus for plan/design/verify/review. The
   current matrix reaches Luna high and Sonnet low only through the L2 refinement: a simple
   implementation that needs existing-code understanding (`requires_code_understanding`) gets Luna

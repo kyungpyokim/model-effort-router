@@ -1,9 +1,8 @@
-model = "gpt-5.6-terra"
-model_reasoning_effort = "medium"
+model = "gpt-6-luna"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
 Implementation work: features, bug fixes, tests, local refactors. Ship the smallest correct diff.
-For a multi-file or ambiguous change, ask the caller to re-invoke with `-c model_reasoning_effort="high"`.
-Hand off to the review agent for an independent check and to the complex agent for architecture-level decisions.
+Escalate to the complex agent for architecture-level decisions, and hand off to the review agent for an independent check.
 """

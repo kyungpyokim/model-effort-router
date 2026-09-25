@@ -100,7 +100,7 @@ def classifier_output(task_type="implementation", level="L2", flags=None, reason
     return json.dumps(payload) if raw else payload
 
 
-def classification(task_type="implementation", level="L2", flags=None, source="terra", delegability=0, risk_tier="standard", facts=None):
+def classification(task_type="implementation", level="L2", flags=None, source="classifier", delegability=0, risk_tier="standard", facts=None):
     return router.Classification(
         facts=dict(facts or {}),
         task_type=task_type,
@@ -1359,8 +1359,8 @@ class EscalationTests(unittest.TestCase):
 CODEX_IMPL = (
     ("gpt-6-luna", "medium"),
     ("gpt-6-luna", "medium"),
-    ("gpt-5.6-terra", "medium"),
-    ("gpt-5.6-terra", "high"),
+    ("gpt-6-luna", "xhigh"),
+    ("gpt-6-luna", "xhigh"),
 )
 # Sol and Opus never run below high effort: they are the judging models.
 CODEX_JUDGE = (
@@ -1415,11 +1415,11 @@ class MatrixTests(unittest.TestCase):
                for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS, CODEX_IMPL)},
             # L1 is not fast here (no facts): the judge row is max(L1, L2) while the implementer keeps its L1 row.
             ("architectural_refactoring", "L1"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "medium")],
-            ("implementation", "L5"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
-            ("local_refactoring", "L5"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
-            ("architectural_refactoring", "L3"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-5.6-terra", "medium")],
-            ("architectural_refactoring", "L4"): [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
-            ("architectural_refactoring", "L5"): [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
+            ("implementation", "L5"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "xhigh")],
+            ("local_refactoring", "L5"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "xhigh")],
+            ("architectural_refactoring", "L3"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "xhigh")],
+            ("architectural_refactoring", "L4"): [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-6-luna", "xhigh")],
+            ("architectural_refactoring", "L5"): [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-6-luna", "xhigh")],
         },
         "claude-code": {
             **{(kind, level): [("planner", "claude-opus-5-5", "high"), ("implementer", *impl)]
@@ -1472,7 +1472,7 @@ class MatrixTests(unittest.TestCase):
             self.assertNotIn(retired, text.lower())
 
     def test_implementation_is_never_run_by_the_judging_model(self):
-        # Sol/Opus plan and judge; implementation stays on Luna/Terra, Haiku/Sonnet, Flash/Sonnet.
+        # Sol/Opus plan and judge; implementation stays on the cheaper models.
         judges = {"codex": ("gpt-6-sol",), "claude-code": ("claude-opus-5-5",), "antigravity": ("Claude Opus",)}
         for platform, judge_models in judges.items():
             for task_type in ("implementation", "local_refactoring"):
@@ -1488,11 +1488,11 @@ class MatrixTests(unittest.TestCase):
 
     def test_tiers_raise_only_the_planning_stage_effort(self):
         cases = (
-            ("codex", "implementation", "elevated", [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")]),
-            ("codex", "implementation", "critical", [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")]),
+            ("codex", "implementation", "elevated", [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-6-luna", "xhigh")]),
+            ("codex", "implementation", "critical", [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-6-luna", "xhigh")]),
             ("codex", "review", "elevated", [("executor", "gpt-6-sol", "xhigh")]),
             ("codex", "review", "critical", [("executor", "gpt-6-sol", "max")]),
-            ("codex", "architectural_refactoring", "critical", [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")]),
+            ("codex", "architectural_refactoring", "critical", [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-6-luna", "xhigh")]),
             ("claude-code", "implementation", "elevated", [("planner", "claude-opus-5-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")]),
             ("claude-code", "design", "critical", [("executor", "claude-opus-5-5", "max")]),
             ("antigravity", "design", "elevated", [("executor", "Claude Opus 4.6 (Thinking)", None)]),
@@ -1589,12 +1589,12 @@ class RoutingTests(unittest.TestCase):
         )
         self.assertFalse(result.orchestration_eligible)
 
-    def test_security_flag_promotes_an_l1_implementation_to_terra(self):
+    def test_security_flag_promotes_an_l1_implementation_to_luna_xhigh(self):
         result = routed(classifier=lambda _: classification("implementation", "L1", flags={"authentication": True}))
         self.assertEqual((result.base_level, result.level, result.risk_tier), ("L1", "L5", "elevated"))
         self.assertEqual(
             [(stage["role"], stage["model"], stage["effort"]) for stage in result.stages],
-            [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
+            [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-6-luna", "xhigh")],
         )
 
     def test_review_with_authorization_routes_sol_xhigh(self):
@@ -1649,7 +1649,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(result.task_type, "implementation")
         self.assertEqual(
             [(stage["role"], stage["model"], stage["effort"]) for stage in result.stages],
-            [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")],
+            [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-6-luna", "xhigh")],
         )
         self.assertEqual(result.source, "manual")
 
@@ -1912,21 +1912,27 @@ class CommandAndLauncherTests(unittest.TestCase):
                 fake = directory / executable
                 fake.write_text(
                     f"#!{sys.executable}\nimport pathlib, sys\n"
-                    f"if {classifier_model!r} in sys.argv[1:]:\n"
+                    "argv = sys.argv[1:]\n"
+                    "prompt = ' '.join(argv)\n"
+                    # The implementer shares the classifier's model id, so identify the
+                    # classification call by the absence of a pipeline-stage prompt, not by model.
+                    "stage = any(marker in prompt for marker in ('planning stage', 'You are the execution stage', 'merged verification'))\n"
+                    f"if {classifier_model!r} in argv and not stage:\n"
                     f"    print({classifier_reply!r})\n"
-                    "else:\n"
-                    f"    with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
-                    "        stream.write(' '.join(sys.argv[1:]) + chr(10))\n"
+                    "    sys.exit(0)\n"
+                    f"with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
+                    "    stream.write(prompt + chr(10))\n"
                     # L3 is now reviewed by the judge; let the review pass so the run can finish.
                     # Answer it first: its prompt embeds the repo diff, which can mention the plan marker.
-                    "    if 'merged verification' in ' '.join(sys.argv[1:]):\n"
-                    "        print('VERDICT: PASS')\n"
-                    "        sys.exit(0)\n"
-                    f"    if 'planning stage' in ' '.join(sys.argv[1:]):\n"
-                    f"        print({plan_json!r})\n"
+                    "if 'merged verification' in prompt:\n"
+                    "    print('VERDICT: PASS')\n"
+                    "    sys.exit(0)\n"
+                    "if 'planning stage' in prompt:\n"
+                    f"    print({plan_json!r})\n"
+                    "    sys.exit(0)\n"
                     # The implement step edits the (hermetic) work tree so the pipeline sees a change.
-                    "    if 'You are the execution stage' in ' '.join(sys.argv[1:]):\n"
-                    "        pathlib.Path('implemented.txt').write_text('done')\n",
+                    "if 'You are the execution stage' in prompt:\n"
+                    "    pathlib.Path('implemented.txt').write_text('done')\n",
                     encoding="utf-8",
                 )
                 fake.chmod(0o755)
@@ -2063,8 +2069,8 @@ class CommandAndLauncherTests(unittest.TestCase):
         result = routed(classifier=lambda _: classification("implementation", "L3"))
         command = router.stage_commands(result, "task")[-1]
         self.assertEqual(command[:2], ["codex", "exec"])
-        self.assertEqual(command[command.index("-m") + 1], "gpt-5.6-terra")
-        self.assertIn("model_reasoning_effort=medium", command)
+        self.assertEqual(command[command.index("-m") + 1], "gpt-6-luna")
+        self.assertIn("model_reasoning_effort=xhigh", command)
         self.assertIn("You are the execution stage of a two-stage plan-and-implement pipeline.", " ".join(command))
         self.assertIn(str(Path(result.plan_dir) / "plan.json"), " ".join(command))
 
@@ -2133,7 +2139,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         self.assertIn("mkdir -p ", chain)
         self.assertIn(" && ", chain)
         self.assertIn("-m gpt-6-sol", chain)
-        self.assertIn("-m gpt-5.6-terra", chain)
+        self.assertIn("-m gpt-6-luna", chain)
         self.assertIn(str(Path(result.plan_dir) / "plan.json"), chain)
         self.assertIn(f"rm -rf {shlex_quote(str(result.plan_dir))}", chain)
         kept = router.command_chain(result, "restructure modules", keep_plan=True)
@@ -2144,7 +2150,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         planner, implementer = router.stage_commands(result, "task")
         plan_path = str(Path(result.plan_dir) / "plan.json")
         self.assertEqual(planner[planner.index("-m") + 1], "gpt-6-sol")
-        self.assertEqual(implementer[implementer.index("-m") + 1], "gpt-5.6-terra")
+        self.assertEqual(implementer[implementer.index("-m") + 1], "gpt-6-luna")
         joined_planner = " ".join(planner)
         joined_implementer = " ".join(implementer)
         self.assertEqual(joined_planner.count(plan_path), 0)
@@ -2622,7 +2628,7 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("--print-classifier-prompt", primary)
         self.assertIn("--classification-file", primary)
         self.assertIn("gpt-6-luna", primary)
-        self.assertNotIn("gpt-5.6-terra", primary)
+        self.assertNotIn("terra", primary)
         self.assertIn("`model` and `reasoning_effort`", primary)
         self.assertIn("non-zero", primary)
         self.assertNotIn("escalated sandbox permissions", primary)

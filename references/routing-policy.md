@@ -171,11 +171,11 @@ payment              data_migration      public_api_change
 
 | task_type | L1 | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| implementation | luna med | luna med (luna high with `requires_code_understanding`) | terra med | terra high | sol high → terra high |
+| implementation | luna med | luna med (luna high with `requires_code_understanding`) | luna xhigh | luna xhigh | sol high → luna xhigh |
 | design | luna med | sol high | sol high | sol high | sol high |
 | review | luna med | sol high | sol high | sol high | sol high |
-| local_refactoring | luna med | luna med (luna high with `requires_code_understanding`) | terra med | terra high | sol high → terra high |
-| architectural_refactoring | luna med | sol high | sol high → terra med | sol xhigh → terra high | sol xhigh → terra high |
+| local_refactoring | luna med | luna med (luna high with `requires_code_understanding`) | luna xhigh | luna xhigh | sol high → luna xhigh |
+| architectural_refactoring | luna med | sol high | sol high → luna xhigh | sol xhigh → luna xhigh | sol xhigh → luna xhigh |
 
 ### Claude Code Matrix
 
@@ -212,8 +212,8 @@ Effective code-change routes (standard risk; `implementation` and `local_refacto
 
 | Platform | task_type | L2 | L3 | L4 | L5 |
 |---|---|---|---|---|---|
-| Codex | implementation / local_refactoring | sol high → luna med (luna high with `requires_code_understanding`) | sol high → terra med | sol high → terra high | sol high → terra high |
-| Codex | architectural_refactoring | sol high (single) | sol high → terra med | sol xhigh → terra high | sol xhigh → terra high |
+| Codex | implementation / local_refactoring | sol high → luna med (luna high with `requires_code_understanding`) | sol high → luna xhigh | sol high → luna xhigh | sol high → luna xhigh |
+| Codex | architectural_refactoring | sol high (single) | sol high → luna xhigh | sol xhigh → luna xhigh | sol xhigh → luna xhigh |
 | Claude Code | implementation / local_refactoring | opus high → haiku (sonnet low with `requires_code_understanding`) | opus high → sonnet med | opus high → sonnet high | opus high → sonnet high |
 | Claude Code | architectural_refactoring | opus high (single) | opus high → sonnet med | opus xhigh → sonnet high | opus xhigh → sonnet high |
 | Antigravity | all three | Flash High (single) | Pro High → Flash High | Pro High → Sonnet Thinking | Pro High → Sonnet Thinking |
@@ -228,25 +228,25 @@ Risk tiers modify these rows at the planning/judging stages only (the planner an
 
 - `Claude Opus Thinking` on Antigravity resolves availability-driven: `Claude Opus 5 .*(Thinking)` → `Claude Opus .*(Thinking)` → `Opus.*Thinking` → `Claude Opus 4.6 (Thinking)` (fallback).
 - `Pro High` on Antigravity resolves availability-driven: preferred `Gemini 3.1 Pro (High)` → `Gemini .* Pro (High)` → `Claude Sonnet .* (Thinking)`.
-- On Claude Code, `sonnet` is `claude-sonnet-5` (medium at L3, high at L4), `haiku` is `claude-haiku-4-5` without an effort parameter, and `opus` is `claude-opus-5-5`. On Codex, `luna`, `terra`, and `sol` are `gpt-6-luna`, `gpt-5.6-terra`, and `gpt-6-sol`.
-- Effort ceilings: Luna low/medium/high (a task that needs more than Luna high moves to Terra, never to Luna xhigh); Terra medium/high; Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Luna high and Sonnet low are routed only through the L2 refinement (`refinements` in the config, applied after the matrix lookup to single-stage `implementation` and `local_refactoring` routes at L2): `requires_code_understanding` = yes -> Luna high (Codex) / Sonnet low (Claude Code); no or unknown -> the matrix profile, Luna medium / Haiku. `unknown` is missing information, not evidence, so it keeps the cheaper profile; a failing test gate or the fix loop covers a wrong guess. L3 stays Terra medium / Sonnet medium and higher levels are unchanged. Antigravity defines no refinement. Reused session routes keep the stored fact. A refinement is keyed on the post-escalation level, so an explicit `--level L2` on a mechanical task can reach it. It replaces the whole matrix entry, so a refinement stage must carry its own `fallback_model` or `candidates` if the entry it replaces had them, and a refinement that lowers the same model's effort is refused.
+- On Claude Code, `sonnet` is `claude-sonnet-5` (medium at L3, high at L4), `haiku` is `claude-haiku-4-5` without an effort parameter, and `opus` is `claude-opus-5-5`. On Codex, `luna` is `gpt-6-luna` (raised to `xhigh` for the L3+ implementation and refactoring rows) and `sol` is `gpt-6-sol`.
+- Effort ceilings: Luna low/medium/high/xhigh (L3+ implementation and refactoring rows run Luna xhigh); Sol high/xhigh/max (Sol and Opus never run design, review, or planning below high). Luna high and Sonnet low are routed only through the L2 refinement (`refinements` in the config, applied after the matrix lookup to single-stage `implementation` and `local_refactoring` routes at L2): `requires_code_understanding` = yes -> Luna high (Codex) / Sonnet low (Claude Code); no or unknown -> the matrix profile, Luna medium / Haiku. `unknown` is missing information, not evidence, so it keeps the cheaper profile; a failing test gate or the fix loop covers a wrong guess. L3 stays Luna xhigh / Sonnet medium and higher levels are unchanged. Antigravity defines no refinement. Reused session routes keep the stored fact. A refinement is keyed on the post-escalation level, so an explicit `--level L2` on a mechanical task can reach it. It replaces the whole matrix entry, so a refinement stage must carry its own `fallback_model` or `candidates` if the entry it replaces had them, and a refinement that lowers the same model's effort is refused.
 
 ## Execution roles and pipeline
 
 Goal: spend top-model tokens on important judgement, and run already-decided work on the cheapest sufficient model.
 
-- Codex: **Sol thinks, designs, verifies, and reviews; Luna and Terra implement and fix.**
+- Codex: **Sol thinks, designs, verifies, and reviews; Luna implements and fixes (xhigh for L3+ implementation work).**
 - Claude Code: **Opus thinks, designs, verifies, and reviews; Haiku and Sonnet implement and fix.**
 - Tests run in the launcher, with no model.
 - Classification stays cheap (the configured classifiers above, unchanged).
 
-The model comes from role + difficulty + risk, not difficulty alone: the same L4 maps to Sol/Opus for design, review, or verification and to Terra high / Sonnet high for implementation. Role maps onto the existing task types: design = planning/architecture (`design`), review = verification/review (`review`), and `implementation`, `local_refactoring`, and `architectural_refactoring` = implementation; every non-fast code change takes its plan and review stages from the `design` and `review` rows at `max(level, L2)` (see the workflow above).
+The model comes from role + difficulty + risk, not difficulty alone: the same L4 maps to Sol/Opus for design, review, or verification and to Luna xhigh / Sonnet high for implementation. Role maps onto the existing task types: design = planning/architecture (`design`), review = verification/review (`review`), and `implementation`, `local_refactoring`, and `architectural_refactoring` = implementation; every non-fast code change takes its plan and review stages from the `design` and `review` rows at `max(level, L2)` (see the workflow above).
 
 ```text
 request
   -> cheap classifier (facts) -> route (task_type, level, risk_tier)
   -> plan (every non-fast code change) .... design-row judge      (once; Sol / Opus)
-  -> implement ............................. route's implementer   (Luna / Terra / Haiku / Sonnet)
+  -> implement ............................. route's implementer   (Luna / Haiku / Sonnet)
        new design problem found? STOP, return evidence -> re-plan
   -> deterministic tests ................... launcher, no model
   -> ONE verification + code review ........ review-row judge      High (elevated: XHigh, critical: Max)
@@ -269,7 +269,7 @@ Rules:
 - **Fail-closed checks.** A planner that wrote no plan file stops the run (exit 13). In a git work tree (diffed against the HEAD seen when the run started, so commits count), an implementer that changed nothing fails the review without spending a review call, so it is fixed or re-planned like any other review FAIL.
 - **Logging.** The runner logs one line per phase to stderr (`phase=implement model=... effort=...`, `phase=review ... attempt=N`); raw commands appear only with `MODEL_EFFORT_ROUTER_VERBOSE=1` or `--verbose`. `MODEL_EFFORT_ROUTER_PRINT_ONLY` prints just the replayable plan/implement command chain.
 - **Review policy.** Do not call Sol/Opus after each step. Batch steps 1..N, run the tests, then make one Sol/Opus call that merges verification and code review. Send it only the original requirement, the approved plan, the git diff, the test results, and the key code, never the whole session. Default effort is High; the elevated tier uses XHigh and the critical tier Max.
-- **Review FAIL.** The reviewer does not fix the problem. Every fix currently uses the route's implementer, and the second failure re-plans (Fail loop caps above). Planned (not implemented): the reviewer would grade the fix (simple / understanding / complex / replan) so a simple fix goes to Luna medium / Haiku, an ordinary logic change to Terra / Sonnet, and a design problem to a re-plan.
+- **Review FAIL.** The reviewer does not fix the problem. Every fix currently uses the route's implementer, and the second failure re-plans (Fail loop caps above). Planned (not implemented): the reviewer would grade the fix (simple / understanding / complex / replan) so a simple fix goes to Luna medium / Haiku, an ordinary logic change to Luna xhigh / Sonnet, and a design problem to a re-plan.
 - **Implementation escalation.** If the implementer finds something outside the plan it stops and returns evidence for a Sol/Opus re-plan instead of deciding structure itself. Valid evidence: scope expansion, architecture change, public API change, DB migration, security boundary change, or a plan that no longer matches the code structure. "It is hard" or "I am unsure" alone is not a valid reason.
 - **Follow-ups reuse the stored route** (no re-routing). Re-classify only when the task type changes (for example INSPECT to MODIFY), the scope grows a lot, new risk evidence appears, or a fact shows the approved design cannot be implemented. Runtime: name a session (`--session KEY` or `MODEL_EFFORT_ROUTER_SESSION`) and `router.py` stores the classification (task type, level, tier, risk flags, facts) under `MODEL_EFFORT_ROUTER_STATE_DIR` (default `~/.cache/model-effort-router`). A later task in the same session reuses it and skips the classifier unless a deterministic blocker fires: workspace changed; stored route older than 4 hours (reuse does not extend it); the route was already reused 10 times; the stored route still had unresolved facts (`unresolved`); the caller pins a different `--task-type`; an earlier pipeline run re-planned or failed (only `pipeline.py` records this, so a run through `--format command` never invalidates a route); the task text shows a different operation (inspect vs modify, mixed, or no recognisable operation for a stored read-only route), wider scope, or risk evidence in a dimension the stored route does not already cover (security words need a security flag, migration/production words a `data_migration` flag or the critical tier, public API words a `public_api_change` flag; a tier alone never covers security words). Text that names no operation reuses a stored code-change route. The record file is private (0600, owner-checked, size-capped, atomic rename, never through a symlink); a malformed record reclassifies. Unknown never blocks, so the caller's session key is what stands for "same target": use one session per task thread. `--no-reuse` and explicit pins bypass the store; fallback and manual routes are never stored; a corrupt or tampered record reclassifies. A reused route keeps its stored risk flags, tier and scope guard, and route JSON carries `reuse: {session, reused, reason}`.
 - **Token savings.** Limit Sol/Opus to judgement; delegate coding; merge verification and review into one high-tier call; never re-classify the same scope; do not resend large output (send requirement + plan + diff + test results + key code); re-classify on new evidence, not on mere uncertainty.

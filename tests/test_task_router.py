@@ -108,7 +108,7 @@ class ClaudeTaskRouterTests(unittest.TestCase):
 
     def test_codex_agents_define_expected_runtime_contract(self):
         expected = {
-            "coding": ("gpt-5.6-terra", "medium", "workspace-write"),
+            "coding": ("gpt-6-luna", "xhigh", "workspace-write"),
             "complex": ("gpt-6-sol", "high", "workspace-write"),
             "research": ("gpt-6-luna", "high", "read-only"),
         }

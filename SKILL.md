@@ -19,7 +19,7 @@ Use this skill to maintain the three platform-specific plugins under `plugins/`.
 
 ## Constraints
 
-- Route every platform through its `task_type × level` matrix; each platform maps the shared luna/sol/terra roles onto its own models.
+- Route every platform through its `task_type × level` matrix; each platform maps the shared luna/sol roles onto its own models.
 - Treat model and effort as one profile.
 - Preserve the five task types, five levels (L1~L5) plus the `elevated` and `critical` risk tiers, fact-based classifier with `DIFFICULTY_RULES` in `scripts/router.py`, cascading classifier, and code-side security floors (elevated tier for security/payment changes, L5 for a critical security domain, L4 for security reviews, elevated tier for a critical-domain trust-boundary change; irreversible/ledger/crypto = yes is the critical tier) unless the user explicitly requests a different policy.
 - Keep the code-change workflow: every code-change route requires a caller-supplied deterministic test command and fails closed without one. Only a gated `trivial_edit` skips plan and review, never its required test; every other `implementation` / `local_refactoring` / `architectural_refactoring` route runs the L2-or-higher judge rows (`max(level, WORKFLOW_MIN_LEVEL)`) for plan, launcher-run tests, and merged review. The planner is skipped only when it equals the implementer.
