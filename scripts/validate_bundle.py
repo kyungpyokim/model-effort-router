@@ -8,6 +8,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+BUNDLE_VERSION = "3.2.0"
+
 
 def load_router(root: Path):
     path = root / "scripts" / "router.py"
@@ -72,7 +74,7 @@ def main() -> int:
 
     c_manifest = read_json(codex / ".codex-plugin" / "plugin.json")
     assert c_manifest["name"] == "model-effort"
-    assert c_manifest["version"] == "3.1.0"
+    assert c_manifest["version"] == BUNDLE_VERSION
     for key in ("logo", "logoDark", "composerIcon"):
         relative = c_manifest["interface"][key]
         assert relative.startswith("./"), f"interface.{key} must be a plugin-relative path"
@@ -101,7 +103,7 @@ def main() -> int:
 
     a_manifest = read_json(claude / ".claude-plugin" / "plugin.json")
     assert a_manifest["name"] == "model-effort"
-    assert a_manifest["version"] == "3.1.0"
+    assert a_manifest["version"] == BUNDLE_VERSION
     require(claude / "skills" / "route" / "SKILL.md")
     require(claude / "scripts" / "routing_policy_hook.py")
     claude_hooks = read_json(claude / "hooks" / "hooks.json")["hooks"]
@@ -160,7 +162,7 @@ def main() -> int:
 
     g_manifest = read_json(agy / "gemini-extension.json")
     assert g_manifest["name"] == "model-effort"
-    assert g_manifest["version"] == "3.1.0"
+    assert g_manifest["version"] == BUNDLE_VERSION
     # The Antigravity bundle ships two version-bearing manifests; a release that bumps only one
     # reports a stale version to whichever client reads the other.
     agy_plugin = read_json(agy / "plugin.json")
