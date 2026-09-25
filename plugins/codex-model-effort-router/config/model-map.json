@@ -20,7 +20,7 @@
   "classifiers": {
     "codex": {
       "primary": {
-        "model": "gpt-5.6-luna",
+        "model": "gpt-6-luna",
         "effort": "low"
       }
     },
@@ -58,11 +58,11 @@
       "matrix": {
         "implementation": {
           "L1": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "medium"
           },
           "L2": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "medium"
           },
           "L3": {
@@ -77,7 +77,7 @@
             "stages": [
               {
                 "role": "planner",
-                "model": "gpt-5.6-sol",
+                "model": "gpt-6-sol",
                 "effort": "high"
               },
               {
@@ -90,77 +90,77 @@
         },
         "design": {
           "L1": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "medium"
           },
           "L2": {
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6-sol",
             "effort": "high"
           },
           "L3": {
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6-sol",
             "effort": "high"
           },
           "L4": {
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6-sol",
             "effort": "high"
           },
           "L5": {
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6-sol",
             "effort": "high"
           }
         },
         "review": {
           "L1": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "medium"
           },
           "L2": {
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6-sol",
             "effort": "high"
           },
           "L3": {
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6-sol",
             "effort": "high"
           },
           "L4": {
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6-sol",
             "effort": "high"
           },
           "L5": {
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6-sol",
             "effort": "high"
           }
         },
         "inspect": {
           "L1": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "low"
           },
           "L2": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "low"
           },
           "L3": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "low"
           },
           "L4": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "low"
           },
           "L5": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "low"
           }
         },
         "local_refactoring": {
           "L1": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "medium"
           },
           "L2": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "medium"
           },
           "L3": {
@@ -175,7 +175,7 @@
             "stages": [
               {
                 "role": "planner",
-                "model": "gpt-5.6-sol",
+                "model": "gpt-6-sol",
                 "effort": "high"
               },
               {
@@ -188,18 +188,18 @@
         },
         "architectural_refactoring": {
           "L1": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "medium"
           },
           "L2": {
-            "model": "gpt-5.6-sol",
+            "model": "gpt-6-sol",
             "effort": "high"
           },
           "L3": {
             "stages": [
               {
                 "role": "planner",
-                "model": "gpt-5.6-sol",
+                "model": "gpt-6-sol",
                 "effort": "high"
               },
               {
@@ -213,7 +213,7 @@
             "stages": [
               {
                 "role": "planner",
-                "model": "gpt-5.6-sol",
+                "model": "gpt-6-sol",
                 "effort": "xhigh"
               },
               {
@@ -227,7 +227,7 @@
             "stages": [
               {
                 "role": "planner",
-                "model": "gpt-5.6-sol",
+                "model": "gpt-6-sol",
                 "effort": "xhigh"
               },
               {
@@ -250,7 +250,7 @@
             "requires_code_understanding": "yes"
           },
           "stage": {
-            "model": "gpt-5.6-luna",
+            "model": "gpt-6-luna",
             "effort": "high"
           }
         }

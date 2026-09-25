@@ -30,7 +30,7 @@ Codex, Claude Code, Antigravity를 위한 크로스 플랫폼 번들로, 코딩 
 
 플랫폼별 분류 모델(에스컬레이션 모델은 없습니다):
 
-- **Codex**: `gpt-5.6-luna` (low)
+- **Codex**: `gpt-6-luna` (low)
 - **Claude Code**: `claude-sonnet-5` (effort 없음)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)`
 

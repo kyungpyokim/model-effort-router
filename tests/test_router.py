@@ -167,7 +167,7 @@ class PlatformClassifierTests(unittest.TestCase):
         schema_path = Path(command[command.index("--output-schema") + 1])
         self.assertEqual(schema_path.name, "classification-schema.json")
         self.assertEqual(json.loads(schema_path.read_text(encoding="utf-8")), router.CLASSIFIER_SCHEMA)
-        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertEqual(result.source, "gpt-6-luna")
 
     def test_classifier_prompt_wraps_task_as_data(self):
         completed = subprocess.CompletedProcess([], 0, classifier_output(), "")
@@ -197,12 +197,12 @@ class PlatformClassifierTests(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertEqual(command[0:2], ["codex", "exec"])
         self.assertIn("--ephemeral", command)
-        self.assertEqual(command[command.index("--model") + 1], "gpt-5.6-luna")
+        self.assertEqual(command[command.index("--model") + 1], "gpt-6-luna")
         self.assertIn('model_reasoning_effort="low"', command)
         self.assertEqual(captured["schema"]["properties"]["task_type"]["enum"], list(router.TASK_TYPES))
         self.assertEqual(captured["schema"]["properties"]["facts"]["required"], list(router.FACTS))
         self.assertNotIn("hard_floor", captured["schema"]["properties"])
-        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertEqual(result.source, "gpt-6-luna")
         self.assertEqual(run.call_args.kwargs["timeout"], 7)
 
 
@@ -219,7 +219,7 @@ class PlatformClassifierTests(unittest.TestCase):
         run = self.fake_two_pass(classifier_output(crosses_module_boundary="unknown"), classifier_output(crosses_module_boundary="no"), seen)
         with mock.patch.object(router.subprocess, "run", side_effect=run):
             result = router.classify_task("change the export flow")
-        self.assertEqual([(model, reads) for model, reads, _ in seen], [("gpt-5.6-luna", False), ("gpt-5.6-luna", True)])
+        self.assertEqual([(model, reads) for model, reads, _ in seen], [("gpt-6-luna", False), ("gpt-6-luna", True)])
         self.assertIn("left these facts unknown: crosses_module_boundary", seen[1][2])
         self.assertEqual((result.facts["crosses_module_boundary"], result.unresolved, result.level), ("no", (), "L2"))
 
@@ -236,7 +236,7 @@ class PlatformClassifierTests(unittest.TestCase):
 
     def test_a_fact_the_lookup_cannot_settle_stays_unresolved_and_never_raises_the_route(self):
         for platform, models in (
-            ("codex", {"gpt-5.6-luna"}), ("claude-code", {"claude-sonnet-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
+            ("codex", {"gpt-6-luna"}), ("claude-code", {"claude-sonnet-5"}), ("antigravity", {"Gemini 3.8 Flash (Medium)"}),
         ):
             with self.subTest(platform=platform):
                 calls = []
@@ -266,14 +266,14 @@ class PlatformClassifierTests(unittest.TestCase):
         with mock.patch.object(router.subprocess, "run", side_effect=outcomes) as run:
             result = router.classify_task("ambiguous task")
         self.assertEqual(run.call_count, 3)  # first pass, the lookup, and the one transient retry
-        self.assertEqual((result.source, result.level, result.unresolved), ("gpt-5.6-luna", "L2", ("changes_public_api_contract",)))
+        self.assertEqual((result.source, result.level, result.unresolved), ("gpt-6-luna", "L2", ("changes_public_api_contract",)))
 
     def test_repo_aware_reads_the_repository_in_the_single_pass(self):
         seen = []
         first = classifier_output(crosses_module_boundary="unknown")
         with mock.patch.object(router.subprocess, "run", side_effect=self.fake_two_pass(first, first, seen)):
             result = router.classify_task("fix intermittent bug", repo_aware=True)
-        self.assertEqual([(model, reads) for model, reads, _ in seen], [("gpt-5.6-luna", True)])
+        self.assertEqual([(model, reads) for model, reads, _ in seen], [("gpt-6-luna", True)])
         self.assertEqual(result.unresolved, ("crosses_module_boundary",))
 
     def test_timeout_is_not_retried(self):
@@ -380,7 +380,7 @@ class PlatformClassifierTests(unittest.TestCase):
         with mock.patch.object(router.subprocess, "run", side_effect=outcomes) as run:
             result = router.classify_task("task")
         self.assertEqual(run.call_count, 2)
-        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertEqual(result.source, "gpt-6-luna")
         self.assertEqual(result.level, "L2")
 
     def test_invalid_json_is_not_retried(self):
@@ -421,7 +421,7 @@ class PlatformClassifierTests(unittest.TestCase):
         output = classifier_output(reason=hostile_reason)
         with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, output, "")):
             result = router.classify_task("task")
-        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertEqual(result.source, "gpt-6-luna")
         self.assertLessEqual(len(result.reason), classifier.MAX_REASON_CHARS)
         self.assertNotIn("\x1b", result.reason)
 
@@ -430,7 +430,7 @@ class PlatformClassifierTests(unittest.TestCase):
         payload["evidence"] = ["\x1b[31m" + "e" * 2000]
         with mock.patch.object(router.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(payload), "")):
             result = router.classify_task("task")
-        self.assertEqual(result.source, "gpt-5.6-luna")
+        self.assertEqual(result.source, "gpt-6-luna")
         self.assertEqual(len(result.evidence), 1)
         self.assertLessEqual(len(result.evidence[0]), classifier.MAX_REASON_CHARS)
         self.assertNotIn("\x1b", result.evidence[0])
@@ -503,7 +503,7 @@ class DifficultyRuleTests(unittest.TestCase):
         self.assertEqual((level, tier), ("L5", "critical"))
         self.assertEqual(matched, ["critical:irreversible_or_ledger_or_crypto"])
         result = routed(classifier=lambda _: router.validate_classifier_output(classifier_output(irreversible_or_ledger_or_crypto="yes", raw=False)))
-        self.assertEqual((result.level, result.risk_tier, result.stages[0]["model"], result.stages[0]["effort"]), ("L5", "critical", "gpt-5.6-sol", "max"))
+        self.assertEqual((result.level, result.risk_tier, result.stages[0]["model"], result.stages[0]["effort"]), ("L5", "critical", "gpt-6-sol", "max"))
 
 
     def test_unknown_never_matches_a_rule_it_is_missing_information(self):
@@ -669,7 +669,7 @@ class SecurityReviewFloorTests(unittest.TestCase):
     def test_payment_webhook_signature_review_routes_at_least_l5(self):
         result = self.review_route(reviews_security_sensitive_code="yes", security_domain="payment")
         self.assertEqual((result.task_type, result.level), ("review", "L5"))
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "high"))
+        self.assertEqual((result.model, result.effort), ("gpt-6-sol", "high"))
         self.assertIn("L5:security_domain_critical", result.matched_rules)
         self.assertIn("L4:reviews_security_sensitive_code", result.matched_rules)
         claude = self.review_route(platform="claude-code", reviews_security_sensitive_code="yes", security_domain="payment")
@@ -735,7 +735,7 @@ class SecurityReviewFloorTests(unittest.TestCase):
         _, tier, _, _ = self.level_of(irreversible_or_ledger_or_crypto="yes", reviews_security_sensitive_code="yes", security_domain="crypto")
         self.assertEqual(tier, "critical")
         result = self.review_route(irreversible_or_ledger_or_crypto="yes", reviews_security_sensitive_code="yes", security_domain="crypto")
-        self.assertEqual((result.level, result.risk_tier, result.model, result.effort), ("L5", "critical", "gpt-5.6-sol", "max"))
+        self.assertEqual((result.level, result.risk_tier, result.model, result.effort), ("L5", "critical", "gpt-6-sol", "max"))
 
     def test_floors_never_lower_a_higher_tier(self):
         level, tier, _, _ = self.level_of(
@@ -1357,18 +1357,18 @@ class EscalationTests(unittest.TestCase):
 
 
 CODEX_IMPL = (
-    ("gpt-5.6-luna", "medium"),
-    ("gpt-5.6-luna", "medium"),
+    ("gpt-6-luna", "medium"),
+    ("gpt-6-luna", "medium"),
     ("gpt-5.6-terra", "medium"),
     ("gpt-5.6-terra", "high"),
 )
 # Sol and Opus never run below high effort: they are the judging models.
 CODEX_JUDGE = (
-    ("gpt-5.6-luna", "medium"),
-    ("gpt-5.6-sol", "high"),
-    ("gpt-5.6-sol", "high"),
-    ("gpt-5.6-sol", "high"),
-    ("gpt-5.6-sol", "high"),
+    ("gpt-6-luna", "medium"),
+    ("gpt-6-sol", "high"),
+    ("gpt-6-sol", "high"),
+    ("gpt-6-sol", "high"),
+    ("gpt-6-sol", "high"),
 )
 CLAUDE_IMPL = (
     ("claude-haiku-4-5", None), ("claude-haiku-4-5", None),
@@ -1388,9 +1388,9 @@ class MatrixTests(unittest.TestCase):
         "codex": {
             # Every non-fast code change is two-stage (judge plan + this cheap implementer); see EXPECTED_STAGES.
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CODEX_JUDGE)},
-            ("architectural_refactoring", "L2"): ("gpt-5.6-sol", "high"),
+            ("architectural_refactoring", "L2"): ("gpt-6-sol", "high"),
             # inspect above L2 is rejected; the raw L3-L5 cells live in test_fast_path.
-            **{("inspect", level): ("gpt-5.6-luna", "low") for level in router.LEVELS[:2]},
+            **{("inspect", level): ("gpt-6-luna", "low") for level in router.LEVELS[:2]},
         },
         "claude-code": {
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CLAUDE_JUDGE)},
@@ -1411,15 +1411,15 @@ class MatrixTests(unittest.TestCase):
     }
     EXPECTED_STAGES = {
         "codex": {
-            **{(kind, level): [("planner", "gpt-5.6-sol", "high"), ("implementer", *impl)]
+            **{(kind, level): [("planner", "gpt-6-sol", "high"), ("implementer", *impl)]
                for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS, CODEX_IMPL)},
             # L1 is not fast here (no facts): the judge row is max(L1, L2) while the implementer keeps its L1 row.
-            ("architectural_refactoring", "L1"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-luna", "medium")],
-            ("implementation", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
-            ("local_refactoring", "L5"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
-            ("architectural_refactoring", "L3"): [("planner", "gpt-5.6-sol", "high"), ("implementer", "gpt-5.6-terra", "medium")],
-            ("architectural_refactoring", "L4"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
-            ("architectural_refactoring", "L5"): [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
+            ("architectural_refactoring", "L1"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-6-luna", "medium")],
+            ("implementation", "L5"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
+            ("local_refactoring", "L5"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-5.6-terra", "high")],
+            ("architectural_refactoring", "L3"): [("planner", "gpt-6-sol", "high"), ("implementer", "gpt-5.6-terra", "medium")],
+            ("architectural_refactoring", "L4"): [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
+            ("architectural_refactoring", "L5"): [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
         },
         "claude-code": {
             **{(kind, level): [("planner", "claude-opus-5", "high"), ("implementer", *impl)]
@@ -1473,7 +1473,7 @@ class MatrixTests(unittest.TestCase):
 
     def test_implementation_is_never_run_by_the_judging_model(self):
         # Sol/Opus plan and judge; implementation stays on Luna/Terra, Haiku/Sonnet, Flash/Sonnet.
-        judges = {"codex": ("gpt-5.6-sol",), "claude-code": ("claude-opus-5",), "antigravity": ("Claude Opus",)}
+        judges = {"codex": ("gpt-6-sol",), "claude-code": ("claude-opus-5",), "antigravity": ("Claude Opus",)}
         for platform, judge_models in judges.items():
             for task_type in ("implementation", "local_refactoring"):
                 for level in router.LEVELS:
@@ -1488,11 +1488,11 @@ class MatrixTests(unittest.TestCase):
 
     def test_tiers_raise_only_the_planning_stage_effort(self):
         cases = (
-            ("codex", "implementation", "elevated", [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")]),
-            ("codex", "implementation", "critical", [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")]),
-            ("codex", "review", "elevated", [("executor", "gpt-5.6-sol", "xhigh")]),
-            ("codex", "review", "critical", [("executor", "gpt-5.6-sol", "max")]),
-            ("codex", "architectural_refactoring", "critical", [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")]),
+            ("codex", "implementation", "elevated", [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")]),
+            ("codex", "implementation", "critical", [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")]),
+            ("codex", "review", "elevated", [("executor", "gpt-6-sol", "xhigh")]),
+            ("codex", "review", "critical", [("executor", "gpt-6-sol", "max")]),
+            ("codex", "architectural_refactoring", "critical", [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")]),
             ("claude-code", "implementation", "elevated", [("planner", "claude-opus-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")]),
             ("claude-code", "design", "critical", [("executor", "claude-opus-5", "max")]),
             ("antigravity", "design", "elevated", [("executor", "Claude Opus 4.6 (Thinking)", None)]),
@@ -1594,17 +1594,17 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual((result.base_level, result.level, result.risk_tier), ("L1", "L5", "elevated"))
         self.assertEqual(
             [(stage["role"], stage["model"], stage["effort"]) for stage in result.stages],
-            [("planner", "gpt-5.6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
+            [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
         )
 
     def test_review_with_authorization_routes_sol_xhigh(self):
         result = routed(classifier=lambda _: classification("review", "L2", flags={"authorization": True}))
-        self.assertEqual((result.level, result.risk_tier, result.model, result.effort), ("L5", "elevated", "gpt-5.6-sol", "xhigh"))
+        self.assertEqual((result.level, result.risk_tier, result.model, result.effort), ("L5", "elevated", "gpt-6-sol", "xhigh"))
 
     def test_critical_flag_forces_the_critical_tier_at_l5(self):
         result = routed(critical=True, classifier=lambda _: classification("review", "L2"))
         self.assertEqual((result.level, result.level_name, result.risk_tier), ("L5", "advanced", "critical"))
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "max"))
+        self.assertEqual((result.model, result.effort), ("gpt-6-sol", "max"))
         self.assertTrue(any("critical risk tier" in r for r in result.rationale))
 
     def test_retired_levels_are_rejected(self):
@@ -1623,7 +1623,7 @@ class RoutingTests(unittest.TestCase):
         spy.assert_called_once()
         self.assertEqual(result.task_type, "implementation")
         # L2 implementation is judge-planned; its implementer stage keeps the cheap Luna rung.
-        self.assertEqual((result.stages[-1]["model"], result.stages[-1]["effort"]), ("gpt-5.6-luna", "medium"))
+        self.assertEqual((result.stages[-1]["model"], result.stages[-1]["effort"]), ("gpt-6-luna", "medium"))
 
     def test_explicit_l5_with_explicit_type_bypasses_the_classifier(self):
         classifier = mock.Mock(side_effect=AssertionError("classifier must be bypassed"))
@@ -1631,7 +1631,7 @@ class RoutingTests(unittest.TestCase):
         classifier.assert_not_called()
         self.assertEqual(result.level, "L5")
         self.assertEqual(result.task_type, "design")
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "high"))
+        self.assertEqual((result.model, result.effort), ("gpt-6-sol", "high"))
         self.assertEqual(result.source, "manual")
 
     def test_explicit_level_with_explicit_type_bypasses_the_classifier(self):
@@ -1649,7 +1649,7 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(result.task_type, "implementation")
         self.assertEqual(
             [(stage["role"], stage["model"], stage["effort"]) for stage in result.stages],
-            [("planner", "gpt-5.6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")],
+            [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")],
         )
         self.assertEqual(result.source, "manual")
 
@@ -1660,7 +1660,7 @@ class RoutingTests(unittest.TestCase):
         spy.assert_called_once()
         self.assertEqual(result.task_type, "review")
         self.assertEqual(result.level, "L5")
-        self.assertEqual((result.model, result.effort), ("gpt-5.6-sol", "high"))
+        self.assertEqual((result.model, result.effort), ("gpt-6-sol", "high"))
 
     def test_lower_explicit_level_remains_a_minimum_after_preflight(self):
         higher = classification("design", "L5")
@@ -1811,7 +1811,7 @@ class CommandAndLauncherTests(unittest.TestCase):
     def test_direct_launchers_run_elevated_routes_without_approval(self):
         reply = self._elevated_review_reply()
         cases = (
-            ("codex-route", "codex", "gpt-5.6-luna", reply),
+            ("codex-route", "codex", "gpt-6-luna", reply),
             ("claude-route", "claude", "claude-sonnet-5", json.dumps({"structured_output": json.loads(reply)})),
             ("agy-route", "agy", "Gemini 3.8 Flash (Medium)", json.dumps({"structured_output": json.loads(reply)})),
         )
@@ -1893,7 +1893,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         # run (classify -> route JSON -> --route-file replay) must clean up its plan
         # dir exactly like the old single-invocation `--format command` path did.
         cases = (
-            ("codex-route", "codex", "gpt-5.6-luna", classifier_output(task_type="architectural_refactoring", level="L3")),
+            ("codex-route", "codex", "gpt-6-luna", classifier_output(task_type="architectural_refactoring", level="L3")),
             (
                 "agy-route", "agy", "Gemini 3.8 Flash (Medium)",
                 json.dumps({"structured_output": json.loads(classifier_output(task_type="architectural_refactoring", level="L3"))}),
@@ -2055,7 +2055,7 @@ class CommandAndLauncherTests(unittest.TestCase):
     def test_implementer_codex_command_pins_model_and_effort(self):
         # A fast trivial-edit L1 stays single-stage; every other code change has the implementer last, after the judge plan.
         l1 = routed_fast_l1("codex")
-        self.assertEqual((l1.mode, l1.model, l1.effort), ("single", "gpt-5.6-luna", "medium"))
+        self.assertEqual((l1.mode, l1.model, l1.effort), ("single", "gpt-6-luna", "medium"))
         l1_command = router.stage_commands(l1, "task")[0]
         self.assertIn("model_reasoning_effort=medium", l1_command)
         # A single stage embeds the level agent's instructions; a two-stage implementer embeds the plan contract.
@@ -2132,7 +2132,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         chain = router.command_chain(result, "restructure modules")
         self.assertIn("mkdir -p ", chain)
         self.assertIn(" && ", chain)
-        self.assertIn("-m gpt-5.6-sol", chain)
+        self.assertIn("-m gpt-6-sol", chain)
         self.assertIn("-m gpt-5.6-terra", chain)
         self.assertIn(str(Path(result.plan_dir) / "plan.json"), chain)
         self.assertIn(f"rm -rf {shlex_quote(str(result.plan_dir))}", chain)
@@ -2143,7 +2143,7 @@ class CommandAndLauncherTests(unittest.TestCase):
         result = routed(classifier=lambda _: classification("architectural_refactoring", "L4"))
         planner, implementer = router.stage_commands(result, "task")
         plan_path = str(Path(result.plan_dir) / "plan.json")
-        self.assertEqual(planner[planner.index("-m") + 1], "gpt-5.6-sol")
+        self.assertEqual(planner[planner.index("-m") + 1], "gpt-6-sol")
         self.assertEqual(implementer[implementer.index("-m") + 1], "gpt-5.6-terra")
         joined_planner = " ".join(planner)
         joined_implementer = " ".join(implementer)
@@ -2245,7 +2245,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 with contextlib.redirect_stdout(output):
                     self.assertEqual(router.main(["--route-file", str(route_file)]), 0)
         self.assertIn("codex exec", output.getvalue())
-        self.assertIn("gpt-5.6-sol", output.getvalue())
+        self.assertIn("gpt-6-sol", output.getvalue())
 
     def test_route_file_replays_v2_without_orchestration_fields(self):
         result = routed(classifier=lambda _: classification("review", "L3"))
@@ -2370,7 +2370,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 result = routed(classifier=lambda _: classification(task_type, "L5", risk_tier="elevated"))
                 payload = router.result_payload(result, router.stage_commands(result, "task"))
                 for step in payload["steps"]:
-                    step["model"] = "gpt-5.6-sol"
+                    step["model"] = "gpt-6-sol"
                 route_file = Path(tmp) / "route.json"
                 route_file.write_text(json.dumps(payload), encoding="utf-8")
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
@@ -2410,7 +2410,7 @@ class CommandAndLauncherTests(unittest.TestCase):
             )
             self.assertFalse(marker.exists())
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("gpt-5.6-sol", proc.stderr)
+        self.assertIn("gpt-6-sol", proc.stderr)
 
     def test_claude_launcher_replays_route_file_without_calling_claude(self):
         result = routed(platform="claude-code", classifier=lambda _: classification("review", "L3"))
@@ -2621,14 +2621,14 @@ class RouteSkillContractTests(unittest.TestCase):
         primary = self._primary_section("codex")
         self.assertIn("--print-classifier-prompt", primary)
         self.assertIn("--classification-file", primary)
-        self.assertIn("gpt-5.6-luna", primary)
+        self.assertIn("gpt-6-luna", primary)
         self.assertNotIn("gpt-5.6-terra", primary)
         self.assertIn("`model` and `reasoning_effort`", primary)
         self.assertIn("non-zero", primary)
         self.assertNotIn("escalated sandbox permissions", primary)
 
     def test_session_skills_classify_once_and_ask_the_user_about_unresolved_facts(self):
-        for plugin, spawner in (("claude", "`model-effort:difficulty-assessor`"), ("codex", "`gpt-5.6-luna`")):
+        for plugin, spawner in (("claude", "`model-effort:difficulty-assessor`"), ("codex", "`gpt-6-luna`")):
             primary = self._primary_section(plugin)
             with self.subTest(plugin=plugin):
                 self.assertIn(spawner, primary)
@@ -2771,7 +2771,7 @@ class RouteSkillContractTests(unittest.TestCase):
         self.assertIn("opus", claude_skill)
         self.assertNotIn("low confidence", claude_readme)
         self.assertNotIn("five Markdown files", claude_readme)
-        self.assertNotIn("gpt-5.6-luna -c model_reasoning_effort=xhigh", codex_readme)
+        self.assertNotIn("gpt-6-luna -c model_reasoning_effort=xhigh", codex_readme)
 
     def test_docs_describe_the_available_adapter_without_changing_direct_replay(self):
         paths = [ROOT / "README.md", ROOT / "references" / "routing-policy.md"]
@@ -2789,7 +2789,7 @@ class RouteSkillContractTests(unittest.TestCase):
         claude = (ROOT / "plugins" / "claude-model-effort-router" / "README.md").read_text(encoding="utf-8")
         antigravity = (ROOT / "plugins" / "antigravity-model-effort-router" / "README.md").read_text(encoding="utf-8")
         self.assertIn("L1-L5", codex)
-        self.assertIn("gpt-5.6-luna` / low", codex)
+        self.assertIn("gpt-6-luna` / low", codex)
         self.assertIn("elevated", codex)
         self.assertIn("claude-sonnet-5` (no effort parameter)", claude)
         self.assertIn("Gemini 3.8 Flash (Medium)", antigravity)

@@ -16,7 +16,7 @@ profiles, registered directly in `~/.codex/config.toml` the same way the other
 - Auditing the 65 agent TOML files already in `~/.codex/agents/` (installed
   directly into `config.toml`, bypassing the marketplace) shows 63 of them
   pinned to `gpt-5.6-terra` regardless of role — including every `*_reviewer`
-  agent that should be on `gpt-5.6-sol`. Model/effort assignment silently
+  agent that should be on `gpt-6-sol`. Model/effort assignment silently
   defaulted to one model everywhere.
 
 Direct `[agents.<name>]` + `config_file` registration in `config.toml` is the
@@ -27,11 +27,11 @@ mechanism actually proven to work (`reviewer.toml` → `sol`, `explorer.toml` �
 
 | agent | model | effort | use for |
 |---|---|---|---|
-| `research` | `gpt-5.6-luna` | high | lookups, comparisons, reading code/docs, no file writes |
+| `research` | `gpt-6-luna` | high | lookups, comparisons, reading code/docs, no file writes |
 | `coding` | `gpt-5.6-terra` | medium (pass `-c model_reasoning_effort="high"` for bigger changes) | features, fixes, tests, local refactors |
-| `complex` | `gpt-5.6-sol` | high | architecture, ambiguous/high-stakes work, escalation |
+| `complex` | `gpt-6-sol` | high | architecture, ambiguous/high-stakes work, escalation |
 
-Review already has a correct native agent — `reviewer` (`gpt-5.6-sol` / high,
+Review already has a correct native agent — `reviewer` (`gpt-6-sol` / high,
 in `~/.codex/agents/reviewer.toml`) — so this plugin does not duplicate it.
 
 ## Install
@@ -69,9 +69,9 @@ For a scripted or one-off call that must pin a specific profile, bypass the
 agent mechanism entirely and pass the same model/effort directly:
 
 ```bash
-codex exec -m gpt-5.6-luna -c model_reasoning_effort="high" "이 라이브러리 최신 버전 API 변경점 조사"
+codex exec -m gpt-6-luna -c model_reasoning_effort="high" "이 라이브러리 최신 버전 API 변경점 조사"
 codex exec -m gpt-5.6-terra -c model_reasoning_effort="medium" "재고 API에 페이지네이션 추가"
-codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" "결제 시스템 아키텍처 재설계"
+codex exec -m gpt-6-sol -c model_reasoning_effort="high" "결제 시스템 아키텍처 재설계"
 ```
 
 `scripts/eval_task_router.py` in this bundle's repo root does exactly this,

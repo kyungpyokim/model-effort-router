@@ -148,7 +148,7 @@ def main() -> int:
         "complex": "workspace-write",
         "research": "read-only",
     }
-    valid_models = {"gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"}
+    valid_models = {"gpt-6-luna", "gpt-5.6-terra", "gpt-6-sol"}
     codex_agents = {path.stem: path for path in (codex_task_router / "agents").glob("*.toml")}
     assert set(codex_agents) == set(expected_sandbox_modes)
     for name, path in codex_agents.items():

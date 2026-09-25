@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 import router  # noqa: E402
 from test_l2_refinement import routed  # noqa: E402
 
-SOL, OPUS = "gpt-5.6-sol", "claude-opus-5"
+SOL, OPUS = "gpt-6-sol", "claude-opus-5"
 
 
 def profile(stage):
@@ -24,7 +24,7 @@ def profile(stage):
 class PlanWorkflowTests(unittest.TestCase):
     def test_l2_to_l4_code_changes_plan_with_the_judge_and_implement_cheaply(self):
         cases = (
-            ("codex", "L2", {}, (SOL, "high"), ("gpt-5.6-luna", "high")),
+            ("codex", "L2", {}, (SOL, "high"), ("gpt-6-luna", "high")),
             ("codex", "L3", {"files_touched": "2-5"}, (SOL, "high"), ("gpt-5.6-terra", "medium")),
             ("codex", "L4", {"crosses_module_boundary": "yes"}, (SOL, "high"), ("gpt-5.6-terra", "high")),
             ("claude-code", "L3", {"files_touched": "2-5"}, (OPUS, "high"), ("claude-sonnet-5", "medium")),
@@ -43,7 +43,7 @@ class PlanWorkflowTests(unittest.TestCase):
 
     def test_the_l2_refinement_still_picks_the_implementer_rung(self):
         codex = routed("codex", understanding="no")
-        self.assertEqual(profile(codex.stages[1]), ("gpt-5.6-luna", "medium"))
+        self.assertEqual(profile(codex.stages[1]), ("gpt-6-luna", "medium"))
         claude = routed("claude-code", understanding="no")
         self.assertEqual(claude.stages[1]["model"], "claude-haiku-4-5")
 

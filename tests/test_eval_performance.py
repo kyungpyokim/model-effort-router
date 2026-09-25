@@ -263,7 +263,7 @@ class EvalRouterPerformanceTests(unittest.TestCase):
         def answering(value):
             return stub_classifier(lambda case: labelled_facts(case, requires_code_understanding=value(case)))
 
-        for platform, refined in (("codex", ("gpt-5.6-luna", "high")), ("claude-code", ("claude-sonnet-5", "low"))):
+        for platform, refined in (("codex", ("gpt-6-luna", "high")), ("claude-code", ("claude-sonnet-5", "low"))):
             with self.subTest(platform=platform):
                 perfect = eval_perf.evaluate_classifier_benchmark(platform, classifier=stub_classifier(labelled_facts))
                 summary = perfect["summary"]

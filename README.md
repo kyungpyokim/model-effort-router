@@ -43,7 +43,7 @@ platform, and an unknown fact is settled in this order:
 
 Classifier models by platform (no escalation model exists):
 
-- **Codex**: `gpt-5.6-luna` (low)
+- **Codex**: `gpt-6-luna` (low)
 - **Claude Code**: `claude-sonnet-5` (no effort parameter)
 - **Antigravity**: `Gemini 3.8 Flash (Medium)`
 

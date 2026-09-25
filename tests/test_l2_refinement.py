@@ -43,7 +43,7 @@ class L2RefinementTests(unittest.TestCase):
         for task_type in ("implementation", "local_refactoring"):
             with self.subTest(task_type=task_type):
                 result = routed("codex", task_type, "yes")
-                self.assertEqual((result.level, self.profile(result)), ("L2", ("gpt-5.6-luna", "high")))
+                self.assertEqual((result.level, self.profile(result)), ("L2", ("gpt-6-luna", "high")))
                 self.assertTrue(any("requires_code_understanding=yes" in line for line in result.rationale))
 
     def test_claude_l2_with_code_understanding_uses_sonnet_low(self):
@@ -55,7 +55,7 @@ class L2RefinementTests(unittest.TestCase):
     def test_without_understanding_or_when_unknown_l2_keeps_the_cheap_profile(self):
         for understanding in ("no", "unknown", None):
             with self.subTest(understanding=understanding):
-                self.assertEqual(self.profile(routed("codex", understanding=understanding)), ("gpt-5.6-luna", "medium"))
+                self.assertEqual(self.profile(routed("codex", understanding=understanding)), ("gpt-6-luna", "medium"))
                 self.assertEqual(self.profile(routed("claude-code", understanding=understanding))[0], "claude-haiku-4-5")
 
     def test_the_fact_never_changes_the_level_or_other_rungs(self):
@@ -125,7 +125,7 @@ class L2RefinementTests(unittest.TestCase):
     def test_a_config_without_refinements_still_routes(self):
         config = copy.deepcopy(CONFIG)
         del config["platforms"]["codex"]["refinements"]
-        self.assertEqual(self.profile(routed("codex", understanding="yes", config=config)), ("gpt-5.6-luna", "medium"))
+        self.assertEqual(self.profile(routed("codex", understanding="yes", config=config)), ("gpt-6-luna", "medium"))
 
     def test_the_refined_rung_respects_the_effort_ceilings(self):
         for platform, allowed in (("codex", {"low", "medium", "high"}), ("claude-code", {"low", "medium", "high"})):
@@ -162,7 +162,7 @@ class L2RefinementTests(unittest.TestCase):
     def test_the_model_effort_eval_covers_the_refined_profiles(self):
         import eval_model_effort
         combos = {(c.model, c.effort) for c in eval_model_effort.collect_profiles(CONFIG)}
-        self.assertIn(("gpt-5.6-luna", "high"), combos)
+        self.assertIn(("gpt-6-luna", "high"), combos)
         self.assertIn(("claude-sonnet-5", "low"), combos)
 
 

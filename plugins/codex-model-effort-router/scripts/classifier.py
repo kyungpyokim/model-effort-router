@@ -21,7 +21,7 @@ import jev_provider
 FALLBACK_TASK_TYPE = "implementation"
 
 PRIMARY_CLASSIFIER_CONFIG = {
-    "codex": {"model": "gpt-5.6-luna", "effort": "low"},
+    "codex": {"model": "gpt-6-luna", "effort": "low"},
     "claude-code": {"model": "claude-sonnet-5", "effort": None},
     "antigravity": {
         "patterns": [

@@ -136,9 +136,9 @@ class PipelineRunTests(PipelineCase):
         rc, calls = self.run_pipeline([{}, {}, {"out": "no findings\nVERDICT: PASS"}])
         self.assertEqual(rc, 0)
         self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
-        self.assertEqual((calls[0]["model"], calls[2]["model"]), ("gpt-5.6-sol", "gpt-5.6-sol"))
+        self.assertEqual((calls[0]["model"], calls[2]["model"]), ("gpt-6-sol", "gpt-6-sol"))
         self.assertIn("model_reasoning_effort=high", calls[2]["effort"])
-        self.assertNotEqual(calls[1]["model"], "gpt-5.6-sol")
+        self.assertNotEqual(calls[1]["model"], "gpt-6-sol")
 
     def test_failing_test_goes_to_the_implementer_with_a_log_tail_not_to_a_judge(self):
         flag = self.work / "flag"
@@ -149,14 +149,14 @@ class PipelineRunTests(PipelineCase):
         self.assertEqual(self.roles(calls), ["plan", "execute", "fix", "review"])
         self.assertIn("(exit 1)", calls[2]["text"])
         self.assertIn("boom", calls[2]["text"])
-        self.assertNotEqual(calls[2]["model"], "gpt-5.6-sol")
+        self.assertNotEqual(calls[2]["model"], "gpt-6-sol")
         self.assertIn("PASS: ", calls[3]["text"])
 
     def test_tests_that_never_pass_fix_twice_then_replan_once_then_stop(self):
         rc, calls = self.run_pipeline([{}] * 9, tests=["false"])
         self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
         self.assertEqual(self.roles(calls), ["plan", "execute", "fix", "fix", "plan", "execute", "fix", "fix"])
-        self.assertEqual(calls[4]["model"], "gpt-5.6-sol")
+        self.assertEqual(calls[4]["model"], "gpt-6-sol")
         self.assertNotIn("review", self.roles(calls))
 
     def test_review_fail_is_fixed_once_then_re_reviewed(self):
@@ -164,14 +164,14 @@ class PipelineRunTests(PipelineCase):
         self.assertEqual(rc, 0)
         self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review"])
         self.assertIn("null deref", calls[3]["text"])
-        self.assertNotEqual(calls[3]["model"], "gpt-5.6-sol")
+        self.assertNotEqual(calls[3]["model"], "gpt-6-sol")
 
     def test_second_review_fail_replans_with_the_planning_model(self):
         fail = {"out": "VERDICT: FAIL"}
         rc, calls = self.run_pipeline([{}, {}, fail, {}, fail, {}, {}, {"out": "VERDICT: PASS"}])
         self.assertEqual(rc, 0)
         self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review", "plan", "execute", "review"])
-        self.assertEqual(calls[5]["model"], "gpt-5.6-sol")
+        self.assertEqual(calls[5]["model"], "gpt-6-sol")
 
     def test_review_fails_are_capped(self):
         fail = {"out": "VERDICT: FAIL"}
@@ -327,9 +327,9 @@ class PipelineFailClosedTests(PipelineCase):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
             pipeline.run_route(self.payload(), ["true"], str(self.work))
         text = err.getvalue()
-        self.assertIn("phase=plan model=gpt-5.6-sol effort=high", text)
+        self.assertIn("phase=plan model=gpt-6-sol effort=high", text)
         self.assertIn("phase=implement model=gpt-5.6-terra effort=high", text)
-        self.assertIn("phase=review model=gpt-5.6-sol effort=high attempt=1", text)
+        self.assertIn("phase=review model=gpt-6-sol effort=high attempt=1", text)
         self.assertNotIn("command:", text)
 
 
@@ -398,10 +398,10 @@ class RouteFileArgvGrammarTests(PipelineCase):
         good = ["claude", "-p", "--model", "claude-opus-5", "--effort", "high", "--permission-mode", "acceptEdits", "--", "task"]
         router.validate_argv("claude-code", good, **claude)
         bad = (
-            ("codex", ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "sandbox_mode=danger-full-access", "task"], {}),
-            ("codex", ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "task"], {}),
-            ("codex", ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=turbo", "task"], {}),
-            ("codex", ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "developer_instructions", "task"], {}),
+            ("codex", ["codex", "exec", "-m", "gpt-6-sol", "-c", "sandbox_mode=danger-full-access", "task"], {}),
+            ("codex", ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-6-sol", "task"], {}),
+            ("codex", ["codex", "exec", "-m", "gpt-6-sol", "-c", "model_reasoning_effort=turbo", "task"], {}),
+            ("codex", ["codex", "exec", "-m", "gpt-6-sol", "-c", "developer_instructions", "task"], {}),
             ("codex", ["codex", "exec", "-m", "gpt 5.6 --yolo", "task"], {}),
             ("codex", ["codex", "exec", "task"], {}),
             ("claude-code", good[:-3] + ["--dangerously-skip-permissions", "--", "task"], claude),
@@ -419,9 +419,9 @@ class RouteFileArgvGrammarTests(PipelineCase):
                 router.validate_argv(platform, command, **kwargs)
 
     def test_codex_reader_cannot_drop_its_read_only_sandbox(self):
-        command = ["codex", "exec", "-m", "gpt-5.6-luna", "task"]
+        command = ["codex", "exec", "-m", "gpt-6-luna", "task"]
         with self.assertRaises(ValueError):
-            router.validate_argv("codex", command, model="gpt-5.6-luna", access="read")
+            router.validate_argv("codex", command, model="gpt-6-luna", access="read")
 
     def test_reader_stages_cannot_run_shell_or_write_and_the_planner_writes_only_its_plan(self):
         review = router.claude_access_flags("read")

@@ -302,7 +302,7 @@ class RefinementReuseTests(ReuseCase):
         second, calls = self.route("also handle empty input")
         self.assertEqual(calls, 0)
         # L2 is judge-planned now: the stored refined rung is the implementer step after the Sol plan.
-        self.assertEqual([(s["model"], s["effort"]) for s in second["steps"]], [("gpt-5.6-sol", "high"), ("gpt-5.6-luna", "high")])
+        self.assertEqual([(s["model"], s["effort"]) for s in second["steps"]], [("gpt-6-sol", "high"), ("gpt-6-luna", "high")])
         self.assertEqual([(s["model"], s["effort"]) for s in first["steps"]], [(s["model"], s["effort"]) for s in second["steps"]])
 
 

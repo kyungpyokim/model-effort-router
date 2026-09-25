@@ -16,7 +16,7 @@ import router  # noqa: E402
 from test_l2_refinement import routed  # noqa: E402
 
 CONFIG = router.load_config(ROOT / "config" / "model-map.json")
-LUNA, HAIKU = "gpt-5.6-luna", "claude-haiku-4-5"
+LUNA, HAIKU = "gpt-6-luna", "claude-haiku-4-5"
 
 
 class InspectTaskTypeTests(unittest.TestCase):
@@ -168,7 +168,7 @@ class RegularWorkflowForNonFastL1Tests(unittest.TestCase):
             dict(understanding=None, check_available=True),
         )
         for platform, judge, implementer in (
-            ("codex", ("gpt-5.6-sol", "high"), LUNA),
+            ("codex", ("gpt-6-sol", "high"), LUNA),
             ("claude-code", ("claude-opus-5", "high"), HAIKU),
         ):
             for case in cases:

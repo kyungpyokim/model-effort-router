@@ -112,13 +112,13 @@ python3 scripts/router.py --platform codex --task-type design "<task>" --format 
 Example single-stage output (an L1 `implementation`):
 
 ```bash
-codex exec -m gpt-5.6-luna -c model_reasoning_effort=low -c 'developer_instructions="..."' '<task>'
+codex exec -m gpt-6-luna -c model_reasoning_effort=low -c 'developer_instructions="..."' '<task>'
 ```
 
 Example two-stage output (a non-fast code change whose planner differs from its implementer):
 
 ```bash
-mkdir -p /tmp/codex-route-<run-id> && codex exec -m gpt-5.6-sol ... '<plan>' && codex exec -m gpt-5.6-luna ... '<execute>' && rm -rf /tmp/codex-route-<run-id>
+mkdir -p /tmp/codex-route-<run-id> && codex exec -m gpt-6-sol ... '<plan>' && codex exec -m gpt-6-luna ... '<execute>' && rm -rf /tmp/codex-route-<run-id>
 ```
 
 The chain is success-dependent: the executor never runs after a failed plan
@@ -128,7 +128,7 @@ preserves it even on success.
 The CLI launcher starts a new process because a plugin cannot reliably replace the model of an already-running parent turn on every Codex surface. Codex CLI does not expose `--agent`, so this fallback applies the selected model and effort while the plugin skill handles named-agent delegation where available.
 
 Before selecting that process, the router runs the native Codex CLI with fixed
-`gpt-5.6-luna` / low effort in a temporary read-only session and validates its JSON response.
+`gpt-6-luna` / low effort in a temporary read-only session and validates its JSON response.
 Timeouts, process failures, and invalid output safely route to implementation /
 L3. `--level` alone is a minimum; `--level` with an explicit `--task-type`
 pins both axes and bypasses the preflight.

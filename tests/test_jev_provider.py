@@ -295,13 +295,13 @@ class JevChainIntegrationTests(unittest.TestCase):
             level="L2",
             risk_flags={flag: False for flag in classifier.RISK_FLAGS},
             reason="cli result",
-            source="gpt-5.6-luna",
+            source="gpt-6-luna",
             facts={name: "no" for name in FACTS},
         )
         with mock.patch("jev_provider.classify_task_jev", return_value=None):
             with mock.patch("classifier.classify_task_single", return_value=cli_result) as mock_cli:
                 result = classifier.classify_task("add a helper", platform="codex")
-                self.assertEqual(result.source, "gpt-5.6-luna")
+                self.assertEqual(result.source, "gpt-6-luna")
                 mock_cli.assert_called_once()
 
     def test_repo_aware_skips_jev(self):
@@ -310,14 +310,14 @@ class JevChainIntegrationTests(unittest.TestCase):
             level="L2",
             risk_flags={flag: False for flag in classifier.RISK_FLAGS},
             reason="cli result",
-            source="gpt-5.6-luna",
+            source="gpt-6-luna",
             facts={name: "no" for name in FACTS},
         )
         with mock.patch("jev_provider.classify_task_jev") as mock_jev:
             with mock.patch("classifier.classify_task_single", return_value=cli_result):
                 result = classifier.classify_task("add a helper", platform="codex", repo_aware=True)
                 mock_jev.assert_not_called()
-                self.assertEqual(result.source, "gpt-5.6-luna")
+                self.assertEqual(result.source, "gpt-6-luna")
 
     def test_jev_with_unknown_does_not_call_lookup(self):
         payload = valid_jev_payload()
@@ -347,7 +347,7 @@ class JevSessionReuseAndKillSwitchTests(unittest.TestCase):
             unresolved=[],
             evidence=[],
             risk_flags={flag: False for flag in router.RISK_FLAGS},
-            model="gpt-5.6-luna",
+            model="gpt-6-luna",
             effort="low",
             mode="single",
             stages=[],
@@ -383,7 +383,7 @@ class JevSessionReuseAndKillSwitchTests(unittest.TestCase):
             self.assertTrue(any("kill switch" in b for b in blockers))
 
         # Non-jev record -> not blocked even if kill switch is active
-        record_non_jev = dict(record, origin="gpt-5.6-luna")
+        record_non_jev = dict(record, origin="gpt-6-luna")
         with mock.patch.dict(os.environ, {jev_provider.JEV_KILL_SWITCH_ENV: "1"}):
             blockers = route_reuse.reuse_blockers(record_non_jev, "/ws", "fix bug", code_change=True, now=1010.0)
             self.assertFalse(any("kill switch" in b for b in blockers))
@@ -447,7 +447,7 @@ class JevSessionReuseAndKillSwitchTests(unittest.TestCase):
                 # Save 2 Jev records and 1 non-Jev record
                 route_reuse.save_record("sess_jev1", "/ws", {"origin": "jev", "task_type": "implementation", "risk_flags": {}})
                 route_reuse.save_record("sess_jev2", "/ws", {"origin": "jev", "task_type": "implementation", "risk_flags": {}})
-                route_reuse.save_record("sess_other", "/ws", {"origin": "gpt-5.6-luna", "task_type": "implementation", "risk_flags": {}})
+                route_reuse.save_record("sess_other", "/ws", {"origin": "gpt-6-luna", "task_type": "implementation", "risk_flags": {}})
 
                 # Immediate sweep
                 invalidated = route_reuse.sweep_invalidate_jev_records()
@@ -486,7 +486,7 @@ class JevShadowRunnerTests(unittest.TestCase):
     def test_shadow_runner_non_blocking_returns_immediately(self):
         import time
         primary_payload = valid_jev_payload()
-        primary = classifier.validate_classifier_output(primary_payload, source="gpt-5.6-luna")
+        primary = classifier.validate_classifier_output(primary_payload, source="gpt-6-luna")
         # Slow client that would take 5 seconds if run synchronously
         def slow_client(*args, **kwargs):
             time.sleep(5.0)
@@ -506,7 +506,7 @@ class JevShadowRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = Path(tmpdir) / "shadow.jsonl"
             primary_payload = valid_jev_payload()
-            primary = classifier.validate_classifier_output(primary_payload, source="gpt-5.6-luna")
+            primary = classifier.validate_classifier_output(primary_payload, source="gpt-6-luna")
 
             jev_pl = valid_jev_payload()
             jev_pl["facts"]["files_touched"] = "unknown"
@@ -526,7 +526,7 @@ class JevShadowRunnerTests(unittest.TestCase):
             self.assertEqual(len(lines), 1)
             entry = json.loads(lines[0])
             self.assertEqual(entry["source"], "jev")
-            self.assertEqual(entry["primary_source"], "gpt-5.6-luna")
+            self.assertEqual(entry["primary_source"], "gpt-6-luna")
             self.assertIn("diff", entry)
             # Ensure raw task text was NOT logged anywhere
             self.assertNotIn("CONFIDENTIAL_TASK_TEXT_DO_NOT_LOG", lines[0])

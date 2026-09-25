@@ -27,7 +27,7 @@ in this flow, because that classifier cannot start inside the workspace sandbox;
 worker classifies instead.
 
 1. Run `python3 <router> --print-classifier-prompt --repo-aware "$ARGUMENTS"` and spawn a
-   read-only worker with `model` and `reasoning_effort` set to `gpt-5.6-luna` and `low`,
+   read-only worker with `model` and `reasoning_effort` set to `gpt-6-luna` and `low`,
    passing that output unchanged as its only message. The worker answers facts only; the
    router's difficulty rules pick the level. Do not write the reply to a temp file.
 2. Pass the worker's JSON reply unchanged on stdin and read the route JSON from stdout:
