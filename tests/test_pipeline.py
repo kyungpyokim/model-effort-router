@@ -345,7 +345,7 @@ class ClaudeAccessTests(unittest.TestCase):
         self.assertNotIn("acceptEdits", planner)
         self.assertEqual(planner[planner.index("--permission-mode") + 1], "dontAsk")
         self.assertEqual(planner[planner.index("--disallowedTools") + 1], "Edit")
-        review = router.stage_command("claude-code", {"model": "claude-opus-5", "effort": "high"}, "i", "p", "read")
+        review = router.stage_command("claude-code", {"model": "claude-opus-5-5", "effort": "high"}, "i", "p", "read")
         self.assertEqual(review[review.index("--permission-mode") + 1], "dontAsk")
         self.assertEqual(review[review.index("--disallowedTools") + 1], "Edit")
         self.assertNotIn("acceptEdits", review)
@@ -394,8 +394,8 @@ class RouteFileArgvGrammarTests(PipelineCase):
                             router.validated_commands(payload)
 
     def test_smuggled_flags_are_rejected(self):
-        claude = dict(model="claude-opus-5", effort="high", access="edit")
-        good = ["claude", "-p", "--model", "claude-opus-5", "--effort", "high", "--permission-mode", "acceptEdits", "--", "task"]
+        claude = dict(model="claude-opus-5-5", effort="high", access="edit")
+        good = ["claude", "-p", "--model", "claude-opus-5-5", "--effort", "high", "--permission-mode", "acceptEdits", "--", "task"]
         router.validate_argv("claude-code", good, **claude)
         bad = (
             ("codex", ["codex", "exec", "-m", "gpt-6-sol", "-c", "sandbox_mode=danger-full-access", "task"], {}),
@@ -407,7 +407,7 @@ class RouteFileArgvGrammarTests(PipelineCase):
             ("claude-code", good[:-3] + ["--dangerously-skip-permissions", "--", "task"], claude),
             ("claude-code", [*good[:-2], "--permission-mode", "bypassPermissions", "--", "task"], claude),
             ("claude-code", [*good[:-2], "--add-dir", "/", "--", "task"], claude),
-            ("claude-code", ["claude", "-p", "--model", "claude-opus-5", "--effort", "high", "--", "task"], claude),
+            ("claude-code", ["claude", "-p", "--model", "claude-opus-5-5", "--effort", "high", "--", "task"], claude),
             ("claude-code", good, dict(claude, access="read")),
             ("claude-code", good, dict(claude, effort="max")),
             ("claude-code", good, dict(claude, model="claude-sonnet-5")),
@@ -516,7 +516,7 @@ class PipelinePlanTests(unittest.TestCase):
     def test_claude_review_is_opus_and_carries_the_agent_delegation(self):
         payload = self.payload("claude-code", critical=True)
         review = payload["pipeline"]["review"]
-        self.assertEqual((review["model"], review["effort"]), ("claude-opus-5", "max"))
+        self.assertEqual((review["model"], review["effort"]), ("claude-opus-5-5", "max"))
         self.assertEqual(review["agent"]["subagent_type"], "model-effort:effort-max")
 
     def test_two_stage_replan_reuses_the_route_planner(self):

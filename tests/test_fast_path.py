@@ -169,7 +169,7 @@ class RegularWorkflowForNonFastL1Tests(unittest.TestCase):
         )
         for platform, judge, implementer in (
             ("codex", ("gpt-6-sol", "high"), LUNA),
-            ("claude-code", ("claude-opus-5", "high"), HAIKU),
+            ("claude-code", ("claude-opus-5-5", "high"), HAIKU),
         ):
             for case in cases:
                 with self.subTest(platform=platform, **case):

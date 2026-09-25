@@ -673,7 +673,7 @@ class SecurityReviewFloorTests(unittest.TestCase):
         self.assertIn("L5:security_domain_critical", result.matched_rules)
         self.assertIn("L4:reviews_security_sensitive_code", result.matched_rules)
         claude = self.review_route(platform="claude-code", reviews_security_sensitive_code="yes", security_domain="payment")
-        self.assertEqual((claude.level, claude.model, claude.effort), ("L5", "claude-opus-5", "high"))
+        self.assertEqual((claude.level, claude.model, claude.effort), ("L5", "claude-opus-5-5", "high"))
 
     def test_critical_domains_floor_at_l5_regardless_of_task_type(self):
         # auth is excluded: a bare domain mention with nothing else confirmed is not itself a critical-impact
@@ -1375,8 +1375,8 @@ CLAUDE_IMPL = (
     ("claude-sonnet-5", "medium"), ("claude-sonnet-5", "high"),
 )
 CLAUDE_JUDGE = (
-    ("claude-haiku-4-5", None), ("claude-opus-5", "high"), ("claude-opus-5", "high"),
-    ("claude-opus-5", "high"), ("claude-opus-5", "high"),
+    ("claude-haiku-4-5", None), ("claude-opus-5-5", "high"), ("claude-opus-5-5", "high"),
+    ("claude-opus-5-5", "high"), ("claude-opus-5-5", "high"),
 )
 AGY_FLASH = ("Gemini 3.8 Flash (High)", None)
 AGY_PRO = ("Gemini 3.1 Pro (High)", None)
@@ -1394,7 +1394,7 @@ class MatrixTests(unittest.TestCase):
         },
         "claude-code": {
             **{(kind, level): cell for kind in ("design", "review") for level, cell in zip(router.LEVELS, CLAUDE_JUDGE)},
-            ("architectural_refactoring", "L2"): ("claude-opus-5", "high"),
+            ("architectural_refactoring", "L2"): ("claude-opus-5-5", "high"),
             **{("inspect", level): ("claude-haiku-4-5", None) for level in router.LEVELS[:2]},
         },
         "antigravity": {
@@ -1422,14 +1422,14 @@ class MatrixTests(unittest.TestCase):
             ("architectural_refactoring", "L5"): [("planner", "gpt-6-sol", "xhigh"), ("implementer", "gpt-5.6-terra", "high")],
         },
         "claude-code": {
-            **{(kind, level): [("planner", "claude-opus-5", "high"), ("implementer", *impl)]
+            **{(kind, level): [("planner", "claude-opus-5-5", "high"), ("implementer", *impl)]
                for kind in ("implementation", "local_refactoring") for level, impl in zip(router.LEVELS, CLAUDE_IMPL)},
-            ("architectural_refactoring", "L1"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-haiku-4-5", None)],
-            ("implementation", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
-            ("local_refactoring", "L5"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "high")],
-            ("architectural_refactoring", "L3"): [("planner", "claude-opus-5", "high"), ("implementer", "claude-sonnet-5", "medium")],
-            ("architectural_refactoring", "L4"): [("planner", "claude-opus-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
-            ("architectural_refactoring", "L5"): [("planner", "claude-opus-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
+            ("architectural_refactoring", "L1"): [("planner", "claude-opus-5-5", "high"), ("implementer", "claude-haiku-4-5", None)],
+            ("implementation", "L5"): [("planner", "claude-opus-5-5", "high"), ("implementer", "claude-sonnet-5", "high")],
+            ("local_refactoring", "L5"): [("planner", "claude-opus-5-5", "high"), ("implementer", "claude-sonnet-5", "high")],
+            ("architectural_refactoring", "L3"): [("planner", "claude-opus-5-5", "high"), ("implementer", "claude-sonnet-5", "medium")],
+            ("architectural_refactoring", "L4"): [("planner", "claude-opus-5-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
+            ("architectural_refactoring", "L5"): [("planner", "claude-opus-5-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")],
         },
         "antigravity": {
             **{(kind, level): [("planner", *AGY_PRO), ("implementer", *impl)]
@@ -1473,7 +1473,7 @@ class MatrixTests(unittest.TestCase):
 
     def test_implementation_is_never_run_by_the_judging_model(self):
         # Sol/Opus plan and judge; implementation stays on Luna/Terra, Haiku/Sonnet, Flash/Sonnet.
-        judges = {"codex": ("gpt-6-sol",), "claude-code": ("claude-opus-5",), "antigravity": ("Claude Opus",)}
+        judges = {"codex": ("gpt-6-sol",), "claude-code": ("claude-opus-5-5",), "antigravity": ("Claude Opus",)}
         for platform, judge_models in judges.items():
             for task_type in ("implementation", "local_refactoring"):
                 for level in router.LEVELS:
@@ -1493,8 +1493,8 @@ class MatrixTests(unittest.TestCase):
             ("codex", "review", "elevated", [("executor", "gpt-6-sol", "xhigh")]),
             ("codex", "review", "critical", [("executor", "gpt-6-sol", "max")]),
             ("codex", "architectural_refactoring", "critical", [("planner", "gpt-6-sol", "max"), ("implementer", "gpt-5.6-terra", "high")]),
-            ("claude-code", "implementation", "elevated", [("planner", "claude-opus-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")]),
-            ("claude-code", "design", "critical", [("executor", "claude-opus-5", "max")]),
+            ("claude-code", "implementation", "elevated", [("planner", "claude-opus-5-5", "xhigh"), ("implementer", "claude-sonnet-5", "high")]),
+            ("claude-code", "design", "critical", [("executor", "claude-opus-5-5", "max")]),
             ("antigravity", "design", "elevated", [("executor", "Claude Opus 4.6 (Thinking)", None)]),
             ("antigravity", "implementation", "critical", [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)]),
             ("antigravity", "architectural_refactoring", "critical", [("planner", "Claude Opus 4.6 (Thinking)", None), ("implementer", "Claude Sonnet 4.6 (Thinking)", None)]),
@@ -2426,7 +2426,7 @@ class CommandAndLauncherTests(unittest.TestCase):
                 env={**os.environ, "MODEL_EFFORT_ROUTER_PRINT_ONLY": "1"},
             )
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("claude -p --model claude-opus-5", proc.stderr)
+        self.assertIn("claude -p --model claude-opus-5-5", proc.stderr)
         self.assertNotIn("--agent", proc.stderr)
 
     def test_claude_and_antigravity_embed_level_instructions_without_installed_agents(self):
@@ -2464,7 +2464,7 @@ class CommandAndLauncherTests(unittest.TestCase):
 
     def test_two_stage_commands_are_platform_native(self):
         for platform, expected_head in (
-            ("claude-code", ["claude", "-p", "--model", "claude-opus-5"]),
+            ("claude-code", ["claude", "-p", "--model", "claude-opus-5-5"]),
             ("antigravity", ["agy", "--mode", "plan", "--sandbox", "--model"]),
         ):
             with self.subTest(platform=platform):

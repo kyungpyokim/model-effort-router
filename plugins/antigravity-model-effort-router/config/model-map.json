@@ -280,7 +280,7 @@
             "stages": [
               {
                 "role": "planner",
-                "model": "claude-opus-5",
+                "model": "claude-opus-5-5",
                 "effort": "high"
               },
               {
@@ -297,19 +297,19 @@
             "effort": null
           },
           "L2": {
-            "model": "claude-opus-5",
+            "model": "claude-opus-5-5",
             "effort": "high"
           },
           "L3": {
-            "model": "claude-opus-5",
+            "model": "claude-opus-5-5",
             "effort": "high"
           },
           "L4": {
-            "model": "claude-opus-5",
+            "model": "claude-opus-5-5",
             "effort": "high"
           },
           "L5": {
-            "model": "claude-opus-5",
+            "model": "claude-opus-5-5",
             "effort": "high"
           }
         },
@@ -319,19 +319,19 @@
             "effort": null
           },
           "L2": {
-            "model": "claude-opus-5",
+            "model": "claude-opus-5-5",
             "effort": "high"
           },
           "L3": {
-            "model": "claude-opus-5",
+            "model": "claude-opus-5-5",
             "effort": "high"
           },
           "L4": {
-            "model": "claude-opus-5",
+            "model": "claude-opus-5-5",
             "effort": "high"
           },
           "L5": {
-            "model": "claude-opus-5",
+            "model": "claude-opus-5-5",
             "effort": "high"
           }
         },
@@ -378,7 +378,7 @@
             "stages": [
               {
                 "role": "planner",
-                "model": "claude-opus-5",
+                "model": "claude-opus-5-5",
                 "effort": "high"
               },
               {
@@ -395,14 +395,14 @@
             "effort": null
           },
           "L2": {
-            "model": "claude-opus-5",
+            "model": "claude-opus-5-5",
             "effort": "high"
           },
           "L3": {
             "stages": [
               {
                 "role": "planner",
-                "model": "claude-opus-5",
+                "model": "claude-opus-5-5",
                 "effort": "high"
               },
               {
@@ -416,7 +416,7 @@
             "stages": [
               {
                 "role": "planner",
-                "model": "claude-opus-5",
+                "model": "claude-opus-5-5",
                 "effort": "xhigh"
               },
               {
@@ -430,7 +430,7 @@
             "stages": [
               {
                 "role": "planner",
-                "model": "claude-opus-5",
+                "model": "claude-opus-5-5",
                 "effort": "xhigh"
               },
               {

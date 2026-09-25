@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 import router  # noqa: E402
 from test_l2_refinement import routed  # noqa: E402
 
-SOL, OPUS = "gpt-6-sol", "claude-opus-5"
+SOL, OPUS = "gpt-6-sol", "claude-opus-5-5"
 
 
 def profile(stage):
