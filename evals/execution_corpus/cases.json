@@ -1,0 +1,158 @@
+{
+  "corpus": "execution_corpus",
+  "revision": "v1",
+  "freeze_date": "2026-09-26",
+  "frozen_before_live_runs": true,
+  "cases": [
+    {
+      "name": "L1_doc_typo_fix",
+      "task_type": "implementation",
+      "level": "L1",
+      "tier": "standard",
+      "task": "Fix documentation typo in README.md",
+      "fixture_dir": "evals/execution_corpus/fixtures/L1_doc_typo_fix",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Fixture docs check fails on the typo present in README.md and passes after the typo is corrected; no other file changes required."
+    },
+    {
+      "name": "L1_unused_import_cleanup",
+      "task_type": "local_refactoring",
+      "level": "L1",
+      "tier": "standard",
+      "task": "Remove unused imports in main.py",
+      "fixture_dir": "evals/execution_corpus/fixtures/L1_unused_import_cleanup",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Fixture lint/import check fails while main.py keeps the unused import and passes after the import is removed with unchanged behavior."
+    },
+    {
+      "name": "L1_rename_local_variable",
+      "task_type": "local_refactoring",
+      "level": "L1",
+      "tier": "standard",
+      "task": "Rename local variable foo to bar in helper function",
+      "fixture_dir": "evals/execution_corpus/fixtures/L1_rename_local_variable",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Fixture test fails while the helper still uses the old local name and passes after the local is renamed to bar with identical behavior."
+    },
+    {
+      "name": "L2_simple_bug_fix",
+      "task_type": "implementation",
+      "level": "L2",
+      "tier": "standard",
+      "task": "Fix off-by-one error in pagination calculation in view.py",
+      "fixture_dir": "evals/execution_corpus/fixtures/L2_simple_bug_fix",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Pagination fixture test reproduces the off-by-one against the initial state and passes after the boundary calculation in view.py is fixed."
+    },
+    {
+      "name": "L2_single_file_helper",
+      "task_type": "implementation",
+      "level": "L2",
+      "tier": "standard",
+      "task": "Add helper function to parse date string in utils.py",
+      "fixture_dir": "evals/execution_corpus/fixtures/L2_single_file_helper",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "utils fixture tests fail until the date-parse helper exists in utils.py and returns the expected parsed values, then pass without other changes."
+    },
+    {
+      "name": "L2_local_extract_function",
+      "task_type": "local_refactoring",
+      "level": "L2",
+      "tier": "standard",
+      "task": "Extract duplicate validation logic into a local function in validator.py",
+      "fixture_dir": "evals/execution_corpus/fixtures/L2_local_extract_function",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Behavior tests stay green while a duplication check fails on the initial state and passes only after the duplicated validation logic in validator.py is extracted into one shared local function."
+    },
+    {
+      "name": "L3_add_feature_controller_service",
+      "task_type": "implementation",
+      "level": "L3",
+      "tier": "standard",
+      "task": "Add promo code validation logic across cart_controller.py and promo_service.py",
+      "fixture_dir": "evals/execution_corpus/fixtures/L3_add_feature_controller_service",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Promo-code fixture tests fail on the initial state and pass once promo code validation is implemented across cart_controller.py and promo_service.py."
+    },
+    {
+      "name": "L3_local_refactor_three_files",
+      "task_type": "local_refactoring",
+      "level": "L3",
+      "tier": "standard",
+      "task": "Refactor string parsing utils across 3 related test files",
+      "fixture_dir": "evals/execution_corpus/fixtures/L3_local_refactor_three_files",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "String-parsing behavior tests stay green while a shared-parser check fails initially and passes after the parsing utils are refactored across the three related files."
+    },
+    {
+      "name": "L3_refactor_logger_four_files",
+      "task_type": "local_refactoring",
+      "level": "L3",
+      "tier": "standard",
+      "task": "Standardize structured logging format across 4 background worker handler files",
+      "fixture_dir": "evals/execution_corpus/fixtures/L3_refactor_logger_four_files",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Worker handler fixture tests fail on the initial inconsistent log format and pass only after all four background worker handlers emit the standardized structured logging format."
+    },
+    {
+      "name": "L4_public_api_change",
+      "task_type": "implementation",
+      "level": "L4",
+      "tier": "standard",
+      "task": "Change REST API response envelope from data/error to standard RFC7807 problem details",
+      "fixture_dir": "evals/execution_corpus/fixtures/L4_public_api_change",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "API contract tests expect RFC7807 problem+json responses and fail on the legacy data/error envelope until the response envelope change is implemented."
+    },
+    {
+      "name": "L4_cross_module_refactor",
+      "task_type": "architectural_refactoring",
+      "level": "L4",
+      "tier": "standard",
+      "task": "Move billing helpers from core module to billing module and update call sites",
+      "fixture_dir": "evals/execution_corpus/fixtures/L4_cross_module_refactor",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Billing behavior tests stay green while a module-boundary check fails until the billing helpers live in the billing module and all call sites are updated."
+    },
+    {
+      "name": "L4_rename_type_across_ten_files",
+      "task_type": "local_refactoring",
+      "level": "L4",
+      "tier": "standard",
+      "task": "Rename UserProfileDTO across 10 service files",
+      "fixture_dir": "evals/execution_corpus/fixtures/L4_rename_type_across_ten_files",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Fixture tests fail while any service file still references the old type name and pass after UserProfileDTO is renamed consistently across all ten files."
+    },
+    {
+      "name": "L5_concurrency_race_condition",
+      "task_type": "implementation",
+      "level": "L5",
+      "tier": "standard",
+      "task": "Fix intermittent race condition causing deadlocks in thread pool queue",
+      "fixture_dir": "evals/execution_corpus/fixtures/L5_concurrency_race_condition",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Deterministic thread-pool fixture test fails or times out on the initial state and completes with correct results after the queue race condition is fixed."
+    },
+    {
+      "name": "L5E_security_oauth_token_refresh",
+      "task_type": "implementation",
+      "level": "L5",
+      "tier": "elevated",
+      "task": "Revamp OAuth 2.0 refresh token rotation and JWT signature validation",
+      "fixture_dir": "evals/execution_corpus/fixtures/L5E_security_oauth_token_refresh",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Security fixture tests fail on the initial state (no refresh-token rotation and weak signature checks) and pass after rotation and JWT signature validation are implemented; runs fully offline with a mocked provider."
+    },
+    {
+      "name": "L5_new_plugin_architecture",
+      "task_type": "implementation",
+      "level": "L5",
+      "tier": "standard",
+      "task": "Design and implement new dynamic plugin loading architecture with isolated contexts",
+      "fixture_dir": "evals/execution_corpus/fixtures/L5_new_plugin_architecture",
+      "test_cmd": "python3 -m pytest -q",
+      "acceptance": "Plugin loader fixture tests fail on the initial state and pass once dynamic plugin loading with isolated contexts works and plugins cannot leak state into each other."
+    }
+  ]
+}
