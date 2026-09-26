@@ -280,8 +280,10 @@ Field semantics:
 - `cycle` — 0 for the first plan/implement pass, +1 per re-plan (`replans`). It is what keeps the
   run-wide counters (`test_fixes`, `review_fixes`, `replans`, `review_escalations`) separable from
   per-cycle state, and it is the only place a cycle boundary is recorded.
-- `attempt` — 1-based **within its cycle**, not `self.reviews` (which is run-wide and also counts
-  the previous cycle's calls). Derivable as "entries in this cycle + 1", so no extra counter.
+- `attempt` — 1-based **within its cycle**: neither `self.reviews` (run-wide, so it also counts the
+  previous cycle's calls) nor `len(history) + 1` (run-wide, so it silently keeps counting across a
+  re-plan). It is "entries in the **current cycle** + 1", the reference bug this field has to
+  survive.
 - `effort` — the effort the attempt actually ran at (after any earlier escalation).
 - `verdict` — `PASS`, `FAIL`, or `null` when the call produced no `VERDICT` line (the run stops with
   11); a broken reviewer is recorded, never smoothed over.
@@ -297,6 +299,12 @@ Field semantics:
 Numbers that follow from the history are **never stored again** (no `attempts`, `escalations`,
 `final_verdict`, or current-cycle count): the history is the single source and a duplicated count
 can drift from it.
+
+The **reference case** every test must reproduce: cycle 0 attempt 1 runs `high`, FAILs with
+`edge_case` and escalates to `xhigh`; cycle 0 attempt 2 runs `xhigh` and PASSes; a re-plan starts
+cycle 1 at attempt 1 with the resolved policy's effort, and that attempt FAILs with `design`. The
+history keeps all three entries with their own effort and type, `attempt` restarts at 1 in cycle 1,
+and the run-wide counters keep counting throughout.
 
 `state()` must **merge nested keys** instead of replacing the record: a later `state()` call that
 carries new review information keeps every `review` key written before it, and a history entry is

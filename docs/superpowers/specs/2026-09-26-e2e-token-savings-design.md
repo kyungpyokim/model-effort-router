@@ -193,7 +193,7 @@ Per case and aggregate reports include:
 
 - success/failure
 - deterministic test pass/fail
-- review verdict, and the per-attempt review history (`state.json` `review.history`: cycle, attempt, effort, verdict, failure type, escalation) joined on `run_id` — never re-parsed from review text
+- review verdict as one of `PASS`, `FAIL`, or `NO_VERDICT` (a review call that produced no verdict line), with the per-attempt review history (`state.json` `review.history`: cycle, attempt, effort, verdict, failure type, escalation) joined on `run_id` — never re-parsed from review text. A typed `environment` failure and a `NO_VERDICT` review are counted separately from a code-quality `FAIL`: folding them into `FAIL` or dropping them charges reviewer-infrastructure faults to the model and would corrupt the G5 evidence
 - retry count
 - fix-loop tokens
 - wall time
@@ -447,6 +447,8 @@ Minimum record shape:
   "wall_time_ms": 0
 }
 ```
+
+`provider` names the **billing/pricing namespace** the record's cost is computed in — `openai` for Phase 1 — not the execution adapter or CLI name. `codex` is the adapter whose argv and event stream the parser understands (the adapter key inside `e2e_usage`), while pricing is selected per provider, so Task 7 keys its snapshot on `provider` and the value is frozen before any pricing work begins. An `executor`/adapter field is deliberately not added until something needs to tell adapters apart within one provider.
 
 `cached_input_tokens`, `cache_write_tokens`, and `reasoning_tokens` may be subsets or separately billed quantities depending on provider. Provider adapters must normalize semantics and compute `total_tokens` without double counting.
 
