@@ -78,19 +78,29 @@ class PricingSnapshotTests(unittest.TestCase):
                 with self.assertRaises(e2e_pricing.PricingError):
                     e2e_pricing.load_pricing(self.write_snapshot(snapshot))
 
-    def test_the_production_snapshot_loads_and_reports_what_is_unpriced(self):
-        # The committed snapshot is intentionally not populated yet; it must load and must report
-        # every rate-less Phase 1 model so the Task 10 readiness gate fails closed.
+    def test_the_production_snapshot_is_populated_and_fully_priced(self):
         pricing = e2e_pricing.load_pricing(PRODUCTION_SNAPSHOT)
 
         self.assertEqual(pricing.currency, "USD")
-        self.assertEqual(
-            e2e_pricing.unpriced_models(pricing),
-            ("openai/gpt-6-luna", "openai/gpt-6-sol"),
+        self.assertEqual(pricing.snapshot_date, "2026-09-27")
+        self.assertEqual(pricing.conditions, {"service_tier": "standard", "context_band": "short"})
+        self.assertEqual(e2e_pricing.unpriced_models(pricing), ())
+
+    def test_the_production_rates_price_the_phase_1_models(self):
+        pricing = e2e_pricing.load_pricing(PRODUCTION_SNAPSHOT)
+
+        # gpt-6-luna: ordinary 0.1M*0.1 + cached 0.8M*0.01 + writes 0.1M*0.125 + output 0.2M*0.5
+        luna = e2e_pricing.estimate_api_equivalent_cost_usd(
+            "openai", "gpt-6-luna",
+            usage(input_tokens=1_000_000, cached_input_tokens=800_000, cache_write_tokens=100_000, output_tokens=200_000),
+            pricing,
         )
-        with self.assertRaises(e2e_pricing.PricingError) as caught:
-            e2e_pricing.estimate_api_equivalent_cost_usd("openai", "gpt-6-luna", usage(10, output_tokens=1), pricing)
-        self.assertEqual(caught.exception.kind, "missing_rate")
+        self.assertEqual(luna, Decimal("0.130500"))
+        # gpt-6-sol: 1M input + 1M output
+        sol = e2e_pricing.estimate_api_equivalent_cost_usd(
+            "openai", "gpt-6-sol", usage(input_tokens=1_000_000, output_tokens=1_000_000), pricing,
+        )
+        self.assertEqual(sol, Decimal("12.000000"))
 
     def write_snapshot(self, data):
         path = Path(self._tmp.name) / "snapshot.json"
@@ -113,24 +123,34 @@ class CostArithmeticTests(unittest.TestCase):
         # 1M input of which 0.8M cached: 0.2M * 1.25 + 0.8M * 0.25
         self.assertEqual(self.cost(input_tokens=1_000_000, cached_input_tokens=800_000), Decimal("0.450000"))
 
-    def test_cache_writes_are_billed_at_their_own_rate_instead_of_the_input_rate(self):
+    def test_cache_writes_are_billed_at_their_own_rate(self):
         # fixture-cache-write: input 1/M, cached 0.5/M, write 2/M, output 4/M
-        # 0.8M uncached of which 0.2M are writes: 0.6M*1 + 0.2M*2 + 0.2M*0.5 = 1.1
+        # ordinary 0.6M*1 + cached 0.2M*0.5 + writes 0.2M*2 = 1.1
         cost = e2e_pricing.estimate_api_equivalent_cost_usd(
             "openai", "fixture-cache-write",
             usage(input_tokens=1_000_000, cached_input_tokens=200_000, cache_write_tokens=200_000), self.pricing,
         )
         self.assertEqual(cost, Decimal("1.100000"))
 
-    def test_cache_writes_never_leave_uncached_input_negative(self):
-        # A record claiming more writes than uncached input clamps to the uncached part: the writes
-        # are a subset of input, so they can never be billed beyond it.
-        cost = e2e_pricing.estimate_api_equivalent_cost_usd(
-            "openai", "fixture-cache-write",
-            usage(input_tokens=1_000_000, cached_input_tokens=900_000, cache_write_tokens=500_000), self.pricing,
-        )
-        # uncached 0.1M, all of it written: 0.1M*2 + 0.9M*0.5
-        self.assertEqual(cost, Decimal("0.650000"))
+    def test_cached_plus_cache_write_exceeding_input_is_invalid_usage(self):
+        # The buckets partition the input, so this record is a measurement fault. It must fail
+        # closed rather than be clamped into a cheaper, believable-looking number.
+        with self.assertRaises(e2e_pricing.PricingError) as caught:
+            e2e_pricing.estimate_api_equivalent_cost_usd(
+                "openai", "fixture-cache-write",
+                usage(input_tokens=1_000_000, cached_input_tokens=900_000, cache_write_tokens=500_000), self.pricing,
+            )
+        self.assertEqual(caught.exception.kind, "invalid_usage")
+
+    def test_cache_writes_without_a_write_rate_are_missing_rate(self):
+        # A null write rate is only allowed while the record reports no cache writes; the adapter
+        # never reinterprets those tokens as ordinary input.
+        with self.assertRaises(e2e_pricing.PricingError) as caught:
+            e2e_pricing.estimate_api_equivalent_cost_usd(
+                "openai", "fixture-standard",
+                usage(input_tokens=1000, cache_write_tokens=100), self.pricing,
+            )
+        self.assertEqual(caught.exception.kind, "missing_rate")
 
     def test_reasoning_included_in_output_is_not_charged_twice(self):
         with_reasoning = self.cost(output_tokens=1_000_000, reasoning_tokens=600_000)
@@ -146,13 +166,22 @@ class CostArithmeticTests(unittest.TestCase):
         )
         self.assertEqual(cost, Decimal("4.000000"))
 
-    def test_separately_billed_reasoning_is_charged_on_top_of_output(self):
-        # fixture-separate-reasoning: input 1/M, output 2/M, reasoning billed separately at 2/M
+    def test_separately_billed_reasoning_uses_its_own_rate_never_the_output_rate_twice(self):
+        # canonical: reasoning is a subset of output. fixture-separate-reasoning: output 2/M,
+        # reasoning 3/M, so (1M - 0.2M)*2 + 0.2M*3 = 2.2, not (1M + 0.2M)*2.
         cost = e2e_pricing.estimate_api_equivalent_cost_usd(
             "openai", "fixture-separate-reasoning",
             usage(output_tokens=1_000_000, reasoning_tokens=200_000), self.pricing,
         )
-        self.assertEqual(cost, Decimal("2.400000"))
+        self.assertEqual(cost, Decimal("2.200000"))
+
+    def test_separately_billed_reasoning_without_its_rate_is_missing_rate(self):
+        with self.assertRaises(e2e_pricing.PricingError) as caught:
+            e2e_pricing.estimate_api_equivalent_cost_usd(
+                "openai", "fixture-separate-reasoning-without-a-rate",
+                usage(output_tokens=1_000_000, reasoning_tokens=200_000), self.pricing,
+            )
+        self.assertEqual(caught.exception.kind, "missing_rate")
 
     def test_zero_measured_tokens_are_a_real_zero(self):
         self.assertEqual(self.cost(), Decimal("0.000000"))
@@ -162,13 +191,16 @@ class CostArithmeticTests(unittest.TestCase):
             self.cost(input_tokens=100, cached_input_tokens=150)
         self.assertEqual(caught.exception.kind, "invalid_usage")
 
-    def test_more_billed_output_than_reasoning_is_required_when_reasoning_is_excluded(self):
-        with self.assertRaises(e2e_pricing.PricingError) as caught:
-            e2e_pricing.estimate_api_equivalent_cost_usd(
-                "openai", "fixture-no-reasoning-billing",
-                usage(output_tokens=100, reasoning_tokens=150), self.pricing,
-            )
-        self.assertEqual(caught.exception.kind, "invalid_usage")
+    def test_reasoning_exceeding_output_is_invalid_for_every_rule(self):
+        # Canonical invariant: reasoning_tokens is a subset of output_tokens, whatever the billing
+        # rule, so a record that breaks it is a measurement fault.
+        for model in ("fixture-standard", "fixture-no-reasoning-billing", "fixture-separate-reasoning"):
+            with self.subTest(model=model):
+                with self.assertRaises(e2e_pricing.PricingError) as caught:
+                    e2e_pricing.estimate_api_equivalent_cost_usd(
+                        "openai", model, usage(output_tokens=100, reasoning_tokens=150), self.pricing,
+                    )
+                self.assertEqual(caught.exception.kind, "invalid_usage")
 
 
 class PricingValidityTests(unittest.TestCase):

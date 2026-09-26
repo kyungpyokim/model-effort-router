@@ -94,6 +94,7 @@ The sum includes, when present:
 - retry/fix executor calls
 - re-review calls
 - provider/model fallback calls
+- every invocation that reached a provider, including a call that failed or was interrupted: a failed call still consumed billable tokens, so success and billing are separate questions and the sink records both
 
 Deterministic local tests contribute zero model tokens.
 
@@ -519,6 +520,10 @@ Minimum structure:
 {
   "snapshot_date": "YYYY-MM-DD",
   "currency": "USD",
+  "conditions": {
+    "service_tier": "standard",
+    "context_band": "short"
+  },
   "sources": {
     "openai": "official provider pricing page"
   },
@@ -529,14 +534,19 @@ Minimum structure:
         "cached_input_per_million": null,
         "cache_write_per_million": null,
         "output_per_million": null,
-        "reasoning_billing": "included_in_output|separate|not_billed"
+        "reasoning_per_million": null,
+        "reasoning_billing": "included_in_output|not_billed|separate"
       }
     }
   }
 }
 ```
 
-Rates that a provider does not use may be null/omitted; the adapter defines provider semantics.
+`conditions` pins what the rates apply to — at least the service tier and the context band, because a
+long-context request is billed differently from a short-context one — so a run can be re-priced
+against the band it actually used. A rate may be null only while the bucket it prices holds no
+tokens: a record that reports cached input, cache writes, or separately billed reasoning against a
+null rate is a `missing_rate` failure, never a silent reinterpretation of those tokens.
 
 The snapshot is filled from official provider pricing immediately before the benchmark and committed with the benchmark configuration/report.
 
@@ -557,6 +567,25 @@ and cached tokens receive the cached-read rate rather than being billed twice.
 Similarly, reasoning/thinking tokens are not automatically added to output cost. The adapter follows the provider's documented billing rule indicated by `reasoning_billing`.
 
 Raw normalized usage is retained so a historical run can be re-priced with a later snapshot without rerunning the model.
+
+**Bucket relation, enforced instead of repaired.** The provider normalizer yields one canonical shape:
+`cached_input_tokens + cache_write_tokens <= input_tokens` and `reasoning_tokens <= output_tokens`,
+with `output_tokens` the whole output and reasoning a subset of it. Every input token falls in
+exactly one bucket — ordinary, cached, or cache-write — each billed at its own rate:
+
+```text
+ordinary_input = input_tokens - cached_input_tokens - cache_write_tokens
+included_in_output: output_tokens
+not_billed:         output_tokens - reasoning_tokens
+separate:           (output_tokens - reasoning_tokens) + reasoning_tokens * reasoning_per_million
+```
+
+A record that breaks either relation is a measurement fault and fails closed as `invalid_usage`; it
+is never clamped into a cheaper, believable-looking number. `separate` therefore needs an explicit
+`reasoning_per_million`, and using it without one is a `missing_rate` failure rather than a charge at
+the output rate. A provider that reports reasoning outside its output must have the normalizer fold
+them together before pricing sees the record, so the pricing layer never needs provider-specific raw
+semantics.
 
 **Pricing validity is not usage completeness.** The adapter decides only from the snapshot and the
 record's arithmetic; `usage_status` stays a fact about measurement that the harness turns into its own
@@ -646,6 +675,7 @@ Each run summary records at least:
 - token totals by stage
 - estimated cost by stage
 - total token/cost
+- the pricing snapshot the cost was computed with: `snapshot_date`, `service_tier`, `context_band`, and the provider `source`, so a run stays re-priceable and reproducible after rates change
 - test result
 - review verdict, when present
 - retry/fix count

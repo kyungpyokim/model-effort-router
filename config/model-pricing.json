@@ -1,25 +1,31 @@
 {
-  "snapshot_date": null,
+  "snapshot_date": "2026-09-27",
   "currency": "USD",
   "unit": "USD per 1,000,000 tokens",
-  "note": "Phase 1 (Codex/OpenAI) snapshot. All rates are null until they are taken from the official pricing page immediately before benchmark execution; the Task 10 readiness gate requires unpriced_models() to be empty for these models. Null never means free: loading succeeds, pricing a record raises missing_rate.",
+  "conditions": {
+    "service_tier": "standard",
+    "context_band": "short"
+  },
+  "note": "Phase 1 (Codex/OpenAI) rates taken from the provider's official pricing page on the snapshot date, for standard processing in the short-context band. Requests above the long-context threshold are billed differently and are out of scope for Phase 1; unpriced_models() must stay empty for these models.",
   "sources": {
     "openai": "https://openai.com/api/pricing/"
   },
   "providers": {
     "openai": {
       "gpt-6-luna": {
-        "input_per_million": null,
-        "cached_input_per_million": null,
-        "cache_write_per_million": null,
-        "output_per_million": null,
+        "input_per_million": 0.1,
+        "cached_input_per_million": 0.01,
+        "cache_write_per_million": 0.125,
+        "output_per_million": 0.5,
+        "reasoning_per_million": null,
         "reasoning_billing": "included_in_output"
       },
       "gpt-6-sol": {
-        "input_per_million": null,
-        "cached_input_per_million": null,
-        "cache_write_per_million": null,
-        "output_per_million": null,
+        "input_per_million": 2.0,
+        "cached_input_per_million": 0.2,
+        "cache_write_per_million": 2.5,
+        "output_per_million": 10.0,
+        "reasoning_per_million": null,
         "reasoning_billing": "included_in_output"
       }
     }

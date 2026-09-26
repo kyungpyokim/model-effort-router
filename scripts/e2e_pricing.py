@@ -16,12 +16,19 @@ Two rules this module exists to keep apart.
   ``pricing_invalid`` instead of silently adding ``$0`` to a total.
 
 Null rate semantics: ``input_per_million`` and ``output_per_million`` are essential — a model
-without them is unpriced however small the record. ``cached_input_per_million`` may be null only if
-the record reports no cached input. ``cache_write_per_million`` may be null because a provider that
-does not bill cache writes separately keeps those tokens inside uncached input (no separate charge),
-which is how the Codex records are shaped. ``reasoning_billing`` states the provider's rule:
-``included_in_output`` (already inside ``output_tokens``), ``not_billed`` (excluded from billable
-output), or ``separate`` (billed at the output rate on top of ``output_tokens``).
+without them is unpriced however small the record. ``cached_input_per_million``,
+``cache_write_per_million`` and ``reasoning_per_million`` may be null only while the buckets they
+price hold no tokens; the moment a record reports cached input, cache writes, or separately billed
+reasoning, the missing rate is a ``missing_rate`` failure rather than a silent reinterpretation.
+``reasoning_billing`` states the provider's rule: ``included_in_output`` (already inside
+``output_tokens``), ``not_billed`` (excluded from billable output), or ``separate`` (billed at
+``reasoning_per_million`` on top of the non-reasoning output).
+
+Canonical bucket relation, enforced instead of repaired: ``cached_input_tokens +
+cache_write_tokens <= input_tokens`` and ``reasoning_tokens <= output_tokens``. Every token falls in
+exactly one bucket — ordinary, cached, or cache-write — so the adapter subtracts both cached and
+cache-write tokens from total input, and a record that violates the relation is a measurement fault
+that fails closed rather than an input to clamp into a cheaper number.
 
 Not bundle-shared on purpose: nothing a plugin ships imports it, so it stays out of
 ``sync_bundle.SHARED`` while ``e2e_usage`` (imported by the pipeline and classifier) is in it.
@@ -37,7 +44,7 @@ from typing import Mapping
 
 from e2e_usage import NormalizedUsage
 
-RATE_KEYS = ("input_per_million", "cached_input_per_million", "cache_write_per_million", "output_per_million")
+RATE_KEYS = ("input_per_million", "cached_input_per_million", "cache_write_per_million", "output_per_million", "reasoning_per_million")
 ENTRY_KEYS = (*RATE_KEYS, "reasoning_billing")
 ESSENTIAL_RATE_KEYS = ("input_per_million", "output_per_million")
 REASONING_BILLING = ("included_in_output", "not_billed", "separate")
@@ -60,6 +67,7 @@ class ModelPricing:
     cached_input_per_million: Decimal | None
     cache_write_per_million: Decimal | None
     output_per_million: Decimal | None
+    reasoning_per_million: Decimal | None
     reasoning_billing: str
 
 
@@ -69,6 +77,9 @@ class PricingSnapshot:
     snapshot_date: str | None
     currency: str
     sources: Mapping[str, str]
+    #: The conditions the rates apply to (for example ``service_tier`` and ``context_band``), so a
+    #: run can be re-priced against the band it actually used.
+    conditions: Mapping[str, str]
     providers: Mapping[str, Mapping[str, ModelPricing]]
 
 
@@ -113,6 +124,9 @@ def load_pricing(path: Path) -> PricingSnapshot:
     providers = raw.get("providers")
     if not isinstance(providers, dict) or not providers:
         raise PricingError("schema", "pricing snapshot must define providers")
+    conditions = raw.get("conditions", {})
+    if not isinstance(conditions, dict) or not all(isinstance(key, str) and isinstance(value, str) and value.strip() for key, value in conditions.items()):
+        raise PricingError("schema", "pricing snapshot conditions must map names to values")
 
     loaded: dict[str, dict[str, ModelPricing]] = {}
     for provider, models in providers.items():
@@ -133,9 +147,10 @@ def load_pricing(path: Path) -> PricingSnapshot:
                 cached_input_per_million=_rate(entry.get("cached_input_per_million"), f"{where}.cached_input_per_million"),
                 cache_write_per_million=_rate(entry.get("cache_write_per_million"), f"{where}.cache_write_per_million"),
                 output_per_million=_rate(entry.get("output_per_million"), f"{where}.output_per_million"),
+                reasoning_per_million=_rate(entry.get("reasoning_per_million"), f"{where}.reasoning_per_million"),
                 reasoning_billing=billing,
             )
-    return PricingSnapshot(snapshot_date=date, currency=currency, sources=dict(sources), providers=loaded)
+    return PricingSnapshot(snapshot_date=date, currency=currency, sources=dict(sources), conditions=dict(conditions), providers=loaded)
 
 
 def unpriced_models(pricing: PricingSnapshot) -> tuple[str, ...]:
@@ -179,37 +194,39 @@ def estimate_api_equivalent_cost_usd(provider: str, model: str, usage: Normalize
     if absent:
         raise PricingError("missing_rate", f"{provider}/{model} has no {' or '.join(sorted(absent))}")
 
-    uncached_input = usage.input_tokens - usage.cached_input_tokens
-    if uncached_input < 0:
-        raise PricingError("invalid_usage", "cached input exceeds total input")
+    # Canonical bucket relation: the record's input splits into ordinary, cached, and cache-write
+    # tokens, each billed at its own rate. A record that breaks the relation is a measurement fault,
+    # so it fails closed instead of being clamped into a cheaper, believable-looking number.
+    if usage.cached_input_tokens + usage.cache_write_tokens > usage.input_tokens:
+        raise PricingError("invalid_usage", "cached plus cache-write input exceeds total input")
+    if usage.reasoning_tokens > usage.output_tokens:
+        raise PricingError("invalid_usage", "reasoning tokens exceed output tokens")
+    if usage.cached_input_tokens and entry.cached_input_per_million is None:
+        raise PricingError("missing_rate", f"{provider}/{model} bills cached input but has no cached rate")
+    if usage.cache_write_tokens and entry.cache_write_per_million is None:
+        raise PricingError("missing_rate", f"{provider}/{model} bills cache writes but has no cache-write rate")
 
-    cached_cost = Decimal(0)
-    if usage.cached_input_tokens:
-        if entry.cached_input_per_million is None:
-            raise PricingError("missing_rate", f"{provider}/{model} bills cached input but has no cached rate")
-        cached_cost = _component(usage.cached_input_tokens, entry.cached_input_per_million)
+    ordinary_input = usage.input_tokens - usage.cached_input_tokens - usage.cache_write_tokens
+    cached_cost = _component(usage.cached_input_tokens, entry.cached_input_per_million) if usage.cached_input_tokens else Decimal(0)
+    write_cost = _component(usage.cache_write_tokens, entry.cache_write_per_million) if usage.cache_write_tokens else Decimal(0)
 
-    write_cost = Decimal(0)
-    if usage.cache_write_tokens and entry.cache_write_per_million is not None:
-        # A null write rate means the provider keeps cache writes inside uncached input, so only a
-        # snapshot that defines one moves tokens out of it — and never more than it holds.
-        billed_writes = min(usage.cache_write_tokens, uncached_input)
-        uncached_input -= billed_writes
-        write_cost = _component(billed_writes, entry.cache_write_per_million)
-
+    # canonical: output_tokens is the whole output and reasoning_tokens is a subset of it, so only a
+    # rule that bills reasoning at its own rate may charge for it beyond the output rate.
     billable_output = usage.output_tokens
+    reasoning_cost = Decimal(0)
     if entry.reasoning_billing == "not_billed":
         billable_output -= usage.reasoning_tokens
-        if billable_output < 0:
-            raise PricingError("invalid_usage", "reasoning tokens exceed output tokens")
     elif entry.reasoning_billing == "separate":
-        # Reported separately and billed on top of output_tokens at the output rate.
-        billable_output += usage.reasoning_tokens
+        if usage.reasoning_tokens and entry.reasoning_per_million is None:
+            raise PricingError("missing_rate", f"{provider}/{model} bills reasoning separately but has no reasoning rate")
+        billable_output -= usage.reasoning_tokens
+        reasoning_cost = _component(usage.reasoning_tokens, entry.reasoning_per_million) if usage.reasoning_tokens else Decimal(0)
 
     total = (
-        _component(uncached_input, essential["input_per_million"])
+        _component(ordinary_input, essential["input_per_million"])
         + cached_cost
         + write_cost
         + _component(billable_output, essential["output_per_million"])
+        + reasoning_cost
     )
     return total.quantize(_MICRO_USD, rounding=ROUND_HALF_UP)
