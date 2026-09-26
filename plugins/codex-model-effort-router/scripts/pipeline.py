@@ -172,9 +172,11 @@ def escalation(output: str) -> tuple[str, str] | None:
 def review_failure_type(output: str) -> str:
     """The FAILURE type a review reported, or ``implementation`` when it reported none.
 
-    The line sits immediately above the VERDICT line, so an echoed FAILURE line elsewhere in the
-    output cannot type the failure. A missing line keeps the pre-taxonomy behaviour: an untyped
-    FAIL is an implementation problem and takes the fix path without escalation."""
+    The line must be the last non-empty line before the verdict, so a FAILURE line quoted earlier
+    in the findings cannot type the failure. Blank lines and trailing spaces are tolerated (the
+    verdict itself is parsed the same way), which keeps a compliant reviewer that adds a blank line
+    from losing its type. A missing line keeps the pre-taxonomy behaviour: an untyped FAIL is an
+    implementation problem and takes the fix path without escalation."""
     lines = [line.rstrip() for line in output.splitlines() if line.strip()]
     if len(lines) >= 2:
         found = FAILURE_RE.match(lines[-2])

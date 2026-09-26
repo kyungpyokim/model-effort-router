@@ -293,6 +293,13 @@ class ReviewFailureTaxonomyTests(PipelineCase):
         self.assertEqual(rc, 0)
         self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review"])
 
+    def test_a_blank_line_before_the_verdict_keeps_the_type(self):
+        # Tolerated on purpose (the verdict is parsed the same way), so a compliant reviewer that
+        # adds a blank line does not silently lose its type and the escalation that belongs to it.
+        rc, calls = self.run_pipeline([{}, {}, {"out": "missing case\nFAILURE: edge_case\n\nVERDICT: FAIL"}, {}, {"out": "VERDICT: PASS"}])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.efforts(calls), [["model_reasoning_effort=high"], ["model_reasoning_effort=xhigh"]])
+
     def test_a_route_may_lower_the_review_escalation_budget(self):
         payload = self.payload()
         payload["pipeline"]["limits"]["review_escalations"] = 0
