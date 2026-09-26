@@ -558,6 +558,18 @@ Similarly, reasoning/thinking tokens are not automatically added to output cost.
 
 Raw normalized usage is retained so a historical run can be re-priced with a later snapshot without rerunning the model.
 
+**Pricing validity is not usage completeness.** The adapter decides only from the snapshot and the
+record's arithmetic; `usage_status` stays a fact about measurement that the harness turns into its own
+run-validity decision. A `partial` record whose needed rates and buckets are present is priced, while
+a `complete` record whose model is absent from the snapshot is not — conflating the two would make
+"usage collection failed" and "price mapping failed" the same outage. A record whose usage is
+`missing` is never priced as `$0`, because that would make an unmeasured run look like a measured
+free one, and every other failure is a typed `PricingError` kind (`unknown_provider`,
+`unknown_model`, `missing_rate`, `invalid_usage`) so the harness marks the run `pricing_invalid`
+instead of adding a fabricated zero to a total. `unpriced_models()` reports the snapshot entries
+that lack an essential input or output rate; Task 10's readiness gate requires it to be empty for
+the Phase 1 models before the benchmark is gated.
+
 ## 5.3 Reporting language
 
 Use:

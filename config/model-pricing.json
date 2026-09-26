@@ -1,0 +1,27 @@
+{
+  "snapshot_date": null,
+  "currency": "USD",
+  "unit": "USD per 1,000,000 tokens",
+  "note": "Phase 1 (Codex/OpenAI) snapshot. All rates are null until they are taken from the official pricing page immediately before benchmark execution; the Task 10 readiness gate requires unpriced_models() to be empty for these models. Null never means free: loading succeeds, pricing a record raises missing_rate.",
+  "sources": {
+    "openai": "https://openai.com/api/pricing/"
+  },
+  "providers": {
+    "openai": {
+      "gpt-6-luna": {
+        "input_per_million": null,
+        "cached_input_per_million": null,
+        "cache_write_per_million": null,
+        "output_per_million": null,
+        "reasoning_billing": "included_in_output"
+      },
+      "gpt-6-sol": {
+        "input_per_million": null,
+        "cached_input_per_million": null,
+        "cache_write_per_million": null,
+        "output_per_million": null,
+        "reasoning_billing": "included_in_output"
+      }
+    }
+  }
+}
