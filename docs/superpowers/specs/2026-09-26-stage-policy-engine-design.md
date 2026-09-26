@@ -300,6 +300,13 @@ Numbers that follow from the history are **never stored again** (no `attempts`, 
 `final_verdict`, or current-cycle count): the history is the single source and a duplicated count
 can drift from it.
 
+**Counter scope, which the record must not blur.** `test_fixes` and `review_fixes` are
+**current-cycle** counters — a re-plan resets them, because the fix caps are per cycle — while
+`reviews`, `replans`, and `review_escalations` are run-wide. A run's run-wide per-call counts (how
+many `classifier`, `plan`, `execute`, `fix`, and `replan` calls it made) come from the usage sink's
+`stage` field, and its run-wide review attempts are the history itself, so nothing has to be
+duplicated into `state.json` merely to survive a re-plan.
+
 The **reference case** every test must reproduce: cycle 0 attempt 1 runs `high`, FAILs with
 `edge_case` and escalates to `xhigh`; cycle 0 attempt 2 runs `xhigh` and PASSes; a re-plan starts
 cycle 1 at attempt 1 with the resolved policy's effort, and that attempt FAILs with `design`. The

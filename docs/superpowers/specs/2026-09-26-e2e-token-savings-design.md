@@ -194,7 +194,7 @@ Per case and aggregate reports include:
 - success/failure
 - deterministic test pass/fail
 - review verdict as one of `PASS`, `FAIL`, or `NO_VERDICT` (a review call that produced no verdict line), with the per-attempt review history (`state.json` `review.history`: cycle, attempt, effort, verdict, failure type, escalation) joined on `run_id` — never re-parsed from review text. A typed `environment` failure and a `NO_VERDICT` review are counted separately from a code-quality `FAIL`: folding them into `FAIL` or dropping them charges reviewer-infrastructure faults to the model and would corrupt the G5 evidence
-- retry count
+- retry count, taken run-wide from the per-call records in the usage sink (`stage`: classifier, plan, execute, review, fix, replan) — not from `state.json`'s current-cycle `test_fixes`/`review_fixes` counters, which a re-plan resets
 - fix-loop tokens
 - wall time
 - final model/profile used per stage

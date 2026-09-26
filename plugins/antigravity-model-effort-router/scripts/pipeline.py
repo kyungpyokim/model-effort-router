@@ -320,6 +320,11 @@ class Pipeline:
         self.review_escalations = 0
         self.tests_passed: list[str] = []
         self.ambiguity = payload.get("ambiguity")
+        # Append-only per-attempt review record (see docs/superpowers/specs/2026-09-26-stage-policy-engine-design.md).
+        self.review_history: list[dict] = []
+        # Whether the current review failure came from a call that actually ran (vs the
+        # changed-nothing fail-closed path, which spends no call and records no attempt).
+        self.review_call_spent = False
         self.verbose = bool(os.environ.get(VERBOSE_ENV))
         self.base = git_head(cwd)
         self.plan_step = payload["steps"][0]
@@ -342,9 +347,38 @@ class Pipeline:
         if fast_path == "trivial_edit" and (len(commands) != 1 or pipe.get("review") is not None or pipe.get("replan") is not None):
             raise ValueError("a trivial-edit route must be a single stage without a review or re-plan")
 
-    def state(self, phase: str, who: dict | None = None, attempt: int | None = None) -> None:
-        state = {"phase": phase, "test_fixes": self.counts["test"], "review_fixes": self.counts["review"], "reviews": self.reviews, "replans": self.replans, "review_escalations": self.review_escalations}
+    def read_state(self) -> dict:
+        """The run's existing state, or an empty mapping when it is absent or unreadable.
+
+        The in-memory counters drive the run, so a corrupt file is logged and replaced rather
+        than allowed to stop a run."""
+        try:
+            data = json.loads((self.workdir / "state.json").read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as exc:
+            log(f"ignoring unreadable state.json ({exc})")
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def merged_state(self, phase: str | None = None) -> dict:
+        """The run state to persist: counters, phase when given, and the append-only review record.
+
+        Nested keys are merged, never replaced: keys another writer put under `review` survive,
+        while the history stays this run's own record."""
+        state = self.read_state()
+        if phase is not None:
+            state.update({"phase": phase, "test_fixes": self.counts["test"], "review_fixes": self.counts["review"], "reviews": self.reviews, "replans": self.replans, "review_escalations": self.review_escalations})
+        review = dict(state["review"]) if isinstance(state.get("review"), dict) else {}
+        review["history"] = [dict(entry) for entry in self.review_history]
+        state["review"] = review
+        return state
+
+    def write_state(self, state: dict) -> None:
         (self.workdir / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+    def state(self, phase: str, who: dict | None = None, attempt: int | None = None) -> None:
+        self.write_state(self.merged_state(phase))
         parts = [f"phase={phase}"]
         if who:
             parts += [f"model={who['model']}", f"effort={who.get('effort') or 'none'}"]
@@ -369,6 +403,32 @@ class Pipeline:
             return self.plan_file.read_text(encoding="utf-8")[:MAX_PLAN_CHARS]
         except OSError:
             return "(no plan file)"
+
+    def cycle_review_attempts(self) -> int:
+        """Review attempts already recorded in the current cycle (a re-plan starts a new cycle)."""
+        return sum(1 for entry in self.review_history if entry["cycle"] == self.replans)
+
+    def record_review(self, verdict: str | None, failure_type: str | None, *, effort: str | None, escalated: bool = False, effort_after: str | None = None) -> None:
+        """Append one finished review attempt.
+
+        Append-only: an entry is written once, when the attempt has an outcome, and nothing here
+        rewrites an earlier one. ``attempt`` is cycle-local (never ``self.reviews`` and never the
+        whole history's length), ``cycle`` is the re-plan boundary, and a missing verdict is stored
+        as ``null`` rather than coerced, so reviewer-infrastructure faults stay visible. ``effort``
+        is passed in rather than read here, because an escalation mutates the stage and the entry
+        must keep the rung this attempt actually ran at."""
+        self.review_history.append({
+            "cycle": self.replans,
+            "attempt": self.cycle_review_attempts() + 1,
+            "effort": effort,
+            "verdict": verdict,
+            "failure_type": failure_type,
+            "escalated": escalated,
+            "effort_after": effort_after,
+        })
+        # Persist at once: an attempt that ends the run (no verdict, an ambiguous or environment
+        # failure) never reaches a later state() call, and the record must still exist.
+        self.write_state(self.merged_state())
 
     def fix(self, kind: str, detail: str) -> tuple[int, str]:
         prompt = (
@@ -400,6 +460,7 @@ class Pipeline:
     def review(self) -> tuple[str, str, str] | int | None:
         """None on PASS, a typed failure on FAIL, or an exit code when the review itself broke."""
         assert self.reviewer is not None
+        self.review_call_spent = False
         tests = "\n".join(f"PASS: {command}" for command in self.tests_passed) or (
             "No deterministic test command was configured; rely on the implementer's reported checks."
         )
@@ -413,31 +474,38 @@ class Pipeline:
             f"Test results:\n{tests}\n\nDiff:\n{diff}\n"
         )
         self.reviews += 1
+        self.review_call_spent = True
         argv = router.stage_command(self.platform, self.reviewer, REVIEW_INSTRUCTIONS, prompt, "read")
         rc, output = self.stage("review", argv, self.reviewer, self.reviews)
         if rc:
             return rc
         verdict = VERDICT_RE.match(last_line(output))
         if not verdict:
+            self.record_review(None, None, effort=self.reviewer["effort"])
             log("review did not end with a VERDICT line; stopping instead of guessing")
             return EXIT_NO_VERDICT
-        return None if verdict.group(1) == "PASS" else ("review", output[-MAX_LOG_CHARS:], review_failure_type(output))
+        if verdict.group(1) == "PASS":
+            self.record_review("PASS", None, effort=self.reviewer["effort"])
+            return None
+        return ("review", output[-MAX_LOG_CHARS:], review_failure_type(output))
 
-    def escalate_review_effort(self) -> None:
+    def escalate_review_effort(self) -> str | None:
         """Raise the reviewing stage one rung for an edge_case failure (bounded by the route's limit).
 
         The decision is what the budget bounds, so a platform whose review stage carries no effort
-        setting (Antigravity) records the escalation without a rung change rather than looping."""
+        setting (Antigravity) records the escalation without a rung change rather than looping.
+        Returns the rung the stage moved to, or None when there was none to move to."""
         effort = self.reviewer.get("effort") if self.reviewer else None
         if effort not in router.EFFORT_ORDER:
             log("review escalation: this platform's review stage has no effort rung to raise")
-            return
+            return None
         index = router.EFFORT_ORDER.index(effort)
         if index + 1 >= len(router.EFFORT_ORDER):
             log("review escalation: the review already runs at the top effort rung")
-            return
+            return None
         self.reviewer["effort"] = router.EFFORT_ORDER[index + 1]
         log(f"review escalation: review effort raised to {self.reviewer['effort']}")
+        return self.reviewer["effort"]
 
     def check(self) -> tuple[str, str, str] | tuple[str, str] | int | None:
         self.tests_passed = []
@@ -474,13 +542,23 @@ class Pipeline:
             # A typed review failure the implementer must not fix: nothing to retry, nothing to
             # escalate. Stopping is the whole action.
             if kind == "review" and failure_type in ("ambiguous", "environment"):
+                if self.review_call_spent:
+                    self.record_review("FAIL", failure_type, effort=self.reviewer["effort"] if self.reviewer else None)
                 log(f"review reports a {failure_type} problem; stopping without a fix, a re-plan, or an effort raise")
                 self.state(failure_type)
                 return EXIT_CLARIFY if failure_type == "ambiguous" else EXIT_ENVIRONMENT
-            if kind == "review" and failure_type == "edge_case" and self.review_escalations < self.limits["review_escalations"]:
-                self.review_escalations += 1
-                self.state("review_escalation")
-                self.escalate_review_effort()
+            if kind == "review":
+                # Record the attempt before the escalation mutates the stage: the entry keeps the
+                # rung this attempt actually ran at, and the escalation is part of its outcome.
+                ran_at = self.reviewer["effort"] if self.reviewer else None
+                if failure_type == "edge_case" and self.review_escalations < self.limits["review_escalations"]:
+                    self.review_escalations += 1
+                    self.state("review_escalation")
+                    raised = self.escalate_review_effort()
+                    if self.review_call_spent:
+                        self.record_review("FAIL", failure_type, effort=ran_at, escalated=True, effort_after=raised)
+                elif self.review_call_spent:
+                    self.record_review("FAIL", failure_type, effort=ran_at)
             # A design failure says the plan does not fit the code, so the implementer's retry
             # budget would only re-fix the same wrong plan: go straight to the planner.
             if failure_type != "design" and kind in budget and self.counts[kind] < budget[kind]:

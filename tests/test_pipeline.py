@@ -379,6 +379,111 @@ class PipelineHardeningTests(PipelineCase):
         self.assertFalse((self.work / "state.json").exists())
 
 
+class ReviewHistoryTests(PipelineCase):
+    """The append-only per-attempt review record in state.json (frozen contract, stage policy spec).
+
+    The reference case: cycle 0 attempt 1 runs high and FAILs with edge_case, escalating to xhigh;
+    cycle 0 attempt 2 runs xhigh; a re-plan starts cycle 1 at attempt 1 with the resolved policy's
+    effort. Attempt numbering is cycle-local, never the whole history's length.
+    """
+
+    EDGE_CASE_FAIL = {"out": "missing case\nFAILURE: edge_case\nVERDICT: FAIL"}
+    DESIGN_FAIL = {"out": "the plan does not fit\nFAILURE: design\nVERDICT: FAIL"}
+
+    def plan_dir(self, payload):
+        directory = Path(payload["steps"][0]["output"]["path"]).parent
+        self.addCleanup(lambda: __import__("shutil").rmtree(directory, ignore_errors=True))
+        return directory
+
+    def history(self, payload):
+        return json.loads((self.plan_dir(payload) / "state.json").read_text())["review"]["history"]
+
+    def test_a_fail_then_escalated_pass_keeps_both_attempts(self):
+        payload = self.payload()
+        rc, calls = self.run_pipeline([{}, {}, self.EDGE_CASE_FAIL, {}, {"out": "VERDICT: PASS"}], payload=payload)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review"])
+        self.assertEqual(self.history(payload), [
+            {"cycle": 0, "attempt": 1, "effort": "high", "verdict": "FAIL", "failure_type": "edge_case", "escalated": True, "effort_after": "xhigh"},
+            {"cycle": 0, "attempt": 2, "effort": "xhigh", "verdict": "PASS", "failure_type": None, "escalated": False, "effort_after": None},
+        ])
+
+    def test_a_replan_starts_a_new_cycle_and_keeps_earlier_entries_unchanged(self):
+        payload = self.payload()
+        rc, calls = self.run_pipeline(
+            [{}, {}, self.EDGE_CASE_FAIL, {}, self.EDGE_CASE_FAIL, {}, {}, self.DESIGN_FAIL], payload=payload
+        )
+        self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
+        self.assertEqual(self.roles(calls).count("plan"), 2)
+        self.assertEqual(self.history(payload), [
+            # Entry 1 is asserted against its literal shape after a later cycle appended: an
+            # append-only record cannot rewrite the attempt that ran before the re-plan.
+            {"cycle": 0, "attempt": 1, "effort": "high", "verdict": "FAIL", "failure_type": "edge_case", "escalated": True, "effort_after": "xhigh"},
+            # The second attempt kept the raised rung; the escalation budget was already spent.
+            {"cycle": 0, "attempt": 2, "effort": "xhigh", "verdict": "FAIL", "failure_type": "edge_case", "escalated": False, "effort_after": None},
+            # Cycle-local numbering: attempt restarts at 1, and the effort raise persists for the
+            # whole run (the stage was raised, the budget is run-wide).
+            {"cycle": 1, "attempt": 1, "effort": "xhigh", "verdict": "FAIL", "failure_type": "design", "escalated": False, "effort_after": None},
+        ])
+        state = json.loads((self.plan_dir(payload) / "state.json").read_text())
+        self.assertEqual(
+            {key: state[key] for key in ("reviews", "replans", "review_escalations")},
+            {"reviews": 3, "replans": 1, "review_escalations": 1},
+        )
+        # `test_fixes`/`review_fixes` are current-cycle counters (the re-plan reset them, as the
+        # fix caps are per cycle); run-wide per-call counts come from the usage sink's `stage`
+        # records, and the run-wide attempts are the history asserted above.
+        self.assertEqual((state["test_fixes"], state["review_fixes"]), (0, 0))
+
+    def test_a_review_without_a_verdict_is_recorded_as_null_not_as_fail(self):
+        payload = self.payload()
+        rc, _ = self.run_pipeline([{}, {}, {"out": "looks fine to me"}], payload=payload)
+        self.assertEqual(rc, pipeline.EXIT_NO_VERDICT)
+        self.assertEqual(self.history(payload), [
+            {"cycle": 0, "attempt": 1, "effort": "high", "verdict": None, "failure_type": None, "escalated": False, "effort_after": None},
+        ])
+
+    def test_an_environment_fail_is_recorded_and_stops_without_escalating(self):
+        payload = self.payload()
+        rc, calls = self.run_pipeline([{}, {}, {"out": "sandbox down\nFAILURE: environment\nVERDICT: FAIL"}, {}], payload=payload)
+        self.assertEqual(rc, pipeline.EXIT_ENVIRONMENT)
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
+        self.assertEqual(self.history(payload)[0]["failure_type"], "environment")
+        self.assertFalse(self.history(payload)[0]["escalated"])
+
+    def test_the_changed_nothing_path_records_no_attempt(self):
+        # The run failed before any review call was spent, so there is no attempt to record.
+        self.git_repo()
+        payload = self.payload()
+        rc, calls = self.run_pipeline([{}] * 9, payload=payload)
+        self.assertEqual(rc, pipeline.EXIT_GAVE_UP)
+        self.assertNotIn("review", self.roles(calls))
+        state = json.loads((self.plan_dir(payload) / "state.json").read_text())
+        self.assertEqual((state["reviews"], state["review"]["history"]), (0, []))
+
+    def test_a_nested_review_update_preserves_other_review_keys(self):
+        payload = self.payload()
+        directory = self.plan_dir(payload)
+        runner = pipeline.Pipeline(payload, ["true"], str(self.work), directory, directory / "plan.json")
+        runner.state("implement")
+        state = json.loads((directory / "state.json").read_text())
+        state["review"]["future_key"] = {"kept": True}
+        (directory / "state.json").write_text(json.dumps(state), encoding="utf-8")
+        runner.record_review("PASS", None, effort="high")
+        runner.state("done")
+        written = json.loads((directory / "state.json").read_text())
+        self.assertEqual(written["review"]["future_key"], {"kept": True})
+        self.assertEqual(len(written["review"]["history"]), 1)
+
+    def test_an_unreadable_state_file_is_replaced_not_fatal(self):
+        payload = self.payload()
+        directory = self.plan_dir(payload)
+        (directory / "state.json").write_text("{not json", encoding="utf-8")
+        runner = pipeline.Pipeline(payload, ["true"], str(self.work), directory, directory / "plan.json")
+        runner.state("done")
+        self.assertEqual(json.loads((directory / "state.json").read_text())["phase"], "done")
+
+
 class PipelineFailClosedTests(PipelineCase):
     def test_an_implementer_that_changed_nothing_fails_review_without_a_reviewer_call(self):
         self.git_repo()
