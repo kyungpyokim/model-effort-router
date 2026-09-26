@@ -28,7 +28,7 @@ from classifier import (CLASSIFIER_PROMPT, CLASSIFIER_SCHEMA, CLASSIFIER_TIMEOUT
 from commands import (AGENT_NAME_RE, AUTOBAHN_SCOPE_GUARD, AUTOBAHN_SCOPE_GUARD_INSTRUCTION, CLAUDE_READ_TOOLS, CODEX_CONFIG_KEYS, IMPLEMENTER_INSTRUCTIONS_TEMPLATE, IMPLEMENTER_PROMPT_PREFIX, MARKDOWN_AGENT_PLUGINS, PLANNER_INSTRUCTIONS_TEMPLATE, PLANNER_PROMPT_PREFIX, REVIEW_ROLE_PROMPT, _agy_prompt_command, _claude_print_command, _codex_exec_command, _single_stage_command, agent_name, claude_access_flags, codex_agent_instructions, command_chain, command_model, expected_stage_text, handoff_text, markdown_agent_instructions, planner_instructions, role_prompt_prefix, shell_command, stage_command, stage_commands, validate_argv, validate_step_instructions, verification_handoff_instructions, verification_recommendations)
 from commands import refuse_interactive_two_stage
 
-from policy import (AGY_MODEL_RE, MODEL_RE, SAFE_ORCHESTRATION_LEVELS, SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY, _valid_candidate, _valid_matrix_entry, _valid_stage, apply_refinement, apply_tier, choose_candidate, is_orchestration_eligible, load_config, load_matrix, load_refinements, load_tier_profile, materialise_stages, model_ok, positive_finite_float, resolve_stages)
+from policy import (AGY_MODEL_RE, MODEL_RE, SAFE_ORCHESTRATION_LEVELS, SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY, _valid_candidate, _valid_matrix_entry, _valid_stage, apply_refinement, apply_tier, choose_candidate, derive_stage_policy, is_orchestration_eligible, load_config, load_matrix, load_refinements, load_tier_profile, materialise_stages, model_ok, positive_finite_float, resolve_stages)
 
 from rules import (AMBIGUITY_GATES, CODE_CHANGE_TASK_TYPES, CRITICAL_SECURITY_DOMAINS, DIFFICULTY_RULES, EFFORT_ORDER, FACTS, LEVEL_NAMES, LEVELS, NOUL_FACTS, OPTIONAL_FACT_DEFAULTS, READ_ONLY_TASK_TYPES, RISK_FLAGS, RISK_TIERS, SECURITY_DOMAINS, SECURITY_FLOOR_FLAGS, TASK_TYPES, TIER_LEVEL, YES_NO, YES_NO_UNKNOWN, apply_risk_escalation, derive_ambiguity_gate, evaluate_rules, higher_level, higher_tier, normalise_level, normalise_task_type, raise_effort, risk_flags_from_facts, unknown_facts, unresolved_facts)
 
@@ -190,6 +190,11 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None,
         "fast_path": result.fast_path,
         "ambiguity": result.ambiguity,
         "ambiguity_reason": result.ambiguity_reason,
+        # The explicit stage plan (a projection of the route above, see policy.derive_stage_policy).
+        "stage_policy": derive_stage_policy(
+            result.stages, result.mode, result.fast_path, result.pipeline,
+            result.ambiguity, result.task_type in CODE_CHANGE_TASK_TYPES,
+        ),
     }
     if any(flag in SECURITY_FLOOR_FLAGS for flag in active_risk_flags):
         payload["scope_guard"] = {

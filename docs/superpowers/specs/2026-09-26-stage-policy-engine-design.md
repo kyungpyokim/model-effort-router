@@ -220,6 +220,11 @@ frozen contract):
    no effort setting, so `escalate_review_effort` raises the rung only where there is one and logs
    otherwise. The counter still bounds the decision to one per run, so the guarantee does not
    depend on the platform.
+4. **Blank lines and trailing spaces before the verdict are tolerated** in both the failure type and
+   the verdict itself (`last_line` already worked that way). A strict physical-adjacency rule would
+   silently drop the type for a compliant reviewer that adds a blank line, turning a bounded
+   escalation into the untyped fix path; the quoted-line guard does not need the stricter rule,
+   because quoted text is followed by more findings, not by the verdict.
 
 **Enum and mapping.**
 
@@ -232,9 +237,11 @@ frozen contract):
 | `environment` | Tooling, sandbox, network, missing dependency, flaky external state | stop, pass the run's own exit code through | none — escalation is explicitly forbidden |
 
 **Bounds.** `PIPELINE_LIMITS` gains `review_escalations: 1`. Route files may only lower it
-(`validated_limits` already enforces "may only lower" for every key). Total model calls per run
-therefore stay bounded: `plan + implement + (test fixes ≤ 2) + (review fixes ≤ 1) + (review
-escalation ≤ 1) + (replans ≤ 1)`.
+(`validated_limits` already enforces "may only lower" for every key). The escalation is bounded per
+**run**; the fix counters stay per **cycle**, as they already were (`counts` resets when a re-plan
+starts). Worst case is therefore two cycles (`max_replans` 1): per cycle one implementer call plus
+at most 2 test fixes and 1 review fix, plus one run-wide escalation and one re-plan — finite, but not
+the flat per-run sum an earlier draft of this paragraph claimed.
 
 **Status:** implemented (`pipeline.FAILURE_RE`, `pipeline.review_failure_type`,
 `pipeline.EXIT_CLARIFY` / `EXIT_ENVIRONMENT`, `Pipeline.escalate_review_effort`,
@@ -267,37 +274,48 @@ a test that `ambiguous` stops with the clarify contract; a schema-7 compat test;
 
 ## Phase 2 — Stage policy as a first-class projection
 
+**Status:** implemented (`policy.derive_stage_policy`, `router.result_payload`).
+
 **Goal.** One function produces the whole stage plan, and the route JSON exposes it.
 
 **Contract.**
 
 ```python
 def derive_stage_policy(
-    platform: str, task_type: str, level: str, risk_tier: str,
-    facts: Mapping[str, str], config: dict, available_models: list[str] | None,
-    fast_path: str | None, gate: Gate,
+    stages: list[dict], mode: str, fast_path: str | None, pipeline: dict | None,
+    ambiguity: str, code_change: bool,
 ) -> dict
 ```
 
-Phase 2 requirement: `derive_stage_policy` reproduces exactly what `route()` produces today. It is
-a pure refactor plus a projection — no behavior change, and no new default. The equivalence is the
-acceptance criterion.
+Phase 2 requirement: the projection reproduces exactly what `route()` produces today, as a pure
+refactor plus a projection — no behaviour change and no new default.
+
+**Implementation correction to the first draft of this phase.** The draft's signature took the raw
+inputs (`platform`, `task_type`, `level`, `risk_tier`, `facts`, `config`, …) and re-resolved the
+route. Implementing it that way would have duplicated the resolution logic — the planner derivation,
+the refinement, the tier raise, the fast-path gates, the pipeline block — and created the second
+source of truth D3 forbids. `derive_stage_policy` therefore takes the values `route()` already
+resolved, which makes faithfulness structural rather than tested. The input-based form is the
+Phase 3 inversion, and it must not land before the equivalence evidence that phase requires.
 
 **Route JSON shape (additive, schema 7 stays valid).**
 
 ```json
 "stage_policy": {
-  "plan":      {"enabled": true,  "role": "planner",     "model": "gpt-6-sol",  "effort": "high", "source": "design-row"},
-  "implement": {"enabled": true,  "role": "implementer", "model": "gpt-6-luna", "effort": "xhigh", "source": "matrix"},
-  "test":      {"enabled": true,  "runner": "launcher",  "model": null,         "commands": "caller-supplied"},
-  "review":    {"enabled": true,  "role": "reviewer",    "model": "gpt-6-sol",  "effort": "high", "source": "review-row+tier"},
+  "plan":      {"enabled": true, "step": "plan",    "role": "planner",     "model": "gpt-6-sol",  "effort": "high"},
+  "implement": {"enabled": true, "step": "execute", "role": "implementer", "model": "gpt-6-luna", "effort": "xhigh"},
+  "test":      {"enabled": true, "runner": "launcher", "model": null, "commands": "caller-supplied"},
+  "review":    {"enabled": true, "role": "reviewer", "model": "gpt-6-sol", "effort": "high"},
   "ambiguity": "clear"
 }
 ```
 
-The `test` entry has no model by construction (D1): it encodes, in the artifact itself, that the
-launcher owns the stage. A stage that is skipped (`trivial_edit`, `inspect`) is `enabled: false`
-with its reason, never a silently missing key.
+An enabled entry names the route step it projects (`step` is the `steps[].id` it must agree with)
+and repeats that step's resolved role, model, and effort, so `role` — not the entry key — is what
+tells a read-only row's executor apart from an implementer. The `test` entry has no model by
+construction (D1): it encodes, in the artifact itself, that the launcher owns the stage. A stage the
+route does not run is exactly `{"enabled": false, "reason": ...}` — never a silently missing key —
+with the reason naming why (`read-only route`, `single-stage route`, `trivial_edit fast path`).
 
 **Reuse.** `route_reuse` records already store `level`, `risk_tier`, `facts`, and `task_type`, and
 `derive_stage_policy` is deterministic over exactly those inputs. Session reuse therefore re-derives
@@ -314,10 +332,11 @@ measurement round against the E2E harness, and is out of scope here.
 `pipeline_plan()`, `result_payload()`), `references/routing-policy.md`,
 `config/model-map.json` (unchanged in this phase), tests.
 
-**Tests.** An equivalence test that, for every corpus case's stored facts and for a matrix of
-task_type × level × tier, the derived policy's stages equal `route()`'s `stages`, `mode`, and
-`fast_path`; a schema-7 replay test proving the added key is ignored by existing readers; a reuse
-test proving the projection survives a stored-record round trip.
+**Tests.** `tests/test_stage_policy.py` pins the projection against the route it projects (step id,
+model, effort, and role for `plan`/`implement`; model and effort for `review`) over a platform ×
+task_type × level matrix, the exact disabled shape (`{"enabled": false, "reason"}`), the fast-path
+and read-only reasons, the tier's stage-scoped effect, the carried ambiguity gate, and that a
+payload replays with and without the block.
 
 ---
 

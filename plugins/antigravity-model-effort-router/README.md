@@ -70,7 +70,7 @@ and, because Antigravity has no effort setting, swaps the planning and review st
 
 Route-file replay accepts v2-v7 payloads. Schema v7 records `facts`,
 `matched_rules`, `unresolved_facts`, `questions`, `evidence`, `risk_tier`, `ambiguity` with
-`ambiguity_reason`, direct-only `execution_strategy`,
+`ambiguity_reason`, `stage_policy`, direct-only `execution_strategy`,
 and future orchestration `orchestration_eligible` metadata; it
 does not enable orchestration on Antigravity. `scripts/astra_adapter.py` is the unchanged
 caller-invoked orchestration adapter that revalidates worker inputs and preserves original

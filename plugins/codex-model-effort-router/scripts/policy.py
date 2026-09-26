@@ -235,6 +235,44 @@ def load_refinements(config: dict, platform: str) -> list[dict]:
             raise ValueError(f"invalid refinement in config platforms.{platform}.refinements")
     return refinements
 
+def derive_stage_policy(
+    stages: list[dict], mode: str, fast_path: str | None, pipeline: dict | None,
+    ambiguity: str, code_change: bool,
+) -> dict:
+    """Project a resolved route into the explicit stage plan the route JSON carries.
+
+    This is a projection, never a second source of truth: it reads the stages, mode, fast path and
+    pipeline the route already resolved, so the matrix stays authoritative for phase 1 of the stage
+    policy work (see docs/superpowers/specs/2026-09-26-stage-policy-engine-design.md, D3).
+
+    ``test`` carries no model by construction -- the launcher owns the deterministic gate -- and a
+    stage the route does not run is ``enabled: false`` with its reason, never a missing key. An
+    enabled entry names the route step it projects (``plan`` or ``execute``) so the two can be
+    compared, and ``role`` is the resolved role, which differs from the entry key on read-only rows.
+    """
+    plan = stages[0] if mode == "two_stage" else None
+    skipped_reason = "trivial_edit fast path" if fast_path == "trivial_edit" else ("single-stage route" if code_change else "read-only route")
+    review = (pipeline or {}).get("review")
+    return {
+        "plan": (
+            {"enabled": True, "step": "plan", "role": plan.get("role", "planner"), "model": plan["model"], "effort": plan.get("effort")}
+            if plan else {"enabled": False, "reason": skipped_reason}
+        ),
+        "implement": {
+            "enabled": True, "step": "execute", "role": stages[-1].get("role", "executor"),
+            "model": stages[-1]["model"], "effort": stages[-1].get("effort"),
+        },
+        "test": (
+            {"enabled": True, "runner": "launcher", "model": None, "commands": "caller-supplied"}
+            if code_change else {"enabled": False, "reason": "read-only route"}
+        ),
+        "review": (
+            {"enabled": True, "role": "reviewer", "model": review["model"], "effort": review.get("effort")}
+            if review else {"enabled": False, "reason": skipped_reason}
+        ),
+        "ambiguity": ambiguity,
+    }
+
 def apply_refinement(
     config: dict, platform: str, task_type: str, level: str, facts: dict[str, str], raw_stages: list[dict], mode: str,
 ) -> tuple[list[dict], str | None]:
