@@ -37,7 +37,7 @@ B measures the value of the **whole routed system** relative to a simpler non-ro
 - No classifier.
 - No planner.
 - No reviewer.
-- Executor uses a fixed provider/platform **executor ceiling profile**, defined as the highest executor (implementer-role) profile the router matrix can produce for the case's task type across all levels (for example, Codex implementation/refactoring executor ceiling is the top implementer row, not a judge model). Gold level and gold task type are never used to lower this profile.
+- Gold `task_type` selects the executor **matrix family** only (for example, `implementation` vs `refactoring` family). Within that family, B always uses the highest implementer profile available across all levels (for example, Codex implementation/refactoring executor ceiling is the top implementer row, not a judge model). Gold level and gold tier do not alter this ceiling.
 - Gold risk tier does not alter B's executor profile: under current router policy the `elevated`/`critical` tiers raise only planning/judging stages, and B has none. The gold tier is still recorded on B runs for reporting (so an elevated case is visibly covered) but it neither raises nor lowers the fixed executor ceiling.
 - Deterministic test and retry/fix policy are the same as the routed experiment wherever applicable.
 - Retry uses the same fixed executor-ceiling policy.
@@ -201,7 +201,14 @@ Per case and aggregate reports include:
 - fallback count
 - telemetry completeness
 
-Phase 1 is a pilot/descriptive evaluation. It does not infer statistical non-inferiority from 15 cases. A "quality-preserving saving" claim requires the quality columns to support that interpretation; savings and quality must remain separately visible in the report.
+Phase 1 is a pilot/descriptive evaluation. It does not infer statistical non-inferiority from 15 cases. Savings and quality must remain separately visible in the report.
+
+The phrase `quality-preserving` is allowed only when both conditions hold, and even then only descriptively:
+
+1. Routed's final deterministic acceptance results are not worse than C's (no case that passes in C fails in Routed), and
+2. the elevated/security case has no new failure under Routed.
+
+Otherwise the report claims only token/cost saving, phrased as `N% token saving observed (quality metrics: ...)` without the quality-preserving qualifier.
 
 ---
 
@@ -578,7 +585,7 @@ Initial interface:
 --live                  # default is dry-run
 ```
 
-Dry-run must validate fixture discovery, commands, paths, metadata, stage-policy resolution, pricing config, and expected run layout without invoking live model calls.
+Dry-run must validate fixture discovery, commands, paths, metadata, pricing config, and expected run layout without invoking live model calls. For C and B, dry-run also validates stage-policy resolution (their stage graphs derive from frozen gold metadata, so they are fully resolvable offline). For Routed, dry-run validates the classifier/routing **configuration** and graph construction paths, but it does not claim the actual Routed stage graph, because that graph is determined by runtime classification during a live run.
 
 The harness owns:
 
@@ -819,9 +826,17 @@ Execution order:
 2. validate pricing snapshot
 3. run Codex structured-output smoke cases
 4. validate parser and instrumentation invariants
-5. execute C vs Routed first (30 runs)
+5. execute C vs Routed first (30 runs), as **adjacent per-case pairs**
 6. execute B secondary baseline (15 additional runs)
 7. generate aggregate report
+
+Run-order freeze (order/cache bias control):
+
+- Each case runs as an **adjacent pair**: `pair(c) = [C(c), Routed(c)]`.
+- The first-run mode inside each pair is counterbalanced from a frozen seed so the 15 cases split C-first 8 / Routed-first 7 (deterministic, recorded in the freeze document before any live run).
+- B runs for all 15 cases in one batch after the C/Routed phase.
+- The report records, per case and per mode, actual start order and `cached_input_tokens` share (observed cached-input share), so cost sensitivity to provider cache can be inspected directly.
+- Divergence from the frozen order (a resumed/aborted run) is recorded, never silently reordered.
 
 A is not required as a Phase 1 Execution Corpus mode. Existing executor-only A-style measurements remain a separate reference unless an explicit same-fixture A run is later added.
 
