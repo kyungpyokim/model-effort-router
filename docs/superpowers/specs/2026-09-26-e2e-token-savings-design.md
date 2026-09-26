@@ -193,7 +193,7 @@ Per case and aggregate reports include:
 
 - success/failure
 - deterministic test pass/fail
-- review verdict
+- review verdict, and the per-attempt review history (`state.json` `review.history`: cycle, attempt, effort, verdict, failure type, escalation) joined on `run_id` — never re-parsed from review text
 - retry count
 - fix-loop tokens
 - wall time
@@ -450,7 +450,7 @@ Minimum record shape:
 
 `cached_input_tokens`, `cache_write_tokens`, and `reasoning_tokens` may be subsets or separately billed quantities depending on provider. Provider adapters must normalize semantics and compute `total_tokens` without double counting.
 
-Usage belongs to the **invocation**, not to a single turn. When one invocation reports usage on several turns, each field is the sum over the turns that reported it — a field is never taken from a turn that did not report it — and the invocation counts as `complete` only when every usage-bearing turn carried both input and output. A partial turn is therefore sticky within its invocation, rather than promoted to `complete` by an earlier complete one (the implementation and its tests live in `scripts/e2e_usage.py`).
+Usage belongs to the **invocation**, not to a single turn. When one invocation reports usage on several turns, each field is the sum over the turns that reported it — a field is never taken from a turn that did not report it — and the invocation counts as `complete` only when every usage-bearing turn carried both input and output. A partial turn is therefore sticky within its invocation, rather than promoted to `complete` by an earlier complete one (the implementation and its tests live in `scripts/e2e_usage.py`). **Verify this premise against a real CLI trace at Task 10**: compare the raw JSONL, the provider's own reported usage, and `e2e_usage.py`'s record on one smoke run. If the provider turns out to emit cumulative snapshots rather than per-turn usage, summing would double count and the rule must be replaced before the benchmark is gated.
 
 ## 3.7 Provider parser interface
 

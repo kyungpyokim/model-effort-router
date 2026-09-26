@@ -261,6 +261,51 @@ plan. This satisfies the E2E design's route-integrity and telemetry requirements
 re-plan shortcut), so an older route file or a reviewer that omits the line keeps working. The
 verdict itself stays fail-closed: a review with no `VERDICT` line still stops the run (11).
 
+**Structured review record (frozen contract, implementation after Task 6 of the E2E plan).** The
+reporter must never re-parse review text, so the pipeline records the review loop as data in
+`state.json`. A final-state-only record loses the evidence G5 needs — which failure appeared at
+which effort and what the raised effort recovered — so the record is a per-attempt `history`:
+
+```json
+"review": {
+  "history": [
+    {"cycle": 0, "attempt": 1, "effort": "high",  "verdict": "FAIL", "failure_type": "edge_case", "escalated": true,  "effort_after": "xhigh"},
+    {"cycle": 0, "attempt": 2, "effort": "xhigh", "verdict": "PASS", "failure_type": null,         "escalated": false, "effort_after": null}
+  ]
+}
+```
+
+Field semantics:
+
+- `cycle` — 0 for the first plan/implement pass, +1 per re-plan (`replans`). It is what keeps the
+  run-wide counters (`test_fixes`, `review_fixes`, `replans`, `review_escalations`) separable from
+  per-cycle state, and it is the only place a cycle boundary is recorded.
+- `attempt` — 1-based **within its cycle**, not `self.reviews` (which is run-wide and also counts
+  the previous cycle's calls). Derivable as "entries in this cycle + 1", so no extra counter.
+- `effort` — the effort the attempt actually ran at (after any earlier escalation).
+- `verdict` — `PASS`, `FAIL`, or `null` when the call produced no `VERDICT` line (the run stops with
+  11); a broken reviewer is recorded, never smoothed over.
+- `failure_type` — the typed failure on `FAIL`, `null` on `PASS`.
+- `escalated` / `effort_after` — whether **this** attempt's `edge_case` failure consumed the run's
+  single escalation, and the rung it moved the review stage to.
+
+Numbers that follow from the history are **never stored again** (no `attempts`, `escalations`,
+`final_verdict`, or current-cycle count): the history is the single source and a duplicated count
+can drift from it.
+
+`state()` must **merge nested keys** instead of replacing the record: a later `state()` call that
+carries new review information keeps every `review` key written before it, and a history entry is
+appended, never rewritten. A missing `state.json` is normal; an unreadable one is logged and
+replaced, because the in-memory counters are what drive the run. History records **review calls that
+actually ran**: the fail-closed "implementer changed nothing" path spends no call and therefore adds
+no entry (its evidence is the log line and `phase=failed`).
+
+Tests to pin: (1) a nested review update preserves earlier `review` keys; (2) history accumulates in
+attempt order across writes; (3) `FAIL` → escalation → `PASS` keeps both attempts with their own
+effort and type; (4) a re-plan keeps both cycles' entries and restarts `attempt` at 1 in the new
+cycle while the run-wide counters keep counting; (5) a call with no `VERDICT` line records
+`verdict: null`; (6) the changed-nothing fail-closed path adds no entry.
+
 **Touchpoints.** `scripts/pipeline.py` (`REVIEW_INSTRUCTIONS`, `FAILURE_RE`, `review()`, `run()`,
 `state()`), `scripts/router.py` (`SCHEMA_VERSION`, `PIPELINE_LIMITS`), `commands.py` (pinned review
 text), `tests/test_pipeline.py`, `tests/test_router.py`.
