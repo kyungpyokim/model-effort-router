@@ -127,6 +127,20 @@ class InstrumentArgvTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     e2e_usage.instrument_execution_argv("codex", argv)
 
+    def test_instrument_accepts_the_classifier_seam_argv(self):
+        # The classifier binds its model with --model while pipeline stages use -m; both are
+        # router-generated shapes, so the guard must not refuse one of them.
+        classifier_argv = [
+            "codex", "exec", "--ephemeral", "--ignore-user-config", "--ignore-rules",
+            "--sandbox", "read-only", "--cd", "/tmp/classify", "--skip-git-repo-check",
+            "--output-schema", "/tmp/classifier-schema.json", "--model", "gpt-6-luna", "task",
+        ]
+
+        instrumented = e2e_usage.instrument_execution_argv("codex", classifier_argv)
+
+        self.assertEqual(instrumented, ["codex", "exec", e2e_usage.CODEX_JSON_FLAG, *classifier_argv[2:]])
+        self.assertEqual(e2e_usage.strip_instrumentation("codex", instrumented), classifier_argv)
+
     def test_unsupported_providers_are_refused_not_silently_changed(self):
         claude_argv = ["claude", "-p", "--model", "opus", "--", "task"]
 

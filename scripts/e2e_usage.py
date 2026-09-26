@@ -83,9 +83,11 @@ def instrument_execution_argv(provider: str, validated_argv: Sequence[str]) -> l
     if argv[2] == CODEX_JSON_FLAG:
         raise ValueError("codex argv is already instrumented")
     # Fail-closed precondition, not a grammar: every router-generated ``codex exec`` argv carries
-    # these two options, so refusing their absence keeps this helper from instrumenting something
-    # the router would never have validated (for example ``codex exec --help``).
-    if "--sandbox" not in argv or "-m" not in argv:
+    # a sandbox mode and a model binding, so refusing their absence keeps this helper from
+    # instrumenting something the router would never have validated (for example
+    # ``codex exec --help``). The binding is ``-m`` for pipeline stages and ``--model`` for the
+    # classifier seam, so both spellings count.
+    if "--sandbox" not in argv or not ({"-m", "--model"} & set(argv)):
         raise ValueError("codex argv is missing the sandbox or model option the router always emits")
     return [argv[0], argv[1], CODEX_JSON_FLAG, *argv[2:]]
 
