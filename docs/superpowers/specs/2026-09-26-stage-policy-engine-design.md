@@ -288,6 +288,11 @@ Field semantics:
 - `failure_type` — the typed failure on `FAIL`, `null` on `PASS`.
 - `escalated` / `effort_after` — whether **this** attempt's `edge_case` failure consumed the run's
   single escalation, and the rung it moved the review stage to.
+- **Append-only.** An attempt is appended as a finished record when that attempt ends and is never
+  rewritten afterwards. Escalation bookkeeping, a re-plan, or a later cycle adds new entries; none
+  of them may edit an earlier one, so a reader can trust that an entry still means what it meant
+  when the attempt ran. `verdict: null` (no `VERDICT` line) and `failure_type: null` (a PASS, or an
+  untyped legacy FAIL) are normal telemetry written through as they are, never coerced or filtered.
 
 Numbers that follow from the history are **never stored again** (no `attempts`, `escalations`,
 `final_verdict`, or current-cycle count): the history is the single source and a duplicated count
@@ -302,9 +307,12 @@ no entry (its evidence is the log line and `phase=failed`).
 
 Tests to pin: (1) a nested review update preserves earlier `review` keys; (2) history accumulates in
 attempt order across writes; (3) `FAIL` → escalation → `PASS` keeps both attempts with their own
-effort and type; (4) a re-plan keeps both cycles' entries and restarts `attempt` at 1 in the new
-cycle while the run-wide counters keep counting; (5) a call with no `VERDICT` line records
-`verdict: null`; (6) the changed-nothing fail-closed path adds no entry.
+effort and type; (4) a re-plan appends to the existing history instead of replacing it, restarts
+`attempt` at 1 in the new cycle, and leaves the run-wide counters counting (the cycle-local / run-wide
+split); (5) a call with no `VERDICT` line records `verdict: null`; (6) the changed-nothing fail-closed
+path adds no entry; (7) append-only: after a later cycle appends, every earlier entry is unchanged
+byte for byte; (8) `verdict: null` and `failure_type: null` are written through as normal telemetry,
+never coerced to a string or filtered out.
 
 **Touchpoints.** `scripts/pipeline.py` (`REVIEW_INSTRUCTIONS`, `FAILURE_RE`, `review()`, `run()`,
 `state()`), `scripts/router.py` (`SCHEMA_VERSION`, `PIPELINE_LIMITS`), `commands.py` (pinned review
