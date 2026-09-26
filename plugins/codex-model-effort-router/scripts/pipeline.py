@@ -86,9 +86,10 @@ def last_line(output: str) -> str:
 
 
 #: Harness-owned run identifiers for the usage recorder (spec 3.6); recorder metadata
-#: only — this value never reaches a model argv. scripts/classifier.py mirrors the literal
-#: because importing this module from there would close the router import cycle.
-RUN_CONTEXT_ENV = "MODEL_EFFORT_ROUTER_RUN_CONTEXT"
+#: only — this value never reaches a model argv. Single source lives in e2e_usage (both
+#: seams import it cycle-free); classifier.py re-exports the same name and cannot import
+#: this module: pipeline -> router -> classifier would close the import cycle.
+RUN_CONTEXT_ENV = e2e_usage.RUN_CONTEXT_ENV
 
 #: Pipeline phases as they appear in the usage record (spec 3.6's stage vocabulary).
 USAGE_STAGE_NAMES = {"plan": "planner", "replan": "planner", "implement": "executor", "review": "reviewer", "fix": "fix"}
@@ -122,12 +123,20 @@ def instrumented_run_capture(
     stage's input. Env values select telemetry behaviour and name the sink only.
     """
     if not usage_recording_enabled():
+        if os.environ.get(e2e_usage.INSTRUMENT_USAGE_ENV) == "1":
+            # Half-configured run: announce it now rather than surface a missing artifact later.
+            log("usage instrumentation enabled but MODEL_EFFORT_ROUTER_USAGE_JSONL is empty; running uninstrumented")
         return run_capture(argv, cwd)
     if argv[:2] != ["codex", "exec"]:
         # Phase 1 records Codex only; every other platform keeps the legacy path.
         log("usage instrumentation: no adapter for this provider yet; running uninstrumented")
         return run_capture(argv, cwd)
-    execution_argv = e2e_usage.instrument_execution_argv("codex", argv)
+    try:
+        execution_argv = e2e_usage.instrument_execution_argv("codex", argv)
+    except ValueError as exc:
+        # Fail-closed argv precondition: warn and run legacy, never fail a validated route.
+        log(f"usage instrumentation: {exc}; running uninstrumented")
+        return run_capture(argv, cwd)
     started = time.monotonic()
     rc, raw = run_capture(execution_argv, cwd)
     wall_time_ms = int((time.monotonic() - started) * 1000)

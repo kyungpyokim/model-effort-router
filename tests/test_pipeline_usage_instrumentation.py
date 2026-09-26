@@ -179,11 +179,32 @@ class InstrumentationOffTests(PipelineUsageCase):
 
     def test_enable_without_a_sink_keeps_legacy_execution(self):
         # Instrumentation requires the complete env contract: enable without a sink never
-        # changes the command (a half-configured run cannot silently drop records either).
-        rc, calls, _, _, _ = self.run_route(GREEN_REPLIES, {e2e_usage.INSTRUMENT_USAGE_ENV: "1"})
+        # changes the command (a half-configured run cannot silently drop records either),
+        # and the misconfiguration is announced instead of passing unnoticed.
+        rc, calls, _, err, _ = self.run_route(GREEN_REPLIES, {e2e_usage.INSTRUMENT_USAGE_ENV: "1"})
         self.assertEqual(rc, 0)
         self.assertNotIn("--json", calls[0]["argv"])
         self.assertFalse(self.sink.exists())
+        self.assertIn("usage instrumentation enabled but", err)
+
+    def test_on_an_uninstrumentable_codex_argv_keeps_the_legacy_execution(self):
+        # The fail-closed argv precondition warns and runs legacy rather than crashing a
+        # validated route, matching the non-codex provider branch above it.
+        (self.dir / "replies.json").write_text(json.dumps([{"out": "legacy ok"}]), encoding="utf-8")
+        (self.dir / "count").unlink(missing_ok=True)
+        err = io.StringIO()
+        with telemetry(self.on_env()), contextlib.redirect_stderr(err):
+            rc, output = pipeline.instrumented_run_capture(
+                ["codex", "exec", "prompt"], str(self.work), stage="planner"
+            )
+        path = self.dir / "calls.jsonl"
+        calls = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
+        self.assertEqual(rc, 0)
+        self.assertEqual(output, "legacy ok\n")
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("--json", calls[0]["argv"])
+        self.assertFalse(self.sink.exists())
+        self.assertIn("running uninstrumented", err.getvalue())
 
 
 class InstrumentationOnTests(PipelineUsageCase):

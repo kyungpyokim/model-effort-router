@@ -19,6 +19,10 @@ from typing import Literal, Sequence
 
 INSTRUMENT_USAGE_ENV = "MODEL_EFFORT_ROUTER_INSTRUMENT_USAGE"
 USAGE_JSONL_ENV = "MODEL_EFFORT_ROUTER_USAGE_JSONL"
+#: Harness-owned run identifiers for the usage recorder (spec 3.6): recorder metadata only,
+#: never converted into model argv. Single source shared by both instrumentation seams — it
+#: lives here because pipeline.py and classifier.py both import this module cycle-free.
+RUN_CONTEXT_ENV = "MODEL_EFFORT_ROUTER_RUN_CONTEXT"
 
 UsageStatus = Literal["complete", "partial", "missing"]
 

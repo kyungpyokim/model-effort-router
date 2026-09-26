@@ -7,8 +7,10 @@ trusted ``--json`` flag, parses the answer back to the logical reply, and record
 invocation — including the retry and the fallback attempts — as ``stage="classifier"``.
 """
 import contextlib
+import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -126,6 +128,24 @@ class ClassifierUsageCase(unittest.TestCase):
             RUN_CONTEXT_ENV: json.dumps(RUN_CONTEXT),
         }
 
+    def classify_raising(self, exc):
+        """The real Routed entry while the classifier's own ``subprocess.run`` fails as ``exc``.
+
+        The seam must record the invocation even though no process ever exits: a timeout or a
+        spawn failure still burned a model call, and Review Focus #1 requires every call in the
+        sink rather than a silent undercount.
+        """
+        (self.dir / "calls.jsonl").unlink(missing_ok=True)
+        real_run = subprocess.run
+
+        def explode(cmd, **kwargs):
+            if "--output-schema" in cmd:
+                raise exc
+            return real_run(cmd, **kwargs)
+
+        with telemetry(self.on_env()), mock.patch("subprocess.run", side_effect=explode):
+            return router.route("do the thing", "codex", CONFIG)
+
     def records(self):
         return [json.loads(line) for line in self.sink.read_text(encoding="utf-8").splitlines()]
 
@@ -194,6 +214,51 @@ class ClassifierInstrumentationOnTests(ClassifierUsageCase):
             self.assertEqual(record["usage_status"], "missing")
             self.assertEqual(record["total_tokens"], 0)
         self.assertEqual([record["attempt"] for record in records], [0, 0])
+
+    def test_on_records_a_timed_out_invocation(self):
+        # Timeout is not retryable (one invocation), but it still burned the call: the sink
+        # must get exactly one record with the failure visible, never zero lines.
+        result = self.classify_raising(subprocess.TimeoutExpired(["codex", "exec"], 0.5))
+        self.assertEqual((result.source, result.level), ("fallback", "L3"))
+        records = self.records()
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record["stage"], "classifier")
+        self.assertEqual(record["provider"], "openai")
+        self.assertEqual(record["model"], "gpt-6-luna")
+        self.assertEqual(record["effort"], "low")
+        self.assertEqual({key: record[key] for key in ("run_id", "case_id", "mode")}, RUN_CONTEXT)
+        self.assertEqual(record["usage_status"], "missing")
+        self.assertEqual(record["total_tokens"], 0)
+        self.assertEqual(record["exit_code"], 124)
+        self.assertGreaterEqual(record["wall_time_ms"], 0)
+
+    def test_on_records_a_spawn_failed_invocation(self):
+        # Same contract for OSError: a process that never started still leaves one record in
+        # the sink with a sentinel exit code, so the run's telemetry stays complete.
+        result = self.classify_raising(OSError("No such file or directory"))
+        self.assertEqual((result.source, result.level), ("fallback", "L3"))
+        records = self.records()
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record["stage"], "classifier")
+        self.assertEqual(record["usage_status"], "missing")
+        self.assertEqual(record["total_tokens"], 0)
+        self.assertEqual(record["exit_code"], 12)
+        self.assertGreaterEqual(record["wall_time_ms"], 0)
+
+    def test_on_a_broken_sink_never_becomes_a_classification_failure(self):
+        # A sink fault is a telemetry fault: it must not be relabelled as the schema-read
+        # failure and cost the run its classification.
+        broken = self.dir / "broken-sink"
+        broken.mkdir()
+        env = {**self.on_env(), e2e_usage.USAGE_JSONL_ENV: str(broken)}
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            result, calls = self.classify(env)
+        self.assertEqual((result.level, result.source), ("L2", "gpt-6-luna"))
+        self.assertEqual(len(calls), 1)
+        self.assertIn("usage sink write failed", err.getvalue())
 
     def test_on_records_a_fallback_answered_with_invalid_output(self):
         # Unparseable output: one call, no retry, yet the usage the provider reported is kept.
