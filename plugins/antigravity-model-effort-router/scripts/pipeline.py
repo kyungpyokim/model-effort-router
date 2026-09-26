@@ -19,9 +19,11 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import e2e_usage  # noqa: E402
 import route_reuse  # noqa: E402
 import router  # noqa: E402
 
@@ -81,6 +83,62 @@ def last_line(output: str) -> str:
     """A verdict or escalation only counts as the run's final line, never as an echoed prompt line."""
     lines = [line.rstrip() for line in output.splitlines() if line.strip()]
     return lines[-1] if lines else ""
+
+
+#: Harness-owned run identifiers for the usage recorder (spec 3.6); recorder metadata
+#: only — this value never reaches a model argv. scripts/classifier.py mirrors the literal
+#: because importing this module from there would close the router import cycle.
+RUN_CONTEXT_ENV = "MODEL_EFFORT_ROUTER_RUN_CONTEXT"
+
+#: Pipeline phases as they appear in the usage record (spec 3.6's stage vocabulary).
+USAGE_STAGE_NAMES = {"plan": "planner", "replan": "planner", "implement": "executor", "review": "reviewer", "fix": "fix"}
+
+
+def usage_run_context() -> tuple[str, str, str]:
+    """``(run_id, case_id, mode)`` the harness handed to this run; empty when unset or broken."""
+    try:
+        data = json.loads(os.environ.get(RUN_CONTEXT_ENV) or "")
+    except json.JSONDecodeError:
+        data = None
+    if not isinstance(data, dict):
+        return "", "", ""
+    return str(data.get("run_id") or ""), str(data.get("case_id") or ""), str(data.get("mode") or "")
+
+
+def usage_recording_enabled() -> bool:
+    """Telemetry runs only with the complete env contract; neither value is model input."""
+    return os.environ.get(e2e_usage.INSTRUMENT_USAGE_ENV) == "1" and bool(os.environ.get(e2e_usage.USAGE_JSONL_ENV))
+
+
+def instrumented_run_capture(
+    argv: list[str], cwd: str, *, stage: str, attempt: int = 0, model: str = "", effort: str | None = None
+) -> tuple[int, str]:
+    """The post-validation telemetry seam (spec 3.2): execute a validated stage argv.
+
+    Instrumentation off (or an unsupported provider/argv shape) is exactly the legacy
+    ``run_capture`` call. On, the argv gains only the provider-owned flag from
+    ``e2e_usage``, one usage record per model call lands in the sink, and the caller
+    receives only the parsed logical assistant output — raw events never become the next
+    stage's input. Env values select telemetry behaviour and name the sink only.
+    """
+    if not usage_recording_enabled():
+        return run_capture(argv, cwd)
+    if argv[:2] != ["codex", "exec"]:
+        # Phase 1 records Codex only; every other platform keeps the legacy path.
+        log("usage instrumentation: no adapter for this provider yet; running uninstrumented")
+        return run_capture(argv, cwd)
+    execution_argv = e2e_usage.instrument_execution_argv("codex", argv)
+    started = time.monotonic()
+    rc, raw = run_capture(execution_argv, cwd)
+    wall_time_ms = int((time.monotonic() - started) * 1000)
+    run_id, case_id, mode = usage_run_context()
+    context = e2e_usage.UsageContext(
+        run_id=run_id, case_id=case_id, mode=mode, stage=stage,
+        attempt=attempt, provider="codex", model=model, effort=effort,
+    )
+    parsed = e2e_usage.parse_codex_jsonl(raw, context, exit_code=rc, wall_time_ms=wall_time_ms)
+    e2e_usage.append_usage_jsonl(Path(os.environ[e2e_usage.USAGE_JSONL_ENV]), context, parsed)
+    return rc, parsed.logical_output
 
 
 def run_capture(argv: list[str], cwd: str) -> tuple[int, str]:
@@ -298,7 +356,13 @@ class Pipeline:
         self.state(phase, who, attempt)
         if self.verbose:
             log("command: " + shlex.join([*argv[:-1], argv[-1][:VERBOSE_PROMPT_CHARS] + "..."]))
-        return run_capture(argv, self.cwd)
+        return instrumented_run_capture(
+            argv, self.cwd,
+            stage=USAGE_STAGE_NAMES.get(phase, phase),
+            attempt=attempt or 0,
+            model=(who or {}).get("model") or "",
+            effort=(who or {}).get("effort"),
+        )
 
     def plan_text(self) -> str:
         try:
