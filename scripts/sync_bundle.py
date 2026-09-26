@@ -18,6 +18,7 @@ SHARED = (
     "scripts/pipeline.py",
     "scripts/route_reuse.py",
     "scripts/astra_adapter.py",
+    "scripts/e2e_usage.py",
     "config/model-map.json",
     "config/classification-schema.json",
     "references/routing-policy.md",
