@@ -27,3 +27,8 @@
 | 15 | L5_new_plugin_architecture | L5 | standard | implementation |
 
 Machine-readable source of truth: `evals/execution_corpus/cases.json` (this table must list the same IDs in the same order).
+
+## Fixture freeze (completed 2026-09-26)
+
+- Manifest revision: `v1`. All 15 fixture snapshots under `evals/execution_corpus/fixtures/` were completed and frozen in commit `test: complete frozen e2e execution fixtures` (2026-09-26) — the fixture-freeze boundary for this corpus, landing with this record.
+- From this boundary, all later live smoke and benchmark results must use these exact fixture snapshots (fresh copies of the committed directories) unless a documented corpus revision triggers paired reruns.

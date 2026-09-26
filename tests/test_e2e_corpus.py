@@ -92,10 +92,22 @@ class ExecutionCorpusManifestTests(unittest.TestCase):
 
     def test_every_fixture_directory_exists(self):
         missing = [case.name for case in self.cases if not (ROOT / case.fixture_dir).is_dir()]
-        if missing:
-            self.skipTest("fixture repositories arrive in Tasks 2-4: " + ", ".join(missing))
 
-        self.assertEqual(missing, [])
+        self.assertEqual(
+            missing,
+            [],
+            "missing fixture directories (fixtures must be committed): "
+            + ", ".join(missing),
+        )
+
+    def test_cases_md_records_the_fixture_freeze_boundary(self):
+        text = CASES_MD_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("Fixture freeze", text)
+        self.assertIn("test: complete frozen e2e execution fixtures", text)
+        self.assertIn(
+            "unless a documented corpus revision triggers paired reruns", text
+        )
 
 
 class ValidateExecutionCorpusTests(unittest.TestCase):
