@@ -45,6 +45,9 @@ Classify with the in-session assessor, not a nested CLI:
    rerun step 2 with the same assessor reply and one `--answer FACT=VALUE` per answer. An answer
    only fills a fact that is still unknown. If the user cannot answer, stop and report which
    information is missing; do not delegate the route.
+   If the same exit `3` route JSON reports `ambiguity: "ambiguous"`, the request itself is
+   under-specified (it names neither an operation nor a concrete target): ask the user to restate
+   it with what to change and where. Never answer that with `--answer`, and never reclassify it.
 4. If the router exits with any other non-zero code, the assessor reply was not valid JSON. Call the assessor
    once more; if the router still exits non-zero, do not guess a route and do not delegate.
    Report the failure, ask the user for `task_type` and `level`, and rerun the router with

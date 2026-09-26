@@ -25,12 +25,12 @@ import route_reuse
 
 from classifier import (CLASSIFIER_PROMPT, CLASSIFIER_SCHEMA, CLASSIFIER_TIMEOUT_SECONDS, DETECT_TIMEOUT_SECONDS, EXIT_NEEDS_ANSWER, FACT_QUESTIONS, FALLBACK_TASK_TYPE, PRIMARY_CLASSIFIER_CONFIG, RETRYABLE_FAILURE_KINDS, Classification, apply_answers, choose_antigravity_model, classifier_prompt, classify_task, classify_task_single, fallback_classification, merge_lookup, pinned_classification, read_classification_file, settleable, validate_classifier_output, with_facts, _bounded)
 
-from commands import (AGENT_NAME_RE, AUTOBAHN_SCOPE_GUARD, AUTOBAHN_SCOPE_GUARD_INSTRUCTION, CLAUDE_READ_TOOLS, CODEX_CONFIG_KEYS, IMPLEMENTER_INSTRUCTIONS_TEMPLATE, IMPLEMENTER_PROMPT_PREFIX, MARKDOWN_AGENT_PLUGINS, PLANNER_INSTRUCTIONS_TEMPLATE, PLANNER_PROMPT_PREFIX, REVIEW_ROLE_PROMPT, _agy_prompt_command, _claude_print_command, _codex_exec_command, _single_stage_command, agent_name, claude_access_flags, codex_agent_instructions, command_chain, command_model, expected_stage_text, handoff_text, markdown_agent_instructions, role_prompt_prefix, shell_command, stage_command, stage_commands, validate_argv, validate_step_instructions, verification_handoff_instructions, verification_recommendations)
+from commands import (AGENT_NAME_RE, AUTOBAHN_SCOPE_GUARD, AUTOBAHN_SCOPE_GUARD_INSTRUCTION, CLAUDE_READ_TOOLS, CODEX_CONFIG_KEYS, IMPLEMENTER_INSTRUCTIONS_TEMPLATE, IMPLEMENTER_PROMPT_PREFIX, MARKDOWN_AGENT_PLUGINS, PLANNER_INSTRUCTIONS_TEMPLATE, PLANNER_PROMPT_PREFIX, REVIEW_ROLE_PROMPT, _agy_prompt_command, _claude_print_command, _codex_exec_command, _single_stage_command, agent_name, claude_access_flags, codex_agent_instructions, command_chain, command_model, expected_stage_text, handoff_text, markdown_agent_instructions, planner_instructions, role_prompt_prefix, shell_command, stage_command, stage_commands, validate_argv, validate_step_instructions, verification_handoff_instructions, verification_recommendations)
 from commands import refuse_interactive_two_stage
 
 from policy import (AGY_MODEL_RE, MODEL_RE, SAFE_ORCHESTRATION_LEVELS, SAFE_ORCHESTRATION_MINIMUM_DELEGABILITY, _valid_candidate, _valid_matrix_entry, _valid_stage, apply_refinement, apply_tier, choose_candidate, is_orchestration_eligible, load_config, load_matrix, load_refinements, load_tier_profile, materialise_stages, model_ok, positive_finite_float, resolve_stages)
 
-from rules import (CODE_CHANGE_TASK_TYPES, CRITICAL_SECURITY_DOMAINS, DIFFICULTY_RULES, EFFORT_ORDER, FACTS, LEVEL_NAMES, LEVELS, NOUL_FACTS, OPTIONAL_FACT_DEFAULTS, READ_ONLY_TASK_TYPES, RISK_FLAGS, RISK_TIERS, SECURITY_DOMAINS, SECURITY_FLOOR_FLAGS, TASK_TYPES, TIER_LEVEL, YES_NO, YES_NO_UNKNOWN, apply_risk_escalation, evaluate_rules, higher_level, higher_tier, normalise_level, normalise_task_type, raise_effort, risk_flags_from_facts, unknown_facts, unresolved_facts)
+from rules import (AMBIGUITY_GATES, CODE_CHANGE_TASK_TYPES, CRITICAL_SECURITY_DOMAINS, DIFFICULTY_RULES, EFFORT_ORDER, FACTS, LEVEL_NAMES, LEVELS, NOUL_FACTS, OPTIONAL_FACT_DEFAULTS, READ_ONLY_TASK_TYPES, RISK_FLAGS, RISK_TIERS, SECURITY_DOMAINS, SECURITY_FLOOR_FLAGS, TASK_TYPES, TIER_LEVEL, YES_NO, YES_NO_UNKNOWN, apply_risk_escalation, derive_ambiguity_gate, evaluate_rules, higher_level, higher_tier, normalise_level, normalise_task_type, raise_effort, risk_flags_from_facts, unknown_facts, unresolved_facts)
 
 from cli import (  # noqa: E402
     _prompt_axis, default_config_path, main as _cli_main, parse_answer, parse_args, prompt_manual_classification, prompt_unresolved,
@@ -118,6 +118,9 @@ class RouteResult:
     pipeline: dict | None = None
     # The cheap single-model path this route qualified for ("inspect" / "trivial_edit"), else None.
     fast_path: str | None = None
+    # Whether the request determines the work ("clear" / "partial" / "ambiguous") and why not.
+    ambiguity: str = "clear"
+    ambiguity_reason: str = ""
 
 def claude_agent_delegation(effort: str | None, model: str) -> dict[str, str]:
     """Agent tool arguments for a Claude Code step: the in-session executor keeps the
@@ -185,6 +188,8 @@ def result_payload(result: RouteResult, commands: list[list[str]] | None = None,
         "orchestration_eligible": result.orchestration_eligible,
         "pipeline": pipeline_payload(result, task),
         "fast_path": result.fast_path,
+        "ambiguity": result.ambiguity,
+        "ambiguity_reason": result.ambiguity_reason,
     }
     if any(flag in SECURITY_FLOOR_FLAGS for flag in active_risk_flags):
         payload["scope_guard"] = {
@@ -233,6 +238,9 @@ def load_reused_classification(
         delegability, reuses = record.get("delegability", 0), record.get("reuses", 0)
         if delegability not in (0, 1, 2) or isinstance(reuses, bool) or not isinstance(reuses, int):
             raise ValueError("bad counters")
+        marker = record.get("ambiguity")
+        if marker is not None and marker not in AMBIGUITY_GATES:
+            raise ValueError("bad ambiguity marker")
         if not isinstance(record["saved_at"], (int, float)) or isinstance(record["saved_at"], bool):
             raise ValueError("bad timestamp")
         blockers = route_reuse.reuse_blockers(
@@ -259,6 +267,9 @@ def session_record(result: RouteResult, delegability: int, origin: str | None = 
         "risk_flags": dict(result.risk_flags), "facts": dict(result.facts),
         "matched_rules": list(result.matched_rules), "unresolved": list(result.unresolved),
         "evidence": list(result.evidence), "delegability": delegability,
+        # The ambiguity marker a later reuse needs before it may settle this route's follow-up.
+        # A record written before this key exists stays unsettled (see router.route).
+        "ambiguity": result.ambiguity,
         "origin": origin if origin is not None else result.source,
     }
 
@@ -303,6 +314,7 @@ def route(
     repo_aware: bool = False,
     critical: bool = False,
     check_available: bool = False,
+    settled_reuse: bool = False,
 ) -> RouteResult:
     manual_bypass = explicit_task_type is not None and (critical or explicit_level is not None)
     if manual_bypass:
@@ -342,6 +354,14 @@ def route(
         )
 
     level_name = config["levels"][level]["name"]
+    ambiguity, ambiguity_reason = derive_ambiguity_gate(
+        task, task_type,
+        # A reused route is settled only when its stored record carries the ambiguity marker
+        # (switchboard: cli.main passes settled_reuse); pre-marker records stay unsettled.
+        settled=settled_reuse or manual_bypass or classification.source == "manual",
+    )
+    if ambiguity != "clear":
+        rationale.append(f"{ambiguity} request: {ambiguity_reason}")
     matrix = load_matrix(config, platform)
     tier_profile = load_tier_profile(config, platform, risk_tier) if risk_tier != "standard" else None
     raw_stages, mode = resolve_stages(matrix, task_type, level)
@@ -397,6 +417,8 @@ def route(
         orchestration_eligible=orchestration_eligible,
         pipeline=pipeline,
         fast_path=fast_path,
+        ambiguity=ambiguity,
+        ambiguity_reason=ambiguity_reason,
     )
 
 def validated_commands(payload: object) -> tuple[list[list[str]], str | None]:

@@ -42,7 +42,9 @@ delegation. Reclassify INSPECT to MODIFY when the task changes. Preserve the app
 if `trivial_edit` needs broader work or its deterministic check cannot be run, stop and
 reclassify when new evidence materially raises scope or risk.
 
-Schema v7 records facts, `risk_tier`, and `orchestration_eligible` as future metadata only.
+Schema v7 records facts, `risk_tier`, `ambiguity` (with `ambiguity_reason`), and `orchestration_eligible` as future metadata only.
+An exit `3` route JSON that reports `ambiguity: "ambiguous"` means the request itself is
+under-specified: ask the user to restate it with what to change and where, and never reclassify it.
 `scripts/astra_adapter.py` is the unchanged orchestration adapter: caller-invoked, revalidates worker inputs, and
 preserves original verified artifacts; respect
 `execution_strategy: direct` because direct v2-v7 route-file replay never invokes it.

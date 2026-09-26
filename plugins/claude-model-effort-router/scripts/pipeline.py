@@ -238,6 +238,7 @@ class Pipeline:
         self.replans = 0
         self.reviews = 0
         self.tests_passed: list[str] = []
+        self.ambiguity = payload.get("ambiguity")
         self.verbose = bool(os.environ.get(VERBOSE_ENV))
         self.base = git_head(cwd)
         self.plan_step = payload["steps"][0]
@@ -297,7 +298,7 @@ class Pipeline:
             f"Evidence:\n{detail}\n\nThe repository already holds the previous attempt's changes; plan from its current state.\n"
             "Return only the plan JSON on stdout.\n"
         )
-        instructions = router.PLANNER_INSTRUCTIONS_TEMPLATE + self.scope_guard
+        instructions = router.planner_instructions(self.ambiguity) + self.scope_guard
         argv = router.stage_command(self.platform, self.planner, instructions, plan_prompt, "read")
         rc, output = self.stage("replan", argv, self.planner, self.replans)
         if rc:

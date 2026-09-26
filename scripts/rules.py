@@ -173,6 +173,82 @@ def apply_risk_escalation(level: str, risk_tier: str, risk_flags: dict[str, bool
     return level, risk_tier
 
 
+AMBIGUITY_GATES = ("clear", "partial", "ambiguous")
+
+# The action vocabulary for the ambiguity gate. It is deliberately *wider* than
+# route_reuse.operation()'s blocker vocabulary: that one decides whether a follow-up task changed
+# the kind of work (where a false hit only costs one classification), while this one decides
+# whether a request is too empty to act on (where a false miss would demand a clarification the
+# user does not need). "handle", "support", "ensure", "harden" and their Korean equivalents name
+# an operation here and would not count as a reuse-blocking modify verb there.
+AMBIGUITY_ACTION_RE = re.compile(
+    r"\b(?:"
+    r"fix|implement|add|change|update|refactor|rename|remove|delete|create|write|build|patch"
+    r"|handle|support|ensure|make|improve|optimi[sz]e|migrate|split|extract|consolidate|move"
+    r"|clean|simplify|standardi[sz]e|replace|rewrite|extend|wire|hook|integrate|introduce"
+    r"|apply|enforce|harden|secure|validate|test|debug|investigate|diagnose|analy[sz]e|cover"
+    r"|reduce|increase|tune|adjust|align|document|configure|switch|drop|guard|isolate|bump"
+    r"|upgrade|downgrade|port|decouple|deduplicate|abstract|general[is]+e|do|perform|purge|erase|wipe"
+    r"|review|inspect|check|find|locate|trace|explain|design|plan"
+    r")(?:e?s|e?d|ing)?\b"
+    # Gerunds of the e-final verbs above: the base already carries the "e", so "investigating"
+    # (never "investigateing") needs its own alternative, bounded so "immigrating" is not one.
+    r"|\b(?:investigating|analy[sz]ing|optimi[sz]ing|migrating|isolating|configuring|deduplicating"
+    r"|validating|securing|replacing|tracing|integrating|introducing|upgrading|downgrading|tuning)\b"
+    r"|수정|구현|추가|변경|리팩터|리팩토링|삭제|만들|고치|고쳐|작성|개선|적용|교체|제거|바꿔|바꾸"
+    r"|처리|지원|보완|강화|정리|이동|분리|추출|통합|검증|확인|분석|설계|리뷰|최적화|도입|대응|해결|업그레이드",
+    re.IGNORECASE,
+)
+
+# Tokens that name a concrete target of the work: a backticked identifier, a path, a file with a
+# code extension, a dotted module.symbol reference, or an identifier-shaped name (snake_case or
+# camelCase). Deliberately generous: a false positive only keeps a request on the normal path,
+# while a false negative can only reach `partial` (which annotates the plan) — never `ambiguous`,
+# which is reserved for a request that names neither an operation nor a target.
+TARGET_TOKEN_RE = re.compile(
+    r"""
+    `[^`\s][^`]*`                                  # `retry_policy`
+    | \b[\w.-]+/[\w./-]+                           # path/to/thing
+    | \b\w+\.(?:py|js|ts|tsx|jsx|java|go|rb|rs|cs|kt|swift|php|sql|json|ya?ml|toml|ini|md|sh|tf|proto)\b
+    | \b\w+\.\w+                                   # module.symbol
+    | \b[a-z][a-z0-9]*_[a-z0-9_]*\b                # snake_case
+    | \b[A-Za-z][a-z0-9]*[A-Z]\w*\b                # camelCase or PascalCase
+    """,
+    re.VERBOSE,
+)
+
+
+def derive_ambiguity_gate(task: str, task_type: str, settled: bool = False) -> tuple[str, str]:
+    """Whether the request text determines the work: ``(gate, reason)``, one of ``AMBIGUITY_GATES``.
+
+    This gate reads the request text alone. Missing information has its own, older path --
+    ``rules.unresolved_facts`` -> one bounded lookup -> a question to the user -- and is reported
+    there, so an unresolved route is never also labelled ambiguous.
+
+    The gate is an execution decision, never a difficulty one: it can annotate a plan or ask the
+    user to restate the request, and it must never raise the level, the risk tier, the model, or
+    the effort. Read-only routes are never gated on text shape, and a ``settled`` route is already
+    clarified by its context: a human pinned the task type plus a level or ``--critical``, or chose
+    the axes at the manual prompt. A reused session route is settled by its caller, and only when
+    the stored record carries the ambiguity marker this phase added; a record written before it has
+    no marker, so even its vague task is still asked to restate.
+
+    ``partial`` means the request names one of the two things the work needs (an operation verb
+    or a concrete target) and the planner must state its assumptions for the other. ``ambiguous``
+    means it names neither, so there is nothing to assume from: the user is asked to restate.
+    """
+    if settled or task_type not in CODE_CHANGE_TASK_TYPES:
+        return "clear", ""
+    names_operation = bool(AMBIGUITY_ACTION_RE.search(task))
+    names_target = bool(TARGET_TOKEN_RE.search(task))
+    if names_operation and names_target:
+        return "clear", ""
+    if not names_operation and not names_target:
+        return "ambiguous", "the request names neither an operation nor a concrete target"
+    reason = "the request names no concrete target" if names_operation else "the request names no operation verb"
+    return "partial", reason
+
+
 _FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
 

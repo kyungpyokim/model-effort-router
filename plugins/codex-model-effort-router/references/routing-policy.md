@@ -150,6 +150,41 @@ Unknown policy: `unknown` means the classifier lacks the information to answer y
 
 `requires_code_understanding` (optional, defaults to `unknown`) is looked up like any fact but never asked: unknown only leaves the cheaper implementer rung.
 
+### Ambiguity gate
+
+`unknown` facts and ambiguity are separate contracts. `unknown` is missing information about a
+*fact* and has its own path (the one bounded lookup, then a question). The ambiguity gate reads the
+**request text** of a code-change task and asks whether the request determines the work at all:
+
+| Gate | Condition | Effect |
+|---|---|---|
+| `clear` | the text names an operation and a concrete target | unchanged |
+| `partial` | it names exactly one of the two | the planner must state its assumptions; the route runs normally |
+| `ambiguous` | it names neither | nothing runs: the CLI writes a restatement request to stderr and exits `3` |
+
+The operation vocabulary is deliberately wider than `route_reuse.operation()`'s reuse-blocker list
+(`handle`, `support`, `ensure`, `harden`, `purge` and Korean equivalents name an operation here),
+because a false "no operation" would demand a clarification the user does not need. A concrete
+target is a backticked identifier, a path, a file with a code extension, a `module.symbol`
+reference, or a snake_case / camelCase name.
+
+The gate is an execution decision, never a difficulty one: it never raises or lowers the level, the
+risk tier, the model, the effort, or the stages, and read-only (`design`, `review`, `inspect`)
+routes are never gated on text shape. A route is **settled** — and therefore never asked to
+restate — when a human pinned the task type together with `--level`/`--critical`, chose the axes at
+the manual prompt, or the session reused a stored route whose record carries the ambiguity marker
+this gate writes. An `ambiguous` route is never stored for session reuse, and a record written
+before the marker existed stays unsettled, so a repeated vague task cannot come back as a settled
+reused route. A preflight-failure fallback keeps its own exit `1` and its own guidance: its payload
+reports the request's true gate, but the fallback failure is the actionable one. `unknown` facts
+stay on their own path: an unresolved route is never also labelled ambiguous.
+
+The route JSON carries `ambiguity` (`clear` / `partial` / `ambiguous`) and `ambiguity_reason`. A
+`partial` route's planner instructions (the assumptions clause) are part of the pinned step text,
+so a payload that declares a different gate than the command it was built with is refused as
+tampered. The gate never blocks replay by itself: the clarify contract is the CLI's exit `3`, before
+any model runs.
+
 ### Risk Flags and Hard Floors
 
 Risk flags are derived from facts: `changes_security_or_payment_logic` = yes sets `security_sensitive`, `changes_persisted_data` = yes sets `data_migration`, and `changes_public_api_contract` = yes sets `public_api_change`. Manual and pinned classifications may carry any of:

@@ -41,6 +41,18 @@ platform, and an unknown fact is settled in this order:
    The optional `requires_code_understanding` is looked up but never asked: unknown there
    just keeps the cheaper implementer.
 
+`unknown` facts and ambiguity are separate contracts. The **ambiguity gate** reads the request text
+of a code-change task: a request naming both an operation and a concrete target (`retry_policy`,
+`api/models.py`) is `clear`; naming exactly one of the two is `partial`, and its planner must state
+its assumptions; naming neither is `ambiguous`, and the router writes a restatement request to
+stderr and exits `3` instead of guessing — nothing runs. The gate never changes the level, tier,
+model, effort, or stages, and read-only `design`/`review`/`inspect` work is never gated on text
+shape. A route is already settled, and never asked to restate, when a human pinned the axes
+(`--task-type` with `--level`/`--critical`), chose them at the manual prompt, or the session reused
+a stored route whose record carries the marker this version writes — an `ambiguous` route is never
+stored, and a record from an earlier version is re-gated. A preflight failure reports its own safe
+fallback and exit code as before.
+
 Classifier models by platform (no escalation model exists):
 
 - **Codex**: `gpt-6-luna` (low)

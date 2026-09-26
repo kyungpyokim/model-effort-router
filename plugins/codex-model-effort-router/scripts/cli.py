@@ -258,12 +258,17 @@ def main(argv: list[str] | None = None, router: object | None = None) -> int:
             repo_aware=args.repo_aware,
             critical=args.critical or prompted_critical,
             check_available=bool((os.environ.get(router.TEST_COMMAND_ENV) or "").strip()),
+            # Only a record written after the ambiguity marker existed may settle a reused follow-up;
+            # a pre-marker record is re-gated, so a vague task is still asked to restate.
+            settled_reuse=bool(
+                stored and isinstance(stored.get("ambiguity"), str) and stored["ambiguity"] in ("clear", "partial")
+            ),
         )
         router.refuse_interactive_two_stage(result, args.interactive)
     except ValueError as exc:
         print(f"routing failed: {exc}", file=sys.stderr)
         return 2
-    if session and result.source not in ("fallback", "manual") and not result.unresolved:
+    if session and result.source not in ("fallback", "manual") and not result.unresolved and result.ambiguity != "ambiguous":
         delegability = classification.delegability if classification is not None else 0
         origin = stored.get("origin", result.source) if (stored and reuse_info and reuse_info.get("reused")) else result.source
         route_reuse.save_record(
@@ -299,6 +304,8 @@ def main(argv: list[str] | None = None, router: object | None = None) -> int:
             print("route reuse: " + ("reused" if reuse_info["reused"] else f"reclassified ({reuse_info.get('reason', '')})"))
         if result.unresolved:
             print("unresolved facts (no rule matched them): " + ", ".join(result.unresolved))
+        if result.ambiguity != "clear":
+            print(f"ambiguity: {result.ambiguity} ({result.ambiguity_reason})")
         print("reason: " + "; ".join(result.rationale))
         if result.plan_dir:
             print(f"plan dir: {result.plan_dir}")
@@ -306,8 +313,13 @@ def main(argv: list[str] | None = None, router: object | None = None) -> int:
         sys.stderr.write("Unresolved facts (answer with --answer FACT=VALUE, or on a terminal when prompted):\n")
         for fact in result.unresolved:
             sys.stderr.write(f"  {fact}: {FACT_QUESTIONS[fact]} [{'/'.join(v for v in FACTS[fact] if v != 'unknown')}]\n")
+    if result.ambiguity == "ambiguous" and result.source != "fallback":
+        sys.stderr.write(
+            "Ambiguous request (nothing was executed): it names neither an operation nor a concrete target.\n"
+            "Restate it with what to change and where, then route again.\n"
+        )
     if classification is not None and not args.repo_aware and classification.source not in ("fallback", "manual", "reused"):
         jev_provider.run_shadow_if_enabled(args.task, classification, blocking=False)
     if result.source == "fallback":
         return 1
-    return EXIT_NEEDS_ANSWER if result.unresolved else 0
+    return EXIT_NEEDS_ANSWER if (result.unresolved or result.ambiguity == "ambiguous") else 0

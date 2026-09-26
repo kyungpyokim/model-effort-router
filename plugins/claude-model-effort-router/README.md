@@ -77,7 +77,8 @@ read-only routes and gated `trivial_edit` routes; the latter still runs its dete
 `--print` is accepted and changes nothing.
 
 Route-file replay accepts v2-v7 payloads. Schema v7 records `facts`,
-`matched_rules`, `unresolved_facts`, `questions`, `evidence`, and `risk_tier` alongside direct-only
+`matched_rules`, `unresolved_facts`, `questions`, `evidence`, `risk_tier`, and `ambiguity` with
+`ambiguity_reason`, alongside direct-only
 `execution_strategy` and future orchestration `orchestration_eligible` metadata; it
 does not enable orchestration on Claude Code. `scripts/astra_adapter.py` is the unchanged
 caller-invoked orchestration adapter that revalidates worker inputs and preserves original

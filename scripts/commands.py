@@ -93,6 +93,21 @@ CODEX_CONFIG_KEYS = ("model_reasoning_effort", "developer_instructions")
 def agent_name(level: str) -> str:
     return f"level-{level[1:]}-{LEVEL_NAMES[level]}"
 
+PLANNER_UNDERSPECIFIED_CLAUSE = (
+    "\nThe request does not fully determine the work. State every assumption you make explicitly in "
+    "constraints, keep each assumption minimal and falsifiable, and name the files you expect to change "
+    "in expected_files."
+)
+
+
+def planner_instructions(ambiguity: str | None) -> str:
+    """The planner instructions for this route's ambiguity gate (see rules.derive_ambiguity_gate).
+
+    A ``partial`` request gets the assumptions clause; ``clear`` and ``ambiguous`` do not (an
+    ambiguous route never runs, so its planner is never built)."""
+    return PLANNER_INSTRUCTIONS_TEMPLATE + (PLANNER_UNDERSPECIFIED_CLAUSE if ambiguity == "partial" else "")
+
+
 def codex_agent_instructions(level: str) -> str:
     filename = f"{agent_name(level)}.toml"
     here = Path(__file__).resolve()
@@ -237,7 +252,7 @@ def stage_commands(result: RouteResult, task: str, interactive: bool = False) ->
     plan_path = str(Path(result.plan_dir) / "plan.json")
     planner, implementer = result.stages
     has_security_flag = any(result.risk_flags.get(f) for f in SECURITY_FLOOR_FLAGS)
-    instructions = PLANNER_INSTRUCTIONS_TEMPLATE
+    instructions = planner_instructions(getattr(result, "ambiguity", None))
     if has_security_flag:
         instructions += f"\n{AUTOBAHN_SCOPE_GUARD}"
     plan_prompt = f"{PLANNER_PROMPT_PREFIX}{task}\n\nReturn only the plan JSON on stdout.\n"
@@ -443,7 +458,7 @@ def expected_stage_text(payload: dict, index: int, plan_path: str | None, router
             prefix = LEGACY_PLANNER_PROMPT_PREFIX if legacy else PLANNER_PROMPT_PREFIX
             if legacy:
                 return LEGACY_PLANNER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path) + guard, prefix, f"\n\nWrite the plan JSON to exactly: {plan_path}\n"
-            return PLANNER_INSTRUCTIONS_TEMPLATE + guard, prefix, "\n\nReturn only the plan JSON on stdout.\n"
+            return planner_instructions(payload.get("ambiguity")) + guard, prefix, "\n\nReturn only the plan JSON on stdout.\n"
         return (
             f"{IMPLEMENTER_INSTRUCTIONS_TEMPLATE.format(plan_path=plan_path)}{guard}\n\n{handoff}",
             LEGACY_IMPLEMENTER_PROMPT_PREFIX if legacy else IMPLEMENTER_PROMPT_PREFIX,
