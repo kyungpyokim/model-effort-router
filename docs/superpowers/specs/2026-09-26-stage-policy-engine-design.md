@@ -307,11 +307,17 @@ many `classifier`, `plan`, `execute`, `fix`, and `replan` calls it made) come fr
 `stage` field, and its run-wide review attempts are the history itself, so nothing has to be
 duplicated into `state.json` merely to survive a re-plan.
 
-The **reference case** every test must reproduce: cycle 0 attempt 1 runs `high`, FAILs with
-`edge_case` and escalates to `xhigh`; cycle 0 attempt 2 runs `xhigh` and PASSes; a re-plan starts
-cycle 1 at attempt 1 with the resolved policy's effort, and that attempt FAILs with `design`. The
-history keeps all three entries with their own effort and type, `attempt` restarts at 1 in cycle 1,
-and the run-wide counters keep counting throughout.
+The record must reproduce **two** reference cases, and they are separate runs: a PASS ends the run,
+so a re-plan can only follow a FAIL.
+
+- **Escalation recovery.** Cycle 0 attempt 1 runs `high`, FAILs with `edge_case`, and consumes the
+  escalation to `xhigh`; attempt 2 runs `xhigh` and PASSes. Two entries and no cycle boundary.
+- **Cycle boundary.** Cycle 0 attempt 1 runs `high`, FAILs with `edge_case`, and escalates to
+  `xhigh`; attempt 2 runs `xhigh` and FAILs with `edge_case` again (the budget is spent, so
+  `escalated: false`), and the exhausted fix budget re-plans; cycle 1 attempt 1 runs at the stage's
+  current rung and FAILs with `design`. Three entries: `attempt` restarts at 1 in cycle 1, the
+  run-wide counters (`reviews`, `replans`, `review_escalations`) keep counting, and the current-cycle
+  counters (`test_fixes`, `review_fixes`) reset at the re-plan.
 
 `state()` must **merge nested keys** instead of replacing the record: a later `state()` call that
 carries new review information keeps every `review` key written before it, and a history entry is

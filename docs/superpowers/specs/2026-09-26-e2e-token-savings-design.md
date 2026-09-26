@@ -448,7 +448,7 @@ Minimum record shape:
 }
 ```
 
-`provider` names the **billing/pricing namespace** the record's cost is computed in — `openai` for Phase 1 — not the execution adapter or CLI name. `codex` is the adapter whose argv and event stream the parser understands (the adapter key inside `e2e_usage`), while pricing is selected per provider, so Task 7 keys its snapshot on `provider` and the value is frozen before any pricing work begins. An `executor`/adapter field is deliberately not added until something needs to tell adapters apart within one provider.
+`provider` names the **billing/pricing namespace** the record's cost is computed in — `openai` for Phase 1 — not the execution adapter or CLI name. `codex` is the adapter whose argv and event stream the parser understands (the adapter key inside `e2e_usage`), while pricing is selected per provider, so Task 7 keys its snapshot on `provider` and the value is frozen before any pricing work begins. An `executor`/adapter field is deliberately not added until something needs to tell adapters apart within one provider. Task 7 keeps three names apart — `provider` (vendor/billing namespace), the **execution surface** (the CLI: `codex`, later Claude Code or another surface), and `model` — so a new surface never forces a new `provider` value and never leaks into one.
 
 `cached_input_tokens`, `cache_write_tokens`, and `reasoning_tokens` may be subsets or separately billed quantities depending on provider. Provider adapters must normalize semantics and compute `total_tokens` without double counting.
 
