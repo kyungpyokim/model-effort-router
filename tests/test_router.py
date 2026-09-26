@@ -17,6 +17,10 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import sync_bundle  # noqa: E402  (the bundle's own shared-file list, used by BundleParityTests)
+
 SPEC = importlib.util.spec_from_file_location("router", ROOT / "scripts" / "router.py")
 # Reuse a router already loaded from this file: executing it again registers a second module
 # under the same name, orphaning the first copy so patches and tests split across two instances.
@@ -2834,20 +2838,10 @@ class ModelDetectionTests(unittest.TestCase):
 
 
 class BundleParityTests(unittest.TestCase):
-    SHARED = (
-        "scripts/router.py",
-        "scripts/classifier.py",
-        "scripts/rules.py",
-        "scripts/policy.py",
-        "scripts/commands.py",
-        "scripts/cli.py",
-        "scripts/pipeline.py",
-        "scripts/route_reuse.py",
-        "scripts/astra_adapter.py",
-        "config/model-map.json",
-        "config/classification-schema.json",
-        "references/routing-policy.md",
-    )
+    # Single source of truth: the bundle's own copy list. A hand-written copy here had already
+    # drifted (it omitted docs/routing-ceiling.md) and would have missed every future addition,
+    # which is exactly the failure this test exists to catch.
+    SHARED = tuple(sync_bundle.SHARED)
     PLUGINS = ("plugins/codex-model-effort-router", "plugins/claude-model-effort-router", "plugins/antigravity-model-effort-router")
 
     def test_plugin_copies_match_the_bundle_root(self):
