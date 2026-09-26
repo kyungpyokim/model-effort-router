@@ -1,10 +1,14 @@
-"""Meta-tests for the frozen L1/L2 execution-corpus fixture repositories.
+"""Meta-tests for the frozen L1-L3 execution-corpus fixture repositories.
 
 Each fixture is a self-contained miniature repository whose frozen test command
-must run locally, offline, and deterministically from a fresh copy. These tests
-check fixture isolation/contract properties only; they never solve a fixture
-task. The parameterization is derived from the frozen manifest, never
-hand-written, so fixture metadata cannot drift from `cases.json`.
+must run locally, offline, and deterministically from a fresh copy. The tests
+check fixture isolation/contract properties; for every L3 case they also prove
+the acceptance test distinguishes the initial state from a known-correct patch
+(the distinguishing verification sanctioned for Task 3). Those patches live
+only in this file and are applied to throwaway tmp copies — the committed
+fixture directories stay unsolved, so a benchmark run never sees a solution.
+Parameterization is derived from the frozen manifest, never hand-written, so
+fixture metadata cannot drift from `cases.json`.
 """
 from __future__ import annotations
 
@@ -26,7 +30,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import e2e_corpus  # noqa: E402
 
 MANIFEST_PATH = ROOT / "evals" / "execution_corpus" / "cases.json"
-LEVELS_UNDER_TEST = ("L1", "L2")
+LEVELS_UNDER_TEST = ("L1", "L2", "L3")
 RUN_TIMEOUT_SECONDS = 120
 EXPECTED_OUTCOME_PATTERN = re.compile(
     r"Expected initial test outcome:\s*(?P<label>[A-Z]+)\s*\(pytest exit status (?P<code>\d+)\)"
@@ -103,17 +107,156 @@ def subprocess_env() -> dict[str, str]:
     }
 
 
-@lru_cache(maxsize=None)
-def run_initial_state(case_name: str, attempt: int) -> tuple[int, dict[str, int], str]:
-    """Run a case's frozen test_cmd from a fresh copy of its fixture.
+# The duplicated parsing helper the L3 refactor must collapse into one place.
+SHARED_SPLIT_PAIR = '''def _split_pair(text: str, sep: str) -> tuple[str, str]:
+    """Split one key/value pair and drop surrounding quotes from the value."""
+    key, _, value = text.partition(sep)
+    return key.strip(), value.strip().strip('"')
+'''
 
-    Cached per (case, attempt) so the launch test and the determinism test
-    share runs: two fresh copies per case for the whole pytest session.
-    """
-    case = CASES_BY_NAME[case_name]
-    with tempfile.TemporaryDirectory(prefix=f"exec-corpus-{case_name}-{attempt}-") as tmp:
+# Sanctioned exception to "gold fixes not committed": one minimal known-correct
+# patch per L3 case, embedded here (never under fixtures/) and applied only to
+# fresh tmp copies. Each step is (relative path, anchor text, replacement); an
+# empty anchor means "create this file with the given content", otherwise the
+# anchor must occur exactly once so a patch can never silently diverge from the
+# fixture snapshot a benchmark model actually receives.
+GOLD_FIXES: dict[str, tuple[tuple[str, str, str], ...]] = {
+    "L3_add_feature_controller_service": (
+        (
+            "promo_service.py",
+            '''def validate_promo(code: str) -> str:
+    """Return the normalized promo code, or raise ValueError when invalid."""
+    return code
+''',
+            '''def validate_promo(code: str) -> str:
+    """Return the normalized promo code, or raise ValueError when invalid."""
+    normalized = code.strip().upper()
+    if not normalized:
+        raise ValueError("promo code is required")
+    if not normalized.isalnum():
+        raise ValueError("promo code must be alphanumeric")
+    if normalized not in ACTIVE_CODES:
+        raise ValueError("promo code is not active")
+    return normalized
+''',
+        ),
+        (
+            "cart_controller.py",
+            '''    updated = dict(cart)
+    updated["discount"] = promo_service.discount_for(code)
+    updated["promo_code"] = code
+    return updated
+''',
+            '''    normalized = promo_service.validate_promo(code)
+    updated = dict(cart)
+    updated["discount"] = promo_service.discount_for(normalized)
+    updated["promo_code"] = normalized
+    return updated
+''',
+        ),
+    ),
+    "L3_local_refactor_three_files": (
+        (
+            "parsing_utils.py",
+            "",
+            '''"""Shared string-parsing helpers for the fixture's related test files."""
+
+
+def split_pair(text: str, sep: str) -> tuple[str, str]:
+    """Split one key/value pair and drop surrounding quotes from the value."""
+    key, _, value = text.partition(sep)
+    return key.strip(), value.strip().strip('"')
+''',
+        ),
+        (
+            "tests/check_query_parsing.py",
+            SHARED_SPLIT_PAIR,
+            "from parsing_utils import split_pair as _split_pair\n",
+        ),
+        (
+            "tests/check_header_parsing.py",
+            SHARED_SPLIT_PAIR,
+            "from parsing_utils import split_pair as _split_pair\n",
+        ),
+        (
+            "tests/check_cookie_parsing.py",
+            SHARED_SPLIT_PAIR,
+            "from parsing_utils import split_pair as _split_pair\n",
+        ),
+    ),
+    "L3_refactor_logger_four_files": (
+        (
+            "email_handler.py",
+            '''    return json.dumps({"message": f"email handled {job['event']}"})
+''',
+            '''    return json.dumps(
+        {"event": job["event"], "handler": HANDLER, "level": job.get("level", "info")},
+        sort_keys=True,
+    )
+''',
+        ),
+        (
+            "sms_handler.py",
+            '''    return json.dumps({"channel": "sms", "job": job["event"]})
+''',
+            '''    return json.dumps(
+        {"event": job["event"], "handler": HANDLER, "level": job.get("level", "info")},
+        sort_keys=True,
+    )
+''',
+        ),
+        (
+            "webhook_handler.py",
+            '''    return json.dumps({"webhook_event": job["event"], "status": "ok"})
+''',
+            '''    return json.dumps(
+        {"event": job["event"], "handler": HANDLER, "level": job.get("level", "info")},
+        sort_keys=True,
+    )
+''',
+        ),
+        (
+            "audit_handler.py",
+            '''    return json.dumps(["audit", job["event"]])
+''',
+            '''    return json.dumps(
+        {"event": job["event"], "handler": HANDLER, "level": job.get("level", "info")},
+        sort_keys=True,
+    )
+''',
+        ),
+    ),
+}
+
+GOLD_CASES = tuple(case for case in CASES if case.level == "L3")
+GOLD_CASE_IDS = [case.name for case in GOLD_CASES]
+
+
+def apply_gold_fix(case_name: str, copy: Path) -> None:
+    """Apply the embedded known-correct patch to one fixture copy (tmp only)."""
+    for relpath, anchor, replacement in GOLD_FIXES[case_name]:
+        target = copy / relpath
+        if anchor == "":
+            assert not target.exists(), f"creation step would clobber {target}"
+            target.write_text(replacement, encoding="utf-8")
+            continue
+        text = target.read_text(encoding="utf-8")
+        assert text.count(anchor) == 1, (
+            f"gold-fix anchor for {case_name} must occur exactly once in "
+            f"{relpath}, found {text.count(anchor)} occurrences"
+        )
+        target.write_text(text.replace(anchor, replacement), encoding="utf-8")
+
+
+def run_fresh_copy(
+    case: e2e_corpus.ExecutionCase, prefix: str, mutate=None
+) -> tuple[int, dict[str, int], str]:
+    """Run test_cmd from a fresh fixture copy, optionally mutating it first."""
+    with tempfile.TemporaryDirectory(prefix=prefix) as tmp:
         copy = Path(tmp) / "fixture"
         shutil.copytree(ROOT / case.fixture_dir, copy, symlinks=True)
+        if mutate is not None:
+            mutate(copy)
         process = subprocess.run(
             shlex.split(case.test_cmd),
             cwd=copy,
@@ -124,6 +267,32 @@ def run_initial_state(case_name: str, attempt: int) -> tuple[int, dict[str, int]
         )
     output = process.stdout + process.stderr
     return process.returncode, classify(output), output
+
+
+@lru_cache(maxsize=None)
+def run_initial_state(case_name: str, attempt: int) -> tuple[int, dict[str, int], str]:
+    """Run a case's frozen test_cmd from a fresh copy of its fixture.
+
+    Cached per (case, attempt) so the launch test, the determinism test and
+    the distinguishing test share runs: two fresh initial-state copies per
+    case for the whole pytest session.
+    """
+    case = CASES_BY_NAME[case_name]
+    return run_fresh_copy(case, prefix=f"exec-corpus-{case_name}-{attempt}-")
+
+
+@lru_cache(maxsize=None)
+def run_known_correct_state(case_name: str) -> tuple[int, dict[str, int], str]:
+    """Run test_cmd on a fresh copy after applying the embedded known fix.
+
+    Cached so repeated parametrizations share one patched run per case.
+    """
+    case = CASES_BY_NAME[case_name]
+    return run_fresh_copy(
+        case,
+        prefix=f"exec-corpus-gold-{case_name}-",
+        mutate=lambda copy: apply_gold_fix(case_name, copy),
+    )
 
 
 @pytest.mark.parametrize("case", CASES, ids=CASE_IDS)
@@ -194,6 +363,39 @@ def test_initial_state_is_deterministic_across_fresh_copies(case):
     )
     assert first_counts.get("failed", 0) >= 1, (
         f"initial state must fail the acceptance tests:\n{first_output[-2000:]}"
+    )
+
+
+@pytest.mark.parametrize("case", GOLD_CASES, ids=GOLD_CASE_IDS)
+def test_acceptance_distinguishes_initial_state_from_known_correct_patch(case):
+    """The frozen acceptance test must separate the initial state from a
+    known-correct local patch embedded in this file and applied only to a
+    fresh tmp copy of the fixture (never to the committed fixture itself).
+    """
+    assert set(GOLD_FIXES) == set(GOLD_CASE_IDS), (
+        "every L3 case needs an embedded known-correct patch; "
+        f"patched={sorted(GOLD_FIXES)} expected={sorted(GOLD_CASE_IDS)}"
+    )
+
+    initial_code, initial_counts, initial_output = run_initial_state(case.name, 0)
+    assert initial_code == 1 and initial_counts.get("failed", 0) >= 1, (
+        f"initial state must fail the acceptance tests before the patch is "
+        f"applied (exit {initial_code}, {initial_counts}):\n{initial_output[-2000:]}"
+    )
+
+    patched_code, patched_counts, patched_output = run_known_correct_state(case.name)
+    assert patched_code == 0, (
+        f"known-correct patch must make {case.test_cmd} pass "
+        f"(exit status {patched_code}):\n{patched_output[-2000:]}"
+    )
+    assert patched_counts.get("failed", 0) == 0, (
+        f"patched state must have no failing tests:\n{patched_output[-2000:]}"
+    )
+    assert patched_counts.get("error", 0) == 0, (
+        f"patched state must have no test errors:\n{patched_output[-2000:]}"
+    )
+    assert patched_counts.get("passed", 0) >= 1, (
+        f"patched state must actually run passing tests:\n{patched_output[-2000:]}"
     )
 
 
