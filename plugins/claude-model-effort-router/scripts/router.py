@@ -42,7 +42,7 @@ SUPPORTED_ROUTE_SCHEMA_VERSIONS = (2, 3, 4, 5, 6, SCHEMA_VERSION)
 
 WORKFLOW_MIN_LEVEL = "L2"
 
-PIPELINE_LIMITS = {"max_test_fixes": 2, "review_fixes_before_replan": 1, "max_replans": 1}
+PIPELINE_LIMITS = {"max_test_fixes": 2, "review_fixes_before_replan": 1, "max_replans": 1, "review_escalations": 1}
 TEST_COMMAND_ENV = "MODEL_EFFORT_ROUTER_TEST_CMD"
 ROUTER_PLAN_DIR_RE = re.compile(r"^codex-route-[0-9a-f]{8}$")
 ROUTER_PLAN_MARKER = ".model-effort-router-plan"

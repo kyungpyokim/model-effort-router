@@ -30,6 +30,9 @@ EXIT_GAVE_UP = 10
 EXIT_NO_VERDICT = 11
 EXIT_SPAWN_FAILED = 12
 EXIT_NO_PLAN = 13
+# The review answered, but its typed failure is not for the implementer to fix (see references/routing-policy.md).
+EXIT_CLARIFY = 14
+EXIT_ENVIRONMENT = 15
 STAGE_TIMEOUT_SECONDS = 3600.0
 TEST_TIMEOUT_SECONDS = 1800.0
 MAX_LOG_LINES = 80
@@ -43,6 +46,9 @@ VERBOSE_PROMPT_CHARS = 120
 
 VERDICT_RE = re.compile(r"^VERDICT: (PASS|FAIL)$")
 ESCALATE_RE = re.compile(r"^ESCALATE: (.+)$")
+# The typed review failure that decides the fail-loop action. A FAIL without this line keeps the
+# pre-taxonomy behaviour: it is an implementation problem, so it takes the fix path.
+FAILURE_RE = re.compile(r"^FAILURE: (implementation|edge_case|design|ambiguous|environment)$")
 PLAN_SECTIONS = {
     "analysis": ("current_structure", "constraints", "affected_areas", "risks"),
     "implementation_plan": ("steps", "expected_files", "compatibility_requirements"),
@@ -54,7 +60,7 @@ You are the single merged verification and code review stage of a plan-implement
 Judge whether the change satisfies the original request and the plan, and review the diff for correctness, security, regressions, and missing tests. The deterministic tests already ran; their result is given.
 Do not modify any file and do not fix anything yourself; report problems for the implementer.
 Do not invoke the model-effort router recursively.
-Finish with a findings list (empty on PASS), then a last line that is exactly VERDICT: followed by one space and PASS or FAIL."""
+Finish with a findings list (empty on PASS), then classify a FAIL with one line that is exactly FAILURE:, one space, and exactly one of: implementation (the plan was right and the change is wrong or incomplete), edge_case (the change is right and coverage or an unhandled case is missing), design (the plan does not fit the code), ambiguous (the requirement does not determine the outcome), environment (tooling, sandbox, network, a missing dependency, or flaky external state). Then a last line that is exactly VERDICT: followed by one space and PASS or FAIL. Omit the FAILURE line on PASS; never raise effort or retry an environment problem."""
 
 FIX_INSTRUCTIONS = """You are the fix stage of a plan-implement-test-review pipeline.
 Fix only the reported failure with the smallest correct change; do not redesign, widen scope, or add scaffolding.
@@ -163,6 +169,20 @@ def escalation(output: str) -> tuple[str, str] | None:
     return ("escalate", found.group(1)) if found else None
 
 
+def review_failure_type(output: str) -> str:
+    """The FAILURE type a review reported, or ``implementation`` when it reported none.
+
+    The line sits immediately above the VERDICT line, so an echoed FAILURE line elsewhere in the
+    output cannot type the failure. A missing line keeps the pre-taxonomy behaviour: an untyped
+    FAIL is an implementation problem and takes the fix path without escalation."""
+    lines = [line.rstrip() for line in output.splitlines() if line.strip()]
+    if len(lines) >= 2:
+        found = FAILURE_RE.match(lines[-2])
+        if found:
+            return found.group(1)
+    return "implementation"
+
+
 def write_plan(plan_file: Path, stdout: str) -> bool:
     """Validate planner stdout and atomically install it without touching a prior plan on failure."""
     try:
@@ -237,6 +257,7 @@ class Pipeline:
         self.counts = {"test": 0, "review": 0}
         self.replans = 0
         self.reviews = 0
+        self.review_escalations = 0
         self.tests_passed: list[str] = []
         self.ambiguity = payload.get("ambiguity")
         self.verbose = bool(os.environ.get(VERBOSE_ENV))
@@ -262,7 +283,7 @@ class Pipeline:
             raise ValueError("a trivial-edit route must be a single stage without a review or re-plan")
 
     def state(self, phase: str, who: dict | None = None, attempt: int | None = None) -> None:
-        state = {"phase": phase, "test_fixes": self.counts["test"], "review_fixes": self.counts["review"], "reviews": self.reviews, "replans": self.replans}
+        state = {"phase": phase, "test_fixes": self.counts["test"], "review_fixes": self.counts["review"], "reviews": self.reviews, "replans": self.replans, "review_escalations": self.review_escalations}
         (self.workdir / "state.json").write_text(json.dumps(state), encoding="utf-8")
         parts = [f"phase={phase}"]
         if who:
@@ -310,8 +331,8 @@ class Pipeline:
         argv = router.stage_command(self.platform, self.implementer, instructions, execute_prompt, "edit")
         return self.stage("implement", argv, self.implementer, self.replans)
 
-    def review(self) -> tuple[str, str] | int | None:
-        """None on PASS, a failure on FAIL, or an exit code when the review itself broke."""
+    def review(self) -> tuple[str, str, str] | int | None:
+        """None on PASS, a typed failure on FAIL, or an exit code when the review itself broke."""
         assert self.reviewer is not None
         tests = "\n".join(f"PASS: {command}" for command in self.tests_passed) or (
             "No deterministic test command was configured; rely on the implementer's reported checks."
@@ -320,7 +341,7 @@ class Pipeline:
         if changed is False:
             # Fail closed without spending a review: an implementer that changed nothing did not finish.
             log("no changes in the working tree after implementation")
-            return ("review", "The implementer finished without changing any file. Make the requested change.")
+            return ("review", "The implementer finished without changing any file. Make the requested change.", "implementation")
         prompt = (
             f"Original request:\n{self.task}\n\nPlan:\n{self.plan_text()}\n\n"
             f"Test results:\n{tests}\n\nDiff:\n{diff}\n"
@@ -334,9 +355,25 @@ class Pipeline:
         if not verdict:
             log("review did not end with a VERDICT line; stopping instead of guessing")
             return EXIT_NO_VERDICT
-        return None if verdict.group(1) == "PASS" else ("review", output[-MAX_LOG_CHARS:])
+        return None if verdict.group(1) == "PASS" else ("review", output[-MAX_LOG_CHARS:], review_failure_type(output))
 
-    def check(self) -> tuple[str, str] | int | None:
+    def escalate_review_effort(self) -> None:
+        """Raise the reviewing stage one rung for an edge_case failure (bounded by the route's limit).
+
+        The decision is what the budget bounds, so a platform whose review stage carries no effort
+        setting (Antigravity) records the escalation without a rung change rather than looping."""
+        effort = self.reviewer.get("effort") if self.reviewer else None
+        if effort not in router.EFFORT_ORDER:
+            log("review escalation: this platform's review stage has no effort rung to raise")
+            return
+        index = router.EFFORT_ORDER.index(effort)
+        if index + 1 >= len(router.EFFORT_ORDER):
+            log("review escalation: the review already runs at the top effort rung")
+            return
+        self.reviewer["effort"] = router.EFFORT_ORDER[index + 1]
+        log(f"review escalation: review effort raised to {self.reviewer['effort']}")
+
+    def check(self) -> tuple[str, str, str] | tuple[str, str] | int | None:
         self.tests_passed = []
         if self.test_commands:
             self.state("test")
@@ -356,7 +393,7 @@ class Pipeline:
         rc, output = self.stage("implement", self.commands[-1], self.implementer)
         if rc:
             return rc
-        failure: tuple[str, str] | int | None = escalation(output)
+        failure: tuple[str, str] | tuple[str, str, str] | int | None = escalation(output)
         budget = {"test": self.limits["max_test_fixes"], "review": self.limits["review_fixes_before_replan"]}
         while True:
             if failure is None:
@@ -366,8 +403,21 @@ class Pipeline:
                 return 0
             if isinstance(failure, int):
                 return failure
-            kind, detail = failure
-            if kind in budget and self.counts[kind] < budget[kind]:
+            kind, detail, *typed = failure
+            failure_type = typed[0] if typed else None
+            # A typed review failure the implementer must not fix: nothing to retry, nothing to
+            # escalate. Stopping is the whole action.
+            if kind == "review" and failure_type in ("ambiguous", "environment"):
+                log(f"review reports a {failure_type} problem; stopping without a fix, a re-plan, or an effort raise")
+                self.state(failure_type)
+                return EXIT_CLARIFY if failure_type == "ambiguous" else EXIT_ENVIRONMENT
+            if kind == "review" and failure_type == "edge_case" and self.review_escalations < self.limits["review_escalations"]:
+                self.review_escalations += 1
+                self.state("review_escalation")
+                self.escalate_review_effort()
+            # A design failure says the plan does not fit the code, so the implementer's retry
+            # budget would only re-fix the same wrong plan: go straight to the planner.
+            if failure_type != "design" and kind in budget and self.counts[kind] < budget[kind]:
                 self.counts[kind] += 1
                 rc, output = self.fix(kind, detail)
             elif self.planner and self.replans < self.limits["max_replans"]:

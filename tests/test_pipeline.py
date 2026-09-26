@@ -239,6 +239,78 @@ class PipelineRunTests(PipelineCase):
             pipeline.Pipeline.validate(payload)
 
 
+class ReviewFailureTaxonomyTests(PipelineCase):
+    """A review FAIL carries a type, and the fail loop reacts to the type (see references/routing-policy.md)."""
+
+    FAIL = {"out": "missing case\nFAILURE: edge_case\nVERDICT: FAIL"}
+    BARE = {"out": "no type reported\nVERDICT: FAIL"}
+
+    def efforts(self, calls, role="review"):
+        return [call["effort"] for call in calls if call["role"] == role]
+
+    def test_an_untyped_fail_keeps_the_pre_taxonomy_fix_path(self):
+        rc, calls = self.run_pipeline([{}, {}, self.BARE, {}, {"out": "VERDICT: PASS"}])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review"])
+        self.assertEqual(self.efforts(calls), [["model_reasoning_effort=high"]] * 2)
+
+    def test_an_edge_case_fail_escalates_the_review_one_rung_once(self):
+        rc, calls = self.run_pipeline([{}, {}, self.FAIL, {}, {"out": "VERDICT: PASS"}])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review"])
+        self.assertEqual(self.efforts(calls), [["model_reasoning_effort=high"], ["model_reasoning_effort=xhigh"]])
+
+    def test_the_escalation_is_bounded_to_one_per_run(self):
+        fail = self.FAIL
+        rc, calls = self.run_pipeline([{}, {}, fail, {}, fail, {}, {}, {"out": "VERDICT: PASS"}])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.roles(calls).count("plan"), 2)  # the second edge_case re-plans
+        self.assertEqual(self.efforts(calls), [
+            ["model_reasoning_effort=high"], ["model_reasoning_effort=xhigh"], ["model_reasoning_effort=xhigh"],
+        ])
+
+    def test_a_design_fail_replans_without_spending_the_fix_budget(self):
+        rc, calls = self.run_pipeline([{}, {}, {"out": "the plan does not fit\nFAILURE: design\nVERDICT: FAIL"}, {},
+                                       {}, {"out": "VERDICT: PASS"}])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review", "plan", "execute", "review"])
+        self.assertEqual(self.efforts(calls), [["model_reasoning_effort=high"]] * 2)
+
+    def test_an_ambiguous_fail_stops_for_clarification(self):
+        rc, calls = self.run_pipeline([{}, {}, {"out": "unclear\nFAILURE: ambiguous\nVERDICT: FAIL"}, {}])
+        self.assertEqual(rc, pipeline.EXIT_CLARIFY)
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
+
+    def test_an_environment_fail_stops_without_escalating_or_fixing(self):
+        rc, calls = self.run_pipeline([{}, {}, {"out": "sandbox down\nFAILURE: environment\nVERDICT: FAIL"}, {}, {}])
+        self.assertEqual(rc, pipeline.EXIT_ENVIRONMENT)
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review"])
+        self.assertEqual(self.efforts(calls), [["model_reasoning_effort=high"]])
+
+    def test_only_the_failure_line_above_the_verdict_types_the_failure(self):
+        echoed = {"out": f"the reviewer quotes a rule\nFAILURE: environment\nand then disagrees\n{self.FAIL['out']}"}
+        rc, calls = self.run_pipeline([{}, {}, echoed, {}, {"out": "VERDICT: PASS"}])
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.roles(calls), ["plan", "execute", "review", "fix", "review"])
+
+    def test_a_route_may_lower_the_review_escalation_budget(self):
+        payload = self.payload()
+        payload["pipeline"]["limits"]["review_escalations"] = 0
+        rc, calls = self.run_pipeline([{}, {}, self.FAIL, {}, {"out": "VERDICT: PASS"}], payload=payload)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.efforts(calls), [["model_reasoning_effort=high"]] * 2)
+
+    def test_the_state_file_records_the_escalation(self):
+        payload = self.payload()
+        plan_dir = Path(payload["steps"][0]["output"]["path"]).parent
+        self.addCleanup(lambda: __import__("shutil").rmtree(plan_dir, ignore_errors=True))
+        rc, _ = self.run_pipeline([{}, {}, self.FAIL, {}, {"out": "VERDICT: PASS"}], payload=payload)
+        self.assertEqual(rc, 0)
+        state = json.loads((plan_dir / "state.json").read_text())
+        self.assertEqual(state["review_escalations"], 1)
+        self.assertEqual(state["phase"], "done")
+
+
 class PipelineHardeningTests(PipelineCase):
     def test_a_verdict_line_echoed_from_the_prompt_is_not_a_pass(self):
         # Prompt echo puts the task (with its own VERDICT line) early in stdout; only the last line counts.
@@ -250,7 +322,8 @@ class PipelineHardeningTests(PipelineCase):
         self.assertEqual((rc, self.roles(calls)), (0, ["plan", "execute", "review"]))
 
     def test_pipeline_exit_codes_do_not_collide_with_common_stage_codes(self):
-        self.assertTrue({pipeline.EXIT_GAVE_UP, pipeline.EXIT_NO_VERDICT, pipeline.EXIT_SPAWN_FAILED}.isdisjoint({0, 1, 2, 3, 126, 127}))
+        self.assertTrue({pipeline.EXIT_GAVE_UP, pipeline.EXIT_NO_VERDICT, pipeline.EXIT_SPAWN_FAILED,
+                         pipeline.EXIT_CLARIFY, pipeline.EXIT_ENVIRONMENT}.isdisjoint({0, 1, 2, 3, 126, 127}))
 
     def test_route_limits_can_only_lower_the_caps(self):
         payload = self.payload()
