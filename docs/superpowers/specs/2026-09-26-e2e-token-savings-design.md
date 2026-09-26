@@ -450,6 +450,8 @@ Minimum record shape:
 
 `cached_input_tokens`, `cache_write_tokens`, and `reasoning_tokens` may be subsets or separately billed quantities depending on provider. Provider adapters must normalize semantics and compute `total_tokens` without double counting.
 
+Usage belongs to the **invocation**, not to a single turn. When one invocation reports usage on several turns, each field is the sum over the turns that reported it — a field is never taken from a turn that did not report it — and the invocation counts as `complete` only when every usage-bearing turn carried both input and output. A partial turn is therefore sticky within its invocation, rather than promoted to `complete` by an earlier complete one (the implementation and its tests live in `scripts/e2e_usage.py`).
+
 ## 3.7 Provider parser interface
 
 Phase 1 implements Codex/OpenAI only.

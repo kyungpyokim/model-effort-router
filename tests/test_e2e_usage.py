@@ -26,7 +26,7 @@ COMPLETE_USAGE = {
 }
 
 RECORD_KEYS = {
-    "run_id", "case_id", "mode", "stage", "attempt", "model", "effort",
+    "run_id", "case_id", "mode", "stage", "attempt", "provider", "model", "effort",
     "input_tokens", "cached_input_tokens", "cache_write_tokens",
     "output_tokens", "reasoning_tokens", "total_tokens", "usage_status",
     "exit_code", "wall_time_ms",
@@ -44,6 +44,7 @@ def sample_context() -> e2e_usage.UsageContext:
         mode="routed",
         stage="implementer",
         attempt=1,
+        provider="openai",
         model="gpt-6-luna",
         effort="high",
     )
@@ -113,6 +114,18 @@ class InstrumentArgvTests(unittest.TestCase):
             e2e_usage.instrument_execution_argv(
                 "codex", ["codex", "--sandbox", "workspace-write", "prompt"]
             )
+
+    def test_instrument_refuses_argv_the_router_would_never_have_validated(self):
+        # A fail-closed precondition: every router-generated argv carries these options, so an
+        # argv without them (a help probe, a bare prompt) is refused rather than instrumented.
+        for argv in (
+            ["codex", "exec", "--help"],
+            ["codex", "exec", "do something"],
+            ["codex", "exec", "--sandbox", "workspace-write", "prompt"],
+        ):
+            with self.subTest(argv=argv):
+                with self.assertRaises(ValueError):
+                    e2e_usage.instrument_execution_argv("codex", argv)
 
     def test_unsupported_providers_are_refused_not_silently_changed(self):
         claude_argv = ["claude", "-p", "--model", "opus", "--", "task"]
@@ -242,6 +255,72 @@ class CodexJsonlParserTests(unittest.TestCase):
         self.assertEqual(parsed.wall_time_ms, 4242)
 
 
+def stream(*events: dict) -> str:
+    return "\n".join(json.dumps(event) for event in events)
+
+
+COMPLETE_TURN = {"type": "turn.completed", "usage": {
+    "input_tokens": 1000, "cached_input_tokens": 800, "cache_write_tokens": 200,
+    "output_tokens": 200, "reasoning_tokens": 50, "total_tokens": 1200,
+}}
+PARTIAL_TURN = {"type": "turn.failed", "error": {"message": "interrupted"}, "usage": {
+    "input_tokens": 900, "cached_input_tokens": 700,
+}}
+
+
+class InvocationBoundaryTests(unittest.TestCase):
+    """Usage belongs to the invocation: late or partial turns never mix fields with earlier ones."""
+
+    def parse(self, text: str):
+        return e2e_usage.parse_codex_jsonl(text, sample_context(), exit_code=0, wall_time_ms=10).usage
+
+    def test_a_later_partial_turn_marks_the_invocation_partial_and_is_never_promoted(self):
+        usage = self.parse(stream(COMPLETE_TURN, PARTIAL_TURN))
+
+        self.assertEqual(usage.usage_status, "partial")
+        # Each field is the sum of the turns that reported it: the partial turn contributes its
+        # input only, and the earlier complete turn's output is never presented as the later turn's.
+        self.assertEqual(usage.input_tokens, 1900)
+        self.assertEqual(usage.cached_input_tokens, 1500)
+        self.assertEqual(usage.cache_write_tokens, 200)
+        self.assertEqual(usage.output_tokens, 200)
+        self.assertEqual(usage.reasoning_tokens, 50)
+        self.assertEqual(usage.total_tokens, 2100)
+
+    def test_a_partial_turn_keeps_the_invocation_partial_even_when_a_later_turn_completes(self):
+        # Fail closed: turn 1's output is unknown, so the invocation's total is not fully known.
+        # A later complete turn must not restore `complete` for the same invocation.
+        usage = self.parse(stream(PARTIAL_TURN, COMPLETE_TURN))
+
+        self.assertEqual(usage.usage_status, "partial")
+        self.assertEqual((usage.input_tokens, usage.output_tokens, usage.total_tokens), (1900, 200, 2100))
+
+    def test_two_complete_turns_are_summed_per_field_not_mixed(self):
+        second = {"type": "turn.completed", "usage": {"input_tokens": 300, "output_tokens": 70}}
+        usage = self.parse(stream(COMPLETE_TURN, second))
+
+        self.assertEqual(usage.usage_status, "complete")
+        self.assertEqual(usage.input_tokens, 1300)
+        self.assertEqual(usage.output_tokens, 270)
+        self.assertEqual(usage.cached_input_tokens, 800)  # only the first turn reported it
+        self.assertEqual(usage.cache_write_tokens, 200)
+        self.assertEqual(usage.total_tokens, 1570)
+
+    def test_a_usage_object_with_no_usable_value_does_not_erase_an_earlier_turn(self):
+        empty = {"type": "turn.completed", "usage": {}}
+        unusable = {"type": "turn.completed", "usage": {"input_tokens": "many", "output_tokens": -5}}
+        usage = self.parse(stream(COMPLETE_TURN, empty, unusable))
+
+        self.assertEqual(usage.usage_status, "complete")
+        self.assertEqual(usage.total_tokens, 1200)
+
+    def test_usage_is_absent_when_no_turn_reported_any(self):
+        usage = self.parse(stream({"type": "turn.completed"}))
+
+        self.assertEqual(usage.usage_status, "missing")
+        self.assertEqual(usage.total_tokens, 0)
+
+
 class UsageJsonlRecorderTests(unittest.TestCase):
     def test_append_writes_one_normalized_record_per_invocation(self):
         parsed = e2e_usage.parse_codex_jsonl(
@@ -265,6 +344,7 @@ class UsageJsonlRecorderTests(unittest.TestCase):
         self.assertEqual(record["attempt"], 1)
         self.assertEqual(record["model"], "gpt-6-luna")
         self.assertEqual(record["effort"], "high")
+        self.assertEqual(record["provider"], "openai")
         self.assertEqual(record["usage_status"], "complete")
         self.assertEqual(record["total_tokens"], 1900)
         self.assertEqual(record["exit_code"], 3)

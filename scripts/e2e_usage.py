@@ -43,6 +43,7 @@ class UsageContext:
     mode: str
     stage: str
     attempt: int
+    provider: str
     model: str
     effort: str | None
 
@@ -81,6 +82,11 @@ def instrument_execution_argv(provider: str, validated_argv: Sequence[str]) -> l
         raise ValueError("codex usage instrumentation requires a non-interactive 'codex exec' argv")
     if argv[2] == CODEX_JSON_FLAG:
         raise ValueError("codex argv is already instrumented")
+    # Fail-closed precondition, not a grammar: every router-generated ``codex exec`` argv carries
+    # these two options, so refusing their absence keeps this helper from instrumenting something
+    # the router would never have validated (for example ``codex exec --help``).
+    if "--sandbox" not in argv or "-m" not in argv:
+        raise ValueError("codex argv is missing the sandbox or model option the router always emits")
     return [argv[0], argv[1], CODEX_JSON_FLAG, *argv[2:]]
 
 
@@ -113,13 +119,19 @@ def parse_codex_jsonl(
     stage metadata is joined by ``append_usage_jsonl``, not by the parser.
 
     ``total_tokens`` is computed as input + output only: cached input, cache writes and
-    reasoning tokens are provider subfields and are never added again. Absence of usage
-    is reported as ``missing`` with zeroed fields — never inferred as measured zero.
+    reasoning tokens are provider subfields and are never added again. Absence of usage is
+    reported as ``missing`` with zeroed fields — never inferred as measured zero.
+
+    Usage belongs to the invocation, not to a single turn: each usage-bearing event is a
+    separately billed turn, so the invocation's fields are summed over the turns that reported
+    them, and a field is never taken from a turn that did not report it. The invocation counts as
+    ``complete`` only when **every** usage-bearing turn carried both input and output, so a
+    partial turn can never be promoted to complete by an earlier complete one.
     """
     del context  # stage metadata rides the recorder, not the parsed provider output
     events: list[dict] = []
     logical_output = ""
-    reported: dict[str, int] = {}
+    turns: list[dict[str, int]] = []
 
     for line in stdout.splitlines():
         stripped = line.strip()
@@ -142,24 +154,22 @@ def parse_codex_jsonl(
 
         usage = event.get("usage")
         if isinstance(usage, dict):
-            for key in _USAGE_TOKEN_KEYS:
-                value = _token_value(usage.get(key))
-                if value is not None:
-                    reported[key] = value
+            reported = {key: value for key in _USAGE_TOKEN_KEYS if (value := _token_value(usage.get(key))) is not None}
+            # An event that reports no usable token value changes nothing (it is not a measured zero).
+            if reported:
+                turns.append(reported)
 
-    has_input = "input_tokens" in reported
-    has_output = "output_tokens" in reported
-    if has_input or has_output:
-        input_tokens = reported.get("input_tokens", 0)
-        output_tokens = reported.get("output_tokens", 0)
+    if turns:
+        input_tokens = sum(turn.get("input_tokens", 0) for turn in turns)
+        output_tokens = sum(turn.get("output_tokens", 0) for turn in turns)
         usage = NormalizedUsage(
             input_tokens=input_tokens,
-            cached_input_tokens=reported.get("cached_input_tokens", 0),
-            cache_write_tokens=reported.get("cache_write_tokens", 0),
+            cached_input_tokens=sum(turn.get("cached_input_tokens", 0) for turn in turns),
+            cache_write_tokens=sum(turn.get("cache_write_tokens", 0) for turn in turns),
             output_tokens=output_tokens,
-            reasoning_tokens=reported.get("reasoning_tokens", 0),
+            reasoning_tokens=sum(turn.get("reasoning_tokens", 0) for turn in turns),
             total_tokens=input_tokens + output_tokens,
-            usage_status="complete" if has_input and has_output else "partial",
+            usage_status="complete" if all({"input_tokens", "output_tokens"} <= set(turn) for turn in turns) else "partial",
         )
     else:
         usage = NormalizedUsage(0, 0, 0, 0, 0, 0, "missing")
@@ -185,6 +195,7 @@ def append_usage_jsonl(path: Path, context: UsageContext, parsed: ParsedProvider
         "mode": context.mode,
         "stage": context.stage,
         "attempt": context.attempt,
+        "provider": context.provider,
         "model": context.model,
         "effort": context.effort,
         "input_tokens": usage.input_tokens,
