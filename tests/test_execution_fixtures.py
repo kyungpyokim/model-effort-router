@@ -599,8 +599,14 @@ def run_fresh_copy(
                 timeout=RUN_TIMEOUT_SECONDS,
             )
         except subprocess.TimeoutExpired as exc:
+            # POSIX capture_output+text hands TimeoutExpired BYTE parts; decode
+            # them so the failure message carries the real captured output.
             captured = "".join(
-                part for part in (exc.stdout, exc.stderr) if isinstance(part, str)
+                part.decode(errors="replace")
+                if isinstance(part, bytes)
+                else part
+                for part in (exc.stdout, exc.stderr)
+                if isinstance(part, (str, bytes))
             )
             raise AssertionError(
                 f"{case.name}: {case.test_cmd} did not finish within "
@@ -850,11 +856,13 @@ def test_hung_fixture_command_fails_as_a_clean_failure(monkeypatch):
     case = CASES_BY_NAME["L1_doc_typo_fix"]
 
     def hang(*args, **kwargs):
+        # Real POSIX capture_output+text runs hand TimeoutExpired BYTE parts
+        # (verified on darwin), so the handler must decode them.
         raise subprocess.TimeoutExpired(
             cmd="python3 -m pytest",
             timeout=1,
-            output="partial stdout",
-            stderr="partial stderr",
+            output=b"partial stdout",
+            stderr=b"partial stderr",
         )
 
     monkeypatch.setattr(subprocess, "run", hang)
