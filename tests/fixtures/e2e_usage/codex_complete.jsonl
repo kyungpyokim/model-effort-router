@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"synthetic-thread-0001"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"reasoning","text":"SYNTHETIC reasoning summary (fixture placeholder)."}}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"SYNTHETIC reasoning summary (fixture placeholder)."}}
+{"type":"item.started","item":{"id":"item_1","type":"agent_message","text":"SYNTHETIC FIXTURE: implementation complete; all synthetic checks pass."}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"SYNTHETIC FIXTURE: implementation complete; all synthetic checks pass."}}
+{"type":"turn.completed","usage":{"input_tokens":1500,"cached_input_tokens":1200,"cache_write_tokens":300,"output_tokens":400,"reasoning_tokens":160,"total_tokens":1900}}

@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"synthetic-thread-0003"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"SYNTHETIC FIXTURE: partial turn output recorded before interruption."}}
+{"type":"turn.failed","error":{"message":"synthetic interruption"},"usage":{"input_tokens":900,"cached_input_tokens":700}}

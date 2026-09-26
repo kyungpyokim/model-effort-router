@@ -1,0 +1,7 @@
+codex exec: synthetic non-JSON chatter line
+{"type":"thread.started","thread_id":"synthetic-thread-0002"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_1","type":"agent_message","text":"SYNTHETIC: trunca
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"SYNTHETIC FIXTURE: logical output survives malformed stream noise."}}
+[1, 2, 3]
+{"type":"turn.completed"}
