@@ -246,7 +246,7 @@ class InstrumentationOnTests(PipelineUsageCase):
             self.assertEqual(
                 {key: record[key] for key in ("run_id", "case_id", "mode")}, RUN_CONTEXT
             )
-            self.assertEqual(record["provider"], "codex")
+            self.assertEqual(record["provider"], "openai")
             self.assertEqual(
                 (record["input_tokens"], record["cached_input_tokens"], record["cache_write_tokens"],
                  record["output_tokens"], record["reasoning_tokens"], record["total_tokens"]),

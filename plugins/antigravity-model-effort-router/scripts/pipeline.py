@@ -134,7 +134,9 @@ def instrumented_run_capture(
     run_id, case_id, mode = usage_run_context()
     context = e2e_usage.UsageContext(
         run_id=run_id, case_id=case_id, mode=mode, stage=stage,
-        attempt=attempt, provider="codex", model=model, effort=effort,
+        # The billing/pricing namespace, not the execution surface: `codex` is the adapter
+        # whose argv and event stream e2e_usage parses, while pricing is selected per provider.
+        attempt=attempt, provider="openai", model=model, effort=effort,
     )
     parsed = e2e_usage.parse_codex_jsonl(raw, context, exit_code=rc, wall_time_ms=wall_time_ms)
     e2e_usage.append_usage_jsonl(Path(os.environ[e2e_usage.USAGE_JSONL_ENV]), context, parsed)

@@ -165,7 +165,7 @@ class ClassifierInstrumentationOnTests(ClassifierUsageCase):
         self.assertEqual(len(records), 1)
         record = records[0]
         self.assertEqual(record["stage"], "classifier")
-        self.assertEqual(record["provider"], "codex")
+        self.assertEqual(record["provider"], "openai")
         self.assertEqual(record["attempt"], 0)
         self.assertEqual(record["model"], "gpt-6-luna")
         self.assertEqual(record["effort"], "low")

@@ -376,7 +376,8 @@ def classify_task_single(
                 run_id, case_id, mode = _usage_run_context()
                 context = e2e_usage.UsageContext(
                     run_id=run_id, case_id=case_id, mode=mode, stage="classifier",
-                    attempt=0, provider="codex", model=model, effort=effort,
+                    # Billing namespace, not the `codex` execution surface (see pipeline.py).
+                    attempt=0, provider="openai", model=model, effort=effort,
                 )
                 parsed = e2e_usage.parse_codex_jsonl(
                     stdout, context, exit_code=proc.returncode,
