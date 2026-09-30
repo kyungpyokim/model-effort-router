@@ -1,0 +1,2 @@
+{"type": "session_meta", "payload": {"id": "z", "session_id": "someone-else", "thread_source": "user"}}
+{"type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 999999, "cached_input_tokens": 0, "cache_write_input_tokens": 0, "output_tokens": 1, "reasoning_output_tokens": 0, "total_tokens": 1000000}, "last_token_usage": {"input_tokens": 999999, "cached_input_tokens": 0, "cache_write_input_tokens": 0, "output_tokens": 1, "reasoning_output_tokens": 0, "total_tokens": 1000000}}}}
