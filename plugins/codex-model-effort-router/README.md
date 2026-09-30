@@ -6,6 +6,8 @@ and deny spawns that deviate from it.
 
 ## Install (run these yourself; nothing here has been installed or run live)
 
+The manifest must declare `skills` and `hooks` (fixed after a live install where `/hooks` showed nothing). Hook commands use `${CLAUDE_PLUGIN_ROOT}` because that variable is verified working in Codex 0.159.2.
+
 ```bash
 # from the repo root (python3 scripts/sync_plugin.py first if you changed model_effort_router/)
 codex plugin marketplace add .
@@ -53,9 +55,8 @@ The plugin bundles a copy of `model_effort_router/`. After editing core: `python
 
 ## Unverified (needs a live check)
 
-- Root `plugin.json` (portable) and the `.codex-plugin/plugin.json` fallback are both shipped; which one codex-cli 0.159.2 reads is untested.
+- Codex reads `.codex-plugin/plugin.json`. A root `plugin.json` with the Agent Plugins `$schema` made Codex ignore hooks/skills (observed in logs), so it was removed.
 - `.agents/plugins/marketplace.json` field names (`source.source`, `source.path`) and the `codex plugin add <plugin>@<marketplace>` syntax.
-- `${PLUGIN_ROOT}` expansion in `hooks/hooks.json` and default `hooks/hooks.json` discovery.
 - PreToolUse matcher `.*spawn_agent` (observed tool name `collaborationspawn_agent`; the documented `Agent` matcher was not tried).
 - Plugin-delivered UserPromptSubmit actually firing, and the `MER_CLASSIFIER` guard stopping recursion from the nested classifier.
 - Whether the main model follows the injected protocol, and denial reasons being acted on.

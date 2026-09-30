@@ -1,8 +1,23 @@
 {
-  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "model-effort-router",
   "version": "0.1.0",
   "description": "Routes development tasks through Plan, Implement, Test Gate and Review subagents with per-stage model and reasoning effort.",
   "license": "MIT",
-  "keywords": ["router", "subagents", "reasoning-effort"]
+  "keywords": [
+    "router",
+    "subagents",
+    "reasoning-effort"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Model-Effort Router",
+    "shortDescription": "Per-stage model and effort routing",
+    "developerName": "Model-Effort Router contributors",
+    "category": "Coding",
+    "capabilities": [
+      "Lifecycle hooks",
+      "Instructions"
+    ]
+  }
 }

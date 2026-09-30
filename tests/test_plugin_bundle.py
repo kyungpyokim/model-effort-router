@@ -10,14 +10,15 @@ class PluginBundleTest(unittest.TestCase):
         self.assertEqual(check(), [], "run: python3 scripts/sync_plugin.py")
 
     def test_manifest_and_hooks_config(self):
-        manifest = json.loads((PLUGIN / "plugin.json").read_text())
+        self.assertFalse((PLUGIN / "plugin.json").exists())  # root manifest makes Codex ignore hooks/skills
+        manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())
+        self.assertNotIn("$schema", manifest)
         self.assertEqual(manifest["name"], "model-effort-router")
-        legacy = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())
-        self.assertEqual(legacy["name"], manifest["name"])
+        self.assertEqual((manifest["skills"], manifest["hooks"]), ("./skills/", "./hooks/hooks.json"))
         hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
         self.assertEqual(set(hooks), {"UserPromptSubmit", "PreToolUse"})
         cmds = [h["command"] for g in hooks.values() for e in g for h in e["hooks"]]
-        self.assertTrue(all("${PLUGIN_ROOT}/hooks/" in c for c in cmds))
+        self.assertTrue(all("${CLAUDE_PLUGIN_ROOT}/hooks/" in c for c in cmds))
         self.assertGreaterEqual(hooks["UserPromptSubmit"][0]["hooks"][0]["timeout"], 20)  # > backend timeout_s
         self.assertIn("spawn_agent", hooks["PreToolUse"][0]["matcher"])
 
