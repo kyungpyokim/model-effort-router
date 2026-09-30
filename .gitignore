@@ -1,1 +1,5 @@
 .omc/
+__pycache__/
+
+# Phase 0 spike: throwaway scripts, nested fixture repo, raw host evidence (contains full host prompts)
+/spikes/
