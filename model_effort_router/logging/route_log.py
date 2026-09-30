@@ -25,6 +25,10 @@ def route_event(plan, state, *, latency_ms, prompt, configured_backend, timeout_
           **prompt_fingerprint(prompt)}
     if timeout_clamped:
         ev["timeout_clamped"] = True
+    if plan.classifier_usage_missing:
+        ev["classifier_usage"] = None  # a model was called but its usage is unknown (absent key = no model call)
+    elif plan.classifier_usage:
+        ev["classifier_usage"] = dict(plan.classifier_usage)  # token counts only
     if decision:
         ev["decision"] = {
             "level": decision.level, "backend": decision.backend, "confidence": decision.confidence,
@@ -38,4 +42,19 @@ def route_event(plan, state, *, latency_ms, prompt, configured_backend, timeout_
         ev["stages"] = [{"stage": n, "tier": s["tier"], "model": s["model"],
                          "requested_effort": s["requested_effort"], "applied_effort": s["effort"]}
                         for n, s in state["stages"].items()]
+    return ev
+
+
+REVIEW_VERDICTS = ("approved", "changes_requested")
+
+
+def review_event(verdict, findings=None, fix_count=None):
+    """Review outcome (spec 21): verdict and counts only, never review text."""
+    if verdict not in REVIEW_VERDICTS:
+        raise ValueError(f"verdict must be one of {REVIEW_VERDICTS}, got {verdict!r}")
+    ev = {"event": "review", "verdict": verdict}
+    if findings is not None:
+        ev["findings"] = findings
+    if fix_count is not None:
+        ev["fix_count"] = fix_count
     return ev

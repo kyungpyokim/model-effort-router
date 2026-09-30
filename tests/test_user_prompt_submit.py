@@ -43,6 +43,36 @@ class UserPromptSubmitTest(HookCase):
         self.assertIn("At most 2", c)
         self.assertIn("never", c.lower())
 
+    def test_injection_ends_with_review_record_step(self):
+        c = self.ctx(self.submit())
+        self.assertIn(f"--session {SID} --review approved|changes_requested --findings", c)
+
+    def test_route_event_logs_classifier_usage_counts_only(self):
+        self.fake = {"level": "L3", "usage": {"input_tokens": 7, "output_tokens": 2, "text": "SECRET"}}
+        self.submit()
+        ev = [e for e in self.log_events() if e["event"] == "route"][0]
+        self.assertEqual(ev["classifier_usage"], {"input_tokens": 7, "cached_input_tokens": 0,
+                                                  "output_tokens": 2, "reasoning_output_tokens": 0})
+
+    def test_route_event_logs_classifier_usage_even_when_backend_failed(self):
+        self.fake = {"raise": True, "usage": {"input_tokens": 9, "output_tokens": 1}}
+        self.submit()
+        ev = [e for e in self.log_events() if e["event"] == "route"][0]
+        self.assertTrue(ev["fallback"])
+        self.assertEqual(ev["classifier_usage"]["input_tokens"], 9)
+
+    def test_model_backend_that_reports_nothing_logs_explicit_null(self):
+        self.fake = {"level": "L3", "calls_model": True}
+        self.submit()
+        ev = [e for e in self.log_events() if e["event"] == "route"][0]
+        self.assertIn("classifier_usage", ev)
+        self.assertIsNone(ev["classifier_usage"])
+
+    def test_rule_only_backend_has_no_classifier_usage_key(self):
+        self.submit()
+        ev = [e for e in self.log_events() if e["event"] == "route"][0]
+        self.assertNotIn("classifier_usage", ev)
+
     def test_l1_skips_plan_stage(self):
         self.fake = {"level": "L1"}
         c = self.ctx(self.submit())

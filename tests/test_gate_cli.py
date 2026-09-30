@@ -62,6 +62,25 @@ class GateCliTest(HookCase):
         self.assertEqual(ev[0]["checks"]["test"], "passed")
         self.assertEqual(ev[0]["checks"]["lint"], "not_run")
 
+    def test_review_outcome_logged_with_fix_count(self):
+        self.submit()
+        p = self.gate("--review", "approved", "--findings", "2", sid=SID)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        ev = [e for e in self.log_events() if e["event"] == "review"][0]
+        self.assertEqual((ev["verdict"], ev["findings"], ev["fix_count"]), ("approved", 2, 0))
+
+    def test_findings_needs_review_and_non_negative(self):
+        self.assertNotEqual(self.gate("--findings", "2", sid=SID).returncode, 0)
+        self.assertNotEqual(self.gate("--review", "approved", "--findings", "-1", sid=SID).returncode, 0)
+
+    def test_review_and_mark_are_mutually_exclusive(self):
+        self.submit()
+        self.assertNotEqual(self.gate("--review", "approved", "--mark", "plan", "done", sid=SID).returncode, 0)
+
+    def test_review_needs_session_and_known_verdict(self):
+        self.assertNotEqual(self.gate("--review", "approved").returncode, 0)
+        self.assertNotEqual(self.gate("--review", "bogus", sid=SID).returncode, 0)
+
     def test_mark_requires_known_stage_and_status(self):
         self.submit()
         self.assertNotEqual(self.gate("--mark", "nope", "failed", sid=SID).returncode, 0)

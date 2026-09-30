@@ -97,8 +97,24 @@ def main(argv=None, env=None):
     ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     ap.add_argument("--mark", nargs=2, metavar=("STAGE", "STATUS"),
                     help=f"record a stage outcome ({'/'.join(MARKABLE)}); needs --session")
+    ap.add_argument("--review", choices=route_log.REVIEW_VERDICTS,
+                    help="record the review verdict in the route log; needs --session")
+    ap.add_argument("--findings", type=int, help="number of review findings (with --review)")
     args = ap.parse_args(argv)
+    if args.review and args.mark:
+        ap.error("--review and --mark are mutually exclusive")
+    if args.findings is not None and (not args.review or args.findings < 0):
+        ap.error("--findings needs --review and must be >= 0")
     sdir = host_state.state_dir(env)
+
+    if args.review:
+        if not args.session:
+            ap.error("--review needs --session")
+        st = host_state.load(sdir, args.session)
+        ev = route_log.review_event(args.review, args.findings, st["fix_count"] if st else None)
+        route_log.append(sdir, args.session, ev)
+        print(json.dumps(ev))
+        return 0
 
     if args.mark:
         if not args.session:

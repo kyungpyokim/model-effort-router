@@ -83,6 +83,19 @@ def _agent_text(stdout: str) -> str:
     return text
 
 
+def parse_usage(stdout: str):
+    """Token usage of the last `turn.completed` event in the exec stream, or None if absent."""
+    usage = None
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "turn.completed" and isinstance(ev.get("usage"), dict):
+            usage = ev["usage"]
+    return usage
+
+
 def _as_list(value):
     """Only real lists count; a string is an invalid field, not a sequence of characters."""
     return value if isinstance(value, list) else []
@@ -109,12 +122,15 @@ def parse_output(stdout: str, backend_name: str) -> DifficultyDecision:
 
 class SubscriptionBackend:
     name = "subscription"
+    calls_model = True  # route events log its usage (explicit null when unreported)
 
     def __init__(self, runner=default_runner, model=DEFAULT_MODEL):
         self._runner = runner
         self._model = model
+        self.last_usage = None  # usage of the most recent call, for evaluation (not part of DifficultyDecision)
 
     def classify(self, task: DifficultyInput, timeout_s: float) -> DifficultyDecision:
+        self.last_usage = None  # never report a previous call's usage
         cmd = [
             "codex", "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config",
             "-s", "read-only",
@@ -128,4 +144,5 @@ class SubscriptionBackend:
             stdout = self._runner(cmd, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd)
         finally:
             shutil.rmtree(cwd, ignore_errors=True)
+        self.last_usage = parse_usage(stdout)
         return parse_output(stdout, self.name)

@@ -128,6 +128,7 @@ def pre_tool_use(data, env, plugin_root):
     _safely(env, data, "PreToolUse", lambda: route_log.append(sdir, sid, {
         "event": "stage_spawn", "stage": stage, "decision": decision, "model": ti.get("model"),
         "effort": ti.get("reasoning_effort"), "fork_turns": ti.get("fork_turns"),
+        "fix_count": new_state["fix_count"],
         **({"reason": reason} if reason else {})}))
     if decision == "allow":
         return None

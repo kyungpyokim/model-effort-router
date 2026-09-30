@@ -104,6 +104,13 @@ class PreToolUseTest(HookCase):
         self.assertEqual(evs[0]["model"], "gpt-6-sol")
         self.assertEqual(evs[0]["effort"], "high")
 
+    def test_spawn_event_records_fix_count(self):
+        self.spawn("implement", **IMPL)
+        self.spawn("review", **REVIEW)
+        self.spawn("implement", **IMPL)  # fix round 1
+        evs = [e for e in self.log_events() if e["event"] == "stage_spawn"]
+        self.assertEqual([e["fix_count"] for e in evs], [0, 0, 1])
+
     def test_corrupt_state_fails_open(self):
         self.plan_file().write_text("{oops")
         self.assertAllowed(self.spawn("plan", model="wrong"))

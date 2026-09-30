@@ -16,4 +16,5 @@ Rules: fork_turns must be "none" and model/reasoning_effort exactly as given (a 
 Fix loop: if the Test Gate fails or Review finds blocking issues, spawn mer-implement again (same values) with the failures + diff, then re-run the Test Gate and Review. At most 2 fix rounds; after that stop and report. If a stage fails or is cancelled, run `python3 <plugin root>/bin/mer-gate --session <session id> --mark <stage> failed` before retrying it.
 Ask the user only when: the request has several plausible readings, a product/design choice is needed, a destructive change needs approval, requirements conflict, repeated fixes failed, or only the user can supply the information. Do not ask on an ordinary Test or Review failure.
 When the Review result is accepted, run `python3 <plugin root>/bin/mer-gate --session <session id> --mark review done`.
+Then record the outcome: `python3 <plugin root>/bin/mer-gate --session <session id> --review approved|changes_requested --findings N` (N = number of Review findings).
 Finish by reporting what changed, each Test Gate check's status (including not_run), and the Review verdict.

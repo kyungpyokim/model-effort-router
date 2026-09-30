@@ -46,6 +46,9 @@ def render(*, order, stages, session_id, gate_cmd, max_fix, level=None, rejected
     if "review" in order:
         lines.append(f"When the Review result is accepted, run `python3 {gate_cmd} --session {session_id} "
                      "--mark review done`.")
+    if "review" in order:
+        lines.append(f"Then record the outcome: `python3 {gate_cmd} --session {session_id} --review "
+                     "approved|changes_requested --findings N` (N = number of Review findings).")
     lines.append("Finish by reporting what changed, each Test Gate check's status (including not_run), and the "
                  "Review verdict.")
     return "\n".join(lines)

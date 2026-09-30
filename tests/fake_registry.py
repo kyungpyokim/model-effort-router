@@ -9,8 +9,11 @@ class FakeBackend:
 
     def __init__(self, spec):
         self.spec = spec
+        self.last_usage = None
+        self.calls_model = bool(spec.get("calls_model", "usage" in spec))
 
     def classify(self, task, timeout_s):
+        self.last_usage = self.spec.get("usage")
         if self.spec.get("raise"):
             raise RuntimeError("fake backend failure")
         return DifficultyDecision(
