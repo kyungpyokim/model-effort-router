@@ -31,14 +31,14 @@ class UserPromptSubmitTest(HookCase):
     def test_l3_injection_has_exact_values_per_stage(self):
         c = self.ctx(self.submit())
         for line in (
-            'task_name="mer-plan", fork_turns="none", model="gpt-6-sol", reasoning_effort="high"',
-            'task_name="mer-implement", fork_turns="none", model="gpt-6-luna", reasoning_effort="high"',
-            'task_name="mer-review", fork_turns="none", model="gpt-6-sol", reasoning_effort="high"',
+            'task_name="mer_plan", fork_turns="none", model="gpt-6-sol", reasoning_effort="high"',
+            'task_name="mer_implement", fork_turns="none", model="gpt-6-luna", reasoning_effort="high"',
+            'task_name="mer_review", fork_turns="none", model="gpt-6-sol", reasoning_effort="high"',
         ):
             self.assertIn(line, c)
-        self.assertLess(c.index("mer-plan"), c.index("mer-implement"))
-        self.assertLess(c.index("mer-implement"), c.index("mer-gate"))
-        self.assertLess(c.index("mer-gate"), c.index("mer-review"))
+        self.assertLess(c.index("mer_plan"), c.index("mer_implement"))
+        self.assertLess(c.index("mer_implement"), c.index("mer-gate"))
+        self.assertLess(c.index("mer-gate"), c.index("mer_review"))
         self.assertIn(SID, c)
         self.assertIn("At most 2", c)
         self.assertIn("never", c.lower())
@@ -76,15 +76,15 @@ class UserPromptSubmitTest(HookCase):
     def test_l1_skips_plan_stage(self):
         self.fake = {"level": "L1"}
         c = self.ctx(self.submit())
-        self.assertNotIn("mer-plan", c)
-        self.assertIn('task_name="mer-implement"', c)
+        self.assertNotIn("mer_plan", c)
+        self.assertIn('task_name="mer_implement"', c)
         self.assertIn('model="gpt-6-luna", reasoning_effort="medium"', c)
 
     def test_plan_only_target_has_only_plan(self):
         c = self.ctx(self.submit("Write a plan to refactor parser.py, plan only"))
-        self.assertIn("mer-plan", c)
-        self.assertNotIn("mer-implement", c)
-        self.assertNotIn("mer-review", c)
+        self.assertIn("mer_plan", c)
+        self.assertNotIn("mer_implement", c)
+        self.assertNotIn("mer_review", c)
 
     def test_state_persisted_and_atomic_leftovers_absent(self):
         self.submit()
@@ -116,7 +116,7 @@ class UserPromptSubmitTest(HookCase):
     def test_backend_failure_falls_back_to_default_and_logs_it(self):
         self.fake = {"raise": True}
         c = self.ctx(self.submit())
-        self.assertIn("mer-implement", c)
+        self.assertIn("mer_implement", c)
         (ev,) = [e for e in self.log_events() if e["event"] == "route"]
         self.assertEqual(ev["decision"]["backend"], "default")
         self.assertTrue(ev["fallback"])
@@ -145,7 +145,7 @@ class UserPromptSubmitTest(HookCase):
         cfg = self.home / "user.json"
         cfg.write_text(json.dumps({"router": {"mode": "off"}}))
         self.write_repo_config({"router": {"mode": "auto"}, "difficulty": {"backend": "fake"}})
-        self.assertIn("mer-implement", self.ctx(self.submit(env_extra={"MER_USER_CONFIG": str(cfg)})))
+        self.assertIn("mer_implement", self.ctx(self.submit(env_extra={"MER_USER_CONFIG": str(cfg)})))
 
     def test_new_routed_prompt_replaces_state(self):
         self.submit()
@@ -154,7 +154,7 @@ class UserPromptSubmitTest(HookCase):
         self.assertNotIn("plan", self.plan_state()["stages"])
 
     def test_unicode_prompt(self):
-        self.assertIn("mer-implement", self.ctx(self.submit("파일 parser.py 버그 수정 🚀")))
+        self.assertIn("mer_implement", self.ctx(self.submit("파일 parser.py 버그 수정 🚀")))
 
 
 if __name__ == "__main__":

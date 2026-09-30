@@ -34,8 +34,13 @@ class PreToolUseTest(HookCase):
     def test_session_without_plan_allowed(self):
         self.assertAllowed(self.spawn("plan", sid="other", model="wrong"))
 
-    def test_stage_not_in_plan_allowed(self):
-        self.assertAllowed(self.spawn("docs", model="wrong"))
+    def test_mer_like_name_not_a_planned_stage_denied_with_valid_names(self):
+        self.assertDenied(self.spawn("docs", model="wrong"), "plan", "implement")
+
+    def test_name_variants_cannot_bypass(self):
+        for name in ("mer-implement", "MER_Implement", "Mer-Implement"):
+            self.assertDenied(self.spawn(None, task_name=name, model="wrong"), "model")
+        self.assertDenied(self.spawn(None, task_name="mer_", model="wrong"), "plan")
 
     def test_matching_spawn_allowed_and_marks_running(self):
         self.assertAllowed(self.spawn("plan", **PLAN))

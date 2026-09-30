@@ -38,7 +38,7 @@ class ParseTest(unittest.TestCase):
     def test_rollout_takes_last_cumulative_total_ignoring_null_info(self):
         r = usage.read_rollout(ROLL / "rollout-plan.jsonl")
         self.assertEqual(r["usage"], u(45000, 30000, 900, 300))
-        self.assertEqual((r["thread_source"], r["agent_path"]), ("subagent", "/root/mer-plan"))
+        self.assertEqual((r["thread_source"], r["agent_path"]), ("subagent", "/root/mer_plan"))
         self.assertEqual(r["session_id"], ROOT)
 
     def test_rollout_without_token_count_has_no_usage_not_zero(self):
@@ -48,7 +48,7 @@ class ParseTest(unittest.TestCase):
             self.assertIsNone(usage.read_rollout(p)["usage"])
 
     def test_stage_of_agent_path(self):
-        self.assertEqual(usage.stage_of("/root/mer-implement"), "implement")
+        self.assertEqual(usage.stage_of("/root/mer_implement"), "implement")
         self.assertEqual(usage.stage_of("/root/review_isolated"), "other")
         self.assertEqual(usage.stage_of(None), "other")
 
@@ -118,7 +118,7 @@ class AggregateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "rollout-x.jsonl"
             p.write_text('{"type":"session_meta","payload":{"id":"a","thread_source":"subagent",'
-                         '"agent_path":"/root/mer-review"}}\n')
+                         '"agent_path":"/root/mer_review"}}\n')
             agg = usage.aggregate(None, [p, ROLL / "rollout-plan.jsonl"])
             self.assertEqual(agg["stages_without_usage"], ["review"])
             self.assertEqual(agg["subagent_rollouts"], 2)

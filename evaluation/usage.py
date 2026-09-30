@@ -4,12 +4,13 @@
 Normalized usage: {"input", "cached_input", "output", "reasoning_output"}; total = input + output
 (assumption: cached is a subset of input, reasoning a subset of output).
 
-ASSUMED, UNVERIFIED (spikes/phase0 summaries dropped these events; see _token_count_total):
+VERIFIED on real Codex 0.159.2 rollouts (see _token_count_total):
   rollout line  {"type": "event_msg", "payload": {"type": "token_count",
-                 "info": {"total_token_usage": {input_tokens, cached_input_tokens, output_tokens,
-                          reasoning_output_tokens, total_tokens}} | null}}
+                 "info": {"total_token_usage": {input_tokens, cached_input_tokens, cache_write_input_tokens,
+                          output_tokens, reasoning_output_tokens, total_tokens}} | null}}
   total_token_usage is cumulative per thread, so the last non-null one is the thread total.
-Verified from spike evidence: exec stream `turn.completed.usage`, rollout `session_meta.payload`
+  Subagent agent_path looks like /root/mer_review, /root/mer_implement.
+Also verified from spike evidence: exec stream `turn.completed.usage`, rollout `session_meta.payload`
 (`session_id` = root thread, `thread_source`, `agent_path`, `parent_thread_id`).
 """
 import json
@@ -17,7 +18,7 @@ from pathlib import Path
 
 KEYS = {"input_tokens": "input", "cached_input_tokens": "cached_input",
         "output_tokens": "output", "reasoning_output_tokens": "reasoning_output"}
-STAGE_PREFIX = "mer-"
+STAGE_PREFIX = "mer_"
 
 
 def normalize(raw):
@@ -55,7 +56,7 @@ def exec_stream_usage(text):
 
 
 def _token_count_total(ev):
-    """The isolated place that knows the (assumed) rollout token_count shape; None if not one."""
+    """The isolated place that knows the (verified) rollout token_count shape; None if not one."""
     payload = ev.get("payload")
     if ev.get("type") != "event_msg" or not isinstance(payload, dict) or payload.get("type") != "token_count":
         return None
@@ -78,7 +79,7 @@ def read_rollout(path):
 
 
 def stage_of(agent_path):
-    name = str(agent_path or "").rsplit("/", 1)[-1]
+    name = str(agent_path or "").rsplit("/", 1)[-1].lower().replace("-", "_")
     return name[len(STAGE_PREFIX):] if name.startswith(STAGE_PREFIX) else "other"
 
 

@@ -54,7 +54,7 @@ class HookCase(unittest.TestCase):
                           env=self.env(**(env_extra or {})), cwd=str(self.root))
 
     def spawn(self, stage, *, sid=SID, tool="collaborationspawn_agent", **over):
-        ti = {"task_name": f"mer-{stage}" if stage else "other", "message": "gAAAA",
+        ti = {"task_name": f"mer_{stage}" if stage else "other", "message": "gAAAA",
               "fork_turns": "none"}
         ti.update(over)
         ti = {k: v for k, v in ti.items() if v is not None}

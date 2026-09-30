@@ -117,24 +117,29 @@ def after_no_route(state, now):
 
 
 def _required(stage, st):
-    return (f'spawn_agent(task_name="mer-{stage}", fork_turns="none", '
+    return (f'spawn_agent(task_name="mer_{stage}", fork_turns="none", '
             f'model="{st["model"]}", reasoning_effort="{st["effort"]}")')
 
 
 def check_spawn(state, tool_input, now=None):
     """Pure guard. Returns (decision, reason, stage, new_state); decision is 'allow' or 'deny'.
 
-    Non-`mer-` spawns and stages outside the plan are allowed untouched (stage None).
+    Non-Router spawns are allowed untouched (stage None). A name is a Router stage spawn when, lowercased with
+    `-` read as `_`, it starts with `mer_`; one that is not a planned stage is denied.
     Any implement spawn after the first is a fix round, however the previous one ended.
+    Known limit (kept on purpose): a spawn the host itself rejects still counts, so its retry is a fix round;
+    a quick-retry exemption would let `--mark failed` bypass the fix budget.
     """
     now = time.time() if now is None else now
     name = tool_input.get("task_name") if isinstance(tool_input, dict) else None
-    if not isinstance(name, str) or not name.startswith("mer-"):
+    norm = name.lower().replace("-", "_") if isinstance(name, str) else ""
+    if not norm.startswith("mer_"):
         return "allow", None, None, state
-    stage = name[4:]
+    stage = norm[4:]
     st = state["stages"].get(stage)
     if st is None:
-        return "allow", None, None, state
+        valid = ", ".join(f"mer_{s}" for s in state["stages"])
+        return "deny", f"{name!r} is not a planned Router stage. Valid stage task_names: {valid}.", stage or "?", state
 
     problems = []
     if tool_input.get("fork_turns") != "none":

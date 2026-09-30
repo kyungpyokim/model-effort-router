@@ -10,7 +10,7 @@ TITLES = {"plan": "Plan", "implement": "Implement", "review": "Review"}
 
 
 def _stage_line(n, stage, model, effort):
-    return (f'{n}. {TITLES[stage]}: spawn_agent(task_name="mer-{stage}", fork_turns="none", '
+    return (f'{n}. {TITLES[stage]}: spawn_agent(task_name="mer_{stage}", fork_turns="none", '
             f'model="{model}", reasoning_effort="{effort}"). Pass: {STAGE_INPUT[stage]}.')
 
 
@@ -34,9 +34,9 @@ def render(*, order, stages, session_id, gate_cmd, max_fix, level=None, rejected
             lines.append(_stage_line(n, stage, st["model"], st["effort"]))
     lines.append('Rules: fork_turns must be "none" and model/reasoning_effort exactly as given (a hook denies '
                  "any other values, and denies spawning a stage that is already running or done). "
-                 "Keep each stage's task_name exactly as given.")
+                 "Keep each stage's task_name exactly as given (lowercase letters, digits and underscores only).")
     if "implement" in order:
-        lines.append(f"Fix loop: if the Test Gate fails or Review finds blocking issues, spawn mer-implement again "
+        lines.append(f"Fix loop: if the Test Gate fails or Review finds blocking issues, spawn mer_implement again "
                      f"(same values) with the failures + diff, then re-run the Test Gate and Review. At most "
                      f"{max_fix} fix rounds; after that stop and report. If a stage fails or is cancelled, run "
                      f"`python3 {gate_cmd} --session {session_id} --mark <stage> failed` before retrying it.")

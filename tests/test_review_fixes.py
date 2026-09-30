@@ -46,7 +46,7 @@ class StaleRunningTest(unittest.TestCase):
 
     def ti(self, stage, st):
         s = st["stages"][stage]
-        return {"task_name": f"mer-{stage}", "fork_turns": "none", "model": s["model"],
+        return {"task_name": f"mer_{stage}", "fork_turns": "none", "model": s["model"],
                 "reasoning_effort": s["effort"]}
 
     def test_running_not_stale_denied_then_stale_allowed(self):
@@ -134,7 +134,7 @@ class UnwritableStateTest(HookCase):
         blocker.write_text("x")
         p = run_script("hooks/user_prompt_submit.py", env=self.env(MER_STATE_DIR=str(blocker / "sub")),
                        stdin=json.dumps({"session_id": SID, "cwd": str(self.repo), "prompt": DEV}))
-        self.assertIn("mer-implement", json.loads(p.stdout)["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("mer_implement", json.loads(p.stdout)["hookSpecificOutput"]["additionalContext"])
 
 
 class TimeoutClampTest(HookCase):

@@ -26,14 +26,14 @@ Router가 품질을 유지하면서 전체 사용량(메인 세션 + 분류 호�
 ## live_runner 사전 조건 (직접 해야 함)
 
 - **플러그인 설치와 hook 신뢰는 사용자가 live 실행 전에 직접 한다.** 신뢰되지 않은 hook은 Codex가 건너뛰므로 "router" 실행이 조용히 두 번째 baseline이 된다. 이 도구는 hook 신뢰를 우회하지 않는다(`--dangerously-bypass-hook-trust` 미사용). router 기록은 route log에 `route`와 `stage_spawn` 이벤트가 있을 때만 `router_active: true`이고, 아니면 보고서에서 제외된다.
-- 플러그인이 전역 설치되어 있으면 baseline 실행도 라우팅될 수 있다. baseline에서 router 활동(route 이벤트 또는 `mer-` subagent rollout)이 보이면 `contaminated: true`로 기록되고 보고서에서 제외된다.
+- 플러그인이 전역 설치되어 있으면 baseline 실행도 라우팅될 수 있다. baseline에서 router 활동(route 이벤트 또는 `mer_` subagent rollout)이 보이면 `contaminated: true`로 기록되고 보고서에서 제외된다.
 - 실행은 **고정된 eval workdir 하나**(`--workdir`, 기본 `<state dir>/eval-workdir`, realpath)를 매번 지우고 fixture로 다시 채워 쓴다. Codex가 이 경로에 대해 `~/.codex/config.toml`에 `trust_level` 항목을 **하나 영구 저장**한다. 끝나면 직접 지워도 된다. 도구는 workdir이 없거나 자신이 만든 마커 파일(`.mer-eval-workdir`)이 있을 때만 내용을 지운다. 마커 없는 기존 디렉터리, fixture와 같거나 그 안팎인 경로, 현재 디렉터리·홈·루트(또는 그 상위)는 아무것도 지우지 않고 거부한다(종료 코드 1).
 - 케이스 하나가 실패하면 `error`가 있는 기록(gate `incomplete`)을 남기고 다음 케이스로 계속한다. 이런 기록이 있으면 판정은 `insufficient_data`다.
 - Review 결과는 오케스트레이터가 마지막에 `mer-gate --session <id> --review approved|changes_requested --findings N`으로 남긴다(주입 지시문에 포함). 기록의 `review_findings`와 보고서에 반영된다.
 
 ## 알려진 한계
 
-- subagent 사용량은 rollout 파일의 `token_count` 이벤트에서 읽는다. 이 이벤트의 JSON 형태는 아직 실제 파일로 확인하지 못했고 `evaluation/usage.py`의 `_token_count_total` 한 함수에 격리했다. 첫 live 실행 뒤 실제 rollout으로 확인해야 한다. rollout에 token_count가 없으면 0으로 치지 않고 `stages_without_usage`로 보고하며 판정은 `insufficient_data`가 된다. router 실행에서 subagent rollout이 하나도 없어도 마찬가지다.
+- subagent 사용량은 rollout 파일의 `token_count` 이벤트에서 읽는다. 이 이벤트의 JSON 형태는 Codex 0.159.2 실제 rollout으로 확인했고 `evaluation/usage.py`의 `_token_count_total` 한 함수에 격리했다. rollout에 token_count가 없으면 0으로 치지 않고 `stages_without_usage`로 보고하며 판정은 `insufficient_data`가 된다. router 실행에서 subagent rollout이 하나도 없어도 마찬가지다.
 - 분류 호출 사용량은 Backend가 보고한 실측값이다(`classifier_usage`를 route 이벤트에 기록, 호출이 실패한 경우 포함). 모델을 호출하는 Backend가 실행됐는데 사용량을 보고하지 않으면 route 이벤트에 `classifier_usage: null`을 명시하고(키 없음 = 모델 호출 없음 = 0), null이 있으면 추정하지 않고 실행을 `classifier_usage_missing`(불완전)로 표시한다. 종료 코드가 0이 아닌 호출의 사용량은 얻을 수 없다.
 - rollout은 실행 시작 이후에 수정된 파일 중 첫 줄의 `session_id`가 일치하는 것만 읽는다.
 - 전체 사용량은 `input + output` 토큰 합이다. 모델별 가중 비용은 계산하지 않는다.
