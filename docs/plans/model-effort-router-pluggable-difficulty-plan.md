@@ -1,6 +1,8 @@
 # Model-Effort Router Greenfield 기획서
 
-> 개정: 2026-10-01 — 1차 검토 반영. 호스트 실행 모델을 "hook 개입"에서 "Router 주도 단계 실행"으로 변경, Stage Policy 단일값 확정, Effort Map·라우팅 대상 판정·Test Gate 탐색·평가 기준선 추가, Codex 우선 MVP로 범위 축소, 장 번호 정리.
+> 개정: 2026-10-01 (2차) — Phase 0 spike, Phase 1~4 구현, Codex live 테스트 결과 반영. §3 실행 구조를 "지침 주입 + subagent 생성 검사"로 구체화, 호스트 제약(`mer_<stage>` 이름, `fork_turns=none`, manifest 위치, hook 신뢰) 추가, 설정 형식 JSON 확정, 구현 상태와 미결 사항 갱신.
+>
+> 개정: 2026-10-01 (1차) — 1차 검토 반영. 호스트 실행 모델을 "hook 개입"에서 "Router 주도 단계 실행"으로 변경, Stage Policy 단일값 확정, Effort Map·라우팅 대상 판정·Test Gate 탐색·평가 기준선 추가, Codex 우선 MVP로 범위 축소, 장 번호 정리.
 
 ## 1. 목적
 
@@ -100,37 +102,42 @@ Plan / Implement / Review는 호스트가 아는 개념이 아니다. 호스트 
 ### 3.1 역할 분리
 
 ```text
-Host Hook       : 요청 감지, 라우팅 대상 판정 트리거, 라우팅 지침 전달
-Router          : 난이도 판정 요청, 단계 순서와 단계별 실행 프로필 결정
-Host Adapter    : 지정 프로필로 단계별 subagent 실행, 결과 수집
+Host Hook (UserPromptSubmit) : 요청 감지, Router 호출, RoutePlan 저장, 단계별 실행 지침을 컨텍스트로 주입
+Router Core                  : 라우팅 대상 판정, 난이도 판정, 단계 순서와 단계별 실행 프로필 결정
+메인 에이전트(호스트 모델)   : 주입된 지침대로 단계를 subagent로 실행하고 산출물을 다음 단계로 전달
+Host Hook (PreToolUse)       : 단계 subagent 생성 요청을 RoutePlan과 대조해 허용 / 차단
+mer-gate CLI                 : Test Gate 실행과 단계 결과·Review 판정 기록 (메인 에이전트가 셸로 호출)
 ```
 
-Hook은 난이도를 판단하지 않는다. Router는 호스트 이벤트 API를 알지 않는다.
+Hook은 난이도를 판단하지 않는다. Router Core는 호스트 이벤트 API를 알지 않는다. 단계 실행 자체는 메인 에이전트가 하므로, Router의 강제력은 "지침 주입 + subagent 생성 검사"로 확보한다.
 
-### 3.2 호스트 기능 전제 (Phase 0 spike로 검증)
+### 3.2 호스트 기능 전제 (Codex 0.159.2 검증 결과)
 
-문서상 확인된 전제와 검증이 필요한 항목을 구분한다.
+Phase 0 spike([phase0-host-api.md](../spikes/phase0-host-api.md))와 플러그인 설치 후 live 테스트(2026-10-01)로 확인한 결과다.
 
-| 항목 | Codex | Claude Code | 상태 |
-|---|---|---|---|
-| 사용자 요청 시점 hook (`UserPromptSubmit` 등) | 문서상 있음 | 문서상 있음 | 플러그인에서 실제 동작 검증 필요 |
-| subagent별 `model` 지정 | 문서상 있음 | 문서상 있음 | 검증 필요 |
-| subagent별 effort 지정 | 문서상 있음 (`model_reasoning_effort`) | 문서상 있음 (`effort`, 모델별 지원 상이) | 검증 필요 |
-| subagent 호출 가로채기·검증 hook | 문서상 있음 | 확인 필요 | 검증 필요 |
-| 모델·effort를 **실행 시점에 동적으로** 넘길 수 있는지 | 미확인 | 미확인 | **핵심 미결** |
+| 항목 | Codex | 근거 |
+|---|---|---|
+| 플러그인 `UserPromptSubmit` hook 자동 실행, 컨텍스트 주입 | 동작 | live 테스트 |
+| 플러그인 `PreToolUse` hook으로 subagent 생성 검사 | 동작 (`tool_name`은 `collaborationspawn_agent`, matcher `.*spawn_agent`) | live 테스트 |
+| 차단(`permissionDecision: "deny"`) 사유가 모델에 전달 | 동작 | spike (프로젝트 로컬 hook) |
+| `spawn_agent` 호출 시점에 `model`·`reasoning_effort` 동적 지정 | 동작 (`fork_turns="none"`) | spike + live 테스트 |
+| `fork_turns="none"` subagent의 대화 격리 | 동작 | spike |
+| subagent 결과 전문 반환 | 동작 (확인 범위 약 2KB) | spike |
+| 미지원 effort 지정 | spawn 오류 (무시·대체 없음) | spike |
+| hook timeout 초과 | fail-open 관찰 (증거 미보존, 재측정 필요) | spike |
+| `updatedInput`으로 spawn 인자 재작성 | 문서 외 동작, 사용하지 않음 | spike |
+| Claude Code | 미검증 (Phase 5) | — |
 
-모델 전환 관련 hook(예: Claude Code의 모델 전환 전후 hook)은 이미 요청된 전환을 검사하거나 컨텍스트를 추가하는 기능이며, Router의 단계별 전환 수단으로 간주하지 않는다.
+호스트 제약:
 
-**동적 지정이 불가능한 경우**: subagent 정의가 정적 파일(frontmatter / TOML)이라면, 플러그인이 `stage × profile × effort` 조합별 subagent 정의를 미리 포함하고 Router는 그중 하나를 선택한다.
+- **subagent 이름**: 소문자·숫자·밑줄만 허용한다. 단계 subagent 이름은 `mer_<stage>`(`mer_plan`, `mer_implement`, `mer_review`)로 한다. 하이픈 이름은 생성이 거부된다(live 테스트).
+- **`fork_turns`**: 기본값 `all`은 부모 대화를 복제해 격리가 깨진다. 단계 subagent는 항상 `fork_turns="none"`으로 생성한다.
+- **hook 신뢰(trust)**: 신뢰되지 않은 hook은 오류 없이 건너뛴다. 설치 후 사용자가 `/hooks`에서 직접 신뢰해야 Router가 동작한다. 신뢰는 hook별 `trusted_hash` 단위이며, hook 설정이 바뀌는 업데이트 후에는 재신뢰가 필요할 수 있다(설정 파일이 같으면 재설치 후에도 유지됨을 확인).
+- **플러그인 manifest**: Codex는 `.codex-plugin/plugin.json`을 읽는다. 루트에 Agent Plugins `$schema`를 가진 `plugin.json`이 있으면 그 파일이 우선 해석되어 `hooks`·`skills` 필드가 무시된다(live 로그). hook 명령의 플러그인 경로 변수는 `${CLAUDE_PLUGIN_ROOT}`를 쓴다.
 
-```text
-mer-plan-frontier-high
-mer-implement-balanced-high
-mer-review-frontier-xhigh
-...
-```
+모델 전환 관련 hook은 이미 요청된 전환을 검사하거나 컨텍스트를 추가하는 기능이며, Router의 단계별 전환 수단으로 간주하지 않는다.
 
-조합 수를 줄이기 위해 Stage Policy가 실제로 출력하는 조합만 생성한다(§11 표 기준).
+`stage × profile × effort` 조합별 subagent 정의를 미리 만드는 방식은 동적 지정이 가능하므로 사용하지 않는다.
 
 ### 3.3 라우팅 대상 판정
 
@@ -145,30 +152,31 @@ mer-review-frontier-xhigh
 
 판정 규칙은 Router Core에 두고, 판정이 모호하면 라우팅하지 않는 쪽을 기본으로 한다(불필요한 분류 비용 방지).
 
-### 3.4 Router 내부 단계 이벤트
+### 3.4 단계 실행 흐름
 
-`before_plan` 등은 **Router 내부 이벤트**이며 호스트 hook 이름이 아니다.
-
-```text
-on_task_start      난이도 판정 + RoutePlan 생성 (1회)
-before_plan        Plan subagent 프로필 확정
-before_implement   Implement subagent 프로필 확정
-before_test_gate   검사 명령 확정
-before_review      Review subagent 프로필 확정
-on_task_end        라우팅 로그 기록
-```
-
-한 작업에 대해 난이도는 `on_task_start`에서 한 번만 판정한다.
+한 작업에 대해 난이도는 요청 시점에 한 번만 판정한다.
 
 ```text
-on_task_start
- ↓
-RoutePlan
- ├─ stages: [plan, implement, test_gate, review]  (라우팅 대상 판정에 따라 일부 생략)
- ├─ plan profile
- ├─ implement profile
- └─ review profile
+UserPromptSubmit hook
+ ├─ Router Core: 라우팅 대상 판정 → 난이도 판정 → RoutePlan
+ ├─ RoutePlan을 세션별 상태 파일에 저장
+ └─ 단계별 실행 지침 주입:
+      spawn_agent(task_name="mer_<stage>", fork_turns="none", model=<모델>, reasoning_effort=<effort>)
+      Implement 후 mer-gate 실행, Review 후 mer-gate --review 기록
+
+메인 에이전트
+ ├─ mer_plan      (Plan이 있는 경우)
+ ├─ mer_implement
+ ├─ mer-gate --session <id>            (Test Gate)
+ ├─ mer_review
+ └─ mer-gate --session <id> --review approved|changes_requested --findings N
+
+PreToolUse hook (각 spawn_agent마다)
+ └─ 이름을 소문자·밑줄로 정규화 후 `mer_`로 시작하면 RoutePlan과 대조
+      모델·effort·fork_turns 불일치, 계획에 없는 단계, 실행 중 단계 중복, 수정 한도 초과 → 차단
 ```
+
+단계 완료는 추론한다(SubagentStop에 task_name이 없음): 다음 단계가 시작되거나 `mer-gate`가 실행되면 이전 단계를 완료로 본다. 실패·취소된 단계는 `mer-gate --mark <stage> failed|cancelled`로 기록한다.
 
 ### 3.5 재라우팅
 
@@ -185,25 +193,32 @@ scope_changed → 새 DifficultyDecision → Stage Policy 재계산 → 남은 �
 
 테스트 실패나 단순 수정 때문에 재판정하지 않는다. 재라우팅은 작업당 1회로 제한한다.
 
+**현재 구현 상태**: 명시적 재라우팅은 구현하지 않았다. 새 요청이 라우팅되면 새 RoutePlan이 이전 계획을 대체한다. 이전 계획은 모든 단계 완료, 2시간 경과, 연속 3회 비라우팅 요청 중 하나가 되면 폐기된다(짧은 후속 답변 "진행해" 등으로 계획이 사라지지 않게 1회는 유지).
+
 ### 3.6 Router 모드와 Override
 
 모드: `auto`(기본) / `manual` / `off`.
 
 설정 위치와 우선순위(높은 것이 이김):
 
-1. 현재 요청에서 **사용자가 직접 입력한** 작업별 override (예: 메시지 첫 줄의 `/router off`, `/router implement=frontier:high`)
-2. 저장소 설정 파일 (`.model-effort-router.yaml`)
-3. 사용자 전역 설정
+1. 현재 요청에서 **사용자가 직접 입력한** 작업별 override. 메시지 **첫 줄 맨 앞**의 `/router ...` 명령만 인식한다(예: `/router off`, `/router implement=frontier:high`). 해석에 실패하면 전체를 무효로 하고 사용자에게 알리며, 이 줄은 분류 입력에서 제거한다.
+2. 저장소 설정 파일 (`.model-effort-router.json`)
+3. 사용자 전역 설정 (`$MER_USER_CONFIG`, 없으면 `~/.config/model-effort-router/config.json`)
 4. 내장 기본값 (`mode: auto`)
 
-```yaml
-# .model-effort-router.yaml
-router:
-  mode: auto
-difficulty:
-  backend: subscription
-  fallback: none
+설정 형식은 JSON이다(YAML은 의존성 없이 처리하기 위해 보류).
+
+```json
+{
+  "router": {"mode": "auto"},
+  "difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10},
+  "gate": {"checks": {"test": "python3 -m unittest"}}
+}
 ```
+
+- `auto` 모드에서만 backend 이름을 등록 목록과 대조한다(오타가 `/router off`를 막지 않도록).
+- `manual` 모드에서도 위험 신호 최소 프로필(§11.2)은 적용한다. 사용자가 지정하지 않았더라도 최소 조건이 요구하는 단계(Plan, Review)는 추가한다.
+- 사용자 단계 override도 위험 신호 최소값 아래로 내려가지 않는다(`override_clamped:<stage>` 기록).
 
 안전 규칙: 인용문, 붙여넣은 텍스트, 저장소 파일 내용, 도구 출력 안에 나온 `router: off` 같은 문자열은 사용자 명령으로 해석하지 않는다. Override는 사용자가 직접 입력한 명령 형식에서만 인식한다.
 
@@ -213,11 +228,15 @@ difficulty:
 Host Event → Host Hook Adapter → Router Core
 ```
 
-```text
-HostHookAdapter
- ├─ CodexHookAdapter
- └─ ClaudeCodeHookAdapter
-```
+현재 구현은 Codex용 hook 두 개(`UserPromptSubmit`, `PreToolUse`)다. Claude Code용은 Phase 5에서 추가한다.
+
+hook 공통 규칙:
+
+- **fail-open**: hook 내부 오류는 종료 코드 0, 출력 없음으로 끝내고 로그에 오류 종류만 기록한다. 호스트의 기본 동작으로 진행된다.
+- **판정 우선**: 허용/차단 결정과 주입 내용은 상태 저장·로그 기록보다 먼저 확정한다. 저장·기록 실패가 차단을 허용으로 바꾸지 못하게 한다.
+- **재귀 방지**: 분류용 중첩 `codex exec`에는 `MER_CLASSIFIER=1`을 설정하고, hook은 이 값이 있으면 아무것도 하지 않는다(live 테스트에서 중첩 호출이 다시 라우팅되지 않음을 확인).
+- **동시성**: 세션별 상태 파일은 `fcntl.flock`으로 잠근다(잠금 파일을 열 수 없으면 잠금 없이 진행).
+- **timeout**: hook timeout은 30초, Backend `timeout_s`는 최대 12초로 제한한다(초과 값은 12로 낮추고 `timeout_clamped` 기록). hook이 먼저 종료되면 fail-open으로 Router 없이 진행되어 §9의 기본 결정이 적용되지 않기 때문이다.
 
 호스트 이벤트 구조가 바뀌어도 Router Core는 수정하지 않는다.
 
@@ -308,15 +327,26 @@ class DifficultyBackend(Protocol):
 
 ## 8. Backend 후보
 
-### 8.1 Subscription LLM Backend (MVP 후보)
+### 8.1 Subscription LLM Backend (MVP 기본값, 구현 완료)
 
-호스트 구독 안의 저가 모델(economy tier)에 L1~L5 분류 프롬프트를 실행한다. 추가 설치가 없어 MVP 기본값으로 가장 현실적이다.
+호스트 구독 안의 저가 모델(economy tier)에 L1~L5 분류 프롬프트를 실행한다. 추가 설치가 없어 MVP 기본값으로 쓴다.
 
-전제 검증(Phase 0):
+호출 방식: `codex exec --json --ephemeral --skip-git-repo-check --ignore-user-config -s read-only -m <economy 모델> -c model_reasoning_effort=low`를 하위 프로세스로 실행한다.
 
-- 플러그인 컨텍스트에서 구독 인증만으로 분류 호출이 가능한가
-- 분류 호출 지연이 hook timeout 안에 들어오는가
-- 분류 호출 사용량이 절감 효과를 상쇄하지 않는가(§22.3)
+- stdin은 `DEVNULL`로 준다(파이프면 EOF까지 멈춤).
+- 호출마다 빈 임시 디렉터리에서 실행한다(저장소의 `.codex/` 설정·hook이 끼어들지 않도록).
+- 자식 환경에 `MER_CLASSIFIER=1`을 넣어 Router hook 재귀를 막는다.
+- timeout 시 프로세스 그룹 전체를 종료한다.
+- JSON 이벤트 중 `item.completed`의 `agent_message`만 읽고, 설정 경고 등 `error` 항목은 건너뛴다. 결과를 해석하지 못하면 실패로 보고 fallback으로 넘어간다.
+- `turn.completed`의 사용량을 기록한다(§21).
+
+전제 검증 결과:
+
+| 전제 | 결과 |
+|---|---|
+| 플러그인 컨텍스트에서 구독 인증만으로 분류 호출 | 가능 (live 테스트) |
+| 분류 지연이 hook timeout 안 | 약 4~6초 (spike p50 4.07s, live 5.1~5.5s) |
+| 분류 사용량이 절감 효과를 상쇄하지 않는가 | **미해소**. 호출당 입력 약 27~30k 토큰으로, 사소한 작업 1턴과 비슷하다. §22.3 기준선 비교로 판단 |
 
 ### 8.2 Jev Backend
 
@@ -346,20 +376,18 @@ Output: L3 + L1~L5 확률 → DifficultyDecision
 
 설정으로 Backend를 선택한다.
 
-```yaml
-difficulty:
-  backend: subscription   # subscription | jev | nimble | custom
-  fallback: none          # 다른 backend 이름 또는 none
-  timeout_s: 10
+```json
+{"difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10}}
 ```
+
+`backend`에는 등록된 이름(현재 `subscription`), `fallback`에는 다른 backend 이름 또는 `none`을 쓴다. `timeout_s`는 최대 12초다(§3.7).
 
 Registry:
 
 ```python
 BACKENDS = {
     "subscription": SubscriptionBackend,
-    "jev": JevBackend,
-    "nimble": NimbleBackend,
+    # "jev", "nimble": Phase 6
 }
 ```
 
@@ -376,6 +404,10 @@ fallback backend (설정 시)
 ```
 
 모든 Backend가 실패하면 L3를 사용한다. 단 L3는 일반 작업 기준이며, `risk_flags`에 따른 최소 프로필(§11.2)은 기본 결정에도 그대로 적용한다.
+
+- 실패 원인은 `<backend 이름>:<예외 종류>` 형태로 기본 결정의 `reason_codes`에 남긴다.
+- 모델을 호출하는 backend는 실패했더라도 보고된 사용량을 합산해 기록한다. 호출은 했지만 사용량이 없으면 `classifier_usage: null`로 명시한다(§22.3에서 "측정 불가"로 처리).
+- 설정의 backend 이름 오류는 실행 중 L3로 넘기지 않고 설정 오류로 바로 알린다.
 
 ---
 
@@ -419,7 +451,9 @@ Stage Policy는 단계마다 **모델 tier 하나와 effort 하나**를 반환�
 | `data_migration`, `data_loss` | Plan 수행(frontier / high 이상), Review frontier / xhigh |
 | `concurrency` | Review frontier / high 이상 |
 
-최소 조건은 기본값보다 낮출 때 쓰지 않는다. 기본값이 이미 높으면 기본값을 유지한다.
+최소 조건은 기본값보다 낮출 때 쓰지 않는다. 기본값이 이미 높으면 기본값을 유지한다. 사용자 override(§3.6)와 manual 모드에도 적용한다.
+
+`risk_flags`는 Backend 출력과 규칙 기반 탐지(작업 설명·경로의 키워드)를 합친다. 규칙 탐지는 Backend와 무관하게 항상 실행한다. Backend가 모르는 값을 내면 버린다.
 
 **불확실성 승격** (Backend별 검증 후 활성화):
 
@@ -455,29 +489,17 @@ effort : medium | high | xhigh
 
 Host Adapter가 두 가지를 모두 매핑한다.
 
-```yaml
-# 예: codex adapter 설정 (모델명은 설치 시점의 호스트 모델로 채움)
-tiers:
-  economy:  <현재 저비용 모델>
-  balanced: <현재 주력 구현 모델>
-  frontier: <현재 최고 reasoning 모델>
-efforts:
-  medium: medium
-  high:   high
-  xhigh:  xhigh
-```
+Codex adapter 현재 기본값(데이터로 관리, 확인 필요 항목 포함):
 
-```yaml
-# 예: claude code adapter 설정
-tiers:
-  economy:  <현재 Haiku 계열>
-  balanced: <현재 Sonnet 계열>
-  frontier: <현재 Opus 계열>
-efforts:
-  medium: medium
-  high:   high
-  xhigh:  xhigh
-```
+| tier | 모델 | 지원 effort |
+|---|---|---|
+| economy | gpt-6-luna | low, medium, high, xhigh, max |
+| balanced | gpt-6-luna (economy와 같음, 확인 필요) | 위와 같음 |
+| frontier | gpt-6-sol | low, medium, high, xhigh, max, ultra |
+
+추상 effort `medium / high / xhigh`는 Codex effort 이름과 같다. 현재 두 모델 모두 세 값을 지원하므로 대체 규칙이 발동하지 않는다. Codex는 미지원 effort 지정 시 subagent 생성을 오류로 거부하므로, Adapter 설정 생성 시점에 검증한다.
+
+Claude Code adapter(Phase 5): economy = Haiku 계열, balanced = Sonnet 계열, frontier = Opus 계열.
 
 **모델별 지원 effort 처리**
 
@@ -533,8 +555,13 @@ Implement와 Review 사이에 deterministic gate를 둔다. Test는 별도 LLM �
 
 **결과 상태**: `passed` / `failed` / `not_run`
 
-- 찾지 못한 검사는 `not_run`으로 기록하며 통과로 취급하지 않는다.
+- 찾지 못한 검사는 `not_run`으로 기록하며 통과로 취급하지 않는다. 하나라도 `not_run`이면 전체 결과는 `incomplete`다.
 - 결과 전체(`not_run` 포함)를 Review 컨텍스트에 포함한다.
+
+구현: `mer-gate` CLI. 메인 에이전트가 자신의 셸 도구로 호출하므로 호스트의 샌드박스·승인이 그대로 적용된다. hook에서는 절대 실행하지 않는다(저장소가 정의한 명령을 실행하기 때문).
+
+- 지침 문서(`AGENTS.md`, `CLAUDE.md`)는 코드 블록 안의 명령만 읽는다. 셸 연산자(`&&`, `|`, `;` 등)나 glob 문자가 든 탐색 명령은 건너뛴다(`not_run`). 설정의 `gate.checks`만 셸로 실행한다.
+- 검사마다 timeout을 두고, 초과 시 프로세스 그룹 전체를 종료한다.
 
 ---
 
@@ -571,6 +598,8 @@ Review effort 기준:
 | Fix | Review 또는 Test 실패 내용, 변경 diff |
 
 전달 산출물의 크기 상한을 두고, 초과 시 요약이 아니라 경로·범위 참조로 넘긴다.
+
+전달은 메인 에이전트가 한다. 단계 subagent는 `fork_turns="none"`으로 생성되어 이전 대화를 보지 못하므로, 메인 에이전트가 위 항목을 `spawn_agent`의 메시지에 담아 넘긴다. subagent 결과는 전문이 메인 에이전트에게 돌아온다(spike 확인 범위 약 2KB, 큰 diff는 미검증). 모든 agent가 같은 작업 트리를 공유하므로 diff는 파일 경로 참조로도 넘길 수 있다.
 
 ---
 
@@ -614,6 +643,13 @@ Review Fail → 현재 Implement 프로필로 Fix → Test Gate → Review
 - 수정 시도는 작업당 최대 2회로 제한한다. 반복 실패하거나 사용자 결정이 필요하면 중단하고 보고한다.
 - Backend·subagent timeout과 사용자 취소 시, 같은 단계를 중복 실행하지 않도록 단계별 실행 상태(`pending / running / done / failed / cancelled`)를 기록하고 재시도 전에 확인한다.
 
+구현(PreToolUse hook이 강제):
+
+- 첫 Implement 이후의 모든 Implement 재생성은 수정 1회로 센다. 이전 단계가 완료·실패·취소·장시간 정지 중 어느 상태였든 같다(`--mark failed`로 한도를 우회하지 못하게). 세 번째 재생성은 차단한다.
+- `running` 상태 단계의 재생성은 차단한다. 30분 넘게 `running`이면 멈춘 것으로 보고 재생성을 허용한다.
+- 호스트가 생성을 거부한 호출도 이미 허용 판정을 받았다면 1회로 센다(알려진 한계).
+- 취소 시 subagent와 하위 셸 프로세스가 함께 종료되는 것은 spike에서 관찰했다(증거 미보존). 취소 후 재요청 시 중복 실행은 미검증이다.
+
 ---
 
 ## 20. 사용자 질문 기준
@@ -643,6 +679,13 @@ Review Fail → 현재 Implement 프로필로 Fix → Test Gate → Review
 - Review 결과, Fix 횟수, 재라우팅 여부
 - 단계별·전체 사용량과 소요 시간(호스트가 제공하는 범위)
 
+구현: 세션별 JSONL 파일(`$MER_STATE_DIR` 또는 `~/.local/state/model-effort-router/<session>.log.jsonl`). 이벤트 종류는 `route`, `stage_spawn`, `gate`, `stage_mark`, `review`, `error`다.
+
+- 프롬프트 원문은 저장하지 않고 해시와 길이만 남긴다. 오류는 예외 종류만 기록한다.
+- 분류 호출 사용량은 `route` 이벤트에 들어간다.
+- 단계 subagent와 메인 세션 사용량은 호스트 rollout 파일의 `token_count` 이벤트(누적값)에서 평가 도구가 읽는다. `codex exec --json`은 subagent 사용량을 보고하지 않는다. rollout의 `session_meta`에 있는 `agent_path`(`/root/mer_<stage>`)로 단계를 구분한다(live 테스트 확인).
+- 재라우팅은 명시 표시가 없으며, 같은 세션의 두 번째 `route` 이벤트로만 나타난다.
+
 로그는 예측과 실행 결과를 제공할 뿐 **정답 라벨이 아니다**. Routing Corpus 후보 수집에 사용하되, 라벨은 §22.1 절차로 붙인다.
 
 ---
@@ -657,6 +700,8 @@ Review Fail → 현재 Implement 프로필로 Fix → Test Gate → Review
 - **표본 구성**: L1~L5 각 레벨과 위험 신호 작업을 모두 포함한다. 초기 목표 150건 이상.
 - 라우팅 로그는 후보 수집원으로만 쓴다.
 
+구현: 라벨 기준은 [labeling-guide.md](../evaluation/labeling-guide.md), 형식과 일치도 계산은 `evaluation/cases.py`. 초기 후보 40건(`evaluation/corpus/seed.jsonl`)은 모두 `draft`이며 정답 라벨이 아니다. **확정 라벨 0건**이 현재 상태다.
+
 ### 22.2 Backend 비교
 
 같은 Corpus에서 Backend를 직접 비교한다. 이름이나 공개 benchmark만 보고 기본값을 바꾸지 않는다.
@@ -666,7 +711,9 @@ Review Fail → 현재 Implement 프로필로 Fix → Test Gate → Review
 - Over-routing / Under-routing
 - Critical task miss (L4·L5 또는 위험 신호 작업을 L2 이하로 판정)
 - latency, token usage, cost, local resource usage
-- confidence 보정 결과(§11.2 임계값 산출용)
+- confidence 보정 결과(§11.2 임계값 산출용) — Phase 6
+
+구현: `evaluation/compare.py`. 모델을 호출하는 비교는 `--live`에서만 실행한다.
 
 ### 22.3 비용 기준선
 
@@ -688,6 +735,27 @@ Router   : 라우팅 적용 실행
 
 Router가 Baseline보다 품질을 유지하면서 전체 사용량을 줄이지 못하면 기본 모드를 `auto`로 두지 않는다.
 
+구현: `evaluation/usage.py`(사용량 합산), `evaluation/baseline.py`(판정), `evaluation/live_runner.py`(`--live`에서만 실행). 판정은 `auto_allowed` / `do_not_default_to_auto` / `insufficient_data` 중 하나다. 다음 중 하나라도 있으면 `auto_allowed`를 내지 않는다.
+
+- Router가 실제로 동작하지 않은 실행(route·stage_spawn 이벤트 없음)
+- 기준선 실행에 Router 흔적이 섞인 실행
+- 오류로 끝난 실행
+- 사용량을 확인할 수 없는 실행(subagent rollout에 사용량 없음, 분류 사용량 `null`)
+
+live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신뢰한다. 평가용 작업 디렉터리는 하나로 고정해(`.mer-eval-workdir` 표식이 있는 경우만 초기화) Codex 전역 설정에 신뢰 항목이 1개만 남게 한다.
+
+**첫 live 관측값** (2026-10-01, L2 작업 1건, 메인 세션 gpt-6-luna/low, 기준선 비교 아님):
+
+| 구분 | 입력 토큰 | 비고 |
+|---|---:|---|
+| 메인 세션(오케스트레이션) | 약 321k | |
+| Implement (gpt-6-luna/medium) | 약 153k | |
+| Review (gpt-6-sol/high) | 약 34k | |
+| 분류 호출 | 약 27k | |
+| 합계 | 약 535k | 약 77초 |
+
+메인 세션이 구현 단계의 약 2배를 쓴다. 오케스트레이션 비용이 절감분을 상쇄할 위험이 크므로, 대규모 라벨링 전에 소규모 기준선 비교(3~5건)로 먼저 판단한다.
+
 ---
 
 ## 23. 패키징과 프로젝트 구조
@@ -704,49 +772,26 @@ Router가 Baseline보다 품질을 유지하면서 전체 사용량을 줄이지
 - 호스트별 차이는 Host Hook Adapter와 Host Adapter에서만 처리한다.
 - Difficulty Backend는 Core의 registry로 교체한다.
 
-배포 구조:
+저장소 구조(현재):
 
 ```text
-packages/
-├── router-core/
-├── codex-model-effort-router/
-│   ├── plugin metadata
-│   ├── hooks/            (Host Hook Adapter 진입점)
-│   ├── agents/           (stage×profile×effort subagent 정의, 필요 시)
-│   ├── adapter config    (tier/effort map)
-│   └── router-core bundle/reference
-└── claude-model-effort-router/   (MVP 이후)
-    └── (동일 구성)
-```
-
-Core 구조:
-
-```text
-model_effort_router/
-├── difficulty/
-│   ├── base.py
-│   ├── decision.py
-│   ├── registry.py
-│   ├── risk.py            (규칙 기반 risk_flags 탐지)
-│   └── subscription.py
-├── policy/
-│   ├── levels.py
-│   ├── targeting.py       (라우팅 대상 판정)
-│   ├── stages.py
-│   └── router.py
-├── profiles/
-│   └── profiles.py        (tier, effort)
-├── adapters/
-│   └── codex.py
-├── gate/
-│   └── discovery.py       (Test Gate 명령 탐색)
-├── logging/
-│   └── route_log.py
-├── evaluation/
-│   ├── routing_corpus.py
-│   ├── compare_backends.py
-│   └── baseline.py
-└── tests/
+model_effort_router/          Router Core (stdlib만 사용)
+├── difficulty/               decision, base, registry, chain(fallback), risk, subscription, usage
+├── policy/                   targeting, overrides, config, stages, router
+├── profiles/                 tier, effort, stage 순서
+├── adapters/codex.py         tier/effort 매핑, 모델별 지원 effort
+├── host/                     codex_hooks, instructions, state (세션 상태·잠금·강제 규칙)
+├── gate/                     discovery, run (mer-gate)
+└── logging/route_log.py
+plugins/codex-model-effort-router/
+├── .codex-plugin/plugin.json manifest (hooks, skills 선언)
+├── hooks/                    hooks.json, user_prompt_submit.py, pre_tool_use.py
+├── bin/mer-gate
+├── skills/model-effort-router/SKILL.md   (주입 지침과 같은 원본에서 생성)
+└── model_effort_router/      Core 복사본 (scripts/sync_plugin.py로 동기화, 테스트로 일치 검사)
+evaluation/                   개발용 평가 도구 (플러그인에 포함하지 않음)
+.agents/plugins/marketplace.json   로컬 marketplace
+tests/                        unittest (live 호출 없음)
 ```
 
 `jev.py`, `nimble.py`, `adapters/claude.py`는 해당 Phase에서 추가한다.
@@ -764,6 +809,16 @@ Difficulty Backend → DifficultyDecision → Stage Policy → Host Adapter
 ## 24. 구현 순서
 
 원칙: **Backend 하나 + 호스트 하나로 전체 흐름을 먼저 연결**한 뒤 확장한다.
+
+구현 상태(2026-10-01):
+
+| Phase | 상태 |
+|---|---|
+| 0 | 완료. 결과 문서: [phase0-host-api.md](../spikes/phase0-host-api.md) |
+| 1–2 | 완료 (Opus 리뷰 승인) |
+| 3 | 완료, Codex 설치 후 live 테스트로 전체 흐름 확인 (manifest·subagent 이름 버그 수정) |
+| 4 | 도구 완료. 측정(라벨링, 기준선 비교)은 미수행 |
+| 5–6 | 미착수 |
 
 ### Phase 0 — 호스트 API Spike (1일)
 
@@ -849,18 +904,34 @@ MVP = Phase 0 ~ 4 (Codex).
 
 MVP 이후: Claude Code Plugin, Jev·Nimble Backend 비교.
 
+현재 충족 상태:
+
+| 기준 | 상태 |
+|---|---|
+| 설치·실행, 자동 라우팅, 단계별 모델·effort 적용, 별도 컨텍스트 Review, Test Gate `not_run` 보고 | live 확인 (L2 작업 1건) |
+| 요청·적용 effort 로그, 위험 신호 최소 프로필, Backend 설정 선택과 정규화 | 단위 테스트 확인 |
+| 대화·단순 질문 비라우팅 | 단위 테스트만 (live 미확인) |
+| 차단 경로(지침과 다른 subagent 생성) | 단위 테스트만 (live에서 발생하지 않음) |
+| 재라우팅 | 미구현 (§3.5) |
+| Baseline 대비 품질·사용량 비교 결과 | **미수행** |
+
 ---
 
 ## 26. 미결 사항
 
-| 항목 | 해소 시점 |
+| 항목 | 상태 / 해소 시점 |
 |---|---|
-| subagent 모델·effort 동적 지정 가능 여부 | Phase 0 |
-| 구독 인증으로 분류 호출 가능 여부와 지연 | Phase 0 |
-| 호스트별 실제 tier 모델명과 모델별 지원 effort | Phase 0 / Phase 2 |
+| Router가 기준선 대비 전체 사용량을 줄이는가(오케스트레이션 비용 포함) | **최우선**. 소규모 기준선 비교(3~5건, live 승인 필요) |
+| Routing Corpus 라벨 담당자와 150건 라벨링 | 기준선 비교 결과가 긍정적이면 진행 |
+| balanced tier 모델(현재 economy와 같은 gpt-6-luna) | 기준선 비교와 함께 결정 |
+| hook timeout fail-open, 취소 후 중복 실행 재측정 | 증거 미보존. 다음 live 확인 때 |
+| 50KB 이상 산출물 전달 | 미검증 |
+| 메인 모델이 차단 사유를 따라 재시도하는가 | live 미관측 |
+| 플러그인 업데이트 후 hook 재신뢰 필요 조건 | hook 설정이 같으면 유지됨. 설정 변경 시 미확인 |
+| `updatedInput`·`tool_name` 형식의 버전 의존성 | 버전 업그레이드 시 재확인 |
 | Jev의 정체, 실행 방식, 비용 | Phase 6 이전 |
-| Routing Corpus 라벨 담당자 | Phase 4 이전 |
 | Backend별 confidence 임계값 | Phase 6 |
+| 해소됨: subagent 모델·effort 동적 지정, 구독 인증 분류 호출, Codex 모델별 지원 effort, rollout `token_count` 형식 | Phase 0 / live 테스트 |
 
 ---
 
@@ -878,9 +949,11 @@ Router Core
  ├─ DifficultyDecision (L1 ~ L5 + risk_flags)
  └─ Stage Policy (단계별 단일 tier + effort)
  ↓
-Host Adapter (tier/effort 매핑, subagent 실행)
+Host Adapter (tier/effort 매핑) → 주입 지침
  ↓
-Plan → Implement → Test Gate → Review (별도 컨텍스트)
+메인 에이전트가 subagent로 실행 (PreToolUse hook이 검사)
+ ↓
+mer_plan → mer_implement → mer-gate → mer_review (fork_turns=none)
  ↓
 Done + 라우팅 로그
 ```
@@ -888,7 +961,7 @@ Done + 라우팅 로그
 설계 원칙:
 
 1. **Model-Effort Router는 Codex/Claude Code에 설치되는 Host Plugin으로 제공하며, Codex를 먼저 완성한다.**
-2. **Hook은 진입만 담당하고, 단계 순서와 실행은 Router가 subagent로 주도한다.**
+2. **Hook은 진입과 강제만 담당한다. Router가 단계 순서와 프로필을 정하고, 메인 에이전트가 subagent로 실행한다.**
 3. **난이도 판정기는 교체 가능한 Difficulty Backend이며, Stage Policy와 분리한다.**
 4. **Review는 별도 실행·별도 컨텍스트로 수행한다.**
 5. **라우팅의 가치는 고정 모델 기준선 대비 측정으로 입증한다.**

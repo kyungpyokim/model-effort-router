@@ -299,19 +299,19 @@
 
 | 기획서 절 | 변경 내용 | 반영 여부 |
 |---|---|---|
-| §3.2 표 | 행별 상태 갱신: `UserPromptSubmit`=동작 확인(프로젝트 로컬, trust 우회; 플러그인 경로는 설치 후 재확인), subagent `model`/`reasoning_effort`=확인, **동적 지정=가능(`fork_turns=none`에서 확인; `all`일 때 무시된다는 것은 툴 안내문 근거·실험 미검증)**, spawn 가로채기=`PreToolUse` 차단 확인, `updatedInput` 재작성은 문서 외 동작·기존 필드 변경만 확인. | 미반영 |
-| §3.2 하단 | "동적 지정이 불가능한 경우" 조합 사전 정의 문단을 **폴백**으로 격하. `mer-plan-frontier-high` 식 조합 파일은 기본 경로가 아님. 플러그인 동봉 agent 인식은 미검증이라 명시. | 미반영 |
-| §3.7 / §9 | hook 신뢰(trust) 요건 추가: 미신뢰 시 Router가 조용히 비활성됨 → 온보딩에 `/hooks` 검토 단계와 미신뢰 감지 안내. **플러그인 업데이트 후 재신뢰** 절차 필요(hash 변경 시 조용히 꺼질 가능성). hook timeout 초과는 fail-open으로 관찰됨(증거 미보존, 재측정 필요). | 미반영 |
-| §9 | Backend `timeout_s`는 hook timeout보다 작아야 한다. hook이 먼저 종료되면 fail-open으로 L3 기본 결정이 적용되지 않는다. 현재 §9 `timeout_s: 10`과 hook timeout 권장값(10초 이상)이 겹치므로 둘을 함께 정한다. | 미반영 |
-| §8.1 / §3.7 | 분류용 중첩 `codex exec`의 **재귀 방지 가드**(환경 변수 등) 추가. cwd 분리만으로는 플러그인·전역 hook 재귀를 막지 못한다. | 미반영 |
-| §21 / §22.3 | 자식 사용량은 `exec --json`에 없으므로 rollout `token_count` 이벤트로 합산하는 방법 명시. t4 부모 입력 약 385k를 오케스트레이션 비용 기준값으로 기록. 분류 1회 약 29.8k 입력이 L1/L2 절감분을 상쇄할 수 있다는 위험 명시. | 미반영 |
-| §8.1 | 분류 호출 방식 후보를 `codex exec` 하위 프로세스(luna/low, stdin DEVNULL, `--ephemeral`, 재귀 가드)로 구체화. 지연 4~6초, 호출당 입력 약 29.8k 토큰(이 환경 기준). 전제 3항목 중 "구독 인증 가능"·"timeout 안 완료"는 프로젝트 로컬 조건에서만 확인, 플러그인 컨텍스트는 미확인. "절감 효과 상쇄 여부"는 미해소. | 미반영 |
-| §12 | Effort Map에 모델별 지원 effort 표 추가(luna: low~max, sol: +ultra). 미지원 값은 spawn 오류이므로 Map 생성 시 검증한다. "오류 메시지 기반 강등"은 기획서의 "가장 가까운 상위값" 규칙과 충돌하므로 채택하지 않는다. 현재 추상 effort(medium/high/xhigh)는 luna·sol 모두 지원하므로 당장 대체 규칙이 발동할 일은 없다. | 미반영 |
-| §16 / §17 | 결과가 전문으로 반환됨을 전제로 명시. Review는 `fork_turns="none"` + diff·테스트 결과 본문 전달(또는 공유 cwd 파일 경로). 기본 `fork_turns`(all)는 격리가 깨지므로 금지. | 미반영 |
-| §19 | 취소 시 subagent·하위 프로세스는 함께 종료됨(확인). 중복 실행 방지는 미검증이므로 요청 ID 기반 멱등 처리와 Phase 3 재검증 항목 추가. | 미반영 |
-| §23 `agents/` | 플러그인 번들에 `agents/`를 기본 경로로 가정하지 말 것. 동적 spawn을 기본으로 하고, 정적 agent 파일은 배치 방식 확인 후 결정. | 미반영 |
-| §24 Phase 0 | 추가 확인 항목을 분리(모두 live 실행 필요, **사용자 승인 전 실행 금지**): (a) 플러그인 경로 `UserPromptSubmit` hook·agent 인식(신규 전역 설치 또는 이미 설치된 `model-effort@model-effort-router-bundle` 활용 검토), (b) 플러그인 hook 상태에서 분류 호출 재귀 여부, (c) 기본 승인·샌드박스 모드에서 hook·중첩 exec 동작, (d) `fork_turns=all` + 호출 시점 model/effort, `updatedInput`의 필드 추가·`fork_turns` 변경, (e) t5a/t5b/t5c 재측정(설정·로그·ps·rollout 보존), (f) 50KB 이상 결과 전달, (g) 20건 이상 블라인드 세트로 분류 정확도·분산, (h) 취소 후 재요청 중복 실행. | 미반영 |
-| §26 미결 사항 | `updatedInput`·`tool_name` 형식의 버전 의존성, 구독 플랜별 한도, hook 안 분류 호출의 사용량 차감 방식 추가. | 미반영 |
+| §3.2 표 | 행별 상태 갱신: `UserPromptSubmit`=동작 확인(프로젝트 로컬, trust 우회; 플러그인 경로는 설치 후 재확인), subagent `model`/`reasoning_effort`=확인, **동적 지정=가능(`fork_turns=none`에서 확인; `all`일 때 무시된다는 것은 툴 안내문 근거·실험 미검증)**, spawn 가로채기=`PreToolUse` 차단 확인, `updatedInput` 재작성은 문서 외 동작·기존 필드 변경만 확인. | 반영 (기획서 2차 개정) |
+| §3.2 하단 | "동적 지정이 불가능한 경우" 조합 사전 정의 문단을 **폴백**으로 격하. `mer-plan-frontier-high` 식 조합 파일은 기본 경로가 아님. 플러그인 동봉 agent 인식은 미검증이라 명시. | 반영 (기획서 2차 개정) |
+| §3.7 / §9 | hook 신뢰(trust) 요건 추가: 미신뢰 시 Router가 조용히 비활성됨 → 온보딩에 `/hooks` 검토 단계와 미신뢰 감지 안내. **플러그인 업데이트 후 재신뢰** 절차 필요(hash 변경 시 조용히 꺼질 가능성). hook timeout 초과는 fail-open으로 관찰됨(증거 미보존, 재측정 필요). | 반영 (기획서 2차 개정) |
+| §9 | Backend `timeout_s`는 hook timeout보다 작아야 한다. hook이 먼저 종료되면 fail-open으로 L3 기본 결정이 적용되지 않는다. 현재 §9 `timeout_s: 10`과 hook timeout 권장값(10초 이상)이 겹치므로 둘을 함께 정한다. | 반영 (기획서 2차 개정) |
+| §8.1 / §3.7 | 분류용 중첩 `codex exec`의 **재귀 방지 가드**(환경 변수 등) 추가. cwd 분리만으로는 플러그인·전역 hook 재귀를 막지 못한다. | 반영 (기획서 2차 개정) |
+| §21 / §22.3 | 자식 사용량은 `exec --json`에 없으므로 rollout `token_count` 이벤트로 합산하는 방법 명시. t4 부모 입력 약 385k를 오케스트레이션 비용 기준값으로 기록. 분류 1회 약 29.8k 입력이 L1/L2 절감분을 상쇄할 수 있다는 위험 명시. | 반영 (기획서 2차 개정) |
+| §8.1 | 분류 호출 방식 후보를 `codex exec` 하위 프로세스(luna/low, stdin DEVNULL, `--ephemeral`, 재귀 가드)로 구체화. 지연 4~6초, 호출당 입력 약 29.8k 토큰(이 환경 기준). 전제 3항목 중 "구독 인증 가능"·"timeout 안 완료"는 프로젝트 로컬 조건에서만 확인, 플러그인 컨텍스트는 미확인. "절감 효과 상쇄 여부"는 미해소. | 반영 (기획서 2차 개정) |
+| §12 | Effort Map에 모델별 지원 effort 표 추가(luna: low~max, sol: +ultra). 미지원 값은 spawn 오류이므로 Map 생성 시 검증한다. "오류 메시지 기반 강등"은 기획서의 "가장 가까운 상위값" 규칙과 충돌하므로 채택하지 않는다. 현재 추상 effort(medium/high/xhigh)는 luna·sol 모두 지원하므로 당장 대체 규칙이 발동할 일은 없다. | 반영 (기획서 2차 개정) |
+| §16 / §17 | 결과가 전문으로 반환됨을 전제로 명시. Review는 `fork_turns="none"` + diff·테스트 결과 본문 전달(또는 공유 cwd 파일 경로). 기본 `fork_turns`(all)는 격리가 깨지므로 금지. | 반영 (기획서 2차 개정) |
+| §19 | 취소 시 subagent·하위 프로세스는 함께 종료됨(확인). 중복 실행 방지는 미검증이므로 요청 ID 기반 멱등 처리와 Phase 3 재검증 항목 추가. | 반영 (기획서 2차 개정) |
+| §23 `agents/` | 플러그인 번들에 `agents/`를 기본 경로로 가정하지 말 것. 동적 spawn을 기본으로 하고, 정적 agent 파일은 배치 방식 확인 후 결정. | 반영 (기획서 2차 개정) |
+| §24 Phase 0 | 추가 확인 항목을 분리(모두 live 실행 필요, **사용자 승인 전 실행 금지**): (a) 플러그인 경로 `UserPromptSubmit` hook·agent 인식(신규 전역 설치 또는 이미 설치된 `model-effort@model-effort-router-bundle` 활용 검토), (b) 플러그인 hook 상태에서 분류 호출 재귀 여부, (c) 기본 승인·샌드박스 모드에서 hook·중첩 exec 동작, (d) `fork_turns=all` + 호출 시점 model/effort, `updatedInput`의 필드 추가·`fork_turns` 변경, (e) t5a/t5b/t5c 재측정(설정·로그·ps·rollout 보존), (f) 50KB 이상 결과 전달, (g) 20건 이상 블라인드 세트로 분류 정확도·분산, (h) 취소 후 재요청 중복 실행. | 반영 (기획서 2차 개정) |
+| §26 미결 사항 | `updatedInput`·`tool_name` 형식의 버전 의존성, 구독 플랜별 한도, hook 안 분류 호출의 사용량 차감 방식 추가. | 반영 (기획서 2차 개정) |
 
 ## 다음 단계
 
