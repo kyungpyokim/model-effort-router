@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/user_prompt_submit.py", "timeout": 30, "statusMessage": "Model-Effort Router"}]}
+    ],
+    "PreToolUse": [
+      {"matcher": ".*spawn_agent", "hooks": [{"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/pre_tool_use.py", "timeout": 10}]}
+    ]
+  }
+}

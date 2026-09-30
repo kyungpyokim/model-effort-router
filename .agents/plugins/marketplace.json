@@ -1,0 +1,11 @@
+{
+  "name": "model-effort-router-local",
+  "interface": {"displayName": "Model-Effort Router (local)"},
+  "plugins": [
+    {
+      "name": "model-effort-router",
+      "source": {"source": "local", "path": "./plugins/codex-model-effort-router"},
+      "interface": {"displayName": "Model-Effort Router"}
+    }
+  ]
+}
