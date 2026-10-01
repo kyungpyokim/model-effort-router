@@ -32,16 +32,17 @@ _RISK_HELP = {
     "data_loss": "a risk of deleting or corrupting existing data",
     "concurrency": "concurrency (threads, locks, races, async ordering)",
 }
-# Mirrors labeling-guide 1 and 3 (rules 7-9); order == TARGETS.
-TARGET_CRITERIA = (
-    "route: the user asks for a code or file change in a software project (implement, fix, add, refactor, "
-    "config, build or CI change), including review-and-fix, or a plan followed by implementation",
-    "plan_only: the user asks only for a plan, design or outline and no code change yet (plan then wait for "
-    "approval, 'plan only')",
-    "review_only: the user asks only for a review or inspection of existing code or a diff, without changing it",
-    "no_route: a question, explanation, chit-chat, or a request with no code or software context, even when it "
-    "is about code",
-)
+# Mirrors labeling-guide 1 and 3 (rules 7-9). A `choice` question takes {option: description} (docs.typesafe.ai;
+# a list is rejected with HTTP 422) and answers with the option name.
+TARGET_CRITERIA = {
+    "route": "the user asks for a code or file change in a software project (implement, fix, add, refactor, "
+             "config, build or CI change), including review-and-fix, or a plan followed by implementation",
+    "plan_only": "the user asks only for a plan, design or outline and no code change yet (plan then wait for "
+                 "approval, 'plan only')",
+    "review_only": "the user asks only for a review or inspection of existing code or a diff, without changing it",
+    "no_route": "a question, explanation, chit-chat, or a request with no code or software context, even when it "
+                "is about code",
+}
 QUESTIONS = {
     "level": {
         "type": "score",
@@ -51,7 +52,7 @@ QUESTIONS = {
     "target": {
         "type": "choice",
         "instructions": "What does the user want done with this request?",
-        "criteria": list(TARGET_CRITERIA),
+        "criteria": dict(TARGET_CRITERIA),
     },
     **{f: {"type": "noul", "instructions": f"Does this task involve {_RISK_HELP[f]}?"} for f in RISK_FLAGS},
 }
@@ -131,13 +132,12 @@ def _risk(answers, flag):
 
 
 def _target(answers):
-    """The `choice` answer as a target name (the name itself or its criterion text). Anything else raises."""
+    """The `choice` answer (an option name) as a target. Anything else raises."""
     ans = answers.get("target")
     choice = ans.get("choice") if isinstance(ans, dict) else None
-    lookup = {**{t: t for t in TARGETS}, **dict(zip(TARGET_CRITERIA, TARGETS))}
-    if not isinstance(choice, str) or choice not in lookup:
+    if choice not in TARGETS:
         raise BackendOutputError("jev target answer is missing or not one of the offered choices")
-    return lookup[choice]
+    return choice
 
 
 class JevBackend:

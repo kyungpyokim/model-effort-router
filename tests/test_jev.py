@@ -152,8 +152,9 @@ class TargetTest(unittest.TestCase):
     def test_question_asks_for_the_four_targets_with_descriptions(self):
         q = jev.QUESTIONS["target"]
         self.assertEqual(q["type"], "choice")
-        self.assertEqual([c.split(":")[0] for c in q["criteria"]], ["route", "plan_only", "review_only", "no_route"])
-        text = " ".join(q["criteria"])
+        self.assertIsInstance(q["criteria"], dict)  # a list is rejected by the API with HTTP 422 (seen live)
+        self.assertEqual(list(q["criteria"]), ["route", "plan_only", "review_only", "no_route"])
+        text = " ".join(q["criteria"].values())
         for needle in ("review-and-fix", "wait for approval", "question", "no code or software context"):
             self.assertIn(needle, text)
 
@@ -163,10 +164,11 @@ class TargetTest(unittest.TestCase):
             with self.subTest(t=t):
                 self.assertEqual(run(FakeTransport(response(target=t)))[1].target, t)
 
-    def test_criterion_text_echo_is_accepted(self):
+    def test_criterion_text_is_not_a_valid_answer(self):
         body = response()
-        body["answers"]["target"]["choice"] = jev.TARGET_CRITERIA[1]
-        self.assertEqual(run(FakeTransport(body))[1].target, "plan_only")
+        body["answers"]["target"]["choice"] = jev.TARGET_CRITERIA["plan_only"]
+        with self.assertRaises(ValueError):
+            run(FakeTransport(body))
 
     def test_unknown_missing_or_malformed_choice_fails_closed(self):
         for bad in ("ROUTE", "maybe", None, 2, ["route"]):
