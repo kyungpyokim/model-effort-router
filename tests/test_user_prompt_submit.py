@@ -171,6 +171,32 @@ class UserPromptSubmitTest(HookCase):
         self.write_repo_config({"router": {"mode": "auto"}, "difficulty": {"backend": "fake"}})
         self.assertIn("Recommended session", self.ctx(self.submit(env_extra={"MER_USER_CONFIG": str(cfg)})))
 
+    def test_backend_target_route_advises_a_prompt_the_rules_would_skip(self):
+        prompt = "Bump the base image in the Dockerfile to python 3.12"
+        self.fake = {"level": "L2"}
+        self.silent(self.submit(prompt))  # no target from the backend: rules say no_route, no call, no log
+        self.assertEqual(self.log_events(), [])
+        self.fake = {"level": "L2", "target": "route"}
+        self.assertIn("Recommended session", self.ctx(self.submit(prompt)))
+        (ev,) = [e for e in self.log_events() if e["event"] == "route"]
+        self.assertEqual((ev["target"], ev["target_source"]), ("route", "backend"))
+
+    def test_backend_no_route_is_silent_but_logs_target_and_classifier_spend_without_text(self):
+        self.fake = {"level": "L2", "target": "no_route", "usage": {"input_tokens": 541, "output_tokens": 12}}
+        self.silent(self.submit("Fix the bug in parser.py ZEBRA_SECRET_PROMPT"))
+        (ev,) = [e for e in self.log_events() if e["event"] == "route"]
+        self.assertEqual((ev["target"], ev["target_source"], ev["classifier_usage"]["input_tokens"]), ("no_route", "backend", 541))
+        self.assertNotIn("ZEBRA_SECRET_PROMPT", json.dumps(ev))
+
+    def test_rules_target_source_is_logged_for_backends_without_a_target(self):
+        self.submit()
+        (ev,) = [e for e in self.log_events() if e["event"] == "route"]
+        self.assertEqual(ev["target_source"], "rules")
+
+    def test_backend_failure_falls_back_to_rules_target(self):
+        self.fake = {"raise": True, "target": "no_route"}
+        self.assertIn("Recommended session", self.ctx(self.submit()))  # default decision has no target: rules say route
+
     def test_unicode_prompt(self):
         self.assertIn("Recommended session", self.ctx(self.submit("파일 parser.py 버그 수정 🚀")))
 

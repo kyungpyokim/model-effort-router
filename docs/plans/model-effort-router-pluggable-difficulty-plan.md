@@ -141,6 +141,8 @@ Host Plugin hook       : (보조) TUI 사용 시 판정 결과와 권장 `/model
 
 판정 규칙은 Router Core에 두고, 판정이 모호하면 라우팅하지 않는 쪽을 기본으로 한다(불필요한 분류 비용 방지).
 
+**Backend가 대상을 정하는 경우 (Jev, `provides_target`)**: 규칙(`classify_target`)은 코퍼스 150건 중 111건만 맞혔다(요청 텍스트만 줬을 때). 개발 요청인데 맥락 단어 목록에 없는 말(Dockerfile, ci.yml, ViewModel, 화면 등)이 있으면 `no_route`로 보고 hook이 침묵한다. 그래서 주 Backend가 `provides_target`이면 **규칙보다 먼저 Backend를 호출하고** `DifficultyDecision.target`(route / plan_only / review_only / no_route)을 쓴다. 결과가 `no_route`면(명시 `mer` 호출과 `session=` override가 아닐 때) 라우팅하지 않는다. 호출 결과와 분류기 사용량은 로그에 남는다(`target_source: backend`). 주 Backend는 **혼자 먼저** 호출한다. 실패하면(키 없음, 네트워크, 응답 형식) 예전 순서로 돌아가 규칙이 먼저 판정하고, `no_route`가 아닐 때만 fallback Backend(Subscription)를 호출한다. 그래서 Jev가 죽어도 잡담마다 fallback 비용(약 27k 토큰)이 들지 않는다. 실패한 주 Backend는 `fallback_cause`로 로그에 남는다(`target_source: rules`). 명시 `mer` 호출이나 `session=` override가 Backend의 `no_route`를 route로 바꾸면 `target_source: override`. target을 제공하지 않는 Backend는 지금처럼 규칙이 먼저이고 `no_route`면 분류기를 호출하지 않는다. 비용: hook에서 **모든 프롬프트마다 Jev 1회**(약 600 입력 토큰, 약 0.3초). `off`·`manual` 모드는 어떤 Backend도 호출하지 않는다.
+
 ### 3.4 실행 흐름
 
 ```text
@@ -340,6 +342,7 @@ Jev는 TypeSafe의 외부 API다. 구현은 `difficulty/jev.py`의 `JevBackend`�
 
 - **호출**: `POST https://api.typesafe.ai/v1/systemone`, `Authorization: Bearer $TYPESAFE_API_KEY`. 키는 호출 시점에 환경에서 읽고(없으면 변수명만 담은 오류), 생성자는 네트워크·키 검사를 하지 않는다. 모델은 기본 `jev-latest`, `MER_JEV_MODEL`로 고정 버전(예: `jev-1.13.0`)을 지정한다. HTTP는 `difficulty.timeout_s`(최대 12)를 호출 전체 기한으로 강제한다(DNS·느린 응답 포함). 리다이렉트는 따르지 않고 오류로 처리하며, 인증 헤더는 리다이렉트 요청에 복사되지 않는다.
 - **질문 설계**: `state` = 작업 텍스트(4000자) + 경로(50개). 질문은 `score` 하나(`level`, 기준 5개 = Subscription 프롬프트와 같은 L1..L5 설명)와 위험 플래그마다 `noul` 하나(security, auth, payment, data_migration, data_loss, concurrency).
+- **대상 질문 (`choice` 하나, `provides_target = True`)**: `target`: route(코드·파일 변경 요청, 리뷰 후 수정, 계획 후 구현까지) / plan_only(계획만 쓰고 승인을 기다림) / review_only(기존 코드·diff 검토만) / no_route(질문, 설명, 잡담, 코드 맥락 없는 요청). 설명은 labeling-guide §1, §3 규칙 7~9를 따른다. 답의 `choice`(대상 이름 또는 기준 문장 그대로)를 `decision.target`으로 옮기고, 알 수 없는 값이나 답 누락은 예외다(fail closed). **choice 응답 형태는 아직 live로 확인하지 않았다**: 형태가 다르면 호출이 실패하고 fallback이 적용되며 비교 보고서의 fallback 수로 드러난다. 기록된 live 파일(`live-l4-auth.json`)은 target 질문 이전 것이라 그대로 두고 테스트에서 사본에 합성 답을 더한다.
 - **매핑**: level = score 확률(키 정확히 `"0"`..`"4"`)의 argmax(동률이면 높은 레벨, 안전 방향). distribution = 확률(합이 1이 아니면 재정규화), confidence = 답의 confidence, 위험 플래그 = noul >= 0.5(bool 허용). 실제 응답으로 확인하기 전까지 **문서와 다른 형태는 모두 실패로 처리한다**: 확률 키가 다르거나, 확률 없이 score만 있거나, 위험 답이 없거나 확률이 아니면 예외. `reason_codes` = `("jev", <응답 model>)`. 사용량은 `input_tokens`/`output_tokens`로 보고한다.
 - **실패**: non-2xx(리다이렉트 포함), 네트워크 오류, timeout, JSON 오류, 답 누락·무효는 모두 예외로 올려 fallback 체인이 처리한다(오류 코드·rate limit 문서 없음). 답을 쓸 수 없어도 응답에 사용량이 있으면 기록한다.
 - **비용·프라이버시**: 구독이 아니라 외부 API로 별도 과금된다(벤더 공시 입력 약 $0.042/M 토큰, 호출당 입력 수백 토큰). **작업 텍스트와 경로가 TypeSafe로 전송된다.** 평가에서는 `--live` 없이 호출되지 않는다.

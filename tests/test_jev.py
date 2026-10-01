@@ -15,9 +15,11 @@ FAKE_CRED = "fake-cred-value-123"
 ENV = {KEY_ENV: FAKE_CRED}
 
 
-def response(level_probs=(0, 0, 1, 0, 0), confidence=0.8, risks=None, **extra):
+def response(level_probs=(0, 0, 1, 0, 0), confidence=0.8, risks=None, target="route", **extra):
     answers = {"level": {"type": "score", "score": 2.0, "confidence": confidence,
                          "probabilities": {str(i): p for i, p in enumerate(level_probs)}}}
+    if target is not None:
+        answers["target"] = {"type": "choice", "choice": target}
     answers.update({f: {"type": "noul", "noul": v} for f, v in {**dict.fromkeys(RISK_FLAGS, 0.0), **(risks or {})}.items()})
     return {"model": "jev-1.13.0", "answers": answers, "usage": {"input_tokens": 392, "output_tokens": 65}, **extra}
 
@@ -146,12 +148,58 @@ class MappingTest(unittest.TestCase):
         self.assertIsNone(b.last_usage)
 
 
+class TargetTest(unittest.TestCase):
+    def test_question_asks_for_the_four_targets_with_descriptions(self):
+        q = jev.QUESTIONS["target"]
+        self.assertEqual(q["type"], "choice")
+        self.assertEqual([c.split(":")[0] for c in q["criteria"]], ["route", "plan_only", "review_only", "no_route"])
+        text = " ".join(q["criteria"])
+        for needle in ("review-and-fix", "wait for approval", "question", "no code or software context"):
+            self.assertIn(needle, text)
+
+    def test_choice_maps_to_decision_target(self):
+        self.assertTrue(JevBackend.provides_target)
+        for t in ("route", "plan_only", "review_only", "no_route"):
+            with self.subTest(t=t):
+                self.assertEqual(run(FakeTransport(response(target=t)))[1].target, t)
+
+    def test_criterion_text_echo_is_accepted(self):
+        body = response()
+        body["answers"]["target"]["choice"] = jev.TARGET_CRITERIA[1]
+        self.assertEqual(run(FakeTransport(body))[1].target, "plan_only")
+
+    def test_unknown_missing_or_malformed_choice_fails_closed(self):
+        for bad in ("ROUTE", "maybe", None, 2, ["route"]):
+            body = response()
+            body["answers"]["target"] = {"type": "choice", "choice": bad}
+            with self.subTest(choice=bad), self.assertRaises(ValueError):
+                run(FakeTransport(body))
+        for ans in (None, "route", {}):
+            body = response(target=None)
+            if ans is not None:
+                body["answers"]["target"] = ans
+            with self.subTest(answer=ans), self.assertRaises(ValueError):
+                run(FakeTransport(body))
+
+    def test_usage_still_recorded_when_the_target_answer_is_unusable(self):
+        b = JevBackend(FakeTransport(response(target="bogus")), env=ENV)
+        with self.assertRaises(ValueError):
+            b.classify(DifficultyInput("x"), 5)
+        self.assertEqual(b.last_usage, {"input_tokens": 392, "output_tokens": 65})
+
+    def test_target_survives_risk_merge(self):
+        self.assertEqual(run(FakeTransport(response(target="plan_only")))[1].with_risk_flags(["auth"]).target, "plan_only")
+
+
 class LiveShapeTest(unittest.TestCase):
     def test_recorded_live_response_maps(self):
         """Recorded once from jev-latest (2026-10-01, pilot L4 auth task): the shape the mapping relies on."""
         body = json.loads((Path(__file__).resolve().parent / "fixtures" / "jev" / "live-l4-auth.json").read_text())
+        with self.assertRaises(ValueError):  # recorded before the target question existed: fail closed
+            run(FakeTransport(body))
+        body["answers"]["target"] = {"type": "choice", "choice": "route"}  # synthetic: the live file stays untouched
         b, d = run(FakeTransport(body))
-        self.assertEqual((d.level, d.confidence, d.risk_flags), ("L3", 0.49, ("security", "auth")))
+        self.assertEqual((d.level, d.confidence, d.risk_flags, d.target), ("L3", 0.49, ("security", "auth"), "route"))
         self.assertAlmostEqual(d.distribution["L2"], 0.33)
         self.assertEqual(d.reason_codes, ("jev", "jev-1.13.0"))
         self.assertEqual(b.last_usage, {"input_tokens": 541, "output_tokens": 119})

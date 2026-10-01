@@ -7,7 +7,7 @@
 | 도구 | 기본(모델 호출 없음) | `--live` |
 |---|---|---|
 | 코퍼스 검증과 라벨러 일치율 | `python3 -m evaluation.cases evaluation/corpus/seed.jsonl` | 해당 없음 |
-| Backend 비교 | `python3 -m evaluation.compare --corpus C.jsonl --backends NAME --dry-run` (fake/등록된 오프라인 Backend는 `--live` 없이 실행) | `subscription` Backend는 `--live` 필요. 케이스당 `codex exec` 1회(입력 약 29.8k 토큰) |
+| Backend 비교 | `python3 -m evaluation.compare --corpus C.jsonl --backends NAME --dry-run` (fake/등록된 오프라인 Backend는 `--live` 없이 실행) | `subscription`·`jev` Backend는 `--live` 필요. subscription은 케이스당 `codex exec` 1회(입력 약 29.8k 토큰, `no_route` 케이스도 실행), jev는 케이스당 외부 API 1회(약 600 토큰, 텍스트가 TypeSafe로 전송됨) |
 | 비용 기준선 실행 | `python3 -m evaluation.live_runner --cases C.jsonl --fixture DIR --out runs.jsonl` (실행 계획만 출력) | `--live`를 붙이면 케이스마다 baseline과 router 두 번 `codex exec` 실행 |
 | 기준선 비교 보고 | `python3 -m evaluation.baseline report runs.jsonl --md out.md --json out.json` | 해당 없음 (기록 파일만 읽음) |
 | 요구사항 충족 기록 | `python3 -m evaluation.baseline mark runs.jsonl CASE_ID baseline\|router yes\|no [--run K]` | 해당 없음 (수동 판단) |
@@ -16,7 +16,7 @@
 
 1. `docs/evaluation/labeling-guide.md`대로 `seed.jsonl`의 draft를 독립 라벨링하고 새 코퍼스 파일(`evaluation/corpus/*.jsonl`)에 `labeled` → `adjudicated`로 옮긴다. `seed.jsonl`의 `proposed`는 정답이 아니다.
 2. `evaluation.cases`로 일치 확인. `discuss`는 합의, `revise_guide`는 가이드 보완 후 재라벨.
-3. `evaluation.compare`로 Backend 비교(exact, ±1, over/under, critical miss, latency, 토큰, fallback, 단계 프로필 일치).
+3. `evaluation.compare`로 Backend 비교(exact, ±1, over/under, critical miss, latency, 토큰, fallback, 세션 프로필 일치, **target 정확도**). Backend는 `no_route` 케이스를 포함해 모든 adjudicated 케이스에 실행하고(target을 전부에서 채점), level·위험 플래그는 level이 있는 케이스에서만 채점한다. `target (backend)` 열은 Backend가 정한 target(없으면 규칙)이 라벨과 맞은 비율이고, 예측에는 `target`/`target_source`가 남는다. 보고서 첫 줄은 규칙 기반 target 정확도를 경로 포함과 텍스트만(hook이 보는 입력) 두 가지로 보인다.
 4. 비용 기준선: fixture 저장소를 준비하고 `live_runner`로 실행. router 모드는 `mer` CLI(`python3 -m model_effort_router.cli run`)를 돌린다. 실행마다 fixture를 eval workdir에 복사하고 git 저장소로 만든 뒤(고정 identity, 커밋 1개), 끝나면 diff를 저장하고 workdir을 비운다. 끝난 뒤 `mark`로 요구사항 충족 여부를 사람이 기록하고 `baseline report`로 판정한다.
 
 ## 판정 규칙 (§22.3)
@@ -71,3 +71,4 @@ python3 -m evaluation.live_runner --cases evaluation/pilot/cases.jsonl --fixture
 - 합치기: `python3 -m evaluation.labels merge evaluation/corpus/seed.jsonl OUT.jsonl evaluation/corpus/labels-claude.jsonl evaluation/corpus/labels-user.tsv`. 라벨 2개가 모인 케이스는 `labeled`가 되고 `proposed`는 빠진다. 일치 보고(discuss / revise_guide)를 출력한다.
 - 시드 40건: `labels-claude.jsonl`(메인 세션), `labels-opus.jsonl`(라벨을 보지 않은 별도 Opus 에이전트), 합의 결과 `seed-labeled.jsonl`(40건 adjudicated, 35건 일치, 2026-10-01). 사람 라벨러는 아직 없다.
 - 확장 110건: `expansion.jsonl`(초안), `labels-exp-opus.jsonl`·`labels-exp-sonnet.jsonl`(독립 라벨), `expansion-labeled.jsonl`(100건 일치, 10건 합의). 시드와 합친 150건: `corpus-v1.jsonl`(L1 26, L2 32, L3 34, L4 23, L5 15, no_route 20; 위험 신호 47건; plan_only 11, review_only 10). 라벨러는 모두 AI 에이전트이고 사람 라벨은 아직 없다.
+- 2026-10-01부터 `compare`는 no_route 케이스도 분류기를 돌려 target을 채점한다. 그래서 `tokens`, 지연, `fallback_count`에 no_route 케이스가 포함되며 이전 보고서와 직접 비교할 수 없다.

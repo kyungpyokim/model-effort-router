@@ -1,4 +1,5 @@
-"""Jev backend: TypeSafe `systemone` API, one `score` question for the level + one `noul` per risk flag (plan 8.2).
+"""Jev backend: TypeSafe `systemone` API, one `score` question for the level, one `noul` per risk flag and one
+`choice` question for the routing target (plan 8.2, 3.3).
 
 Transport is injectable so tests never touch the network.
 Transport contract: transport(url, headers, body_bytes, timeout_s) -> (status, text); raises on network error/timeout.
@@ -10,7 +11,7 @@ import threading
 import urllib.error
 import urllib.request
 
-from .decision import LEVELS, RISK_FLAGS, DifficultyDecision, DifficultyInput
+from .decision import LEVELS, RISK_FLAGS, TARGETS, DifficultyDecision, DifficultyInput
 from .subscription import LEVEL_DESCRIPTIONS, MAX_PATHS, MAX_TASK_CHARS, BackendOutputError
 
 URL = "https://api.typesafe.ai/v1/systemone"
@@ -31,11 +32,26 @@ _RISK_HELP = {
     "data_loss": "a risk of deleting or corrupting existing data",
     "concurrency": "concurrency (threads, locks, races, async ordering)",
 }
+# Mirrors labeling-guide 1 and 3 (rules 7-9); order == TARGETS.
+TARGET_CRITERIA = (
+    "route: the user asks for a code or file change in a software project (implement, fix, add, refactor, "
+    "config, build or CI change), including review-and-fix, or a plan followed by implementation",
+    "plan_only: the user asks only for a plan, design or outline and no code change yet (plan then wait for "
+    "approval, 'plan only')",
+    "review_only: the user asks only for a review or inspection of existing code or a diff, without changing it",
+    "no_route: a question, explanation, chit-chat, or a request with no code or software context, even when it "
+    "is about code",
+)
 QUESTIONS = {
     "level": {
         "type": "score",
         "instructions": "Rate the difficulty of this software task, from the easiest level to the hardest.",
         "criteria": list(LEVEL_DESCRIPTIONS),
+    },
+    "target": {
+        "type": "choice",
+        "instructions": "What does the user want done with this request?",
+        "criteria": list(TARGET_CRITERIA),
     },
     **{f: {"type": "noul", "instructions": f"Does this task involve {_RISK_HELP[f]}?"} for f in RISK_FLAGS},
 }
@@ -114,9 +130,20 @@ def _risk(answers, flag):
     return v
 
 
+def _target(answers):
+    """The `choice` answer as a target name (the name itself or its criterion text). Anything else raises."""
+    ans = answers.get("target")
+    choice = ans.get("choice") if isinstance(ans, dict) else None
+    lookup = {**{t: t for t in TARGETS}, **dict(zip(TARGET_CRITERIA, TARGETS))}
+    if not isinstance(choice, str) or choice not in lookup:
+        raise BackendOutputError("jev target answer is missing or not one of the offered choices")
+    return lookup[choice]
+
+
 class JevBackend:
     name = "jev"
     calls_model = True  # external API; route events log its usage
+    provides_target = True  # its decision carries the routing target; the router classifies before the rule check
 
     def __init__(self, transport=default_transport, model=None, env=None):
         self._transport, self._model, self._env = transport, model, env
@@ -152,6 +179,7 @@ class JevBackend:
             raise BackendOutputError("jev level answer is not an object")
         level, dist = _level_and_dist(level_ans)
         conf = _num(level_ans.get("confidence"))
+        target = _target(answers)
         scores = {f: _risk(answers, f) for f in RISK_FLAGS}
         self.last_risk_scores = scores
         flags = tuple(f for f in RISK_FLAGS if scores[f] >= RISK_THRESHOLDS.get(f, RISK_THRESHOLD))
@@ -159,4 +187,4 @@ class JevBackend:
         codes = ("jev",) + ((resp_model,) if isinstance(resp_model, str) else ())
         return DifficultyDecision(
             level, self.name, confidence=conf if conf is not None and 0 <= conf <= 1 else None,
-            distribution=dist, reason_codes=codes, risk_flags=flags)
+            distribution=dist, reason_codes=codes, risk_flags=flags, target=target)

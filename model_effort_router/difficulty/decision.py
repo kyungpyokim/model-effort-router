@@ -5,6 +5,7 @@ from typing import Mapping, Optional, Tuple
 
 LEVELS = ("L1", "L2", "L3", "L4", "L5")
 RISK_FLAGS = ("security", "auth", "payment", "data_migration", "data_loss", "concurrency")
+TARGETS = ("route", "plan_only", "review_only", "no_route")  # same values as policy.targeting (no import: cycle)
 DISTRIBUTION_TOLERANCE = 0.05
 
 
@@ -23,6 +24,7 @@ class DifficultyDecision:
     distribution: Optional[Mapping[str, float]] = None
     reason_codes: Tuple[str, ...] = ()
     risk_flags: Tuple[str, ...] = ()
+    target: Optional[str] = None  # set only by backends that also decide the routing target (provides_target)
 
     def __post_init__(self):
         if self.level not in LEVELS:
@@ -35,6 +37,8 @@ class DifficultyDecision:
             and 0.0 <= self.confidence <= 1.0
         ):
             raise ValueError(f"confidence must be in [0, 1], got {self.confidence!r}")
+        if self.target is not None and self.target not in TARGETS:
+            raise ValueError(f"target must be None or one of {TARGETS}, got {self.target!r}")
         unknown = set(self.risk_flags) - set(RISK_FLAGS)
         if unknown:
             raise ValueError(f"unknown risk flags: {sorted(unknown)}")

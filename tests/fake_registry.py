@@ -11,6 +11,7 @@ class FakeBackend:
         self.spec = spec
         self.last_usage = None
         self.calls_model = bool(spec.get("calls_model", "usage" in spec))
+        self.provides_target = "target" in spec  # spec {"target": "no_route"} makes it decide the target like Jev
 
     def classify(self, task, timeout_s):
         self.last_usage = self.spec.get("usage")
@@ -18,7 +19,7 @@ class FakeBackend:
             raise RuntimeError("fake backend failure")
         return DifficultyDecision(
             self.spec.get("level", "L3"), "fake", confidence=self.spec.get("confidence"),
-            risk_flags=tuple(self.spec.get("risk_flags", ())), reason_codes=(f"timeout_{timeout_s:g}",))
+            risk_flags=tuple(self.spec.get("risk_flags", ())), target=self.spec.get("target"), reason_codes=(f"timeout_{timeout_s:g}",))
 
 
 def register(registry, env):

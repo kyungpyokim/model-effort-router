@@ -25,7 +25,7 @@ Then start a Codex session and open `/hooks`: review and trust the hook (UserPro
 - Repo: `.model-effort-router.json` in the working directory. User: `$MER_USER_CONFIG`, else
   `${XDG_CONFIG_HOME:-~/.config}/model-effort-router/config.json`. Repo beats user.
 - Same schema as Router Core: `{"router": {"mode": "auto|manual|off"}, "difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10}}`.
-- Jev backend (external difficulty classifier): `{"difficulty": {"backend": "jev", "fallback": "subscription"}}` in `.model-effort-router.json`, with `TYPESAFE_API_KEY` set in the environment Codex runs with. `MER_JEV_MODEL` optionally pins a model (default `jev-latest`). **The task text and paths are sent to the TypeSafe API** and billed there, separately from the subscription. Without the key the backend fails and the fallback applies.
+- Jev backend (external difficulty classifier): `{"difficulty": {"backend": "jev", "fallback": "subscription"}}` in `.model-effort-router.json`, with `TYPESAFE_API_KEY` set in the environment Codex runs with. `MER_JEV_MODEL` optionally pins a model (default `jev-latest`). **The task text and paths are sent to the TypeSafe API** and billed there, separately from the subscription. Without the key the backend fails and the fallback applies. **With Jev as the backend, Jev also decides whether a prompt is a development request** (route / plan_only / review_only / no_route), so every prompt the hook sees makes one Jev call (about 600 input tokens, about 0.3 s) and its text is sent to TypeSafe, including prompts that turn out to be questions (those get no advice but the spend is logged with `target_source: backend`). If the Jev call fails, the fallback backend and then the built-in rules decide the target.
 - Test Gate commands: `{"gate": {"checks": {"test": "python3 -m unittest", "lint": "...", "typecheck": "...", "build": "..."}}}`.
   Otherwise discovered from AGENTS.md/CLAUDE.md, CI files, then package.json / pyproject.toml / Makefile.
   Checks not found are reported `not_run`, never passed.
@@ -72,7 +72,7 @@ The plugin bundles a copy of `model_effort_router/`. After editing core: `python
 - Fail-open: any hook error, hook timeout, or untrusted hook means no advice. Errors go to the log as `error` events.
 - Plugin updates change the hook hash; re-review and re-trust in `/hooks` after every update or the hook goes silent.
 - `difficulty.timeout_s` above 12 is clamped to 12 (logged as `timeout_clamped`) so backend + fallback fit the 30 s hook timeout.
-- The advice costs one classification per routed prompt: Jev about 541 input tokens; the subscription backend one nested `codex exec` (about 4-6 s, about 27k input tokens).
+- The advice costs one classification per routed prompt (with Jev: per prompt, routed or not, see Configuration): Jev about 541 input tokens; the subscription backend one nested `codex exec` (about 4-6 s, about 27k input tokens).
 
 ## Unverified (needs a live check)
 

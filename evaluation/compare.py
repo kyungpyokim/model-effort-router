@@ -56,25 +56,38 @@ def _add_usage(total, usage):
 
 
 def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=TIMEOUT_S):
-    scored = [r for r in corpus.adjudicated(rows) if r["final"]["level"] is not None]
+    """Runs the backend on EVERY adjudicated case (the target is scored on all, level and risk only where a level exists)."""
+    adj = corpus.adjudicated(rows)
+    scored = [r for r in adj if r["final"]["level"] is not None]
     m = {"backend": name, "n": len(scored), "exact": 0, "within_one": 0, "over": 0, "under": 0,
          "critical_total": 0, "critical_miss": 0, "fallback_count": 0, "stage_profile_match": 0,
-         "tokens": None, "misses": [], "skipped_no_route": len(corpus.adjudicated(rows)) - len(scored),
+         "target_n": len(adj), "target_correct": 0, "target_from_backend": 0,
+         "tokens": None, "misses": [], "skipped_no_route": len(adj) - len(scored),
          "risk": {"backend": _zero(), "merged": _zero()}, "predictions": []}
     distance, latencies = 0, []
-    for r in scored:
+    for r in adj:
         final = r["final"]
         task = DifficultyInput(task=r["task"], paths=tuple(r["paths"]))
         if hasattr(backend, "last_usage"):
             backend.last_usage = None  # never count a previous call's usage
-        if hasattr(backend, "last_risk_scores"):
-            backend.last_risk_scores = None
         t0 = clock()
         decision = classify_with_fallback(task, [backend], timeout_s)
         latencies.append((clock() - t0) * 1000)
         if decision.backend != getattr(backend, "name", name):
             m["fallback_count"] += 1
         m["tokens"] = _add_usage(m["tokens"], getattr(backend, "last_usage", None))  # failed calls cost too
+        # the target the router would use: the backend's own, else the rules (as router.route() does)
+        target = decision.target or classify_target(r["task"], r["paths"])
+        m["target_correct"] += target == final["target"]
+        m["target_from_backend"] += decision.target is not None
+        pred = {"id": r["id"], "level": decision.level, "risk_flags": list(decision.risk_flags), "target": target,
+                "target_source": "backend" if decision.target else "rules"}
+        scores = getattr(backend, "last_risk_scores", None)
+        if scores is not None:
+            pred["risk_scores"] = dict(scores)  # raw per-flag scores, for threshold calibration
+        m["predictions"].append(pred)
+        if final["level"] is None:
+            continue
         diff = LEVELS.index(decision.level) - LEVELS.index(final["level"])
         distance += abs(diff)
         m["exact"] += diff == 0
@@ -90,11 +103,6 @@ def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=TIM
         predicted = decision.with_risk_flags(detect_risk_flags(r["task"], r["paths"]))
         m["risk"] = {"backend": _count(m["risk"]["backend"], decision.risk_flags, final["risk_flags"]),
                      "merged": _count(m["risk"]["merged"], predicted.risk_flags, final["risk_flags"])}
-        pred = {"id": r["id"], "level": decision.level, "risk_flags": list(decision.risk_flags)}
-        scores = getattr(backend, "last_risk_scores", None)
-        if scores is not None:
-            pred["risk_scores"] = dict(scores)  # raw per-flag scores, for threshold calibration
-        m["predictions"].append(pred)
         expected = DifficultyDecision(final["level"], "label", risk_flags=tuple(final["risk_flags"]))
         m["stage_profile_match"] += _profiles(predicted, final["target"]) == _profiles(expected, final["target"])
     m["mean_distance"] = distance / len(scored) if scored else 0.0
@@ -112,9 +120,11 @@ def regex_risk(rows):
 
 
 def target_accuracy(rows):
-    """Backend-independent: does the cheap rule-based target classifier agree with the final target?"""
+    """Backend-independent: does the rule-based target classifier agree with the final target? With the case paths,
+    and text-only (what the hook sees: it has no paths)."""
     adj = corpus.adjudicated(rows)
-    return {"n": len(adj), "correct": sum(classify_target(r["task"], r["paths"]) == r["final"]["target"] for r in adj)}
+    return {"n": len(adj), "correct": sum(classify_target(r["task"], r["paths"]) == r["final"]["target"] for r in adj),
+            "text_only_correct": sum(classify_target(r["task"], ()) == r["final"]["target"] for r in adj)}
 
 
 def compare(rows, backends, **kw):
@@ -135,16 +145,17 @@ def _pr(c):
 def to_markdown(res):
     t = res["target_accuracy"]
     lines = [f"# Backend comparison ({res['cases']} adjudicated cases)", "",
-             f"Target rules accuracy: {_pct(t['correct'], t['n'])}",
+             f"Target rules accuracy: with paths {_pct(t['correct'], t['n'])}; text-only (what the hook sees) "
+             f"{_pct(t['text_only_correct'], t['n'])}",
              f"Rule-based risk flags alone (recall / precision): {_pr(res['regex_risk'])}", "",
-             "| backend | n | exact | +-1 | over | under | mean dist | critical miss | p50 ms | max ms | "
+             "| backend | n | target (backend) | exact | +-1 | over | under | mean dist | critical miss | p50 ms | max ms | "
              "tokens in/out | fallback | session profiles | risk backend (rec / prec) | risk merged (rec / prec) |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for name, m in res["backends"].items():
         lat = m["latency_ms"] or {}
         tok = m["tokens"]
-        lines.append("| {} | {} | {} | {} | {} | {} | {:.2f} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-            name, m["n"], _pct(m["exact"], m["n"]), _pct(m["within_one"], m["n"]), m["over"], m["under"],
+        lines.append("| {} | {} | {} | {} | {} | {} | {} | {:.2f} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+            name, m["n"], _pct(m["target_correct"], m["target_n"]), _pct(m["exact"], m["n"]), _pct(m["within_one"], m["n"]), m["over"], m["under"],
             m["mean_distance"], _pct(m["critical_miss"], m["critical_total"]),
             f"{lat['p50']:.0f}" if lat else "-", f"{lat['max']:.0f}" if lat else "-",
             f"{tok['input']}/{tok['output']}" if tok else "n/a", m["fallback_count"],
@@ -187,7 +198,8 @@ def main(argv=None, registry=None):
         return 1
     if args.dry_run:
         print(f"dry-run: would run {names} over {len(adj)} adjudicated cases "
-              f"({sum(r['final']['level'] is not None for r in adj)} scored); no backend called")
+              f"({sum(r['final']['level'] is not None for r in adj)} scored for level; every case is classified for the target); "
+              "no backend called")
         return 0
     res = compare(rows, {n: create(n, registry) for n in names})
     md = to_markdown(res)

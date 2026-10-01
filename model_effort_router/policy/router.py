@@ -1,9 +1,9 @@
 """Compose: override/config -> targeting -> backend chain -> risk merge -> RoutePlan (session_plan turns it into a profile)."""
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Mapping, Optional, Tuple
 
-from ..difficulty.chain import classify_with_fallback
+from ..difficulty.chain import classify_with_fallback, default_decision
 from ..difficulty.decision import DifficultyDecision, DifficultyInput
 from ..difficulty.registry import BACKENDS, create
 from ..difficulty.risk import detect_risk_flags
@@ -23,6 +23,7 @@ class RoutePlan:
     classifier_usage: Optional[dict] = None  # summed token counts of model-calling backends that reported
     classifier_usage_missing: bool = False  # a model-calling backend ran but reported nothing
     overrides: Mapping = field(default_factory=lambda: MappingProxyType({}))  # {"session": Profile} when typed
+    target_source: str = "rules"  # who decided `target`: "backend" (provides_target), "rules" or "override"
 
 
 class _Broken:
@@ -78,20 +79,30 @@ def route(message, *, paths=(), repo_config=None, user_config=None, registry=Non
             return RoutePlan(NO_ROUTE, "manual", override_rejected=rejected)
         return RoutePlan(ROUTE, "manual", None, risk_flags=flags, override_rejected=rejected, overrides=typed)
 
-    # A typed session override turns an ambiguous/no_route message into a route, but keeps plan_only/review_only.
-    target = classify_target(text, paths)
+    backends = _backends(config, registry)
+    task = DifficultyInput(task=text, paths=tuple(paths))
+    decision, target, source, rest, causes = None, None, "rules", backends, ()
+    if getattr(backends[0], "provides_target", False):  # the backend decides the target: ask it ALONE first (3.3)
+        first = classify_with_fallback(task, backends[:1], config.timeout_s)
+        if first.backend == getattr(backends[0], "name", None) and first.target:
+            decision, target, source = first, first.target, "backend"
+        else:  # it failed: the rules gate the fallback again, so chit-chat never pays for a fallback call
+            rest, causes = backends[1:], first.reason_codes
+    if target is None:
+        target = classify_target(text, paths)
+    # A typed session override or an explicit mer call turns no_route into a route, but keeps plan_only/review_only.
     if target == NO_ROUTE and (typed or explicit):
-        target = ROUTE
-    if target == NO_ROUTE:
+        target, source = ROUTE, ("override" if source == "backend" else source)
+    if target == NO_ROUTE and decision is None:
         return RoutePlan(NO_ROUTE, "auto", override_rejected=rejected)
 
-    backends = _backends(config, registry)
-    decision = classify_with_fallback(
-        DifficultyInput(task=text, paths=tuple(paths)), backends, config.timeout_s
-    )
+    if decision is None:
+        decision = classify_with_fallback(task, rest, config.timeout_s) if rest else default_decision(causes)
+        if causes and decision.backend != "default":  # keep the failed primary visible in the log
+            decision = replace(decision, reason_codes=decision.reason_codes + tuple(f"fallback_cause:{c}" for c in causes))
     decision = decision.with_risk_flags(flags)
     usage, usage_missing = _classifier_usage(backends, decision)
     return RoutePlan(
         target, "auto", decision, risk_flags=decision.risk_flags, override_rejected=rejected,
-        classifier_usage=usage, classifier_usage_missing=usage_missing, overrides=typed,
+        classifier_usage=usage, classifier_usage_missing=usage_missing, overrides=typed, target_source=source,
     )

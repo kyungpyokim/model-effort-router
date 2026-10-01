@@ -36,7 +36,7 @@ def prompt_fingerprint(prompt):
 def route_event(plan, *, latency_ms, prompt, configured_backend, timeout_clamped=False):
     decision = plan.decision
     ev = {"event": "route", "target": plan.target, "mode": plan.mode,
-          "override_rejected": plan.override_rejected, "latency_ms": round(latency_ms, 1),
+          "target_source": plan.target_source, "override_rejected": plan.override_rejected, "latency_ms": round(latency_ms, 1),
           **prompt_fingerprint(prompt)}
     if timeout_clamped:
         ev["timeout_clamped"] = True

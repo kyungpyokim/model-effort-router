@@ -123,7 +123,8 @@ class EvaluateBackendTest(unittest.TestCase):
         silent = compare.evaluate_backend("f", Fake("f", ans), CASES)
         self.assertEqual((silent["risk"]["backend"], silent["risk"]["merged"]),
                          ({"tp": 0, "fp": 0, "fn": 1}, {"tp": 1, "fp": 0, "fn": 0}))
-        self.assertEqual(m["predictions"][0], {"id": "c1", "level": "L1", "risk_flags": ["payment"]})
+        self.assertEqual(m["predictions"][0], {"id": "c1", "level": "L1", "risk_flags": ["payment"],
+                                                "target": "route", "target_source": "rules"})
         self.assertEqual(compare.regex_risk(CASES), {"tp": 1, "fp": 0, "fn": 0})
         self.assertIn("risk merged (rec / prec)", compare.to_markdown(compare.compare(CASES, {"f": Fake("f", ans)})))
 
@@ -148,7 +149,67 @@ class TargetAccuracyTest(unittest.TestCase):
     def test_uses_cheap_target_rules(self):
         rows = [case("a", "Fix the bug in parser.py", "L2"),
                 case("b", "Explain how parser.py works", "L2", target="route")]  # rules say no_route
-        self.assertEqual(compare.target_accuracy(rows), {"n": 2, "correct": 1})
+        self.assertEqual(compare.target_accuracy(rows), {"n": 2, "correct": 1, "text_only_correct": 1})
+
+    def test_text_only_differs_from_with_paths(self):
+        c = case("a", "Update this", "L2")
+        c["paths"] = ["src/parser.py"]  # the path supplies the code context the text lacks
+        self.assertEqual(compare.target_accuracy([c]), {"n": 1, "correct": 1, "text_only_correct": 0})
+
+
+class TargetFake(Fake):
+    """Decides the target like Jev: {task: target}."""
+    provides_target = True
+
+    def __init__(self, name, answers, targets, **kw):
+        super().__init__(name, answers, **kw)
+        self.targets = targets
+
+    def classify(self, task, timeout_s):
+        d = super().classify(task, timeout_s)
+        return DifficultyDecision(d.level, d.backend, target=self.targets[task.task])
+
+
+class BackendTargetTest(unittest.TestCase):
+    ROWS = [case("r", "Bump the base image in the Dockerfile to python 3.12", "L2"),
+            case("n", "Why is the sky blue?", None, target="no_route"),
+            case("p", "Write a plan only for the migration in db.py", "L4", target="plan_only")]
+
+    def run_backend(self, targets, calls=None):
+        answers = {r["task"]: "L2" for r in self.ROWS}
+        b = TargetFake("t", answers, dict(zip(answers, targets)))
+        return compare.evaluate_backend("t", b, self.ROWS)
+
+    def test_every_adjudicated_case_is_classified_but_level_scored_only_where_it_exists(self):
+        m = self.run_backend(["route", "no_route", "plan_only"])
+        self.assertEqual((m["n"], m["target_n"], m["target_correct"], m["target_from_backend"]), (2, 3, 3, 3))
+        self.assertEqual(len(m["predictions"]), 3)
+        self.assertEqual(m["predictions"][1], {"id": "n", "level": "L2", "risk_flags": [], "target": "no_route",
+                                               "target_source": "backend"})
+        self.assertEqual(m["exact"] + m["over"] + m["under"], 2)  # the no_route case is not in the level stats
+
+    def test_wrong_backend_targets_are_counted(self):
+        self.assertEqual(self.run_backend(["no_route", "route", "route"])["target_correct"], 0)
+
+    def test_backend_without_target_is_scored_with_the_rules(self):
+        answers = {r["task"]: "L2" for r in self.ROWS}
+        m = compare.evaluate_backend("f", Fake("f", answers), self.ROWS)
+        self.assertEqual(m["target_from_backend"], 0)
+        self.assertEqual(m["predictions"][0]["target_source"], "rules")
+        self.assertEqual(m["predictions"][0]["target"], "no_route")  # Dockerfile: rules miss it
+        self.assertEqual(m["target_correct"], 2)
+
+    def test_fallback_to_default_decision_uses_rules_for_the_target(self):
+        m = compare.evaluate_backend("f", Fake("f", {}), self.ROWS)
+        self.assertEqual((m["fallback_count"], m["target_from_backend"]), (3, 0))
+
+    def test_markdown_has_target_column_and_both_rule_accuracies(self):
+        res = compare.compare(self.ROWS, {"t": TargetFake("t", {r["task"]: "L2" for r in self.ROWS},
+                                                          dict(zip([r["task"] for r in self.ROWS], ["route", "no_route", "plan_only"])))})
+        md = compare.to_markdown(res)
+        self.assertIn("target (backend)", md)
+        self.assertIn("3/3 (100%)", md)
+        self.assertIn("text-only (what the hook sees)", md)
 
 
 class ReportTest(unittest.TestCase):
