@@ -118,6 +118,16 @@ class EvaluateBackendTest(unittest.TestCase):
         m = compare.evaluate_backend("f", Fake("f", {c["task"]: "L4"}), [c])
         self.assertEqual(m["stage_profile_match"], 1)
 
+    def test_level_distribution_kept_only_for_the_backends_own_decision(self):
+        class Dist(Fake):
+            def classify(self, task, timeout_s):
+                d = super().classify(task, timeout_s)
+                return DifficultyDecision(d.level, d.backend, distribution={"L1": 0.7, "L2": 0.3})
+        ans = {c["task"]: c["final"]["level"] for c in CASES[:1]}
+        m = compare.evaluate_backend("f", Dist("f", ans), CASES[:2])
+        self.assertEqual(m["predictions"][0]["distribution"], {"L1": 0.7, "L2": 0.3})
+        self.assertNotIn("distribution", m["predictions"][1])  # failed call: the default decision
+
     def test_risk_flags_scored_for_backend_alone_and_merged_with_rules(self):
         ans = {c["task"]: c["final"]["level"] for c in CASES}
         # backend flags auth on c5 (right) and payment on c1 (wrong); rules detect auth from "auth" in c5's text

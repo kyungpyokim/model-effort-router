@@ -85,6 +85,8 @@ def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=TIM
         scores = getattr(backend, "last_risk_scores", None)
         if scores is not None:
             pred["risk_scores"] = dict(scores)  # raw per-flag scores, for threshold calibration
+        if decision.distribution and decision.backend == getattr(backend, "name", name):
+            pred["distribution"] = dict(decision.distribution)  # level probabilities, for level-rule calibration
         m["predictions"].append(pred)
         if final["level"] is None:
             continue
