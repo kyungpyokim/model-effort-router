@@ -58,9 +58,9 @@ class DryRunTest(CliCase):
                        "review: frontier:high", "1. frontier:xhigh", "risk_min:auth"):
             self.assertIn(needle, out)
 
-    def test_dry_run_with_session_override_keeps_risk_plan_first(self):
+    def test_dry_run_with_session_override_keeps_risk_plan_first_and_auth_review(self):
         _, out = self.mer("/router session=economy:medium\nFix the login auth check in auth.py", "--dry-run")
-        for needle in ("session: economy:medium", "plan first: yes", "review: none", "override:session"):
+        for needle in ("session: economy:medium", "plan first: yes", "review: frontier:high", "override:session"):
             self.assertIn(needle, out)
 
 

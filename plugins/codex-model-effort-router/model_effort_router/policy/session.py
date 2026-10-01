@@ -18,7 +18,8 @@ SESSION_TABLE = {
     "L5": (Profile(F, "xhigh"), (), True),
 }
 REVIEW_BY_LEVEL = {"L4": Profile(F, "high"), "L5": Profile(F, "xhigh")}
-REVIEW_DEFAULT = Profile(F, "high")  # explicit review_only requests
+REVIEW_DEFAULT = Profile(F, "high")  # explicit review_only requests; auth/security work below L4
+REVIEW_FLAGS = ("auth", "security")  # these still get an independent review below L4 (a misjudged level must not drop it)
 
 
 @dataclass(frozen=True)
@@ -55,9 +56,9 @@ def session_plan(decision, risk_flags=(), overrides: Optional[Mapping] = None) -
     level = decision.level if decision else None
     start, rungs, plan_first = SESSION_TABLE[level] if level else (None, (), False)
     plan_first = plan_first or "plan" in floors
-    # Independent review only for L4/L5 (pilot v2: on flagged L1-L3 work it duplicated the session's own reviews
-    # and doubled usage); a risk flag still raises that review's profile to its floor.
-    review = REVIEW_BY_LEVEL.get(level)
+    # Independent review for L4/L5, and below L4 only for auth/security (pilot v2: on other flagged L1-L3 work it
+    # duplicated the session's own reviews and doubled usage); a risk flag raises the review to its floor.
+    review = REVIEW_BY_LEVEL.get(level) or (REVIEW_DEFAULT if set(flags) & set(REVIEW_FLAGS) else None)
     if review and "review" in floors:
         review = review.at_least(floors["review"])
 

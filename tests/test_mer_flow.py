@@ -192,6 +192,11 @@ class ReviewTest(unittest.TestCase):
         self.assertEqual(h.kinds(), ["session_start", "gate", "session_start", "review", "done"])
         self.assertEqual(h.events[3]["thread_id"], "T-rev1")
 
+    def test_auth_flag_adds_review_below_l4(self):
+        h = Harness()
+        r = h.run("L3", ("auth",))
+        self.assertEqual((len(h.calls), r["review"]["verdict"]), (2, "approved"))
+
     def test_risk_flag_alone_adds_no_review_below_l4(self):
         h = Harness()
         r = h.run("L1", ("data_loss",))
