@@ -1,0 +1,31 @@
+id	task	paths	labeler	level	risk_flags	target	note
+exp-104	Introduce /v2 of the public REST API with a new error envelope while /v1 keeps working for existing clients.	api/v1/,api/v2/	human				
+exp-041	Convert the iOS app's networking layer from completion handlers to async/await across all 9 service classes, with proper cancellation.	Networking/	human				
+exp-042	동시 주문이 몰릴 때만 재고가 가끔 음수가 돼. 재현이 잘 안 돼. 원인 찾아서 고쳐줘.	inventory/stock.py	human				
+pilot-l3c	"저장 파일 형식에 버전을 넣어줘. save_items는 {""version"": 2, ""items"": [...]} 형태로 저장하고, load_items는 기존 v1(리스트)과 v2를 모두 읽어야 해. 모르는 버전이면 ValueError. 두 형식 모두 테스트해줘. Keep `python3 -m unittest` passing."	shop/storage.py	human				
+exp-089	프로젝트 soft delete 도입: deleted_at 컬럼, 모든 조회에서 필터링, 복구 엔드포인트까지.	models/project.py,api/projects.py,db/migrations/	human				
+pilot-l4-auth	Make auth tokens expire. Change shop/auth.py so make_token(user, now=None) embeds an issue timestamp (seconds, signed together with the user) and verify_token(token, now=None, max_age=3600) raises PermissionError('token expired') when older than max_age and still raises PermissionError('invalid token') for tampered or malformed tokens (including usernames containing dots). Add tests for fresh, expired, tampered and malformed tokens in tests/test_shop.py. Keep `python3 -m unittest` passing.	shop/auth.py	human				
+exp-110	프로젝트 하위 라우트 전체에 admin/editor/viewer 역할별 접근 제어를 적용하는 계획만 세워줘. 구현은 하지 마.	api/projects/	human				
+seed-034	Draft a plan for adding OAuth login to the web app, then wait for my approval	auth/	human				
+exp-035	DB 읽기 replica를 도입하고 조회 쿼리는 replica로 보내도록 데이터 접근 계층을 바꿔줘.	db/pool.py,repo/	human				
+exp-102	푸시 알림 설정 화면을 iOS, Android 앱에 추가하고 서버에 /me/notification-prefs API도 만들어줘.	ios/,android/,server/api/	human				
+pilot-l4b	Turn pricing into a pluggable rule pipeline: a PriceRule protocol with apply(total_cents, order) -> int, built-in PercentDiscount, FixedCoupon (never below 0) and TaxRate (round half up) rules, applied in order by a new `price_order(items, order, rules)`. Keep `order_total` and `place_order` working unchanged for callers that pass no rules. Add tests for each rule and for rule ordering. Keep `python3 -m unittest` passing.	shop/pricing.py,shop/orders.py	human				
+exp-107	결제 모듈에 PG사 추상화 계층을 만들고 현재 단일 PG 연동을 어댑터로 옮겨줘.	payments/	human				
+pilot-l3d	place_order is not safe when called from several threads: two orders can both pass the stock check and oversell. Make the check-and-decrement atomic (a module-level lock is fine) and add a test that runs 50 concurrent single-unit orders against stock 10 and asserts exactly 10 succeed and stock ends at 0. Keep `python3 -m unittest` passing.	shop/orders.py	human				
+exp-037	A flaky test turned out to be a real race: two workers sometimes both acquire the same lease and double-process a job. Find the root cause and fix it.	workers/lease.py,tests/test_lease.py	human				
+exp-069	부하 걸릴 때만 가끔 주문이 두 번 결제돼. 로그엔 같은 payment_intent로 요청이 2번 찍혀. 원인 찾고 고쳐줘.	payments/charge.py,orders/checkout.py	human				
+exp-004	The partner payout job sometimes sends payouts twice after a crash mid-batch. Make it crash-safe and reconcile what already went out.	payouts/batch.py	human				
+exp-080	CRA로 만든 React 앱을 Next.js SSR로 이전해줘.	src/,package.json	human				
+exp-056	GDPR 삭제 요청이 오면 연관 테이블 5곳에서 개인정보를 익명화하거나 삭제하는 배치 작업을 추가해줘.	jobs/gdpr_erase.py,models/	human				
+exp-063	Add a plugin system to the CLI so commands load from entry points, then migrate the 12 built-in commands onto it.	cli/	human				
+exp-090	Plan the change of orders primary key from integer id to UUID, including 6 dependent foreign keys and an online backfill. Draft the plan and wait.	db/migrations/,models/order.py	human				
+exp-079	공개 SDK 인증을 API key에서 OAuth2 client credentials로 바꾸고, 기존 key도 6개월은 지원해야 해.	sdk/auth.py,server/auth/	human				
+seed-026	Migrate the orders table to a new schema with a changed primary key; write the migration and backfill	db/migrations/,repo/orders.py	human				
+exp-008	Check this diff that adds idempotency keys to POST /payments so retries can't double charge. Review only, no edits.	payments/api.py,payments/idempotency.py	human				
+exp-076	Rewrite JWT signing to support key rotation with kid, an overlap window and revocation, keeping old tokens valid until expiry. Check this diff, don't change anything.	auth/jwt.py,auth/keys.py	human				
+exp-006	Add per-API-key rate limiting with a token bucket in Redis, applied across the gateway routes.	gateway/ratelimit.go,gateway/routes.go	human				
+seed-036	리뷰만 해줘. 방금 바꾼 결제 모듈 코드에 문제가 없는지 검토해줘	billing/	human				
+exp-081	비밀번호 해시를 sha256+salt에서 argon2id로 바꾸는 계획만 세워줘. 기존 사용자는 로그인할 때 재해시하는 방향으로.	auth/passwords.py	human				
+seed-031	Replace the homegrown password hashing with a modern KDF and migrate existing hashes at login time	auth/passwords.py	human				
+exp-012	Add a nightly worker that emails digests via the queue. Two workers must never send the same digest.	workers/digest.py,queue/client.py	human				
+seed-023	Change the public REST API from v1 to v2 response envelopes while keeping v1 working for existing clients	api/	human				
