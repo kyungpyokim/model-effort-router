@@ -1008,6 +1008,14 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
   - concurrency 기준 0.8과 라벨 L4·L5 최저값 0.85의 여유가 작다.
   - Jev는 같은 입력에도 회차마다 레벨이 바뀐다(두 번의 150건 실행에서 5건).
 
+**측정 A: 과승격 규칙만** (2026-10-02, Router 13건 × 1회, `--subagent-policy codex`, `runs/pilot-v4a-router.jsonl`, sol 기준선 1회차와 짝 `runs/pilot-v4a-report.md`)
+- 판정이 의도대로 바뀌었다. l3d는 L4에서 L3로, l4b는 L4·L3에서 L3로 내려갔다. l4-auth(L3+auth)와 l5(L5)는 그대로다.
+- 13건 모두 테스트를 통과했고 요구사항을 충족했다. l4-auth는 Review 반영 후 malformed 입력을 모두 `PermissionError`로 처리했다. l5는 surrogate 입력에서 `UnicodeEncodeError`가 남았다(요구사항 밖이라 충족으로 판정).
+- l3d는 1,145k에서 999k(−13%), l4b는 1,233k에서 1,116k(−9%)로 줄었다(이전 Router 2회 평균 대비). 둘 다 아직 sol 기준선(904k, 687k)보다 많다. luna/high 세션이 subagent를 1~2개 만들었다.
+- 12건 합계는 이전 Router 8.39M, 측정 A 8.27M(−1.4%)으로 같은 수준이다. 같은 레벨에서도 건별 편차가 크다(l3b L2: 156k → 487k).
+- sol 기준선 대비 −14%(9.64M → 8.27M)이고, 판정은 `auto_allowed`다.
+- 정리: 과승격 규칙은 비싼 경로(sol + Review)를 없앴지만 1회 측정의 절감폭은 편차 안이다. 남은 비용은 레벨과 무관하게 subagent에서 나온다. 다음은 측정 B(subagent 정책)다.
+
 ---
 
 ## 23. 패키징과 프로젝트 구조
