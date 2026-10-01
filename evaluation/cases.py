@@ -12,7 +12,7 @@ from model_effort_router.difficulty.decision import LEVELS, RISK_FLAGS
 from model_effort_router.policy.targeting import NO_ROUTE, PLAN_ONLY, REVIEW_ONLY, ROUTE
 
 TARGETS = (ROUTE, PLAN_ONLY, REVIEW_ONLY, NO_ROUTE)
-STATUSES = ("draft", "labeled", "adjudicated")
+STATUSES = ("draft", "labeled", "adjudicated", "pilot")  # pilot: author-set `final`, run-only, never scored as corpus
 FIELDS = {"id", "task", "paths", "labels", "status", "final", "proposed", "note"}
 
 
@@ -65,16 +65,18 @@ def validate_case(row):
     if status == "draft":
         if labels:
             raise CorpusError(f"{where}: a draft must not carry labels (use `proposed`)")
+    elif status == "pilot":
+        pass
     elif len({l["labeler"] for l in out["labels"]}) != len(out["labels"]):
         raise CorpusError(f"{where}: labels need distinct labelers")
     elif len(labels) < 2:
         raise CorpusError(f"{where}: {status} needs labels from at least 2 labelers")
-    if status == "adjudicated":
+    if status in ("adjudicated", "pilot"):
         if "final" not in row:
-            raise CorpusError(f"{where}: adjudicated needs `final`")
+            raise CorpusError(f"{where}: {status} needs `final`")
         out["final"] = _check_verdict(row["final"], f"{where} final")
     elif "final" in row:
-        raise CorpusError(f"{where}: `final` only allowed when adjudicated")
+        raise CorpusError(f"{where}: `final` only allowed when adjudicated or pilot")
     return out
 
 
@@ -97,6 +99,11 @@ def load(path):
 
 def adjudicated(rows):
     return [r for r in rows if r["status"] == "adjudicated"]
+
+
+def runnable(rows):
+    """Cases the live runner may execute: adjudicated corpus cases plus pilot cases."""
+    return [r for r in rows if r["status"] in ("adjudicated", "pilot")]
 
 
 def _distance(labels):

@@ -150,3 +150,25 @@ class SeedTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class PilotStatusTest(unittest.TestCase):
+    ROW = {"id": "p1", "task": "t", "status": "pilot",
+           "labels": [{"labeler": "author", "level": "L2", "risk_flags": [], "target": "route"}],
+           "final": {"level": "L2", "risk_flags": [], "target": "route"}}
+
+    def _load(self, row):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "c.jsonl"
+            path.write_text(json.dumps(row) + "\n")
+            return cases.load(str(path))
+
+    def test_pilot_allows_single_labeler_and_is_runnable_not_scored(self):
+        rows = self._load(self.ROW)
+        self.assertEqual([r["id"] for r in cases.runnable(rows)], ["p1"])
+        self.assertEqual(cases.adjudicated(rows), [])
+
+    def test_pilot_requires_final(self):
+        with self.assertRaises(cases.CorpusError):
+            self._load({k: v for k, v in self.ROW.items() if k != "final"})

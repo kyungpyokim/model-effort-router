@@ -38,3 +38,19 @@ Router가 품질을 유지하면서 전체 사용량(메인 세션 + 분류 호�
 - rollout은 실행 시작 이후에 수정된 파일 중 첫 줄의 `session_id`가 일치하는 것만 읽는다.
 - 전체 사용량은 `input + output` 토큰 합이다. 모델별 가중 비용은 계산하지 않는다.
 - TODO(Phase 6): confidence 보정, cost와 로컬 자원 사용량 비교.
+
+## Pilot (Baseline vs Router, 4 cases)
+
+fixture `evaluation/pilot/fixture/`(작은 Python 상점 서비스, gate는 `python3 -m unittest`)와 `evaluation/pilot/cases.jsonl`(L1~L4, L4는 `auth`). 라벨은 파일럿 작성자가 정한 값이며 코퍼스 정답이 아니다. fixture는 git 저장소가 아니어도 된다(`--skip-git-repo-check`).
+
+설정: baseline = `gpt-6-luna` / `high`, router 메인 세션 = `gpt-6-luna` / `low`(단계 subagent는 Router가 선택). 기록의 `model`/`effort`에 실행별 값이 남는다. 먼저 플러그인 설치와 hook 신뢰를 직접 끝낸다.
+
+사용자 승인 후 실행할 live 명령(구독 사용량 소모, codex exec 8회):
+
+```
+python3 -m evaluation.live_runner --cases evaluation/pilot/cases.jsonl --fixture evaluation/pilot/fixture --out pilot-runs.jsonl --baseline-model gpt-6-luna --baseline-effort high --router-model gpt-6-luna --router-effort low --live
+```
+
+실행 후:
+1. 케이스·모드별로 결과를 직접 확인하고 `python3 -m evaluation.baseline mark pilot-runs.jsonl CASE_ID baseline|router yes|no` (pilot-l1, pilot-l2, pilot-l3, pilot-l4-auth 각각 두 모드).
+2. `python3 -m evaluation.baseline report pilot-runs.jsonl --md pilot.md --json pilot.json`

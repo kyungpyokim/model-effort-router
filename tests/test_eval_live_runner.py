@@ -118,6 +118,10 @@ class RunCaseTest(Env):
         self.assertEqual(set(u["stages"]), {"plan", "implement", "review"})
         self.assertEqual(u["total"], (384934 + 1085) + (29757 + 20) + (45000 + 900) + (60000 + 3000) + (30000 + 700))
 
+    def test_record_carries_model_and_effort(self):
+        rec = self.run_case("router", model="m", effort="low")
+        self.assertEqual((rec["model"], rec["effort"]), ("m", "low"))
+
     def test_router_inactive_without_route_or_without_stage_spawn(self):
         self.assertFalse(self.run_case("router", events=[ROUTE])["router_active"])
         self.assertFalse(self.run_case("router", events=[SPAWN])["router_active"])
@@ -306,6 +310,23 @@ class CliTest(Env):
         self.assertEqual(len(recs), 2)
         self.assertIn("error", recs[0])
         self.assertNotIn("error", recs[1])
+
+    def test_per_mode_model_effort_with_defaults_in_plan_and_records(self):
+        args = self.base_args() + ["--model", "dflt", "--effort", "medium", "--baseline-model", "gpt-6-luna",
+                                   "--baseline-effort", "high", "--router-effort", "low"]
+        _, out = self.cli(*args)
+        lines = {l.split()[0]: l for l in out.splitlines() if l.startswith(("baseline ", "router "))}
+        self.assertIn("'gpt-6-luna'", lines["baseline"])
+        self.assertIn("model_reasoning_effort=high", lines["baseline"])
+        self.assertIn("'dflt'", lines["router"])  # falls back to --model
+        self.assertIn("model_reasoning_effort=low", lines["router"])
+        self.cli(*args, "--live")
+        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        got = {r["mode"]: (r["model"], r["effort"]) for r in recs}
+        self.assertEqual(got, {"baseline": ("gpt-6-luna", "high"), "router": ("dflt", "low")})
+        cmds = {c["env"].get("MER_CLASSIFIER", "router"): c["cmd"] for c in self.calls}
+        self.assertEqual(cmds["1"][cmds["1"].index("-m") + 1], "gpt-6-luna")
+        self.assertEqual(cmds["router"][cmds["router"].index("-m") + 1], "dflt")
 
     def test_limit_and_missing_fixture(self):
         self.assertEqual(self.cli(*self.base_args(), "--live", "--limit", "0")[0], 1)

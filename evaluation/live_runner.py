@@ -8,7 +8,7 @@ Baseline copy has `.codex/` removed and MER_CLASSIFIER=1 set (the Router hook no
 a baseline run that still shows router activity is marked `contaminated`.
 Router runs are valid only if the plugin is installed and its hooks trusted BY YOU beforehand (this tool never
 bypasses hook trust); a router run whose log has no `route` and `stage_spawn` event gets router_active=false.
-Usage: python3 -m evaluation.live_runner --cases CORPUS --fixture DIR --out RUNS.jsonl [--model M] [--limit N] [--live]
+Usage: python3 -m evaluation.live_runner --cases CORPUS --fixture DIR --out RUNS.jsonl [--model M] [--effort E] [--baseline-model/-effort] [--router-model/-effort] [--limit N] [--live]
 """
 import argparse
 import glob
@@ -142,12 +142,12 @@ def _outcome(events):
     return (max(fixes) if fixes else 0), last.get("verdict"), last.get("findings")
 
 
-def _error_record(case, mode, exc, wall):
+def _error_record(case, mode, exc, wall, model=None, effort=None):
     agg = usage.aggregate(None, [])
     agg["incomplete_reasons"] = ["run_error"]
     return {"case_id": case["id"], "mode": mode, "gate_overall": "incomplete", "review_verdict": None,
             "review_findings": None, "fix_rounds": 0, "requirements_met": None, "usage": agg,
-            "wall_s": round(wall, 3), "error": f"{type(exc).__name__}: {exc}"[:300],
+            "wall_s": round(wall, 3), "model": model, "effort": effort, "error": f"{type(exc).__name__}: {exc}"[:300],
             **({"router_active": False} if mode == "router" else {"contaminated": False})}
 
 
@@ -174,7 +174,7 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         thread_id, _ = usage.exec_stream_usage(stdout)
         rollouts = usage.find_rollouts(sessions_dir, thread_id, since_mtime=started) if thread_id else []
     except Exception as exc:  # timeout, crash, bad fixture: record it and let the batch continue
-        return _error_record(case, mode, exc, clock() - t0)
+        return _error_record(case, mode, exc, clock() - t0, model, effort)
     finally:
         _clear_contents(repo)
         shutil.rmtree(state, ignore_errors=True)
@@ -185,7 +185,7 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
     fixes, verdict, findings = _outcome(events) if mode == "router" else (0, None, None)
     rec = {"case_id": case["id"], "mode": mode, "gate_overall": gate, "review_verdict": verdict,
            "review_findings": findings, "fix_rounds": fixes, "requirements_met": None, "usage": agg,
-           "wall_s": round(wall, 3)}
+           "wall_s": round(wall, 3), "model": model, "effort": effort}
     if mode == "router":
         rec["router_active"] = bool(routes) and any(e.get("event") == "stage_spawn" for e in events)
     else:
@@ -196,26 +196,32 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
 
 def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gate_fn=default_gate):
     ap = argparse.ArgumentParser(prog="evaluation.live_runner", description=__doc__.split("\n")[0])
-    ap.add_argument("--cases", required=True, help="corpus JSONL; adjudicated target=route cases are run")
+    ap.add_argument("--cases", required=True, help="corpus JSONL; adjudicated or pilot target=route cases are run")
     ap.add_argument("--fixture", required=True, help="fixture repo directory (copied per run)")
     ap.add_argument("--out", required=True, help="run records JSONL (appended)")
-    ap.add_argument("--model")
-    ap.add_argument("--effort")
+    ap.add_argument("--model", help="default model for both modes")
+    ap.add_argument("--effort", help="default effort for both modes")
+    ap.add_argument("--baseline-model")
+    ap.add_argument("--baseline-effort")
+    ap.add_argument("--router-model", help="router main session model (stage subagents are chosen by the Router)")
+    ap.add_argument("--router-effort")
     ap.add_argument("--workdir", help="fixed eval workdir, reset between runs (default: <state dir>/eval-workdir)")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     ap.add_argument("--live", action="store_true", help="actually run codex exec (consumes subscription usage)")
     args = ap.parse_args(argv)
     try:
-        rows = [r for r in corpus.adjudicated(corpus.load(args.cases)) if r["final"]["target"] == "route"]
+        rows = [r for r in corpus.runnable(corpus.load(args.cases)) if r["final"]["target"] == "route"]
     except (corpus.CorpusError, OSError) as exc:
         print(f"invalid corpus: {exc}", file=sys.stderr)
         return 1
     rows = rows[: args.limit] if args.limit is not None else rows
     if not rows or not os.path.isdir(args.fixture):
-        print("nothing to run: need adjudicated route cases (and --limit > 0) and an existing --fixture dir",
+        print("nothing to run: need adjudicated or pilot route cases (and --limit > 0) and an existing --fixture dir",
               file=sys.stderr)
         return 1
+    settings = {m: (getattr(args, f"{m}_model") or args.model, getattr(args, f"{m}_effort") or args.effort)
+                for m in MODES}
     workdir = args.workdir or default_workdir()
     try:
         real_workdir = check_workdir(workdir, args.fixture)
@@ -227,14 +233,14 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
               "(pass --live to execute; this consumes subscription usage)")
         for r in rows:
             for mode in MODES:
-                print(mode, r["id"], build_command(r["task"], real_workdir, args.model, args.effort))
+                print(mode, r["id"], build_command(r["task"], real_workdir, *settings[mode]))
         return 0
     print(BANNER.format(workdir=real_workdir), file=sys.stderr)
     with open(args.out, "a", encoding="utf-8") as out:
         for r in rows:
             for mode in MODES:
                 rec = run_case(r, mode, args.fixture, workdir=workdir, runner=runner, sessions_dir=sessions_dir, gate_fn=gate_fn,
-                               model=args.model, effort=args.effort, timeout_s=args.timeout)
+                               model=settings[mode][0], effort=settings[mode][1], timeout_s=args.timeout)
                 out.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 out.flush()
     return 0
