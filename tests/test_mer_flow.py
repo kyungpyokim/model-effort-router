@@ -203,8 +203,13 @@ class ReviewTest(unittest.TestCase):
 
     def test_risk_flag_alone_adds_no_review_below_l4(self):
         h = Harness()
-        r = h.run("L1", ("data_loss",))
+        r = h.run("L1", ("payment",))
         self.assertEqual((len(h.calls), r["review"]["skipped"]), (1, "not required"))
+
+    def test_data_loss_below_l4_gets_a_review_when_subagents_are_off(self):
+        h = Harness()
+        r = h.run("L1", ("data_loss",))
+        self.assertEqual([c["role"] for c in r["calls"]], ["implement", "review"])
 
     def test_risk_flag_raises_l4_review_to_its_floor(self):
         h = Harness()

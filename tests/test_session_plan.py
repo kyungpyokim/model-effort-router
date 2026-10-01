@@ -42,18 +42,29 @@ class TableTest(unittest.TestCase):
 
 class RiskTest(unittest.TestCase):
     def test_each_flag_forces_plan_first_and_only_auth_security_add_a_review_below_l4(self):
+        """With Codex's own subagents (policy "codex"); see the next test for the default policy."""
         for flag, review in (("security", P(F, "high")), ("auth", P(F, "high")), ("payment", None),
                              ("data_migration", None), ("data_loss", None)):
             with self.subTest(flag=flag):
-                sp = session_plan(dec("L1"), (flag,), None)
+                sp = session_plan(dec("L1"), (flag,), None, "codex")
                 self.assertTrue(sp.plan_first)
                 self.assertEqual(sp.review, review)  # pilot v2: other flags duplicated the session's own reviews
                 self.assertIn(f"risk_min:{flag}", sp.applied_rules)
                 self.assertEqual(sp.start, TABLE["L1"][0])  # risk never raises the start profile
 
-    def test_concurrency_adds_neither_plan_nor_review_below_l4(self):
-        sp = session_plan(dec("L2"), ("concurrency",), None)
+    def test_concurrency_adds_neither_plan_nor_review_below_l4_with_codex_subagents(self):
+        sp = session_plan(dec("L2"), ("concurrency",), None, "codex")
         self.assertEqual((sp.plan_first, sp.review), (False, None))
+
+    def test_without_subagents_concurrency_and_data_loss_also_get_a_review_below_l4(self):
+        """Measurement B (plan 22.3): with the implement session's subagents off nothing else checks the work."""
+        for flag, review in (("concurrency", P(F, "high")), ("data_loss", P(F, "xhigh")), ("payment", None),
+                             ("data_migration", None), ("auth", P(F, "high"))):
+            with self.subTest(flag=flag):
+                self.assertEqual(session_plan(dec("L3"), (flag,), None).review, review)
+        self.assertIsNone(session_plan(dec("L3"), (), None).review)
+        # L5 keeps one subagent: no extra flags there (it has its L5 review anyway)
+        self.assertEqual(session_plan(dec("L5"), ("concurrency",), None).review, P(F, "xhigh"))
 
     def test_flag_raises_l4_review_to_its_floor(self):
         self.assertEqual(session_plan(dec("L4"), ("data_migration",), None).review, P(F, "xhigh"))

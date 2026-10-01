@@ -1029,6 +1029,11 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 - 해석: ECC 지침의 subagent(tdd-guide, code-reviewer)는 비용의 대부분이었지만, 테스트 강도와 부작용을 잡는 검증도 했다. 두 결함 모두 L3·위험 신호(l3d concurrency) 또는 위험 신호 없음(l3)에서 독립 Review가 없는 경로였다.
 - 1회 측정이라 편차가 크다. 결함 2건이 정책 탓인지 회차 편차인지는 반복 측정으로 확인해야 한다.
 
+**보완책 (2026-10-02)**: subagent를 끈 구현 세션(L1~L4, `level` 정책)에 검증을 싸게 되돌린다.
+- concurrency·data_loss 신호가 있는 L1~L3도 독립 Review를 받는다. 기존에는 auth·security만 받았다. Review 프로필은 기존 floor를 따른다: concurrency는 sol/high, data_loss는 sol/xhigh. `codex` 정책과 조언 hook(사용자의 대화형 세션은 subagent가 켜져 있음)은 기존대로다.
+- 구현 프롬프트에 한 문장을 더한다: "새 테스트는 변경 전 코드에서 실패해야 하고(막으려는 경쟁 상태나 실패를 강제로 일으킨다), 상태를 바꾸기 전에 입력을 검증한다."
+- Review 점검 항목에 "변경 없이도 통과하는 테스트"와 "오류 전에 바뀐 상태"를 추가했다.
+
 ---
 
 ## 23. 패키징과 프로젝트 구조

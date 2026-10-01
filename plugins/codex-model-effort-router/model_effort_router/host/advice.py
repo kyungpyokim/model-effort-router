@@ -11,7 +11,8 @@ def _setting(profile):
 
 def render(plan, mer_cmd):
     """Context for a routed prompt. Never mentions subagents; the user decides everything."""
-    sp = session_plan(plan.decision, plan.risk_flags, plan.overrides)
+    # the user's own interactive session keeps Codex's subagents: advise as for the "codex" policy
+    sp = session_plan(plan.decision, plan.risk_flags, plan.overrides, "codex")
     d = plan.decision
     head = "Difficulty: " + (f"{d.level}" + (f" (confidence {d.confidence:.2f})" if d.confidence is not None else "")
                              if d else "not classified (manual mode)")

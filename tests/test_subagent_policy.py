@@ -5,7 +5,7 @@ from contextlib import redirect_stdout
 
 from model_effort_router import cli
 from model_effort_router.difficulty.decision import DifficultyDecision
-from model_effort_router.flow import SUBAGENT_HINT
+from model_effort_router.flow import SELF_CHECK, SUBAGENT_HINT
 from model_effort_router.host import codex_exec as cx
 from model_effort_router.policy.config import resolve_config
 from model_effort_router.policy.session import IMPLEMENT_SUBAGENTS, REVIEW_SUBAGENTS, session_plan
@@ -93,6 +93,21 @@ class FlowTest(unittest.TestCase):
                 self.assertEqual(SUBAGENT_HINT in argv[-1], level == "L5")
                 self.assertEqual(r["calls"][0]["subagents"], IMPLEMENT_SUBAGENTS[level])
         self.assertIn("never to parallelise code search, test runs or repeated checks", SUBAGENT_HINT)
+
+    def test_self_check_hint_only_when_subagents_are_off(self):
+        for level, policy, expected in (("L1", "level", True), ("L4", "level", True), ("L5", "level", False),
+                                        ("L3", "codex", False)):
+            with self.subTest(level=level, policy=policy):
+                h = Harness()
+                h.run(level, policy=policy)
+                self.assertEqual(SELF_CHECK in h.calls[0]["argv"][-1], expected)
+        self.assertIn("fail on the code before your change", SELF_CHECK)
+
+    def test_review_prompt_asks_for_test_strength_and_partial_state(self):
+        from model_effort_router.review import review_prompt
+        text = review_prompt("r", {"diff": "", "is_repo": True}, {})
+        self.assertIn("tests that would still pass without the change", text)
+        self.assertIn("state changed before an error is raised", text)
 
     def test_escalations_keep_the_implement_policy(self):
         h = Harness(gates=(GATE_BAD, GATE_BAD, GATE_OK))

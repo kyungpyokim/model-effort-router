@@ -35,6 +35,9 @@ REVIEW_SUBAGENTS = 0
 REVIEW_BY_LEVEL = {"L4": Profile(F, "high"), "L5": Profile(F, "xhigh")}
 REVIEW_DEFAULT = Profile(F, "high")  # explicit review_only requests; auth/security work below L4
 REVIEW_FLAGS = ("auth", "security")  # these still get an independent review below L4 (a misjudged level must not drop it)
+# With the implement session's subagents off, nothing else checks this work (measurement B, plan 22.3: an L3
+# concurrency test that could not fail), so these flags also get the independent review below L4.
+REVIEW_FLAGS_WITHOUT_SUBAGENTS = ("concurrency", "data_loss")
 
 
 @dataclass(frozen=True)
@@ -84,7 +87,10 @@ def session_plan(decision, risk_flags=(), overrides: Optional[Mapping] = None, s
     plan_first = plan_first or "plan" in floors
     # Independent review for L4/L5, and below L4 only for auth/security (pilot v2: on other flagged L1-L3 work it
     # duplicated the session's own reviews and doubled usage); a risk flag raises the review to its floor.
-    review = REVIEW_BY_LEVEL.get(level) or (REVIEW_DEFAULT if set(flags) & set(REVIEW_FLAGS) else None)
+    capped = subagent_policy == "level"
+    implement_subagents = IMPLEMENT_SUBAGENTS.get(level) if capped else None
+    review_flags = REVIEW_FLAGS + (REVIEW_FLAGS_WITHOUT_SUBAGENTS if implement_subagents == 0 else ())
+    review = REVIEW_BY_LEVEL.get(level) or (REVIEW_DEFAULT if set(flags) & set(review_flags) else None)
     if review and "review" in floors:
         review = review.at_least(floors["review"])
 
@@ -95,6 +101,5 @@ def session_plan(decision, risk_flags=(), overrides: Optional[Mapping] = None, s
         start = session
         rungs = tuple(p for p in rungs if _dominates(p, start))
     plan_profile = Profile(F, "xhigh" if level == "L5" else "high").at_least(floors.get("plan", REVIEW_DEFAULT))
-    capped = subagent_policy == "level"
     return SessionPlan(level, start, tuple(rungs), plan_first, review, plan_profile, tuple(rules),
-                       IMPLEMENT_SUBAGENTS.get(level) if capped else None, REVIEW_SUBAGENTS if capped else None)
+                       implement_subagents, REVIEW_SUBAGENTS if capped else None)

@@ -15,6 +15,9 @@ PLAN_FIRST = "First write a short plan, then implement it. "
 WRAP_UP = "When finished, end with a short summary of the changes."
 SUBAGENT_HINT = ("Use a subagent only when independent exploration materially improves the result; never to "
                  "parallelise code search, test runs or repeated checks. ")  # when subagents are enabled (L5)
+# when subagents are disabled, the session checks its own work (measurement B, plan 22.3)
+SELF_CHECK = ("Make every new test fail on the code before your change (force the race or failure it guards "
+              "against), and validate inputs before changing any state. ")
 
 
 def _gate_summary(gate):
@@ -106,7 +109,7 @@ class _Flow:
     def implement(self):
         sp = self.sp
         n = sp.implement_subagents
-        prompt = f"{self.request}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{WRAP_UP}"
+        prompt = f"{self.request}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{SELF_CHECK if n == 0 else ''}{WRAP_UP}"
         stream, rec = self.call("implement", cx.session_argv(sp.start, prompt, "workspace-write", self.config, n), sp.start,
                                 subagents=n)
         self.thread, self.message = rec["thread_id"], stream.text

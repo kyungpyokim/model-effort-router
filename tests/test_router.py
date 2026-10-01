@@ -87,7 +87,7 @@ class RouteTest(unittest.TestCase):
                      registry=reg(p), repo_config={"difficulty": {"backend": "p"}})
         self.assertEqual((plan.decision.backend, plan.decision.level), ("default", "L3"))
         self.assertIn("data_loss", plan.decision.risk_flags)
-        self.assertEqual((sp(plan).plan_first, sp(plan).review), (True, None))  # data_loss: plan-first, no review below L4
+        self.assertTrue(sp(plan).plan_first)  # data_loss: plan-first (and, with subagents off, a review: test_session_plan)
 
     def test_unknown_backend_name_is_a_config_error(self):
         with self.assertRaises(ValueError):
