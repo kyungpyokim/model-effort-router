@@ -20,7 +20,7 @@ from . import review as rv
 from .adapters.codex import resolve
 from .difficulty.decision import LEVELS, DifficultyDecision
 from .difficulty.registry import create
-from .flow import PLAN_FIRST, WRAP_UP, run_flow
+from .flow import PLAN_FIRST, SUBAGENT_HINT, WRAP_UP, run_flow
 from .gate.run import load_gate_checks, run_gate
 from .host import codex_exec as cx
 from .host.codex_hooks import _registry, load_configs
@@ -72,8 +72,11 @@ def _first_argv(target, sp, text):
     if target == "plan_only":
         return cx.session_argv(sp.plan_profile, f"{text}\n\nWrite an implementation plan only. Do not modify any files.", "read-only")
     if target == "review_only":
-        return cx.session_argv(sp.review or REVIEW_DEFAULT, "<review prompt: request + git diff + gate JSON>", "read-only")
-    return cx.session_argv(sp.start, f"{text}\n\n{PLAN_FIRST if sp.plan_first else ''}{WRAP_UP}", "workspace-write")
+        return cx.session_argv(sp.review or REVIEW_DEFAULT, "<review prompt: request + git diff + gate JSON>", "read-only",
+                               subagents=sp.review_subagents)
+    n = sp.implement_subagents
+    return cx.session_argv(sp.start, f"{text}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{WRAP_UP}",
+                           "workspace-write", subagents=n)
 
 
 def _dry_run_text(plan, sp, text):
@@ -205,7 +208,7 @@ def _main(argv=None, *, env=None, runner=cx.run_subprocess, gate_fn=None, diff_f
     _, text = parse_override(args.request)
     text = text.strip()
     try:
-        sp = session_plan(plan.decision, plan.risk_flags, plan.overrides)
+        sp = session_plan(plan.decision, plan.risk_flags, plan.overrides, cfg.subagent_policy)
         if getattr(args, "review_profile", None):  # carried from hook advice: a re-classified review request must not drop the floor
             base = sp.review or (REVIEW_DEFAULT if plan.target == "review_only" else None)
             sp = replace(sp, review=args.review_profile.at_least(base) if base else args.review_profile)

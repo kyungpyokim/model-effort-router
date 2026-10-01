@@ -11,20 +11,29 @@ KEYS = {"input_tokens": "input", "cached_input_tokens": "cached_input",
 Stream = namedtuple("Stream", "thread_id usage text")  # usage: cumulative for the thread, short keys, or None
 
 
-def _base(verb, resolved, sandbox):
+def agents_flags(subagents):
+    """Per-call `-c` overrides only (never user config): 0 = no subagents, n >= 1 = at most n concurrent, None = default."""
+    if subagents is None:
+        return []
+    if subagents == 0:
+        return ["-c", "agents.enabled=false"]
+    return ["-c", "agents.enabled=true", "-c", f"agents.max_concurrent_threads_per_session={subagents}"]
+
+
+def _base(verb, resolved, sandbox, subagents=None):
     cmd = ["codex", "exec"] + verb + ["--json", "--skip-git-repo-check"]
     if sandbox:
         cmd += ["-s", sandbox]
-    return cmd + ["-m", resolved.model, "-c", f"model_reasoning_effort={resolved.applied_effort}"]
+    return cmd + ["-m", resolved.model, "-c", f"model_reasoning_effort={resolved.applied_effort}"] + agents_flags(subagents)
 
 
-def session_argv(profile, prompt, sandbox, config=CodexConfig()):
-    return _base([], resolve(profile, config), sandbox) + [prompt]
+def session_argv(profile, prompt, sandbox, config=CodexConfig(), subagents=None):
+    return _base([], resolve(profile, config), sandbox, subagents) + [prompt]
 
 
-def resume_argv(profile, thread_id, prompt, config=CodexConfig()):
+def resume_argv(profile, thread_id, prompt, config=CodexConfig(), subagents=None):
     """`exec resume` has no -s flag; set the sandbox via config so escalated rungs can still edit files."""
-    cmd = _base(["resume"], resolve(profile, config), None)
+    cmd = _base(["resume"], resolve(profile, config), None, subagents)
     return cmd + ["-c", 'sandbox_mode="workspace-write"', thread_id, prompt]
 
 

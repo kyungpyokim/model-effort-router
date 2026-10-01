@@ -494,6 +494,18 @@ class CliTest(Env):
         with self.assertRaises(SystemExit):
             self.cli(*self.base_args(), "--router-backend", "nope")
 
+    def test_subagent_policy_flag_printed_in_dry_run_written_to_config_and_recorded(self):
+        _, out = self.cli(*self.base_args(), "--subagent-policy", "codex")
+        self.assertIn("router subagent policy: codex", out)
+        self.assertEqual(self.calls, [])
+        self.cli(*self.base_args(), "--live", "--subagent-policy", "codex")
+        router_call = [c for c in self.calls if c["cmd"][0] != "codex"][0]
+        self.assertEqual(json.loads(router_call["config"])["session"], {"subagent_policy": "codex"})
+        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        self.assertEqual([r["subagent_policy"] for r in recs if r["mode"] == "router"], ["codex"])
+        with self.assertRaises(SystemExit):
+            self.cli(*self.base_args(), "--subagent-policy", "all")
+
     def test_live_banner_states_preconditions_and_trust_side_effect(self):
         self.cli(*self.base_args(), "--live")
         for needle in ("subscription usage", "plugin", "trust_level", "config.toml", "installed globally", "mer"):

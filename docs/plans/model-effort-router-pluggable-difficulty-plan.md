@@ -483,6 +483,10 @@ Stage Policy는 단계마다 **모델 tier 하나와 effort 하나**를 반환�
 - **위험 신호**: §11.2 최소 조건을 그대로 쓰되, "Plan 수행"은 같은 세션에서 계획을 먼저 쓰게 하는 지침으로(계획 먼저는 Plan 최소값이 있는 위험 신호(concurrency 제외)와 L4 이상에만 붙는다. L3 단독에는 붙이지 않는다: 파일럿에서 턴 수만 늘렸다), "Review 최소값"은 독립 Review 프로필의 하한으로 적용한다. L1~L3에는 **auth·security 신호가 있을 때만** 독립 Review(frontier/high 이상)를 붙인다(레벨을 낮게 판정해도 인증·보안 작업의 Review가 빠지지 않게). 그 밖의 위험 신호만으로는 붙이지 않는다(파일럿 v2: 구현 세션의 자체 리뷰와 중복돼 사용량이 두 배가 됐다).
 - **사용자 override**: `/router session=frontier:high`처럼 세션 프로필을 지정할 수 있다. 위험 신호는 기본값이든 override든 세션 프로필을 올리지 않는다. 대신 계획 먼저 쓰기와 독립 Review 하한은 override로 없앨 수 없다.
 - 이 표는 초기값이며 파일럿 재측정(Phase 7)과 §22 평가로 조정한다. 현재 Codex에서는 economy와 balanced가 같은 모델(gpt-6-luna)이라, 낮은 단계의 승격은 사실상 effort 상승이다.
+- **Codex subagent 정책** (per-call `-c` 덮어쓰기만 쓰고 사용자 설정은 건드리지 않는다): 사용자 전역 AGENTS.md가 세션마다 subagent를 1~5개 띄우게 하는 것이 남은 가장 큰 비용 요인이다(codex-cli 0.159.2에서 `codex debug prompt-input`으로 확인: `agents.enabled=false`는 멀티에이전트 역할 프롬프트와 `spawn_agent`를 제거하고, `agents.max_concurrent_threads_per_session=N`은 동시 수만 제한한다. N=0이나 문자열은 이 키 이름으로 거부되므로 키가 실제로 인식된다. 총 생성 개수는 강제할 수 없다).
+  - 구현 세션과 승격 재개: L1~L4는 `agents.enabled=false`, L5는 `agents.enabled=true` + `max_concurrent_threads_per_session=1`이고 프롬프트에 한 문장을 더한다("독립 탐색이 결과를 실질적으로 개선할 때만 subagent를 쓰고, 코드 검색·테스트 실행·반복 확인의 병렬화에는 쓰지 않는다"). 레벨이 없는 manual 모드는 플래그 없음(Codex 기본값).
+  - 독립 Review 세션과 Review 수정 턴은 항상 `agents.enabled=false`(수정 턴 지시문이 subagent를 금지하므로 L5도 같다. 기존 "subagent를 쓰지 말 것" 프롬프트도 유지). `plan_only`와 `mer chat`은 바꾸지 않는다.
+  - 스위치: 설정 `{"session": {"subagent_policy": "level" | "codex"}}`. `level`(기본)은 위 정책, `codex`는 agents 플래그를 어디에도 붙이지 않는 현재 동작이다(A/B 측정용). 평가 도구는 `--subagent-policy`로 workdir 설정에만 써 넣고 실행 기록의 `subagent_policy`, `implement_subagents`로 남긴다. 호출 기록(`calls[].subagents`)에도 값이 남는다.
 
 ---
 

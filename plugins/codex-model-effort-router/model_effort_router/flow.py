@@ -13,6 +13,8 @@ GATE_TEXT_MAX = 2000
 USAGE_KEYS = ("input", "cached_input", "output", "reasoning_output")
 PLAN_FIRST = "First write a short plan, then implement it. "
 WRAP_UP = "When finished, end with a short summary of the changes."
+SUBAGENT_HINT = ("Use a subagent only when independent exploration materially improves the result; never to "
+                 "parallelise code search, test runs or repeated checks. ")  # when subagents are enabled (L5)
 
 
 def _gate_summary(gate):
@@ -45,10 +47,11 @@ class _Flow:
         self.review = {"verdict": None, "findings": None, "skipped": "not required"}
         self.review_required = bool(sp.review)
 
-    def call(self, role, argv, profile, thread=None):
+    def call(self, role, argv, profile, thread=None, subagents=None):
         t0, r = self.clock(), resolve(profile, self.config)
         rec = {"role": role, "thread_id": thread, "tier": profile.tier, "model": r.model,
-               "requested_effort": r.requested_effort, "applied_effort": r.applied_effort, "usage": None}
+               "requested_effort": r.requested_effort, "applied_effort": r.applied_effort, "subagents": subagents,
+               "usage": None}
         self.calls.append(rec)  # before running: a timed-out call still shows up (usage None = missing)
         try:
             stream = cx.parse_stream(self.runner(argv, cwd=self.cwd, env=self.env, timeout_s=self.timeout_s))
@@ -73,7 +76,8 @@ class _Flow:
 
     def escalate(self, reason, text):
         profile = self.sp.ladder[self.esc]
-        stream, rec = self.call("escalate", cx.resume_argv(profile, self.thread, text, self.config), profile, self.thread)
+        n = self.sp.implement_subagents
+        stream, rec = self.call("escalate", cx.resume_argv(profile, self.thread, text, self.config, n), profile, self.thread, n)
         self.esc, self.profile, self.message = self.esc + 1, profile, stream.text or self.message
         self.emit({"event": "escalate", "reason": reason, "index": self.esc, **rec})
 
@@ -90,7 +94,8 @@ class _Flow:
             self.review = {"verdict": None, "findings": None, "skipped": "not a git repository"}
             return False
         prompt = rv.review_prompt(self.request, diff, self.gate)
-        stream, rec = self.call("review", cx.session_argv(profile, prompt, "read-only", self.config), profile)
+        n = self.sp.review_subagents
+        stream, rec = self.call("review", cx.session_argv(profile, prompt, "read-only", self.config, n), profile, subagents=n)
         self.emit({"event": "session_start", **rec})
         verdict, findings = rv.parse_verdict(stream.text)
         self.review = {"verdict": verdict, "findings": findings, "skipped": None, "text": stream.text or ""}
@@ -100,8 +105,10 @@ class _Flow:
 
     def implement(self):
         sp = self.sp
-        prompt = f"{self.request}\n\n{PLAN_FIRST if sp.plan_first else ''}{WRAP_UP}"
-        stream, rec = self.call("implement", cx.session_argv(sp.start, prompt, "workspace-write", self.config), sp.start)
+        n = sp.implement_subagents
+        prompt = f"{self.request}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{WRAP_UP}"
+        stream, rec = self.call("implement", cx.session_argv(sp.start, prompt, "workspace-write", self.config, n), sp.start,
+                                subagents=n)
         self.thread, self.message = rec["thread_id"], stream.text
         self.emit({"event": "session_start", **rec})
         gate = self.gate_loop()
@@ -117,8 +124,10 @@ class _Flow:
         text = ("An independent review requested changes. Address these findings yourself in this session (do not "
                 "spawn subagents), then stop.\n\n"
                 f"{self.review['text'][-rv.FINDINGS_MAX:]}")
-        stream, rec = self.call("review_fix", cx.resume_argv(self.profile, self.thread, text, self.config),
-                                self.profile, self.thread)
+        # the fix is applied in this session, as its text says: no subagents even at L5 ("codex" policy: no flags)
+        n = None if self.sp.implement_subagents is None else 0
+        stream, rec = self.call("review_fix", cx.resume_argv(self.profile, self.thread, text, self.config, n),
+                                self.profile, self.thread, n)
         self.message = stream.text or self.message
         self.emit({"event": "review_fix", **rec})
         self.review = {**self.review, "fixed": True}

@@ -25,6 +25,7 @@ import time
 
 from model_effort_router.difficulty.registry import BACKENDS
 from model_effort_router.difficulty.subscription import default_runner
+from model_effort_router.policy.config import SUBAGENT_POLICIES
 from model_effort_router.difficulty.usage import sum_usage
 from model_effort_router.logging.route_log import state_dir
 
@@ -54,8 +55,9 @@ def build_mer_command(task, workdir, call_timeout_s=DEFAULT_TIMEOUT_S):
             "--timeout", f"{call_timeout_s:g}", task]
 
 
-def write_router_config(repo, backend, fallback):
-    """Merge difficulty.backend/fallback into the WORKDIR copy of .model-effort-router.json (gate checks stay)."""
+def write_router_config(repo, backend, fallback, subagent_policy=None):
+    """Merge difficulty.backend/fallback and session.subagent_policy into the WORKDIR copy of
+    .model-effort-router.json (gate checks stay)."""
     path = os.path.join(repo, ".model-effort-router.json")
     try:
         with open(path, encoding="utf-8") as f:
@@ -63,6 +65,8 @@ def write_router_config(repo, backend, fallback):
     except FileNotFoundError:
         cfg = {}
     cfg["difficulty"] = {**cfg.get("difficulty", {}), **{k: v for k, v in (("backend", backend), ("fallback", fallback)) if v}}
+    if subagent_policy:
+        cfg["session"] = {**cfg.get("session", {}), "subagent_policy": subagent_policy}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
 
@@ -259,7 +263,8 @@ def _mer_thread_usage(mer, covered):
 
 def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessions_dir=DEFAULT_SESSIONS,
              gate_fn=default_gate, model=None, effort=None, timeout_s=DEFAULT_TIMEOUT_S, clock=time.monotonic,
-             base_env=None, out_dir=None, run=1, router_backend=None, router_fallback=None):
+             base_env=None, out_dir=None, run=1, router_backend=None, router_fallback=None,
+             subagent_policy=None):
     """One run in the fixed eval workdir. Per-case failures become a record with `error`, never an exception."""
     repo = check_workdir(workdir or default_workdir(), fixture)  # realpath: Codex trusts the resolved path
     state = tempfile.mkdtemp(prefix="mer-eval-state-")
@@ -272,8 +277,8 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         shutil.copytree(fixture, repo, dirs_exist_ok=True)
         if mode == "baseline":
             shutil.rmtree(os.path.join(repo, ".codex"), ignore_errors=True)
-        if mode == "router" and (router_backend or router_fallback):
-            write_router_config(repo, router_backend, router_fallback)
+        if mode == "router" and (router_backend or router_fallback or subagent_policy):
+            write_router_config(repo, router_backend, router_fallback, subagent_policy)
         init_git_repo(repo)
         env = build_env(mode, state, os.environ if base_env is None else base_env)
         if mode == "router":
@@ -324,7 +329,8 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         rec.update(classifier_backend=backend, classifier_fallback=fell_back, classifier_fallback_causes=causes,
                    router_active=bool(routes) and any(e.get("event") == "session_start" for e in events),
                    level=mer.get("level"), session_profile=mer.get("profile"), final_profile=mer.get("final_profile"),
-                   escalations=escalations, mer_status=mer.get("status"),
+                   escalations=escalations, mer_status=mer.get("status"), subagent_policy=subagent_policy,
+                   implement_subagents=(mer.get("session_plan") or {}).get("implement_subagents"),
                    model=profile.get("model"), effort=profile.get("applied_effort"))
     else:
         mer_children = any(usage.stage_of(usage.read_rollout(p)["agent_path"]) != "other" for p in rollouts)
@@ -346,6 +352,9 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
                     "into the workdir config; default: the fixture's / built-in one)")
     ap.add_argument("--router-fallback", choices=sorted(BACKENDS) + ["none"],
                     help="fallback classifier for router runs (default subscription when --router-backend is given)")
+    ap.add_argument("--subagent-policy", choices=SUBAGENT_POLICIES,
+                    help="router runs: Codex subagent policy written into the workdir config (level: per-level caps, "
+                    "codex: no agents flags = Codex default); default: the config's, i.e. level")
     ap.add_argument("--repeat", type=int, default=1, help="runs per case and mode (records get run 1..N)")
     ap.add_argument("--modes", default=",".join(MODES), help="comma-separated subset of: " + ", ".join(MODES)
                     + " (e.g. a new baseline against router runs already recorded)")
@@ -386,6 +395,7 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
               "(pass --live to execute; this consumes subscription usage)")
         if backend or fallback:
             print(f"router classifier: backend {backend or '(config)'}, fallback {fallback or '(config)'}")
+        print(f"router subagent policy: {args.subagent_policy or '(config, default level)'}")
         for r in rows:
             for mode in modes:
                 print(mode, r["id"], build_mer_command(r["task"], real_workdir) if mode == "router"
@@ -399,7 +409,8 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
         for run, r, mode in ((k, r, m) for k in range(1, args.repeat + 1) for r in rows for m in modes):
             rec = run_case(r, mode, args.fixture, workdir=workdir, runner=runner, sessions_dir=sessions_dir,
                            gate_fn=gate_fn, model=settings[mode][0], effort=settings[mode][1], timeout_s=args.timeout,
-                           out_dir=out_dir, run=run, router_backend=backend, router_fallback=fallback)
+                           out_dir=out_dir, run=run, router_backend=backend, router_fallback=fallback,
+                           subagent_policy=args.subagent_policy)
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
     return 0

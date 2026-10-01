@@ -18,8 +18,8 @@ def stream(thread, text="done", i=100, c=50, o=10):
     return "\n".join(map(json.dumps, ev))
 
 
-def splan(level, flags=(), overrides=None):
-    return session_plan(DifficultyDecision(level, "fake", risk_flags=flags), flags, overrides)
+def splan(level, flags=(), overrides=None, policy="level"):
+    return session_plan(DifficultyDecision(level, "fake", risk_flags=flags), flags, overrides, policy)
 
 
 GATE_OK = {"overall": "passed", "checks": {"test": {"status": "passed"}}}
@@ -55,7 +55,7 @@ class Harness:
 
     def run(self, level="L2", flags=(), request=REQ, **kw):
         kw.setdefault("target", "route")
-        return run_flow(request, splan(level, flags, kw.pop("overrides", None)), cwd="/w", runner=self.runner,
+        return run_flow(request, splan(level, flags, kw.pop("overrides", None), kw.pop("policy", "level")), cwd="/w", runner=self.runner,
                         env={"A": "1"}, gate_fn=self.gate, diff_fn=lambda cwd: self.diff, emit=self.events.append,
                         **kw)
 

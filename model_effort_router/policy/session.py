@@ -28,6 +28,10 @@ SESSION_TABLE = {
     "L4": (Profile(F, "high"), (Profile(F, "xhigh"),), True),
     "L5": (Profile(F, "xhigh"), (), True),
 }
+# Codex subagents (`-c agents.*`) per phase: 0 = disabled, n = enabled with n concurrent threads, None = Codex default.
+# The user's global AGENTS.md makes sessions spawn 1-5 subagents, the biggest remaining cost lever.
+IMPLEMENT_SUBAGENTS = {"L1": 0, "L2": 0, "L3": 0, "L4": 0, "L5": 1}
+REVIEW_SUBAGENTS = 0
 REVIEW_BY_LEVEL = {"L4": Profile(F, "high"), "L5": Profile(F, "xhigh")}
 REVIEW_DEFAULT = Profile(F, "high")  # explicit review_only requests; auth/security work below L4
 REVIEW_FLAGS = ("auth", "security")  # these still get an independent review below L4 (a misjudged level must not drop it)
@@ -42,11 +46,14 @@ class SessionPlan:
     review: Optional[Profile]
     plan_profile: Profile  # used by plan_only requests
     applied_rules: Tuple[str, ...]
+    implement_subagents: Optional[int] = None  # implement session and its resumes; None: manual mode / "codex" policy
+    review_subagents: Optional[int] = None
 
     def to_dict(self) -> dict:
         prof = lambda p: {"tier": p.tier, "effort": p.effort} if p else None
         return {"level": self.level, "start": prof(self.start), "ladder": [prof(p) for p in self.ladder],
-                "plan_first": self.plan_first, "review": prof(self.review), "applied_rules": list(self.applied_rules)}
+                "plan_first": self.plan_first, "review": prof(self.review), "applied_rules": list(self.applied_rules),
+                "implement_subagents": self.implement_subagents, "review_subagents": self.review_subagents}
 
 
 def _risk_floors(risk_flags) -> dict:
@@ -61,7 +68,7 @@ def _dominates(p: Profile, base: Profile) -> bool:
     return p != base and p.at_least(base) == p
 
 
-def session_plan(decision, risk_flags=(), overrides: Optional[Mapping] = None) -> SessionPlan:
+def session_plan(decision, risk_flags=(), overrides: Optional[Mapping] = None, subagent_policy="level") -> SessionPlan:
     """`decision` None = manual mode (needs a session override). `overrides`: {"session": Profile}."""
     session = (overrides or {}).get("session")
     if decision is None and session is None:
@@ -88,4 +95,6 @@ def session_plan(decision, risk_flags=(), overrides: Optional[Mapping] = None) -
         start = session
         rungs = tuple(p for p in rungs if _dominates(p, start))
     plan_profile = Profile(F, "xhigh" if level == "L5" else "high").at_least(floors.get("plan", REVIEW_DEFAULT))
-    return SessionPlan(level, start, tuple(rungs), plan_first, review, plan_profile, tuple(rules))
+    capped = subagent_policy == "level"
+    return SessionPlan(level, start, tuple(rungs), plan_first, review, plan_profile, tuple(rules),
+                       IMPLEMENT_SUBAGENTS.get(level) if capped else None, REVIEW_SUBAGENTS if capped else None)

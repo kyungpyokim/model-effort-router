@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 MODES = ("auto", "manual", "off")
-SECTIONS = ("router", "difficulty")
+SUBAGENT_POLICIES = ("level", "codex")  # level: per-level Codex subagent caps (spec 11.4); codex: no flags
+SECTIONS = ("router", "difficulty", "session")
 
 DEFAULTS = MappingProxyType(
     {
         "router": {"mode": "auto"},
         "difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10},
+        "session": {"subagent_policy": "level"},
     }
 )
 
@@ -22,6 +24,7 @@ class RouterConfig:
     backend: str
     fallback: str
     timeout_s: float
+    subagent_policy: str = "level"
 
 
 def _check_layer(layer, name):
@@ -42,9 +45,11 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         layer = _check_layer(layer, name)
         for section in SECTIONS:
             merged[section].update(layer.get(section, {}))
-    router, diff = merged["router"], merged["difficulty"]
+    router, diff, sess = merged["router"], merged["difficulty"], merged["session"]
     if router["mode"] not in MODES:
         raise ValueError(f"router.mode must be one of {MODES}, got {router['mode']!r}")
+    if sess["subagent_policy"] not in SUBAGENT_POLICIES:
+        raise ValueError(f"session.subagent_policy must be one of {SUBAGENT_POLICIES}, got {sess['subagent_policy']!r}")
     timeout = diff["timeout_s"]
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
         raise ValueError("difficulty.timeout_s must be a positive number")
@@ -57,4 +62,4 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
                 raise ValueError(f"unknown difficulty.{key}: {diff[key]!r}")
         if diff["backend"] == "none":
             raise ValueError("difficulty.backend cannot be 'none'")
-    return RouterConfig(router["mode"], diff["backend"], diff["fallback"], timeout)
+    return RouterConfig(router["mode"], diff["backend"], diff["fallback"], timeout, sess["subagent_policy"])
