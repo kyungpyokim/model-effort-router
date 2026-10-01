@@ -17,7 +17,8 @@ URL = "https://api.typesafe.ai/v1/systemone"
 KEY_ENV = "TYPESAFE_API_KEY"
 MODEL_ENV = "MER_JEV_MODEL"
 DEFAULT_MODEL = "jev-latest"
-RISK_THRESHOLD = 0.5  # noul probability at or above this sets the flag
+RISK_THRESHOLD = 0.5  # noul probability at or above this sets the flag (per-flag values: RISK_THRESHOLDS)
+RISK_THRESHOLDS = {}  # flag -> threshold, calibrated on the corpus (plan 22.2); missing flags use RISK_THRESHOLD
 
 _RISK_HELP = {
     "security": "security-sensitive code (crypto, input sanitising, vulnerabilities, secrets)",
@@ -101,13 +102,13 @@ def _level_and_dist(ans):
 
 
 def _risk(answers, flag):
-    """noul in [0, 1] (bool accepted). Missing or anything else raises: a lost risk flag must not pass silently."""
+    """The noul value in [0, 1] (bool accepted). Missing or anything else raises: a lost risk flag must not pass silently."""
     ans = answers.get(flag)
     v = ans.get("noul") if isinstance(ans, dict) else None
     v = float(v) if isinstance(v, bool) else _num(v)
     if v is None or not 0 <= v <= 1:
         raise BackendOutputError(f"jev answer for {flag} is missing or not a probability")
-    return v >= RISK_THRESHOLD
+    return v
 
 
 class JevBackend:
@@ -117,9 +118,10 @@ class JevBackend:
     def __init__(self, transport=default_transport, model=None, env=None):
         self._transport, self._model, self._env = transport, model, env
         self.last_usage = None  # {"input_tokens", "output_tokens"} of the latest call
+        self.last_risk_scores = None  # raw noul per flag of the latest call (evaluation: threshold calibration)
 
     def classify(self, task: DifficultyInput, timeout_s: float) -> DifficultyDecision:
-        self.last_usage = None
+        self.last_usage = self.last_risk_scores = None
         env = os.environ if self._env is None else self._env
         key = env.get(KEY_ENV)
         if not key:
@@ -147,7 +149,9 @@ class JevBackend:
             raise BackendOutputError("jev level answer is not an object")
         level, dist = _level_and_dist(level_ans)
         conf = _num(level_ans.get("confidence"))
-        flags = tuple(f for f in RISK_FLAGS if _risk(answers, f))
+        scores = {f: _risk(answers, f) for f in RISK_FLAGS}
+        self.last_risk_scores = scores
+        flags = tuple(f for f in RISK_FLAGS if scores[f] >= RISK_THRESHOLDS.get(f, RISK_THRESHOLD))
         resp_model = data.get("model")
         codes = ("jev",) + ((resp_model,) if isinstance(resp_model, str) else ())
         return DifficultyDecision(

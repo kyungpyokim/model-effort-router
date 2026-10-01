@@ -67,6 +67,8 @@ def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=TIM
         task = DifficultyInput(task=r["task"], paths=tuple(r["paths"]))
         if hasattr(backend, "last_usage"):
             backend.last_usage = None  # never count a previous call's usage
+        if hasattr(backend, "last_risk_scores"):
+            backend.last_risk_scores = None
         t0 = clock()
         decision = classify_with_fallback(task, [backend], timeout_s)
         latencies.append((clock() - t0) * 1000)
@@ -88,7 +90,11 @@ def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=TIM
         predicted = decision.with_risk_flags(detect_risk_flags(r["task"], r["paths"]))
         m["risk"] = {"backend": _count(m["risk"]["backend"], decision.risk_flags, final["risk_flags"]),
                      "merged": _count(m["risk"]["merged"], predicted.risk_flags, final["risk_flags"])}
-        m["predictions"].append({"id": r["id"], "level": decision.level, "risk_flags": list(decision.risk_flags)})
+        pred = {"id": r["id"], "level": decision.level, "risk_flags": list(decision.risk_flags)}
+        scores = getattr(backend, "last_risk_scores", None)
+        if scores is not None:
+            pred["risk_scores"] = dict(scores)  # raw per-flag scores, for threshold calibration
+        m["predictions"].append(pred)
         expected = DifficultyDecision(final["level"], "label", risk_flags=tuple(final["risk_flags"]))
         m["stage_profile_match"] += _profiles(predicted, final["target"]) == _profiles(expected, final["target"])
     m["mean_distance"] = distance / len(scored) if scored else 0.0

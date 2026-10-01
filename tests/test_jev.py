@@ -96,6 +96,14 @@ class MappingTest(unittest.TestCase):
         _, d = run(FakeTransport(response(risks={"auth": 0.5, "security": 0.49, "payment": True, "data_loss": False})))
         self.assertEqual(d.risk_flags, ("auth", "payment"))
 
+    def test_raw_risk_scores_kept_and_per_flag_threshold(self):
+        b, d = run(FakeTransport(response(risks={"security": 0.7, "auth": 0.95})))
+        self.assertEqual((b.last_risk_scores["security"], b.last_risk_scores["auth"]), (0.7, 0.95))
+        self.assertEqual(d.risk_flags, ("security", "auth"))
+        with mock.patch.dict(jev.RISK_THRESHOLDS, {"security": 0.8}):
+            _, d = run(FakeTransport(response(risks={"security": 0.7, "auth": 0.95})))
+        self.assertEqual(d.risk_flags, ("auth",))
+
     def test_unverified_shapes_fail_closed(self):
         """Only the documented shape is trusted: other keys/scales raise instead of silently shifting the level."""
         for probs in ({str(i): 0.2 for i in range(1, 6)},  # 1-based keys
