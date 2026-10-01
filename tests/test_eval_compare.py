@@ -65,6 +65,11 @@ class EvaluateBackendTest(unittest.TestCase):
                            "Fix the auth bug in e.py": "L2"})  # flagged -> L2: miss
         self.assertEqual((m["critical_total"], m["critical_miss"]), (2, 2))
 
+    def test_right_l2_on_a_risk_flagged_l2_case_is_not_a_critical_miss(self):
+        c = case("r", "Add CSRF check to the form handler in f.py", "L2", ["security"])
+        self.assertEqual(compare.evaluate_backend("f", Fake("f", {c["task"]: "L2"}), [c])["critical_miss"], 0)
+        self.assertEqual(compare.evaluate_backend("f", Fake("f", {c["task"]: "L1"}), [c])["critical_miss"], 1)
+
     def test_l3_prediction_on_critical_is_not_a_critical_miss(self):
         m = self.run_fake({"Refactor module d.py architecture": "L3", "Fix the auth bug in e.py": "L3"})
         self.assertEqual(m["critical_miss"], 0)

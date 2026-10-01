@@ -95,15 +95,17 @@ class MappingTest(unittest.TestCase):
         self.assertAlmostEqual(sum(d.distribution.values()), 1.0)
 
     def test_risk_flag_threshold_and_bool(self):
-        _, d = run(FakeTransport(response(risks={"auth": 0.5, "security": 0.49, "payment": True, "data_loss": False})))
+        th = jev.RISK_THRESHOLDS  # at the threshold sets the flag, just below does not; bools are 1.0 / 0.0
+        _, d = run(FakeTransport(response(risks={"auth": th["auth"], "security": th["security"] - 0.01,
+                                                 "payment": True, "data_loss": False})))
         self.assertEqual(d.risk_flags, ("auth", "payment"))
 
     def test_raw_risk_scores_kept_and_per_flag_threshold(self):
-        b, d = run(FakeTransport(response(risks={"security": 0.7, "auth": 0.95})))
-        self.assertEqual((b.last_risk_scores["security"], b.last_risk_scores["auth"]), (0.7, 0.95))
-        self.assertEqual(d.risk_flags, ("auth",))  # calibrated security threshold 0.85
-        with mock.patch.dict(jev.RISK_THRESHOLDS, {"security": 0.6}):
-            _, d = run(FakeTransport(response(risks={"security": 0.7, "auth": 0.95})))
+        b, d = run(FakeTransport(response(risks={"security": 0.55, "auth": 0.95})))
+        self.assertEqual((b.last_risk_scores["security"], b.last_risk_scores["auth"]), (0.55, 0.95))
+        self.assertEqual(d.risk_flags, ("auth",))  # calibrated security threshold 0.6
+        with mock.patch.dict(jev.RISK_THRESHOLDS, {"security": 0.5}):
+            _, d = run(FakeTransport(response(risks={"security": 0.55, "auth": 0.95})))
         self.assertEqual(d.risk_flags, ("security", "auth"))
 
     def test_unverified_shapes_fail_closed(self):

@@ -740,6 +740,19 @@ Review Fail → 현재 Implement 프로필로 Fix → Test Gate → Review
 - 영향: security·auth 오탐은 L1~L3에도 독립 Review를 붙이고(§11.4), 위험 신호는 계획 먼저 쓰기를 붙여 비용을 늘린다. 다음 단계로 noul 원값을 기록해 임계값(현재 0.5)을 신호별로 정한다.
 - **임계값 보정** (2026-10-01, noul 원값 기록 후 재실행 `runs/compare-seed-jev2.json`): 신호별 임계값 security 0.85, auth 0.5, payment 0.95, data_migration 0.7, data_loss 0.75, concurrency 0.8(`difficulty/jev.py` `RISK_THRESHOLDS`). 같은 기록에서 정규식과 합친 결과가 재현율 22/22 유지, 정밀도 51% → 79%(오탐 21 → 6). auth·payment·data_migration 일부는 정규식이 이미 잡아 임계값을 높여도 놓치지 않는다. 보정과 평가가 같은 40건이라 과적합 위험이 있으므로 코퍼스를 늘리면 다시 확인한다.
 
+**코퍼스 150건 비교** (2026-10-01, `evaluation/corpus/corpus-v1.jsonl`, Jev만, `runs/compare-v1-jev.md`)
+
+| 항목 | 결과 |
+|---|---|
+| 라우팅 대상 | Jev 147/150 (98%), 규칙 요청 텍스트만 111/150 (74%), 규칙 경로 포함 131/150 |
+| 레벨 (130건) | 정확 109 (84%), ±1 128 (98%), 높게 16 / 낮게 5 |
+| 2단계 이상 틀림 | exp-056 L3→L5, exp-069 L5→L3(결제·동시성 L5를 L3로) |
+| 비용 | 150회 입력 109k / 출력 25k, p50 245ms, fallback 0 |
+
+- Jev target 오답 3건은 모두 맥락 없는 요청("Fix the login bug", "그거 좀 고쳐줘", "Make it faster.")을 route로 본 것이다. hook은 저장소 안에서 실행되므로 실사용 영향은 작다.
+- critical miss 지표 정정: 위험 신호가 있는 L2 작업을 L2로 맞힌 경우도 miss로 세고 있었다(6건 모두 이 경우). 이제 "정답보다 낮게, L2 이하로 판정"만 센다.
+- **위험 신호 임계값 재보정**: 시드 40건으로 정한 값은 새 110건(보정에 쓰지 않은 표본)에서 재현율 88%, 정밀도 65%로 떨어졌다(과적합). 150건 전체로 재현율 우선 재보정: security 0.6, auth 0.6, payment 0.95, data_migration 0.7, data_loss 0.6, concurrency 0.6. 정규식과 합쳐 재현율 68/70(97%), 정밀도 59%. L1~L3에서 security·auth 오탐으로 불필요한 Review가 붙는 작업은 130건 중 9건. concurrency 오탐은 L4·L5 Review 하한만 올리므로 비용 영향이 작다. 이 값도 같은 표본에서 정했으므로 다음 코퍼스 추가 때 보류 표본으로 다시 확인한다.
+
 ### 22.3 비용 기준선
 
 분류기가 정확해도 분류 호출, 상위 모델 조정, 단계별 컨텍스트 전달, 재시도 비용이 합쳐지면 오히려 비싸질 수 있다. 따라서 다음을 비교한다.

@@ -96,9 +96,9 @@ def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=TIM
         m["under"] += diff < 0
         if diff:
             m["misses"].append({"id": r["id"], "final": final["level"], "predicted": decision.level})
-        if _is_critical(final):
+        if _is_critical(final):  # a miss = judged lower than labeled AND at L2 or below (a right L2 is no miss)
             m["critical_total"] += 1
-            m["critical_miss"] += LEVELS.index(decision.level) <= CRITICAL_MAX_PREDICTED
+            m["critical_miss"] += diff < 0 and LEVELS.index(decision.level) <= CRITICAL_MAX_PREDICTED
         # routing level: same pipeline as router.route() -> detected flags merged -> session_plan
         predicted = decision.with_risk_flags(detect_risk_flags(r["task"], r["paths"]))
         m["risk"] = {"backend": _count(m["risk"]["backend"], decision.risk_flags, final["risk_flags"]),
@@ -160,7 +160,7 @@ def to_markdown(res):
             f"{lat['p50']:.0f}" if lat else "-", f"{lat['max']:.0f}" if lat else "-",
             f"{tok['input']}/{tok['output']}" if tok else "n/a", m["fallback_count"],
             _pct(m["stage_profile_match"], m["n"]), _pr(m["risk"]["backend"]), _pr(m["risk"]["merged"])))
-    lines += ["", "Critical miss = final L4/L5 or any risk flag, predicted <= L2. Fallback cases are scored as the "
+    lines += ["", "Critical miss = final L4/L5 or any risk flag, predicted lower than labeled and <= L2. Fallback cases are scored as the "
               "default L3 decision. TODO(Phase 6): confidence calibration, cost and local resource usage."]
     return "\n".join(lines) + "\n"
 
