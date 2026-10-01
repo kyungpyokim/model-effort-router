@@ -15,14 +15,20 @@ _QUESTION_START = _rx(
 )
 _CODE_CONTEXT = _rx(
     r"\b(code|codebase|files?|functions?|methods?|class(?:es)?|modules?|bugs?|tests?|apis?|endpoints?|"
-    r"repo|repository|config|components?|variables?|diff|commits?|branch|script|schema)\b"
+    r"repo|repository|config|components?|variables?|diff|commits?|branch|script|schema|"
+    r"services?|cache|database|db|tables?|query|queries|migrations?|server|client|cli|handlers?|middleware|"
+    r"workers?|queues?|scheduler|protocol|sessions?|tokens?|webhooks?|serializer|wrapper|helper|library|"
+    r"app|auth|authentication|login|oauth|passwords?|hash(?:es|ing)?)\b"
     r"|\.(py|js|jsx|ts|tsx|go|rs|java|rb|php|swift|kt|c|cpp|h|sql|ya?ml|json|toml|md)\b|`"
-    r"|코드|함수|파일|버그|테스트|모듈|클래스|컴포넌트|엔드포인트|커밋"
+    r"|코드|함수|파일|버그|테스트|모듈|클래스|컴포넌트|엔드포인트|커밋|세션|저장소|캐시|데이터베이스|테이블|쿼리|"
+    r"마이그레이션|서버|스케줄러|토큰|인증|로그인|결제|앱"
 )
 _CHANGE_VERB = _rx(
     r"\b(implement|add|fix|refactor|rename|change|update|create|build|write|remove|delete|"
-    r"migrate|modify|rewrite|replace|patch|extract|move|optimi[sz]e|port)\b"
-    r"|구현|추가|수정|고쳐|리팩터|만들|삭제|변경|바꿔"
+    r"migrate|modify|rewrite|replace|patch|extract|move|optimi[sz]e|port|"
+    r"bump|adjust|set|increase|decrease|raise|lower|support|make|redesign|design|introduce|split|upgrade|"
+    r"enable|disable|handle|convert|integrate|harden|clean\s+up)\b"
+    r"|구현|추가|수정|고쳐|리팩터|만들|삭제|변경|바꿔|늘려|줄여|지원|설계|도입|분리|옮겨|적용|개선"
 )
 # "write/make/draft a plan" is the deliverable, not a code change.
 _PLAN_PHRASE = _rx(

@@ -26,6 +26,12 @@ class TargetingTest(unittest.TestCase):
                 ("Review and fix the code", ROUTE),
                 ("Do the auth refactor in x.py", ROUTE),
                 ("Plan and then implement the new API endpoint", ROUTE),
+                # seed-corpus misses (2026-10-01): verbs/contexts the rules did not know
+                ("Bump the retry count in the HTTP client wrapper from 3 to 5 and adjust its unit test", ROUTE),
+                ("Support CSV export in the reports module; the query builder and serializer need changes", ROUTE),
+                ("Make the job scheduler safe to run on multiple instances", ROUTE),
+                ("Redesign the cache invalidation protocol; stale reads show up with two writers", ROUTE),
+                ("세션 저장소를 Redis로 옮겨줘", ROUTE),
             ]
         )
 

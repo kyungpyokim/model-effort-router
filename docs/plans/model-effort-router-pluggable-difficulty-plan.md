@@ -725,7 +725,7 @@ Review Fail → 현재 Implement 프로필로 Fix → Test Gate → Review
 | subscription | 28/36 (78%) | 36/36 (100%) | 6 / 2 | 0.22 | 1/18 | 5.7s | 983k |
 
 - Jev가 정확도·지연·비용 모두 앞선다(입력 토큰 약 1/50, 지연 약 1/20). Jev는 낮게 판정한 사례가 없고 높게 5건(seed-012 L1→L2, 016 L2→L3, 033·034 L3→L4, **036 L3→L5**, 2단계). subscription은 보안 핵심 작업 2건(027, 031 L5)을 L4로 낮게 봤다.
-- 판정 규칙 기반 target 분류는 35/40: 개발 요청 4건(012, 019, 025, 030)을 no_route로 봐 hook이 조언하지 않는다(`mer`는 명시 실행이라 영향 없음). seed-040("Fix the login bug", 맥락 없음)은 route로 봤다.
+- 판정 규칙 기반 target 분류는 35/40: 개발 요청 4건(012, 019, 025, 030)을 no_route로 봐 hook이 조언하지 않는다(`mer`는 명시 실행이라 영향 없음). seed-040("Fix the login bug", 맥락 없음)은 route로 봤다. → 보완(2026-10-01): 변경 동사(bump, adjust, support, make, redesign, design, introduce 등, 한국어 늘려·지원·설계·도입·분리·옮겨·적용·개선)와 코드 맥락 단어(service, cache, db, scheduler, session, token, auth, login 등, 한국어 세션·저장소·캐시·인증·결제 등)를 추가해 39/40(경로 없이 문장만으로도 39/40). seed-040은 그대로 route로 둔다: hook은 저장소 안에서 실행되므로 실제 사용에서는 맥락이 있다.
 - 정규식 위험 신호(모든 Backend 공통으로 추가됨): 정답 22개 중 13개 탐지, 오탐 2. Backend별 위험 신호는 비교 도구가 아직 기록하지 않는다(보완 필요).
 - 한계: 라벨러가 둘 다 AI이고 40건이다. 목표 150건과 사람 라벨이 남아 있다.
 
