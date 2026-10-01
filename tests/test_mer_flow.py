@@ -197,6 +197,10 @@ class ReviewTest(unittest.TestCase):
         r = h.run("L3", ("auth",))
         self.assertEqual((len(h.calls), r["review"]["verdict"]), (2, "approved"))
 
+    def test_review_prompt_forbids_subagents(self):
+        # pilot v4: the review session spawned its own code-reviewer subagent (~0.2M tokens) per global instructions
+        self.assertIn("do not spawn subagents", rv.review_prompt("req", REPO, GATE_OK))
+
     def test_risk_flag_alone_adds_no_review_below_l4(self):
         h = Harness()
         r = h.run("L1", ("data_loss",))

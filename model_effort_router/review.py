@@ -48,6 +48,7 @@ def _diff_section(d):
 
 def review_prompt(request, diff, gate):
     return (f"Independently review this change against the request. Check requirements met, omissions, logic "
-            f"errors, regressions, edge cases, security, needless changes, missing tests. Do not edit files.\n\n"
+            f"errors, regressions, edge cases, security, needless changes, missing tests. Do not edit files. Do the "
+            f"review yourself in this session: do not spawn subagents or delegate to other agents.\n\n"
             f"Request:\n{request}\n\n{_diff_section(diff)}\nTest Gate result:\n{json.dumps(gate, indent=2)}\n\n"
             "End your answer with exactly these two lines:\nVERDICT: approved|changes_requested\nFINDINGS: <n>")
