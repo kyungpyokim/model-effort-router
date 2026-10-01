@@ -38,6 +38,15 @@ def _profiles(decision, target):
     return (sp.review or REVIEW_DEFAULT) if target == "review_only" else (sp.start, sp.ladder, sp.plan_first, sp.review)
 
 
+def _count(acc, predicted, gold):
+    p, g = set(predicted), set(gold)
+    return {"tp": acc["tp"] + len(p & g), "fp": acc["fp"] + len(p - g), "fn": acc["fn"] + len(g - p)}
+
+
+def _zero():
+    return {"tp": 0, "fp": 0, "fn": 0}
+
+
 def _add_usage(total, usage):
     if not usage:
         return total
@@ -50,7 +59,8 @@ def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=TIM
     scored = [r for r in corpus.adjudicated(rows) if r["final"]["level"] is not None]
     m = {"backend": name, "n": len(scored), "exact": 0, "within_one": 0, "over": 0, "under": 0,
          "critical_total": 0, "critical_miss": 0, "fallback_count": 0, "stage_profile_match": 0,
-         "tokens": None, "misses": [], "skipped_no_route": len(corpus.adjudicated(rows)) - len(scored)}
+         "tokens": None, "misses": [], "skipped_no_route": len(corpus.adjudicated(rows)) - len(scored),
+         "risk": {"backend": _zero(), "merged": _zero()}, "predictions": []}
     distance, latencies = 0, []
     for r in scored:
         final = r["final"]
@@ -76,11 +86,23 @@ def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=TIM
             m["critical_miss"] += LEVELS.index(decision.level) <= CRITICAL_MAX_PREDICTED
         # routing level: same pipeline as router.route() -> detected flags merged -> session_plan
         predicted = decision.with_risk_flags(detect_risk_flags(r["task"], r["paths"]))
+        m["risk"] = {"backend": _count(m["risk"]["backend"], decision.risk_flags, final["risk_flags"]),
+                     "merged": _count(m["risk"]["merged"], predicted.risk_flags, final["risk_flags"])}
+        m["predictions"].append({"id": r["id"], "level": decision.level, "risk_flags": list(decision.risk_flags)})
         expected = DifficultyDecision(final["level"], "label", risk_flags=tuple(final["risk_flags"]))
         m["stage_profile_match"] += _profiles(predicted, final["target"]) == _profiles(expected, final["target"])
     m["mean_distance"] = distance / len(scored) if scored else 0.0
     m["latency_ms"] = ({"p50": statistics.median(latencies), "max": max(latencies)} if latencies else None)
     return m
+
+
+def regex_risk(rows):
+    """Backend-independent: the rule-based detector alone (it is merged into every backend's flags)."""
+    acc = _zero()
+    for r in corpus.adjudicated(rows):
+        if r["final"]["level"] is not None:
+            acc = _count(acc, detect_risk_flags(r["task"], r["paths"]), r["final"]["risk_flags"])
+    return acc
 
 
 def target_accuracy(rows):
@@ -90,7 +112,7 @@ def target_accuracy(rows):
 
 
 def compare(rows, backends, **kw):
-    return {"cases": len(corpus.adjudicated(rows)), "target_accuracy": target_accuracy(rows),
+    return {"cases": len(corpus.adjudicated(rows)), "target_accuracy": target_accuracy(rows), "regex_risk": regex_risk(rows),
             "backends": {name: evaluate_backend(name, b, rows, **kw) for name, b in backends.items()}}
 
 
@@ -98,22 +120,29 @@ def _pct(part, whole):
     return f"{part}/{whole} ({part / whole:.0%})" if whole else "-"
 
 
+def _pr(c):
+    """'recall / precision' of risk flags."""
+    rec = _pct(c["tp"], c["tp"] + c["fn"])
+    return f"{rec} / {_pct(c['tp'], c['tp'] + c['fp'])}"
+
+
 def to_markdown(res):
     t = res["target_accuracy"]
     lines = [f"# Backend comparison ({res['cases']} adjudicated cases)", "",
-             f"Target rules accuracy: {_pct(t['correct'], t['n'])}", "",
+             f"Target rules accuracy: {_pct(t['correct'], t['n'])}",
+             f"Rule-based risk flags alone (recall / precision): {_pr(res['regex_risk'])}", "",
              "| backend | n | exact | +-1 | over | under | mean dist | critical miss | p50 ms | max ms | "
-             "tokens in/out | fallback | session profiles |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "tokens in/out | fallback | session profiles | risk backend (rec / prec) | risk merged (rec / prec) |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for name, m in res["backends"].items():
         lat = m["latency_ms"] or {}
         tok = m["tokens"]
-        lines.append("| {} | {} | {} | {} | {} | {} | {:.2f} | {} | {} | {} | {} | {} | {} |".format(
+        lines.append("| {} | {} | {} | {} | {} | {} | {:.2f} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
             name, m["n"], _pct(m["exact"], m["n"]), _pct(m["within_one"], m["n"]), m["over"], m["under"],
             m["mean_distance"], _pct(m["critical_miss"], m["critical_total"]),
             f"{lat['p50']:.0f}" if lat else "-", f"{lat['max']:.0f}" if lat else "-",
             f"{tok['input']}/{tok['output']}" if tok else "n/a", m["fallback_count"],
-            _pct(m["stage_profile_match"], m["n"])))
+            _pct(m["stage_profile_match"], m["n"]), _pr(m["risk"]["backend"]), _pr(m["risk"]["merged"])))
     lines += ["", "Critical miss = final L4/L5 or any risk flag, predicted <= L2. Fallback cases are scored as the "
               "default L3 decision. TODO(Phase 6): confidence calibration, cost and local resource usage."]
     return "\n".join(lines) + "\n"

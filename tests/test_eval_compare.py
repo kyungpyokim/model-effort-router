@@ -113,6 +113,20 @@ class EvaluateBackendTest(unittest.TestCase):
         m = compare.evaluate_backend("f", Fake("f", {c["task"]: "L4"}), [c])
         self.assertEqual(m["stage_profile_match"], 1)
 
+    def test_risk_flags_scored_for_backend_alone_and_merged_with_rules(self):
+        ans = {c["task"]: c["final"]["level"] for c in CASES}
+        # backend flags auth on c5 (right) and payment on c1 (wrong); rules detect auth from "auth" in c5's text
+        m = compare.evaluate_backend("f", Fake("f", ans, flags={"Fix the auth bug in e.py": ["auth"],
+                                                                "Fix typo in a.py": ["payment"]}), CASES)
+        self.assertEqual(m["risk"]["backend"], {"tp": 1, "fp": 1, "fn": 0})
+        self.assertEqual(m["risk"]["merged"], {"tp": 1, "fp": 1, "fn": 0})
+        silent = compare.evaluate_backend("f", Fake("f", ans), CASES)
+        self.assertEqual((silent["risk"]["backend"], silent["risk"]["merged"]),
+                         ({"tp": 0, "fp": 0, "fn": 1}, {"tp": 1, "fp": 0, "fn": 0}))
+        self.assertEqual(m["predictions"][0], {"id": "c1", "level": "L1", "risk_flags": ["payment"]})
+        self.assertEqual(compare.regex_risk(CASES), {"tp": 1, "fp": 0, "fn": 0})
+        self.assertIn("risk merged (rec / prec)", compare.to_markdown(compare.compare(CASES, {"f": Fake("f", ans)})))
+
     def test_no_route_and_non_adjudicated_cases_skipped(self):
         nr = {"id": "n", "task": "what is x", "status": "adjudicated", "paths": [],
               "labels": [], "final": {"level": None, "risk_flags": [], "target": "no_route"}}
