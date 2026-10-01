@@ -882,6 +882,13 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 - L3는 회차 간 편차가 크다(기준선 r2가 186k로 낮음). v3과 v4의 L3 Router(681k, 654k)는 비슷하다.
 - 다음 조치: Review 세션이 subagent를 만들지 않도록 Review 프롬프트에 명시하고 L4 인증만 재측정한다.
 
+**L4 인증 재측정** (2026-10-01, Review 프롬프트에 subagent 금지 추가, 2회, `runs/pilot-p7e-l4.jsonl`)
+
+- Review 세션 비용: 0.4~0.5M → **138k, 175k**. Review 세션은 subagent를 만들지 않았다.
+- Router 합계 1,247k / 1,219k(평균 1.23M), 기준선 1,010k / 646k(평균 0.83M) → +49%. 남은 차이는 구현 세션이 ECC 지침대로 만드는 code-reviewer·python-reviewer subagent(286k, 482k)와 회차 편차다. 기준선도 subagent를 만든다.
+- 두 Review 모두 changes_requested였고, 4개 결과물(기준선 2, Router 2) 모두 비ASCII 서명에서 `TypeError`가 나는 같은 경계 결함이 있다. Review가 찾은 결함이 승격 없이 끝나 반영되지 않는다.
+- v4의 L1~L3와 이 L4를 합치면 기준선 1.97M, Router 2.18M(+11%)이다(서로 다른 실행을 합친 값이라 참고용).
+
 **결정 (2026-10-01)**: 기본 모드는 `auto`로 유지한다(Phase 7 완료 조건). 단 v3에서 L4 인증 작업이 L3로 판정돼 독립 Review가 빠졌으므로, L1~L3에서도 auth·security 신호가 있으면 독립 Review를 붙인다(§11.4). 이 조건은 L4 인증 사례에 Review 세션 1회를 더하므로, 표본을 늘린 재측정(코퍼스, 반복 횟수)에서 절감 폭을 다시 확인한다.
 
 ---
