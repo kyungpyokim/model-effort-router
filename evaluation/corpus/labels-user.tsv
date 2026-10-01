@@ -1,0 +1,41 @@
+id	task	paths	labeler	level	risk_flags	target	note
+seed-001	README.md 제목의 오타 'Instal'을 'Install'로 고쳐줘	README.md	user				
+seed-002	Rename the variable `tmp` to `retry_count` in utils/retry.py	utils/retry.py	user				
+seed-003	config/settings.yaml의 log_level 기본값을 info에서 warning으로 바꿔줘	config/settings.yaml	user				
+seed-004	Update the copyright year in every file header under src/ to 2026	src/	user				
+seed-005	Change the button label 'Submit' to 'Send' in components/Form.tsx	components/Form.tsx	user				
+seed-006	Fix the null-pointer crash in parse_date() in date_utils.py when the input is an empty string	date_utils.py	user				
+seed-007	파일 업로드 API의 최대 크기 검증을 10MB로 제한하는 함수를 추가해줘	api/upload.py	user				
+seed-008	Add a `--verbose` flag to the CLI entry point in cli.py and print extra timing info	cli.py	user				
+seed-009	The pagination helper returns one item too many on the last page; fix it	lib/paginate.py	user				
+seed-010	Add input validation for the email field in the signup endpoint	api/signup.py	user				
+seed-011	utils/format.py의 currency 포맷 함수가 음수에서 괄호를 쓰도록 수정해줘	utils/format.py	user				
+seed-012	Bump the retry count in the HTTP client wrapper from 3 to 5 and adjust its unit test	http/client.py,tests/test_client.py	user				
+seed-013	Add a `GET /orders/{id}/history` endpoint with a service method, repository query and tests	api/orders.py,services/orders.py,repo/orders.py	user				
+seed-014	Introduce an in-memory cache layer for product lookups across the catalog service and invalidate it on update	services/catalog.py,repo/products.py	user				
+seed-015	프론트엔드 폼 상태 관리를 useState 여러 개에서 reducer 기반으로 옮기고 관련 컴포넌트 세 곳을 수정해줘	components/Checkout.tsx,components/Address.tsx,components/Cart.tsx	user				
+seed-016	Replace the ad-hoc logging calls in the worker modules with the structured logger and keep the log fields stable	worker/	user				
+seed-017	Add role-based access checks to the admin routes and update the route tests	api/admin.py,auth/roles.py,tests/test_admin.py	user				
+seed-018	Add Stripe webhook handling that marks invoices as paid and sends a receipt email	billing/webhooks.py,billing/invoices.py,notify/email.py	user				
+seed-019	Support CSV export in the reports module; the query builder, serializer and download endpoint all need changes	reports/	user				
+seed-020	Add a soft-delete flag to the users table and make every query in the repo layer respect it	repo/users.py,db/schema.sql	user				
+seed-021	Split the monolithic OrderService into pricing, inventory and fulfillment modules and update all callers	services/orders.py	user				
+seed-022	Move session storage from in-process memory to Redis and adapt the middleware, tests and deployment config	auth/session.py,deploy/	user				
+seed-023	Change the public REST API from v1 to v2 response envelopes while keeping v1 working for existing clients	api/	user				
+seed-024	Introduce an event bus between the order and notification services and migrate direct calls to events	services/,notify/	user				
+seed-025	Make the job scheduler safe to run on multiple instances: design leader election and lock handling	scheduler/	user				
+seed-026	Migrate the orders table to a new schema with a changed primary key; write the migration and backfill	db/migrations/,repo/orders.py	user				
+seed-027	Rewrite the authentication token signing and verification to rotate keys without invalidating live sessions	auth/tokens.py	user				
+seed-028	Intermittent double charges appear under load; find the root cause across the payment, queue and retry code and fix it	billing/,queue/	user				
+seed-029	Migrate the production ledger from the legacy schema; some rows may be dropped if the transform is wrong, so it must be reversible and verified	db/migrations/ledger/	user				
+seed-030	Redesign the cache invalidation protocol; stale reads show up only with two writers and nobody knows why	cache/	user				
+seed-031	Replace the homegrown password hashing with a modern KDF and migrate existing hashes at login time	auth/passwords.py	user				
+seed-032	Write a plan for moving the monolith's billing code into a separate service. Plan only, do not implement.		user				
+seed-033	계획만 세워줘: 테스트 스위트를 병렬 실행으로 바꾸는 방법	tests/	user				
+seed-034	Draft a plan for adding OAuth login to the web app, then wait for my approval	auth/	user				
+seed-035	Review only: look at the changes in api/upload.py for bugs, do not modify anything	api/upload.py	user				
+seed-036	리뷰만 해줘. 방금 바꾼 결제 모듈 코드에 문제가 없는지 검토해줘	billing/	user				
+seed-037	Explain how the retry logic in http/client.py works	http/client.py	user				
+seed-038	What does the `--dry-run` option do?		user				
+seed-039	고마워, 이제 충분해		user				
+seed-040	Fix the login bug		user				

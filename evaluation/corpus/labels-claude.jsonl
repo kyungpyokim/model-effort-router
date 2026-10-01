@@ -1,0 +1,40 @@
+{"id": "seed-001", "labeler": "claude", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "seed-002", "labeler": "claude", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "seed-003", "labeler": "claude", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "seed-004", "labeler": "claude", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "seed-005", "labeler": "claude", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "seed-006", "labeler": "claude", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "seed-007", "labeler": "claude", "level": "L2", "risk_flags": ["security"], "target": "route"}
+{"id": "seed-008", "labeler": "claude", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "seed-009", "labeler": "claude", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "seed-010", "labeler": "claude", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "seed-011", "labeler": "claude", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "seed-012", "labeler": "claude", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "seed-013", "labeler": "claude", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "seed-014", "labeler": "claude", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "seed-015", "labeler": "claude", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "seed-016", "labeler": "claude", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "seed-017", "labeler": "claude", "level": "L3", "risk_flags": ["auth"], "target": "route"}
+{"id": "seed-018", "labeler": "claude", "level": "L3", "risk_flags": ["payment"], "target": "route"}
+{"id": "seed-019", "labeler": "claude", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "seed-020", "labeler": "claude", "level": "L3", "risk_flags": ["data_migration"], "target": "route"}
+{"id": "seed-021", "labeler": "claude", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "seed-022", "labeler": "claude", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "seed-023", "labeler": "claude", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "seed-024", "labeler": "claude", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "seed-025", "labeler": "claude", "level": "L4", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "seed-026", "labeler": "claude", "level": "L4", "risk_flags": ["data_migration"], "target": "route"}
+{"id": "seed-027", "labeler": "claude", "level": "L5", "risk_flags": ["security", "auth"], "target": "route"}
+{"id": "seed-028", "labeler": "claude", "level": "L5", "risk_flags": ["payment", "concurrency"], "target": "route"}
+{"id": "seed-029", "labeler": "claude", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "route"}
+{"id": "seed-030", "labeler": "claude", "level": "L5", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "seed-031", "labeler": "claude", "level": "L5", "risk_flags": ["security", "auth"], "target": "route"}
+{"id": "seed-032", "labeler": "claude", "level": "L4", "risk_flags": ["payment"], "target": "plan_only"}
+{"id": "seed-033", "labeler": "claude", "level": "L3", "risk_flags": [], "target": "plan_only"}
+{"id": "seed-034", "labeler": "claude", "level": "L3", "risk_flags": ["auth"], "target": "plan_only"}
+{"id": "seed-035", "labeler": "claude", "level": "L2", "risk_flags": [], "target": "review_only"}
+{"id": "seed-036", "labeler": "claude", "level": "L3", "risk_flags": ["payment"], "target": "review_only"}
+{"id": "seed-037", "labeler": "claude", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "seed-038", "labeler": "claude", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "seed-039", "labeler": "claude", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "seed-040", "labeler": "claude", "level": null, "risk_flags": [], "target": "no_route"}

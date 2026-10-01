@@ -61,3 +61,12 @@ python3 -m evaluation.live_runner --cases evaluation/pilot/cases.jsonl --fixture
 - `--repeat N`(기본 1): 케이스·모드마다 N번 실행하고 기록에 `run: 1..N`을 남긴다(순서: run → 케이스 → 모드). `run`이 없는 옛 기록은 run 1이다. `baseline report`는 `(case_id, run)`으로 baseline과 router를 짝짓고, 짝 단위 표 외에 케이스별 평균(`per_case_mean`)과 전체 합계를 낸다. `mark`는 같은 케이스·모드에 run이 여럿이면 `--run K`가 필수다.
 - `--router-backend NAME`(레지스트리 이름, 예 `jev`)과 `--router-fallback NAME`(백엔드를 줄 때 기본 `subscription`, `none` 가능): router 실행에만 eval workdir 복사본의 `.model-effort-router.json`에 `difficulty.backend/fallback`을 병합해 쓴다(fixture의 gate 설정은 유지, fixture 자체는 수정하지 않는다). **`jev`는 작업 텍스트를 TypeSafe(외부 API, 구독과 별도 과금)로 보낸다.** live 배너가 이를 알린다. `TYPESAFE_API_KEY`는 환경에 있어야 하며 이 도구는 값을 읽지 않는다.
 - router 기록의 `classifier_backend`(실제로 판정한 backend), `classifier_fallback`, `classifier_fallback_causes`(예 `jev:TimeoutError`)로 폴백 여부와 원인을 확인한다. Jev의 사용량은 `{input_tokens, output_tokens}`로 오며 cached 필드 없이 그대로 합산된다.
+
+## 독립 라벨링 (labeling-guide §4)
+
+라벨은 코퍼스와 따로 둔 파일에 단다. 라벨러는 서로의 파일과 `proposed`를 보지 않는다.
+
+- 빈 시트: `python3 -m evaluation.labels sheet evaluation/corpus/seed.jsonl OUT.tsv` (id, task, paths만 담김).
+- 시트 열: `level`은 L1~L5(no_route면 비움), `risk_flags`는 쉼표 구분, `target`은 route / plan_only / review_only / no_route.
+- 합치기: `python3 -m evaluation.labels merge evaluation/corpus/seed.jsonl OUT.jsonl evaluation/corpus/labels-claude.jsonl evaluation/corpus/labels-user.tsv`. 라벨 2개가 모인 케이스는 `labeled`가 되고 `proposed`는 빠진다. 일치 보고(discuss / revise_guide)를 출력한다.
+- 시드 40건: `labels-claude.jsonl`(Claude, 2026-10-01), `labels-user.tsv`(사용자 작성용 빈 시트).
