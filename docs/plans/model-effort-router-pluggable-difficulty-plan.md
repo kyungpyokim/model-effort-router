@@ -115,8 +115,8 @@ Host Plugin hook       : (보조) TUI 사용 시 판정 결과와 권장 `/model
 | 항목 | 상태 | 근거 |
 |---|---|---|
 | 세션 시작 시 모델·effort 지정 (`codex exec -m ... -c model_reasoning_effort=...`) | 동작 | 파일럿 |
-| 같은 세션을 이어서 다른 모델로 실행 (`codex exec resume <id> -m ...`) | 옵션 존재, 실행 미검증 | `resume --help` |
-| app-server 턴 단위 모델·effort 변경 (`TurnStartParams.model`, `effort`) | 프로토콜 스키마에 있음, 실행 미검증 | `generate-json-schema` |
+| 같은 세션을 이어서 다른 모델로 실행 (`codex exec resume <id> -m ...`) | 동작. 대화 유지, 모델 변경 턴은 캐시 대부분 끊김 | [Phase 7 spike](../spikes/phase7-session-escalation.md) |
+| app-server 턴 단위 모델·effort 변경 (`TurnStartParams.model`, `effort`) | 스키마에 있음, `exec resume`이 동작해 미확인 | `generate-json-schema` |
 | 사용자의 TUI `/model` 변경 | 동작 | Codex 기본 기능 |
 | hook이 메인 세션 모델을 변경 | 불가로 봄 (컨텍스트 주입·허용/차단만) | spike |
 | 플러그인 `UserPromptSubmit` hook 실행, 컨텍스트 주입 | 동작 | live 테스트 |
@@ -156,7 +156,8 @@ mer "<요청>" [--cwd DIR]
 ```
 
 - 한 작업의 계획과 구현은 같은 세션에서 이어지므로 저장소를 다시 탐색하지 않는다.
-- 승격은 같은 세션을 이어서 실행한다(`resume` 또는 app-server 턴 단위 변경, Phase 7 spike로 결정). 모델이 바뀌면 캐시가 끊길 수 있으므로 승격 비용도 측정한다.
+- 승격은 `codex exec resume <id> -m <모델> -c model_reasoning_effort=<effort>`로 같은 세션을 이어서 실행한다(Phase 7 spike로 확인). 모델이 바뀌는 턴은 캐시가 대부분 끊기므로, 승격 1회 비용은 그 시점까지 쌓인 대화 길이만큼의 미캐시 입력이다.
+- resume 실행의 `turn.completed.usage`는 세션 누적값이다. 실행별 사용량은 차이 또는 rollout `last_token_usage`로 구한다.
 - 대화형 사용(`mer --interactive`)은 판정한 설정으로 호스트 TUI를 시작만 한다. 승격·Review 자동화는 하지 않는다.
 
 ### 3.5 재라우팅
@@ -950,7 +951,7 @@ MVP 이후: Claude Code Plugin, Jev·Nimble Backend 비교.
 | 항목 | 상태 / 해소 시점 |
 |---|---|
 | 요청 단위 라우팅 + cascade가 기준선 대비 사용량을 줄이는가 | **최우선**. Phase 7 파일럿 재측정 (2차 구조는 약 3.1배로 불합격) |
-| 같은 세션의 모델 변경 방법(`exec resume -m`, app-server)과 승격 시 캐시·비용 | Phase 7 spike (live 승인 필요) |
+| 해소됨: 같은 세션 모델 변경은 `exec resume -m`으로 동작, 모델 변경 턴은 캐시 대부분 끊김 | Phase 7 spike |
 | 측정 도구: diff 보존, 판정 레벨 기록 | Phase 7 |
 | Routing Corpus 라벨 담당자와 150건 라벨링 | 기준선 비교 결과가 긍정적이면 진행 |
 | balanced tier 모델(현재 economy와 같은 gpt-6-luna) | 기준선 비교와 함께 결정 |
