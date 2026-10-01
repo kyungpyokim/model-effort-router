@@ -66,7 +66,9 @@ class Env(unittest.TestCase):
         git = subprocess.run(["git", "log", "--oneline"], cwd=cwd, capture_output=True, text=True)
         self.calls.append({"cmd": cmd, "env": env, "cwd": cwd, "timeout_s": timeout_s, "grace_s": grace_s,
                            "had_hooks": (Path(cwd) / ".codex").exists(), "stale": (Path(cwd) / "stale.txt").exists(),
-                           "commits": len(git.stdout.splitlines()) if git.returncode == 0 else None})
+                           "commits": len(git.stdout.splitlines()) if git.returncode == 0 else None,
+                           "config": (Path(cwd) / ".model-effort-router.json").read_text()
+                           if (Path(cwd) / ".model-effort-router.json").exists() else None})
         if self.fail_first and len(self.calls) == 1:
             raise TimeoutError("slow")
         if log_events:
@@ -236,7 +238,7 @@ class RunCaseTest(Env):
     def test_diff_saved_per_case_and_mode_with_untracked_list(self):
         rec = self.run_case("router")
         path = Path(rec["diff_path"])
-        self.assertEqual(path, self.root / "out" / "c1.router.diff")
+        self.assertEqual(path, self.root / "out" / "c1.router.r1.diff")
         text = path.read_text()
         self.assertIn("+x = 2", text)
         self.assertIn("new.py", text.split("diff --git")[0])  # untracked list header
@@ -244,7 +246,50 @@ class RunCaseTest(Env):
         self.assertNotIn(lr.MARKER, text)
         self.assertNotIn("__pycache__", text)  # bytecode from test runs never reaches the saved diff
         self.assertEqual(Path(self.run_case("baseline", events=[], sessions=self.clean_sessions())["diff_path"]).name,
-                         "c1.baseline.diff")
+                         "c1.baseline.r1.diff")
+
+    def test_jev_usage_without_cached_field_is_counted_exactly(self):
+        jev = {"event": "route", "decision": {"backend": "jev", "level": "L2"},
+               "classifier_usage": {"input_tokens": 541, "cached_input_tokens": 0, "output_tokens": 12,
+                                    "reasoning_output_tokens": 0}}
+        bare = {**jev, "classifier_usage": {"input_tokens": 541, "output_tokens": 12}}  # as Jev reports it
+        for event in (jev, bare):
+            rec = self.run_case("router", events=[event, START])
+            self.assertEqual(rec["usage"]["classifier"], {"input": 541, "cached_input": 0, "output": 12, "reasoning_output": 0})
+            self.assertEqual(rec["usage"]["total"], (384934 + 1085) + (50000 + 700) + 553)
+            self.assertEqual(rec["usage"]["incomplete_reasons"], [])
+
+    def test_record_shows_classifier_backend_used_and_fallback_cause(self):
+        jev = {"event": "route", "decision": {"backend": "jev", "level": "L2", "reason_codes": []}, "fallback": False}
+        self.assertEqual(self.run_case("router", events=[jev, START])["classifier_backend"], "jev")
+        fell = {"event": "route", "fallback": True, "decision": {"backend": "subscription", "level": "L2",
+                "reason_codes": ["x", "fallback_cause:jev:TimeoutError"]}}
+        rec = self.run_case("router", events=[fell, START])
+        self.assertEqual((rec["classifier_backend"], rec["classifier_fallback"], rec["classifier_fallback_causes"]),
+                         ("subscription", True, ["jev:TimeoutError"]))
+        dflt = {"event": "route", "fallback": True, "decision": {"backend": "default",
+                "reason_codes": ["jev:TimeoutError", "subscription:RuntimeError"]}}
+        self.assertEqual(self.run_case("router", events=[dflt, START])["classifier_fallback_causes"],
+                         ["jev:TimeoutError", "subscription:RuntimeError"])
+        self.assertEqual(self.run_case("router", events=[])["classifier_backend"], None)
+
+    def test_router_backend_merged_into_workdir_config_only_for_router_runs(self):
+        (self.fixture / ".model-effort-router.json").write_text(
+            '{"gate": {"checks": {"test": "python3 -m unittest"}}, "difficulty": {"timeout_s": 7}}')
+        self.run_case("router", router_backend="jev", router_fallback="subscription")
+        cfg = json.loads(self.calls[0]["config"])
+        self.assertEqual(cfg["gate"], {"checks": {"test": "python3 -m unittest"}})
+        self.assertEqual(cfg["difficulty"], {"timeout_s": 7, "backend": "jev", "fallback": "subscription"})
+        self.run_case("baseline", events=[], sessions=self.clean_sessions(), router_backend="jev")
+        self.assertIn("python3 -m unittest", self.calls[1]["config"])
+        self.assertNotIn("jev", self.calls[1]["config"])
+        self.assertNotIn("jev", (self.fixture / ".model-effort-router.json").read_text())  # fixture untouched
+        self.run_case("router")
+        self.assertNotIn("jev", self.calls[2]["config"])  # no option: config as the fixture has it
+
+    def test_router_backend_creates_config_when_fixture_has_none(self):
+        self.run_case("router", router_backend="jev", router_fallback="subscription")
+        self.assertEqual(json.loads(self.calls[0]["config"])["difficulty"], {"backend": "jev", "fallback": "subscription"})
 
     def test_no_out_dir_means_no_diff_file(self):
         self.assertIsNone(self.run_case("router", out_dir=None)["diff_path"])
@@ -408,6 +453,37 @@ class CliTest(Env):
                          [("a", "baseline"), ("a", "router")])
         self.assertEqual(len(self.calls), 2)
 
+    def test_repeat_runs_each_case_and_mode_n_times_with_run_numbers_and_diff_names(self):
+        rc, _ = self.cli(*self.base_args(), "--live", "--repeat", "2")
+        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        self.assertEqual([(r["case_id"], r["mode"], r["run"]) for r in recs],
+                         [("a", "baseline", 1), ("a", "router", 1), ("a", "baseline", 2), ("a", "router", 2)])
+        self.assertEqual(sorted(p.name for p in self.root.glob("*.diff")),
+                         ["a.baseline.r1.diff", "a.baseline.r2.diff", "a.router.r1.diff", "a.router.r2.diff"])
+        self.assertEqual(self.cli(*self.base_args(), "--live", "--repeat", "0")[0], 1)
+        self.assertEqual(len(self.calls), 4)
+
+    def test_router_backend_flags_dry_run_banner_and_config(self):
+        _, out = self.cli(*self.base_args(), "--router-backend", "jev", "--repeat", "2")
+        self.assertIn("2 repeat(s) = 4 runs", out)
+        self.assertIn("backend jev, fallback subscription", out)
+        self.assertEqual(self.calls, [])
+        self.cli(*self.base_args(), "--live", "--router-backend", "jev")
+        for needle in ("TypeSafe", "external API", "billed separately", "subscription"):
+            self.assertIn(needle, self.err)
+        self.assertEqual(json.loads(self.calls[1]["config"])["difficulty"], {"backend": "jev", "fallback": "subscription"})
+        self.assertIsNone(self.calls[0]["config"])  # baseline
+        self.cli(*self.base_args(), "--live", "--router-backend", "jev", "--router-fallback", "none")
+        self.assertEqual(json.loads(self.calls[3]["config"])["difficulty"]["fallback"], "none")
+
+    def test_no_router_backend_means_no_typesafe_notice(self):
+        self.cli(*self.base_args(), "--live")
+        self.assertNotIn("TypeSafe", self.err)
+
+    def test_unknown_router_backend_is_rejected(self):
+        with self.assertRaises(SystemExit):
+            self.cli(*self.base_args(), "--router-backend", "nope")
+
     def test_live_banner_states_preconditions_and_trust_side_effect(self):
         self.cli(*self.base_args(), "--live")
         for needle in ("subscription usage", "plugin", "trust_level", "config.toml", "installed globally", "mer"):
@@ -417,9 +493,9 @@ class CliTest(Env):
     def test_live_run_saves_diffs_next_to_the_output_file(self):
         self.cli(*self.base_args(), "--live")
         self.assertEqual(sorted(p.name for p in self.root.glob("*.diff")),
-                         ["a.baseline.diff", "a.router.diff"])
+                         ["a.baseline.r1.diff", "a.router.r1.diff"])
         recs = [json.loads(l) for l in self.out.read_text().splitlines()]
-        self.assertEqual([Path(r["diff_path"]).name for r in recs], ["a.baseline.diff", "a.router.diff"])
+        self.assertEqual([Path(r["diff_path"]).name for r in recs], ["a.baseline.r1.diff", "a.router.r1.diff"])
 
     def test_dry_run_prints_no_banner_and_runs_nothing(self):
         self.cli(*self.base_args())

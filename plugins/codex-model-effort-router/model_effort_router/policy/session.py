@@ -9,10 +9,11 @@ from .stages import _risk_floors
 E, B, F = "economy", "balanced", "frontier"
 
 # level -> (start, ladder of at most two escalation steps; running out = stop and report, plan_first)
+# plan_first for L3 was dropped after the pilot (extra tokens); risk floors with a plan minimum still force it
 SESSION_TABLE = {
     "L1": (Profile(E, "medium"), (Profile(E, "high"), Profile(B, "high")), False),
     "L2": (Profile(E, "medium"), (Profile(B, "high"), Profile(F, "high")), False),
-    "L3": (Profile(B, "high"), (Profile(F, "high"), Profile(F, "xhigh")), True),
+    "L3": (Profile(B, "high"), (Profile(F, "high"), Profile(F, "xhigh")), False),
     "L4": (Profile(F, "high"), (Profile(F, "xhigh"),), True),
     "L5": (Profile(F, "xhigh"), (), True),
 }

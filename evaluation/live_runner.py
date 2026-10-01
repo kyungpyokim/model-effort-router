@@ -23,6 +23,7 @@ import sys
 import tempfile
 import time
 
+from model_effort_router.difficulty.registry import BACKENDS
 from model_effort_router.difficulty.subscription import default_runner
 from model_effort_router.difficulty.usage import sum_usage
 from model_effort_router.host.state import state_dir
@@ -33,7 +34,7 @@ from . import cases as corpus
 MODES = baseline.MODES
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_TIMEOUT_S = 1200.0  # per codex call
-MER_CALL_BUDGET = 5  # codex calls in one mer run: implement + 2 escalations + review + re-review
+MER_CALL_BUDGET = 4  # codex calls in one mer run: implement + 2 escalations + review
 MER_GATE_BUDGET_S = 3 * 4 * 300  # up to 3 gate runs x 4 check kinds x mer's 300 s per check
 MER_GRACE_S = 15  # SIGTERM -> SIGKILL: mer needs time to stop its own codex call (5 s grace) first
 DEFAULT_SESSIONS = os.path.join(os.path.expanduser("~"), ".codex", "sessions")  # read only under --live
@@ -51,6 +52,19 @@ def build_command(prompt, workdir, model=None, effort=None):
 def build_mer_command(task, workdir, call_timeout_s=DEFAULT_TIMEOUT_S):
     return [sys.executable, "-m", "model_effort_router.cli", "run", "--cwd", workdir, "--json", "--exit-zero",
             "--timeout", f"{call_timeout_s:g}", task]
+
+
+def write_router_config(repo, backend, fallback):
+    """Merge difficulty.backend/fallback into the WORKDIR copy of .model-effort-router.json (gate checks stay)."""
+    path = os.path.join(repo, ".model-effort-router.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except FileNotFoundError:
+        cfg = {}
+    cfg["difficulty"] = {**cfg.get("difficulty", {}), **{k: v for k, v in (("backend", backend), ("fallback", fallback)) if v}}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
 
 
 def build_env(mode, state_dir, base):
@@ -116,6 +130,10 @@ Preconditions (yours, this tool does not do them):
     contaminated.
   - Codex persists one trust_level entry for the eval workdir ({workdir}) in ~/.codex/config.toml.
   - The workdir is turned into a git repo (fixed identity, one commit); diffs are saved next to --out.
+{extra}"""
+JEV_NOTICE = """\
+  - --router-backend jev: the TASK TEXT of every router run is sent to TypeSafe (an external API, billed separately
+    from your subscription; needs TYPESAFE_API_KEY in the environment). Fallback on failure: {fallback}.
 """
 
 
@@ -201,10 +219,21 @@ def _outcome(events):
     return escalations, last.get("verdict"), last.get("findings")
 
 
-def _error_record(case, mode, exc, wall, model=None, effort=None):
+def _classifier_backend(events):
+    """(backend actually used, fell back?, causes) from the last route event; (None, None, []) without one."""
+    routes = [e for e in events if e.get("event") == "route" and isinstance(e.get("decision"), dict)]
+    if not routes:
+        return None, None, []
+    d = routes[-1]["decision"]
+    causes = [c.split(":", 1)[1] if c.startswith("fallback_cause:") else c for c in d.get("reason_codes", [])
+              if c.startswith("fallback_cause:") or d.get("backend") == "default"]
+    return d.get("backend"), bool(routes[-1].get("fallback")), causes
+
+
+def _error_record(case, mode, exc, wall, model=None, effort=None, run=1):
     agg = usage.aggregate(None, [])
     agg["incomplete_reasons"] = ["run_error"]
-    return {"case_id": case["id"], "mode": mode, "gate_overall": "incomplete", "review_verdict": None,
+    return {"case_id": case["id"], "run": run, "mode": mode, "gate_overall": "incomplete", "review_verdict": None,
             "review_findings": None, "fix_rounds": 0, "requirements_met": None, "usage": agg,
             "wall_s": round(wall, 3), "model": model, "effort": effort, "diff_path": None,
             "error": f"{type(exc).__name__}: {exc}"[:300],
@@ -230,7 +259,7 @@ def _mer_thread_usage(mer, covered):
 
 def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessions_dir=DEFAULT_SESSIONS,
              gate_fn=default_gate, model=None, effort=None, timeout_s=DEFAULT_TIMEOUT_S, clock=time.monotonic,
-             base_env=None, out_dir=None):
+             base_env=None, out_dir=None, run=1, router_backend=None, router_fallback=None):
     """One run in the fixed eval workdir. Per-case failures become a record with `error`, never an exception."""
     repo = check_workdir(workdir or default_workdir(), fixture)  # realpath: Codex trusts the resolved path
     state = tempfile.mkdtemp(prefix="mer-eval-state-")
@@ -243,6 +272,8 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         shutil.copytree(fixture, repo, dirs_exist_ok=True)
         if mode == "baseline":
             shutil.rmtree(os.path.join(repo, ".codex"), ignore_errors=True)
+        if mode == "router" and (router_backend or router_fallback):
+            write_router_config(repo, router_backend, router_fallback)
         init_git_repo(repo)
         env = build_env(mode, state, os.environ if base_env is None else base_env)
         if mode == "router":
@@ -255,7 +286,7 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         gate = gate_fn(repo)
         if out_dir:
             try:
-                diff_path = save_diff(repo, os.path.join(out_dir, f"{re.sub(r'[^A-Za-z0-9._-]', '_', case['id'])}.{mode}.diff"))
+                diff_path = save_diff(repo, os.path.join(out_dir, f"{re.sub(r'[^A-Za-z0-9._-]', '_', case['id'])}.{mode}.r{run}.diff"))
             except (OSError, subprocess.SubprocessError) as exc:
                 diff_error = type(exc).__name__
         events = [e for p in sorted(glob.glob(os.path.join(state, "*.log.jsonl"))) for e in read_events(p)]
@@ -267,7 +298,7 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
             threads = [thread_id] if thread_id else []
         rollouts = usage.find_rollouts(sessions_dir, threads, since_mtime=started) if threads else []
     except Exception as exc:  # timeout, crash, bad fixture: record it and let the batch continue
-        return _error_record(case, mode, exc, clock() - t0, model, effort)
+        return _error_record(case, mode, exc, clock() - t0, model, effort, run)
     finally:
         _clear_contents(repo)
         shutil.rmtree(state, ignore_errors=True)
@@ -281,7 +312,7 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         agg = usage.aggregate(stdout, rollouts, classifier)
     agg["incomplete_reasons"] = [] if complete else ["classifier_usage_missing"]
     escalations, verdict, findings = _outcome(events) if mode == "router" else (0, None, None)
-    rec = {"case_id": case["id"], "mode": mode, "gate_overall": gate, "review_verdict": verdict,
+    rec = {"case_id": case["id"], "run": run, "mode": mode, "gate_overall": gate, "review_verdict": verdict,
            "review_findings": findings, "fix_rounds": escalations, "requirements_met": None, "usage": agg,
            "wall_s": round(wall, 3), "model": model, "effort": effort, "thread_ids": threads,
            "diff_path": diff_path}
@@ -289,7 +320,9 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         rec["diff_error"] = diff_error
     if mode == "router":
         profile = mer.get("profile") or {}
-        rec.update(router_active=bool(routes) and any(e.get("event") == "session_start" for e in events),
+        backend, fell_back, causes = _classifier_backend(events)
+        rec.update(classifier_backend=backend, classifier_fallback=fell_back, classifier_fallback_causes=causes,
+                   router_active=bool(routes) and any(e.get("event") == "session_start" for e in events),
                    level=mer.get("level"), session_profile=mer.get("profile"), final_profile=mer.get("final_profile"),
                    escalations=escalations, mer_status=mer.get("status"),
                    model=profile.get("model"), effort=profile.get("applied_effort"))
@@ -309,6 +342,11 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
     ap.add_argument("--baseline-model")
     ap.add_argument("--baseline-effort")
     ap.add_argument("--workdir", help="fixed eval workdir, reset between runs (default: <state dir>/eval-workdir)")
+    ap.add_argument("--router-backend", choices=sorted(BACKENDS), help="classifier backend for router runs (written "
+                    "into the workdir config; default: the fixture's / built-in one)")
+    ap.add_argument("--router-fallback", choices=sorted(BACKENDS) + ["none"],
+                    help="fallback classifier for router runs (default subscription when --router-backend is given)")
+    ap.add_argument("--repeat", type=int, default=1, help="runs per case and mode (records get run 1..N)")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     ap.add_argument("--live", action="store_true", help="actually run codex exec (consumes subscription usage)")
@@ -319,12 +357,17 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
         print(f"invalid corpus: {exc}", file=sys.stderr)
         return 1
     rows = rows[: args.limit] if args.limit is not None else rows
+    if args.repeat < 1:
+        print("--repeat must be >= 1", file=sys.stderr)
+        return 1
     if not rows or not os.path.isdir(args.fixture):
         print("nothing to run: need adjudicated or pilot route cases (and --limit > 0) and an existing --fixture dir",
               file=sys.stderr)
         return 1
     settings = {"baseline": (args.baseline_model or args.model, args.baseline_effort or args.effort),
                 "router": (None, None)}
+    backend = args.router_backend
+    fallback = args.router_fallback or ("subscription" if backend else None)
     workdir = args.workdir or default_workdir()
     try:
         real_workdir = check_workdir(workdir, args.fixture)
@@ -332,23 +375,27 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
         print(f"unsafe workdir: {exc}", file=sys.stderr)
         return 1
     if not args.live:
-        print(f"dry-run: {len(rows)} cases x {len(MODES)} modes = {len(rows) * len(MODES)} `codex exec` runs "
+        n = len(rows) * len(MODES) * args.repeat
+        print(f"dry-run: {len(rows)} cases x {len(MODES)} modes x {args.repeat} repeat(s) = {n} runs "
               "(pass --live to execute; this consumes subscription usage)")
+        if backend or fallback:
+            print(f"router classifier: backend {backend or '(config)'}, fallback {fallback or '(config)'}")
         for r in rows:
             for mode in MODES:
                 print(mode, r["id"], build_mer_command(r["task"], real_workdir) if mode == "router"
                       else build_command(r["task"], real_workdir, *settings[mode]))
         return 0
-    print(BANNER.format(workdir=real_workdir), file=sys.stderr)
+    extra = JEV_NOTICE.format(fallback=fallback) if backend == "jev" else ""
+    print(BANNER.format(workdir=real_workdir, extra=extra), file=sys.stderr)
     out_dir = os.path.dirname(os.path.abspath(args.out))
+    os.makedirs(out_dir, exist_ok=True)
     with open(args.out, "a", encoding="utf-8") as out:
-        for r in rows:
-            for mode in MODES:
-                rec = run_case(r, mode, args.fixture, workdir=workdir, runner=runner, sessions_dir=sessions_dir, gate_fn=gate_fn,
-                               model=settings[mode][0], effort=settings[mode][1], timeout_s=args.timeout,
-                               out_dir=out_dir)
-                out.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                out.flush()
+        for run, r, mode in ((k, r, m) for k in range(1, args.repeat + 1) for r in rows for m in MODES):
+            rec = run_case(r, mode, args.fixture, workdir=workdir, runner=runner, sessions_dir=sessions_dir,
+                           gate_fn=gate_fn, model=settings[mode][0], effort=settings[mode][1], timeout_s=args.timeout,
+                           out_dir=out_dir, run=run, router_backend=backend, router_fallback=fallback)
+            out.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            out.flush()
     return 0
 
 

@@ -49,6 +49,12 @@ class ValidateRecordTest(unittest.TestCase):
         self.assertEqual(baseline.validate_record(router(review="unknown"))["review_verdict"], "unknown")
         self.assertEqual(baseline.compare_pair(rec(review="approved"), router(review="unknown"))["quality"], "regressed")
 
+    def test_run_defaults_to_one_and_must_be_a_positive_int(self):
+        self.assertEqual(baseline.validate_record(rec())["run"], 1)
+        self.assertEqual(baseline.validate_record({**rec(), "run": 3})["run"], 3)
+        self.bad({**rec(), "run": 0}, "run")
+        self.bad({**rec(), "run": "1"}, "run")
+
     def test_requirements_met_may_be_unset(self):
         self.assertIsNone(baseline.validate_record(rec(req=None))["requirements_met"])
 
@@ -167,6 +173,58 @@ class ReportTest(unittest.TestCase):
         md = baseline.to_markdown(baseline.report([rec("a"), router("a", total=900)]))
         self.assertIn("auto_allowed", md)
         self.assertIn("| a |", md)
+
+
+class RepeatTest(unittest.TestCase):
+    def runs(self):
+        return [{**rec("a", total=1000), "run": 1}, {**router("a", total=900), "run": 1},
+                {**rec("a", total=2000), "run": 2}, {**router("a", total=1000), "run": 2},
+                rec("b", total=500), router("b", total=400)]  # no run field = run 1
+
+    def test_pairs_by_case_and_run_with_per_case_means_and_totals(self):
+        rep = baseline.report(self.runs())
+        self.assertEqual([(p["case_id"], p["run"]) for p in rep["per_case"]], [("a", 1), ("a", 2), ("b", 1)])
+        self.assertEqual(rep["aggregate"]["usage"], {"baseline": 3500, "router": 2300, "delta": -1200})
+        a = rep["per_case_mean"][0]
+        self.assertEqual((a["case_id"], a["runs"], a["baseline_mean"], a["router_mean"], a["usage_delta_mean"]),
+                         ("a", 2, 1500, 950, -550))
+        self.assertIn("Per-case means", baseline.to_markdown(rep))
+
+    def test_run_two_without_partner_is_unpaired_and_exclusions_name_the_run(self):
+        rep = baseline.report([rec("a"), router("a"), {**rec("a"), "run": 2}, {**router("a", active=False), "run": 3},
+                               {**rec("a"), "run": 3}])
+        self.assertEqual(rep["aggregate"]["unpaired"], ["a#r2"])
+        self.assertEqual(rep["aggregate"]["excluded"], [{"case_id": "a", "run": 3, "reason": "router_inactive"}])
+
+    def test_same_mode_twice_in_one_run_is_a_duplicate(self):
+        with self.assertRaises(ValueError):
+            baseline.report([rec("a"), rec("a")])
+        baseline.report([rec("a"), {**rec("a"), "run": 2}])
+
+
+class MarkRunTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "runs.jsonl"
+        rows = [{**rec("a", req=None), "run": k} for k in (1, 2)] + [rec("a", "router", req=None)]
+        self.path.write_text("\n".join(json.dumps(r) for r in rows))
+
+    def cli(self, *argv):
+        self.err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(self.err):
+            return baseline.main(list(argv))
+
+    def test_run_required_when_several_runs_of_that_mode(self):
+        self.assertEqual(self.cli("mark", str(self.path), "a", "baseline", "yes"), 1)
+        self.assertIn("--run", self.err.getvalue())
+        self.assertEqual(self.cli("mark", str(self.path), "a", "router", "yes"), 0)  # single run: not needed
+
+    def test_mark_with_run_touches_only_that_run(self):
+        self.assertEqual(self.cli("mark", str(self.path), "a", "baseline", "no", "--run", "2"), 0)
+        got = {(r["mode"], r.get("run", 1)): r["requirements_met"] for r in map(json.loads, self.path.read_text().splitlines())}
+        self.assertEqual(got, {("baseline", 1): None, ("baseline", 2): False, ("router", 1): None})
+        self.assertEqual(self.cli("mark", str(self.path), "a", "baseline", "no", "--run", "9"), 1)
 
 
 class CliTest(unittest.TestCase):

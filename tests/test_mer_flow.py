@@ -79,11 +79,11 @@ class ImplementTest(unittest.TestCase):
         self.assertEqual(r["message"], "implemented")
         self.assertEqual(h.kinds(), ["session_start", "gate", "done"])
 
-    def test_plan_first_instruction_for_l3_and_risk(self):
-        for level, flags in (("L3", ()), ("L1", ("auth",))):
+    def test_plan_first_instruction_for_l4_and_risk_but_not_l3(self):
+        for level, flags, expected in (("L3", (), False), ("L4", (), True), ("L1", ("auth",), True)):
             h = Harness(verdicts=[("approved", 0)])
             h.run(level, flags)
-            self.assertIn("short plan", h.calls[0]["argv"][-1].lower())
+            self.assertEqual("short plan" in h.calls[0]["argv"][-1].lower(), expected, level)
 
     def test_requested_vs_applied_effort_recorded(self):
         h = Harness()
@@ -197,26 +197,13 @@ class ReviewTest(unittest.TestCase):
         h.run("L1", ("data_loss",))
         self.assertIn("model_reasoning_effort=xhigh", h.calls[-1]["argv"])
 
-    def test_changes_requested_resumes_implement_then_one_more_review(self):
-        h = Harness(verdicts=[("changes_requested", 2), ("approved", 0)])
-        r = h.run("L4")
-        self.assertEqual(len(h.calls), 4)
-        resume = h.calls[2]["argv"]
-        self.assertIn("resume", resume)
-        self.assertEqual((resume[-2], resume[resume.index("-c") + 1]), ("T-impl", "model_reasoning_effort=xhigh"))
-        self.assertIn("looks ok", resume[-1])  # review findings text handed back
-        self.assertEqual((r["escalations"], r["review"]["verdict"], r["exit_code"]), (1, "approved", 0))
-        self.assertEqual(h.kinds().count("gate"), 2)
-
-    def test_second_changes_requested_fails_without_more_loops(self):
-        h = Harness(verdicts=[("changes_requested", 2), ("changes_requested", 1)])
-        r = h.run("L3", ("auth",))
-        self.assertEqual((r["exit_code"], r["status"], len(h.calls)), (1, "changes_requested", 4))
-
-    def test_changes_requested_with_no_rung_left_stops(self):
-        h = Harness(verdicts=[("changes_requested", 2)])
-        r = h.run("L5")
-        self.assertEqual((len(h.calls), r["exit_code"], r["status"]), (2, 1, "changes_requested"))
+    def test_changes_requested_ends_run_with_findings_and_no_escalation_or_re_review(self):
+        for level, flags in (("L4", ()), ("L3", ("auth",)), ("L5", ())):
+            h = Harness(verdicts=[("changes_requested", 2)])
+            r = h.run(level, flags)
+            self.assertEqual((len(h.calls), r["escalations"], r["exit_code"], r["status"]), (2, 0, 1, "changes_requested"))
+            self.assertEqual((r["review"]["findings"], "looks ok" in r["review"]["text"]), (2, True))
+            self.assertEqual(h.kinds().count("gate"), 1)
 
     def test_unknown_verdict_no_loop_but_fails_required_review(self):
         h = Harness()

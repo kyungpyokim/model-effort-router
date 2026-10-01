@@ -20,7 +20,7 @@ def dec(level, flags=()):
 TABLE = {
     "L1": (P(E, "medium"), (P(E, "high"), P(B, "high")), False, None),
     "L2": (P(E, "medium"), (P(B, "high"), P(F, "high")), False, None),
-    "L3": (P(B, "high"), (P(F, "high"), P(F, "xhigh")), True, None),
+    "L3": (P(B, "high"), (P(F, "high"), P(F, "xhigh")), False, None),
     "L4": (P(F, "high"), (P(F, "xhigh"),), True, P(F, "high")),
     "L5": (P(F, "xhigh"), (), True, P(F, "xhigh")),
 }

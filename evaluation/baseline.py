@@ -1,10 +1,10 @@
 """Run records and Baseline-vs-Router comparison (spec 22.3).
 
-Record: {case_id, mode: baseline|router, gate_overall, review_verdict, fix_rounds, requirements_met,
+Record: {case_id, run (1 if absent), mode: baseline|router, gate_overall, review_verdict, fix_rounds, requirements_met,
          usage: evaluation.usage.aggregate() output, wall_s}. `requirements_met` is set by hand (`mark`).
 Decision rule (22.3): the router must keep quality AND cut total usage, otherwise the default mode must not be auto.
 Usage: python3 -m evaluation.baseline report RUNS.jsonl [--json OUT] [--md OUT]
-       python3 -m evaluation.baseline mark RUNS.jsonl CASE_ID MODE yes|no
+       python3 -m evaluation.baseline mark RUNS.jsonl CASE_ID MODE yes|no [--run K]
 """
 import argparse
 import json
@@ -48,7 +48,10 @@ def validate_record(row):
     usage = row.get("usage")
     if not (isinstance(usage, dict) and isinstance(usage.get("total"), int)):
         fail("usage", "must be an object with an integer total (evaluation.usage.aggregate)")
-    return {**row, "fix_rounds": fix}
+    run = row.get("run", 1)  # records from before --repeat have no run: run 1
+    if not (isinstance(run, int) and not isinstance(run, bool) and run >= 1):
+        fail("run", "must be an integer >= 1")
+    return {**row, "fix_rounds": fix, "run": run}
 
 
 def load_records(path):
@@ -86,7 +89,7 @@ def compare_pair(base, router):
     better = any(rs[k] > bs[k] for k in shared)
     quality = "unknown" if not shared else "regressed" if worse else "improved" if better else "preserved"
     b, r = base["usage"]["total"], router["usage"]["total"]
-    return {"case_id": base["case_id"], "quality": quality, "usage_delta": r - b,
+    return {"case_id": base["case_id"], "run": base.get("run", 1), "quality": quality, "usage_delta": r - b,
             "usage_delta_pct": (r - b) / b * 100 if b else None,
             "time_delta_s": round(router["wall_s"] - base["wall_s"], 3),
             "fix_delta": router["fix_rounds"] - base["fix_rounds"],
@@ -113,24 +116,40 @@ def _decide(pairs, agg):
     return AUTO_OK, "quality kept and total usage reduced"
 
 
+def _tag(run):
+    return {} if run == 1 else {"run": run}  # run 1 stays untagged: output identical to single-run reports
+
+
+def _case_means(pairs):
+    """Per-case means over that case's runs (usage means; quality counts)."""
+    out = []
+    for case_id in dict.fromkeys(p["case_id"] for p in pairs):
+        ps = [p for p in pairs if p["case_id"] == case_id]
+        b, r = (sum(p[k] for p in ps) / len(ps) for k in ("baseline_total", "router_total"))
+        out.append({"case_id": case_id, "runs": len(ps), "baseline_mean": b, "router_mean": r, "usage_delta_mean": r - b,
+                    "usage_delta_pct": (r - b) / b * 100 if b else None,
+                    "quality": {q: sum(p["quality"] == q for p in ps) for q in ("preserved", "improved", "regressed", "unknown")}})
+    return out
+
+
 def report(records):
-    by = {}
+    by = {}  # (case_id, run) -> {mode: record}
     for r in map(validate_record, records):
-        if r["mode"] in by.setdefault(r["case_id"], {}):
-            raise ValueError(f"duplicate {r['mode']} run for case {r['case_id']!r}")
-        by[r["case_id"]][r["mode"]] = r
+        if r["mode"] in by.setdefault((r["case_id"], r["run"]), {}):
+            raise ValueError(f"duplicate {r['mode']} run for case {r['case_id']!r} (run {r['run']})")
+        by[(r["case_id"], r["run"])][r["mode"]] = r
     excluded, usable = [], {}
-    for case_id, m in by.items():  # a router run that never routed (or a baseline that did) proves nothing
+    for (case_id, run), m in by.items():  # a router run that never routed (or a baseline that did) proves nothing
         if "router" in m and not m["router"].get("error") and m["router"].get("router_active") is not True:
-            excluded.append({"case_id": case_id, "reason": "router_inactive"})
+            excluded.append({"case_id": case_id, **_tag(run), "reason": "router_inactive"})
         elif m.get("baseline", {}).get("contaminated"):
-            excluded.append({"case_id": case_id, "reason": "baseline_contaminated"})
+            excluded.append({"case_id": case_id, **_tag(run), "reason": "baseline_contaminated"})
         else:
-            usable[case_id] = m
+            usable[(case_id, run)] = m
     by = usable
     pairs = [compare_pair(m["baseline"], m["router"]) for m in by.values() if len(m) == 2]
     b_tot, r_tot = sum(p["baseline_total"] for p in pairs), sum(p["router_total"] for p in pairs)
-    agg = {"pairs": len(pairs), "unpaired": [c for c, m in by.items() if len(m) < 2],
+    agg = {"pairs": len(pairs), "unpaired": [c if run == 1 else f"{c}#r{run}" for (c, run), m in by.items() if len(m) < 2],
            "quality": {q: sum(p["quality"] == q for p in pairs) for q in ("preserved", "improved", "regressed", "unknown")},
            "usage": {"baseline": b_tot, "router": r_tot, "delta": r_tot - b_tot},
            "time_delta_s": round(sum(p["time_delta_s"] for p in pairs), 3),
@@ -138,7 +157,8 @@ def report(records):
            "excluded": excluded,
            "review_findings": sum(p["router_findings"] or 0 for p in pairs)}
     verdict, why = _decide(pairs, agg)
-    return {"per_case": pairs, "aggregate": agg, "decision": {"verdict": verdict, "reason": why}}
+    return {"per_case": pairs, "per_case_mean": _case_means(pairs), "aggregate": agg,
+            "decision": {"verdict": verdict, "reason": why}}
 
 
 def to_markdown(rep):
@@ -148,13 +168,20 @@ def to_markdown(rep):
              f"(delta {a['usage']['delta']:+d}); time delta {a['time_delta_s']:+}s; fix-round delta {a['fix_delta']:+d}",
              f"Quality: {a['quality']}", ""]
     lines += [f"Router review findings (total): {a['review_findings']}", ""]
-    lines += ["| case | quality | usage delta | % | time delta s | fix delta |", "|---|---|---|---|---|---|"]
+    lines += ["| case | run | quality | usage delta | % | time delta s | fix delta |", "|---|---|---|---|---|---|---|"]
     for p in rep["per_case"]:
         pct = "-" if p["usage_delta_pct"] is None else f"{p['usage_delta_pct']:+.1f}"
-        lines.append(f"| {p['case_id']} | {p['quality']} | {p['usage_delta']:+d} | {pct} | "
+        lines.append(f"| {p['case_id']} | {p['run']} | {p['quality']} | {p['usage_delta']:+d} | {pct} | "
                      f"{p['time_delta_s']:+} | {p['fix_delta']:+d} |")
+    lines += ["", "Per-case means (usage tokens):", "", "| case | runs | baseline | router | delta | % | quality |",
+              "|---|---|---|---|---|---|---|"]
+    for m in rep["per_case_mean"]:
+        pct = "-" if m["usage_delta_pct"] is None else f"{m['usage_delta_pct']:+.1f}"
+        lines.append(f"| {m['case_id']} | {m['runs']} | {m['baseline_mean']:.0f} | {m['router_mean']:.0f} | "
+                     f"{m['usage_delta_mean']:+.0f} | {pct} | {m['quality']} |")
     if a["excluded"]:
-        lines += ["", "Excluded: " + ", ".join(f"{e['case_id']} ({e['reason']})" for e in a["excluded"])]
+        lines += ["", "Excluded: " + ", ".join(f"{e['case_id']}{'#r%d' % e['run'] if 'run' in e else ''} ({e['reason']})"
+                                                for e in a["excluded"])]
     if a["unpaired"]:
         lines += ["", f"Unpaired (excluded): {', '.join(a['unpaired'])}"]
     return "\n".join(lines) + "\n"
@@ -172,16 +199,22 @@ def main(argv=None):
     mk.add_argument("case_id")
     mk.add_argument("mode", choices=MODES)
     mk.add_argument("met", choices=("yes", "no"))
+    mk.add_argument("--run", type=int, help="run number (required when the case has several runs of that mode)")
     args = ap.parse_args(argv)
     try:
         rows = load_records(args.runs)
         if args.cmd == "mark":
             hit = [r for r in rows if (r["case_id"], r["mode"]) == (args.case_id, args.mode)]
+            if args.run is not None:
+                hit = [r for r in hit if r["run"] == args.run]
+            elif len({r["run"] for r in hit}) > 1:
+                print(f"case {args.case_id!r} has several {args.mode} runs; pass --run K", file=sys.stderr)
+                return 1
             if len(hit) > 1:
                 print(f"duplicate {args.mode} runs for case {args.case_id!r}; remove extras first", file=sys.stderr)
                 return 1
             if not hit:
-                print(f"no {args.mode} run for case {args.case_id!r}", file=sys.stderr)
+                print(f"no {args.mode} run for case {args.case_id!r}" + (f" run {args.run}" if args.run else ""), file=sys.stderr)
                 return 1
             hit[0]["requirements_met"] = args.met == "yes"
             save_records(args.runs, rows)

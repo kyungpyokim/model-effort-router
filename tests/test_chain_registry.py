@@ -24,6 +24,11 @@ def ok(level, backend):
 
 
 class FallbackChainTest(unittest.TestCase):
+    def test_fallback_result_carries_the_primary_failure_causes(self):
+        d = classify_with_fallback(TASK, [Fake("p", exc=TimeoutError()), Fake("f", ok("L2", "f"))], timeout_s=7)
+        self.assertEqual((d.backend, d.reason_codes), ("f", ("fallback_cause:p:TimeoutError",)))
+        self.assertEqual(classify_with_fallback(TASK, [Fake("p", ok("L2", "p"))], 7).reason_codes, ())
+
     def test_primary_success(self):
         p = Fake("p", ok("L2", "p"))
         f = Fake("f", ok("L4", "f"))

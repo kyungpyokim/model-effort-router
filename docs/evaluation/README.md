@@ -10,7 +10,7 @@
 | Backend 비교 | `python3 -m evaluation.compare --corpus C.jsonl --backends NAME --dry-run` (fake/등록된 오프라인 Backend는 `--live` 없이 실행) | `subscription` Backend는 `--live` 필요. 케이스당 `codex exec` 1회(입력 약 29.8k 토큰) |
 | 비용 기준선 실행 | `python3 -m evaluation.live_runner --cases C.jsonl --fixture DIR --out runs.jsonl` (실행 계획만 출력) | `--live`를 붙이면 케이스마다 baseline과 router 두 번 `codex exec` 실행 |
 | 기준선 비교 보고 | `python3 -m evaluation.baseline report runs.jsonl --md out.md --json out.json` | 해당 없음 (기록 파일만 읽음) |
-| 요구사항 충족 기록 | `python3 -m evaluation.baseline mark runs.jsonl CASE_ID baseline\|router yes\|no` | 해당 없음 (수동 판단) |
+| 요구사항 충족 기록 | `python3 -m evaluation.baseline mark runs.jsonl CASE_ID baseline\|router yes\|no [--run K]` | 해당 없음 (수동 판단) |
 
 ## 순서
 
@@ -29,7 +29,7 @@ Router가 품질을 유지하면서 전체 사용량(구현 세션 + 독립 Revi
 - 플러그인이 전역 설치되어 있으면 baseline 실행도 라우팅될 수 있다. baseline에서 router 활동(route 이벤트 또는 `mer_` subagent rollout)이 보이면 `contaminated: true`로 기록되고 보고서에서 제외된다.
 - 실행은 **고정된 eval workdir 하나**(`--workdir`, 기본 `<state dir>/eval-workdir`, realpath)를 매번 지우고 fixture로 다시 채워 쓴다. Codex가 이 경로에 대해 `~/.codex/config.toml`에 `trust_level` 항목을 **하나 영구 저장**한다. 끝나면 직접 지워도 된다. 도구는 workdir이 없거나 자신이 만든 마커 파일(`.mer-eval-workdir`)이 있을 때만 내용을 지운다. 마커 없는 기존 디렉터리, fixture와 같거나 그 안팎인 경로, 현재 디렉터리·홈·루트(또는 그 상위)는 아무것도 지우지 않고 거부한다(종료 코드 1).
 - 케이스 하나가 실패하면 `error`가 있는 기록(gate `incomplete`)을 남기고 다음 케이스로 계속한다. 이런 기록이 있으면 판정은 `insufficient_data`다.
-- 실행 후 `<out 디렉터리>/<case>.<mode>.diff`에 변경 전체(`git diff`, 새 파일 포함)와 `# untracked:` 목록이 저장되고 기록의 `diff_path`에 경로가 남는다. `requirements_met`은 이 diff를 보고 사람이 `mark`로 기록한다.
+- 실행 후 `<out 디렉터리>/<case>.<mode>.r<run>.diff`에 변경 전체(`git diff`, 새 파일 포함)와 `# untracked:` 목록이 저장되고 기록의 `diff_path`에 경로가 남는다. `requirements_met`은 이 diff를 보고 사람이 `mark`로 기록한다.
 - router 기록에는 추가로 `level`, `session_profile`(시작), `final_profile`, `escalations`, `review_verdict`(`approved`/`changes_requested`/`unknown`), `review_findings`, `thread_ids`, `mer_status`가 남는다. `fix_rounds`는 승격 횟수다. `unknown`(파싱 불가 verdict)은 승인으로 치지 않는다.
 
 ## 알려진 한계
@@ -49,9 +49,15 @@ fixture `evaluation/pilot/fixture/`(작은 Python 상점 서비스, gate는 `pyt
 사용자 승인 후 실행할 live 명령(구독 사용량 소모, codex exec 8회 이상(router는 승격·Review마다 추가)):
 
 ```
-python3 -m evaluation.live_runner --cases evaluation/pilot/cases.jsonl --fixture evaluation/pilot/fixture --out pilot-runs.jsonl --baseline-model gpt-6-luna --baseline-effort high --live
+python3 -m evaluation.live_runner --cases evaluation/pilot/cases.jsonl --fixture evaluation/pilot/fixture --out runs/pilot-p7b.jsonl --baseline-model gpt-6-luna --baseline-effort high --router-backend jev --router-fallback subscription --repeat 2 --live
 ```
 
 실행 후:
-1. 케이스·모드별로 결과를 직접 확인하고 `python3 -m evaluation.baseline mark pilot-runs.jsonl CASE_ID baseline|router yes|no` (pilot-l1, pilot-l2, pilot-l3, pilot-l4-auth 각각 두 모드).
-2. `python3 -m evaluation.baseline report pilot-runs.jsonl --md pilot.md --json pilot.json`
+1. 케이스·모드별로 결과를 직접 확인하고 `python3 -m evaluation.baseline mark runs/pilot-p7b.jsonl CASE_ID baseline|router yes|no` (pilot-l1, pilot-l2, pilot-l3, pilot-l4-auth 각각 두 모드; `--repeat`로 여러 번 돌렸다면 `--run K`를 붙여 실행마다).
+2. `python3 -m evaluation.baseline report runs/pilot-p7b.jsonl --md pilot.md --json pilot.json`
+
+## 반복 실행과 router 분류기 (live_runner 옵션)
+
+- `--repeat N`(기본 1): 케이스·모드마다 N번 실행하고 기록에 `run: 1..N`을 남긴다(순서: run → 케이스 → 모드). `run`이 없는 옛 기록은 run 1이다. `baseline report`는 `(case_id, run)`으로 baseline과 router를 짝짓고, 짝 단위 표 외에 케이스별 평균(`per_case_mean`)과 전체 합계를 낸다. `mark`는 같은 케이스·모드에 run이 여럿이면 `--run K`가 필수다.
+- `--router-backend NAME`(레지스트리 이름, 예 `jev`)과 `--router-fallback NAME`(백엔드를 줄 때 기본 `subscription`, `none` 가능): router 실행에만 eval workdir 복사본의 `.model-effort-router.json`에 `difficulty.backend/fallback`을 병합해 쓴다(fixture의 gate 설정은 유지, fixture 자체는 수정하지 않는다). **`jev`는 작업 텍스트를 TypeSafe(외부 API, 구독과 별도 과금)로 보낸다.** live 배너가 이를 알린다. `TYPESAFE_API_KEY`는 환경에 있어야 하며 이 도구는 값을 읽지 않는다.
+- router 기록의 `classifier_backend`(실제로 판정한 backend), `classifier_fallback`, `classifier_fallback_causes`(예 `jev:TimeoutError`)로 폴백 여부와 원인을 확인한다. Jev의 사용량은 `{input_tokens, output_tokens}`로 오며 cached 필드 없이 그대로 합산된다.

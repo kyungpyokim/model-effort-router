@@ -1,4 +1,6 @@
 """Fallback chain: primary -> fallback -> default L3 (spec 9)."""
+from dataclasses import replace
+
 from .decision import DifficultyDecision
 
 
@@ -17,7 +19,7 @@ def classify_with_fallback(task, backends, timeout_s) -> DifficultyDecision:
         except Exception as exc:  # timeout, bad output, crash: all mean "try the next one"
             causes.append(f"{name}:{type(exc).__name__}")
             continue
-        if isinstance(result, DifficultyDecision):
-            return result
+        if isinstance(result, DifficultyDecision):  # earlier backends' failures stay visible in the log
+            return replace(result, reason_codes=result.reason_codes + tuple(f"fallback_cause:{c}" for c in causes))
         causes.append(f"{name}:InvalidResult")
     return default_decision(causes)

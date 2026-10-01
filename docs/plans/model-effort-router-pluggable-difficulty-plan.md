@@ -105,7 +105,7 @@ Codex/Claude → 외부 Router Server → 별도 LLM API
 ```text
 mer CLI                : 판정 → 세션 프로필 결정 → 호스트 세션 실행 → mer-gate → 승격 / 독립 Review → 로그
 Router Core            : 라우팅 대상 판정, 난이도 판정, 세션 프로필·승격 사다리·Review 필요 여부 결정
-호스트 세션            : 한 세션이 계획과 구현을 모두 수행 (L3 이상·위험 신호면 프롬프트로 "계획 먼저" 지시)
+호스트 세션            : 한 세션이 계획과 구현을 모두 수행 (L4 이상·위험 신호면 프롬프트로 "계획 먼저" 지시)
 독립 Review 세션       : 고위험 작업만. 새 세션, 상위 모델, 요청·diff·Test Gate 결과만 입력
 Host Plugin hook       : (보조) TUI 사용 시 판정 결과와 권장 `/model` 설정을 안내. 강제 없음
 ```
@@ -147,11 +147,11 @@ Host Plugin hook       : (보조) TUI 사용 시 판정 결과와 권장 `/model
 mer "<요청>" [--cwd DIR]
  ├─ Router Core: 라우팅 대상 판정 → 난이도 판정 → 세션 프로필, 승격 사다리, Review 필요 여부
  ├─ 구현 세션 실행: codex exec -m <모델> -c model_reasoning_effort=<effort> "<요청 + 지침>"
- │     지침: L3 이상·위험 신호면 계획을 먼저 쓰고 구현, 끝나면 변경 요약
+ │     지침: L4 이상·위험 신호면 계획을 먼저 쓰고 구현, 끝나면 변경 요약
  ├─ mer-gate (Test Gate)
  ├─ 실패 → 같은 세션을 다음 승격 프로필로 재개하고 실패 내용 전달 → mer-gate  (최대 2회)
  ├─ 고위험 작업이면 독립 Review 세션 1회 (새 세션, Review 프로필, 요청·diff·gate 결과만)
- │     changes_requested → 구현 세션 재개해 지적 반영 → mer-gate → Review 1회 더까지
+ │     changes_requested → 승격·재Review 없이 종료(종료 코드 1), 지적 내용을 보고
  └─ 라우팅 로그 기록
 ```
 
@@ -474,8 +474,8 @@ Stage Policy는 단계마다 **모델 tier 하나와 effort 하나**를 반환�
 | L4 | frontier / high | frontier / xhigh | 중단 후 사용자 보고 | frontier / high |
 | L5 | frontier / xhigh | 중단 후 사용자 보고 | — | frontier / xhigh |
 
-- **승격 조건**: Test Gate `failed`, 독립 Review `changes_requested`. `not_run`만 있는 경우는 승격하지 않고 보고에 남긴다.
-- **위험 신호**: §11.2 최소 조건을 그대로 쓰되, "Plan 수행"은 같은 세션에서 계획을 먼저 쓰게 하는 지침으로, "Review 최소값"은 독립 Review를 붙이고 그 프로필의 하한으로 적용한다. 위험 신호가 있으면 L1~L3이어도 독립 Review를 붙인다.
+- **승격 조건**: Test Gate `failed`만. 독립 Review `changes_requested`는 승격이나 재Review를 일으키지 않고 지적 내용과 함께 실행을 `changes_requested`(종료 코드 1)로 끝낸다(파일럿 재측정에서 Review → 승격 → 재Review 루프가 비용과 시간을 키웠다). `not_run`만 있는 경우도 승격하지 않고 보고에 남긴다.
+- **위험 신호**: §11.2 최소 조건을 그대로 쓰되, "Plan 수행"은 같은 세션에서 계획을 먼저 쓰게 하는 지침으로(계획 먼저는 Plan 최소값이 있는 위험 신호(concurrency 제외)와 L4 이상에만 붙는다. L3 단독에는 붙이지 않는다: 파일럿에서 턴 수만 늘렸다), "Review 최소값"은 독립 Review를 붙이고 그 프로필의 하한으로 적용한다. 위험 신호가 있으면 L1~L3이어도 독립 Review를 붙인다.
 - **사용자 override**: `/router session=frontier:high`처럼 세션 프로필을 지정할 수 있다. 위험 신호는 기본값이든 override든 세션 프로필을 올리지 않는다. 대신 계획 먼저 쓰기와 독립 Review 하한은 override로 없앨 수 없다.
 - 이 표는 초기값이며 파일럿 재측정(Phase 7)과 §22 평가로 조정한다. 현재 Codex에서는 economy와 balanced가 같은 모델(gpt-6-luna)이라, 낮은 단계의 승격은 사실상 effort 상승이다.
 
@@ -518,7 +518,7 @@ Claude Code adapter(Phase 5): economy = Haiku 계열, balanced = Sonnet 계열, 
 
 Plan은 다음을 정리한다: 요구사항 해석, 변경 대상, 접근 방법, 예상 변경 범위, 구현 순서, 테스트 방법, 주요 위험 요소.
 
-3차 개정부터 Plan은 별도 실행이 아니다. L3 이상이거나 위험 신호가 있으면 구현 세션에 "계획을 먼저 쓰고 구현하라"는 지침을 넣는다. 계획과 구현이 같은 세션에서 이어지므로 저장소를 다시 탐색하지 않는다.
+3차 개정부터 Plan은 별도 실행이 아니다. L4 이상이거나 위험 신호가 있으면 구현 세션에 "계획을 먼저 쓰고 구현하라"는 지침을 넣는다. 계획과 구현이 같은 세션에서 이어지므로 저장소를 다시 탐색하지 않는다.
 
 ---
 

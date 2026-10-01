@@ -107,12 +107,8 @@ class _Flow:
         gate = self.gate_loop()
         if sp.review and gate["overall"] == "failed":
             self.review["skipped"] = "gate failed"
-        elif sp.review and self.run_review(sp.review):
-            if self.review["verdict"] == "changes_requested" and self.can_escalate():
-                self.escalate("review_changes_requested", "An independent review requested changes. Address "
-                              f"these findings, then stop.\n\n{self.review['text'][-rv.FINDINGS_MAX:]}")
-                if self.gate_loop()["overall"] != "failed":
-                    self.run_review(sp.review)  # one re-review only
+        elif sp.review:
+            self.run_review(sp.review)  # changes_requested ends the run: findings are reported, no fix loop
         return self.outcome()
 
     def review_only(self):
@@ -152,7 +148,7 @@ def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="r
     except Exception as exc:  # timeout, codex crash: report, never traceback
         result = {"status": "error", "exit_code": 1, "error": f"{type(exc).__name__}: {exc}"[:300],
                   "message": flow.message}
-    review = {k: v for k, v in flow.review.items() if k != "text"}
+    review = {**flow.review, **({"text": flow.review["text"][-rv.FINDINGS_MAX:]} if "text" in flow.review else {})}
     out = {**result, "level": sp.level, "target": target, "escalations": flow.esc, "gate": (flow.gate or {}).get("overall"),
            "review": review, "calls": flow.calls, "usage": _sum_usage(flow.calls),
            "threads": list(dict.fromkeys(c["thread_id"] for c in flow.calls if c["thread_id"])),
