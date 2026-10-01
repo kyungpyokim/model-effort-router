@@ -16,15 +16,16 @@ class PluginBundleTest(unittest.TestCase):
         self.assertEqual(manifest["name"], "model-effort-router")
         self.assertEqual((manifest["skills"], manifest["hooks"]), ("./skills/", "./hooks/hooks.json"))
         hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
-        self.assertEqual(set(hooks), {"UserPromptSubmit", "PreToolUse"})
+        self.assertEqual(set(hooks), {"UserPromptSubmit"})  # advisory only: no PreToolUse enforcement
         cmds = [h["command"] for g in hooks.values() for e in g for h in e["hooks"]]
         self.assertTrue(all("${CLAUDE_PLUGIN_ROOT}/hooks/" in c for c in cmds))
         self.assertGreaterEqual(hooks["UserPromptSubmit"][0]["hooks"][0]["timeout"], 20)  # > backend timeout_s
-        self.assertIn("spawn_agent", hooks["PreToolUse"][0]["matcher"])
+        self.assertFalse((PLUGIN / "hooks" / "pre_tool_use.py").exists())
 
     def test_skill_has_frontmatter(self):
         text = (PLUGIN / "skills" / "model-effort-router" / "SKILL.md").read_text()
         self.assertTrue(text.startswith("---\nname: model-effort-router\n"))
+        self.assertNotIn("spawn_agent", text)  # the skill is advice, never a subagent protocol
 
 
 if __name__ == "__main__":

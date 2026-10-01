@@ -11,19 +11,19 @@ class OverrideParsingTest(unittest.TestCase):
         self.assertEqual(o.mode, "off")
         self.assertEqual(rest, "")
 
-    def test_stage_override_and_remaining_message(self):
-        o, rest = parse_override("/router implement=frontier:high\nAdd endpoint")
+    def test_session_override_and_remaining_message(self):
+        o, rest = parse_override("/router session=frontier:high\nAdd endpoint")
         self.assertIsNone(o.mode)
-        self.assertEqual(o.stages, {"implement": Profile("frontier", "high")})
+        self.assertEqual(o.session, Profile("frontier", "high"))
         self.assertEqual(rest, "Add endpoint")
 
-    def test_mode_and_multiple_stages(self):
-        o, _ = parse_override("/router manual plan=frontier:xhigh review=frontier:high")
-        self.assertEqual(o.mode, "manual")
-        self.assertEqual(
-            o.stages,
-            {"plan": Profile("frontier", "xhigh"), "review": Profile("frontier", "high")},
-        )
+    def test_mode_and_session(self):
+        o, _ = parse_override("/router manual session=frontier:xhigh")
+        self.assertEqual((o.mode, o.session), ("manual", Profile("frontier", "xhigh")))
+
+    def test_stage_overrides_of_the_old_orchestration_are_rejected(self):
+        for cmd in ("/router implement=frontier:high", "/router plan=frontier:high review=frontier:high"):
+            self.assertTrue(parse_override(cmd + "\nfix it")[0].rejected, cmd)
 
     def test_not_a_command_is_ignored(self):
         msgs = [

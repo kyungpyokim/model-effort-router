@@ -2,14 +2,14 @@ import json
 import sys
 import unittest
 
-from tests.hook_helpers import SID, HookCase, run_script
+from tests.hook_helpers import HookCase, run_script
 
 PY = json.dumps(sys.executable)
 
 
 class GateCliTest(HookCase):
-    def gate(self, *args, sid=None):
-        argv = ["--cwd", str(self.repo), *args] + (["--session", sid] if sid else [])
+    def gate(self, *args):
+        argv = ["--cwd", str(self.repo), *args]
         return run_script("bin/mer-gate", env=self.env(), argv=argv, cwd=str(self.root))
 
     def cfg(self, **checks):
@@ -50,41 +50,9 @@ class GateCliTest(HookCase):
         out = json.loads(self.gate().stdout)
         self.assertEqual(out["checks"]["lint"]["status"], "failed")
 
-    def test_session_updates_state_and_log(self):
-        self.submit()
-        self.spawn("implement", model="gpt-6-luna", reasoning_effort="high")
-        self.cfg(test=f"{PY} -c pass")
-        self.gate(sid=SID)
-        st = self.plan_state()
-        self.assertEqual(st["stages"]["implement"]["status"], "done")
-        ev = [e for e in self.log_events() if e["event"] == "gate"]
-        self.assertEqual(len(ev), 1)
-        self.assertEqual(ev[0]["checks"]["test"], "passed")
-        self.assertEqual(ev[0]["checks"]["lint"], "not_run")
-
-    def test_review_outcome_logged_with_fix_count(self):
-        self.submit()
-        p = self.gate("--review", "approved", "--findings", "2", sid=SID)
-        self.assertEqual(p.returncode, 0, p.stderr)
-        ev = [e for e in self.log_events() if e["event"] == "review"][0]
-        self.assertEqual((ev["verdict"], ev["findings"], ev["fix_count"]), ("approved", 2, 0))
-
-    def test_findings_needs_review_and_non_negative(self):
-        self.assertNotEqual(self.gate("--findings", "2", sid=SID).returncode, 0)
-        self.assertNotEqual(self.gate("--review", "approved", "--findings", "-1", sid=SID).returncode, 0)
-
-    def test_review_and_mark_are_mutually_exclusive(self):
-        self.submit()
-        self.assertNotEqual(self.gate("--review", "approved", "--mark", "plan", "done", sid=SID).returncode, 0)
-
-    def test_review_needs_session_and_known_verdict(self):
-        self.assertNotEqual(self.gate("--review", "approved").returncode, 0)
-        self.assertNotEqual(self.gate("--review", "bogus", sid=SID).returncode, 0)
-
-    def test_mark_requires_known_stage_and_status(self):
-        self.submit()
-        self.assertNotEqual(self.gate("--mark", "nope", "failed", sid=SID).returncode, 0)
-        self.assertNotEqual(self.gate("--mark", "plan", "bogus", sid=SID).returncode, 0)
+    def test_session_flags_are_gone(self):
+        for flag in (["--session", "x"], ["--mark", "plan", "done"], ["--review", "approved"]):
+            self.assertNotEqual(self.gate(*flag).returncode, 0)
 
     def test_bad_gate_config_reports_error_exit_nonzero(self):
         self.write_repo_config({"gate": {"checks": {"tset": "x"}}})

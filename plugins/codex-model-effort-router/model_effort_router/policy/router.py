@@ -1,4 +1,4 @@
-"""Compose: override/config -> targeting -> backend chain -> risk merge -> Stage Policy -> RoutePlan."""
+"""Compose: override/config -> targeting -> backend chain -> risk merge -> RoutePlan (session_plan turns it into a profile)."""
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping, Optional, Tuple
@@ -10,7 +10,6 @@ from ..difficulty.risk import detect_risk_flags
 from ..difficulty.usage import sum_usage
 from .config import resolve_config
 from .overrides import parse_override
-from .stages import StagePolicyResult, decide_manual, decide_stages, restrict_to_target
 from .targeting import NO_ROUTE, ROUTE, classify_target
 
 
@@ -19,7 +18,6 @@ class RoutePlan:
     target: str
     mode: str
     decision: Optional[DifficultyDecision] = None
-    policy: Optional[StagePolicyResult] = None
     risk_flags: Tuple[str, ...] = ()
     override_rejected: bool = False  # user typed a /router line that did not parse
     classifier_usage: Optional[dict] = None  # summed token counts of model-calling backends that reported
@@ -61,7 +59,7 @@ def _classifier_usage(backends, decision):
     return (sum_usage(reported) if reported else None), len(reported) < len(model)
 
 
-def route(message, *, paths=(), repo_config=None, user_config=None, registry=None, promotion=None, explicit=False):
+def route(message, *, paths=(), repo_config=None, user_config=None, registry=None, explicit=False):
     """`explicit`: the user invoked the `mer` CLI themselves, so a non-dev message is still routed."""
     registry = BACKENDS if registry is None else registry
     override, text = parse_override(message)
@@ -76,15 +74,13 @@ def route(message, *, paths=(), repo_config=None, user_config=None, registry=Non
         return RoutePlan(NO_ROUTE, "off", override_rejected=rejected)
 
     if config.mode == "manual":  # no classification; only what the user typed
-        if not (override.stages or typed):
+        if not typed:
             return RoutePlan(NO_ROUTE, "manual", override_rejected=rejected)
-        return RoutePlan(
-            ROUTE, "manual", None, decide_manual(override.stages, flags), flags, rejected, overrides=typed
-        )
+        return RoutePlan(ROUTE, "manual", None, risk_flags=flags, override_rejected=rejected, overrides=typed)
 
-    # Typed stage overrides turn an ambiguous/no_route message into a route, but keep plan_only/review_only.
+    # A typed session override turns an ambiguous/no_route message into a route, but keeps plan_only/review_only.
     target = classify_target(text, paths)
-    if target == NO_ROUTE and (override.stages or explicit):
+    if target == NO_ROUTE and (typed or explicit):
         target = ROUTE
     if target == NO_ROUTE:
         return RoutePlan(NO_ROUTE, "auto", override_rejected=rejected)
@@ -94,9 +90,8 @@ def route(message, *, paths=(), repo_config=None, user_config=None, registry=Non
         DifficultyInput(task=text, paths=tuple(paths)), backends, config.timeout_s
     )
     decision = decision.with_risk_flags(flags)
-    policy = decide_stages(decision, promotion=promotion, overrides=override.stages)
     usage, usage_missing = _classifier_usage(backends, decision)
     return RoutePlan(
-        target, "auto", decision, restrict_to_target(policy, target), decision.risk_flags, rejected,
-        usage, usage_missing, typed,
+        target, "auto", decision, risk_flags=decision.risk_flags, override_rejected=rejected,
+        classifier_usage=usage, classifier_usage_missing=usage_missing, overrides=typed,
     )

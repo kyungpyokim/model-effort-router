@@ -212,7 +212,7 @@ scope_changed → 새 DifficultyDecision → Stage Policy 재계산 → 남은 �
 Host Event → Host Hook Adapter → Router Core
 ```
 
-전환 후 플러그인 hook의 역할은 **조언**이다. `UserPromptSubmit` hook이 판정 결과와 권장 설정(예: `/model gpt-6-luna`, effort medium)을 컨텍스트로 알리고, 고위험 작업이면 `mer`로 독립 Review를 돌리라고 안내한다. 모델 변경은 사용자가 한다.
+전환 후 플러그인 hook의 역할은 **조언**이다(2026-10-01 구현 완료). `UserPromptSubmit` hook 하나만 남고, 설정된 Backend(jev 또는 subscription)로 판정한 뒤 `additionalContext`에 레벨·confidence, 위험 신호, 권장 세션 설정(호스트 모델과 effort, 예: `gpt-6-luna, reasoning effort medium`, `/model`로 전환), L4 이상·위험 신호의 계획 먼저 권고, 독립 Review가 필요한 작업(L4/L5, auth/security)에는 `mer run --review-profile <Review 프로필> 'review only: ...'` 또는 `mer run '<작업>'` 안내만 넣는다(`--review-profile`은 재판정된 Review 요청이 위험 신호 하한을 잃지 않게 하고, 작은따옴표는 작업 문장 안의 `$(...)` 등이 셸에서 실행되지 않게 한다). subagent 생성 지시, 차단, 강제는 없다. 라우팅 대상이 아니거나 `off`면 컨텍스트가 없다. 모델 변경은 사용자가 한다. hook 구성이 바뀌었으므로(PreToolUse 제거) 업데이트 후 Codex `/hooks`에서 다시 신뢰해야 한다.
 
 hook 공통 규칙(유지):
 
@@ -224,7 +224,7 @@ hook 공통 규칙(유지):
 
 2차 개정 구조(hook이 단계 지침을 주입하고, 메인 에이전트가 `mer_<stage>` subagent를 생성하고, `PreToolUse` hook이 모델·effort·이름·수정 한도를 강제)는 Phase 3에서 구현해 live로 동작을 확인했다. 그러나 파일럿에서 비용이 기준선의 약 3.1배여서 기본 구조에서 제외한다.
 
-- 해당 코드(`host/instructions.py`의 단계 지침, `PreToolUse` 강제 규칙, 세션 상태)는 Phase 7에서 새 구조가 파일럿을 통과하면 삭제한다.
+- **삭제 완료 (2026-10-01, 파일럿 v3 `auto_allowed` 이후)**: `host/instructions.py`(단계 지침), `host/state.py`(세션 상태·잠금·`check_spawn` 강제 규칙, `state_dir`/`log_path`만 `logging/route_log.py`로 이동), `hooks/pre_tool_use.py`와 hooks.json의 PreToolUse 항목, `policy/stages.py`(단계별 Stage Policy, 신뢰도 승격 `PromotionConfig`; 위험 신호 최소값은 `policy/session.py`로 이동), `RoutePlan.policy`, 단계 override(`/router implement=...` 등, 이제 거부됨), `mer-gate`의 `--session/--mark/--review`, SKILL.md 생성기.
 - 재사용: Router Core, `mer-gate`, 라우팅 로그, 평가 도구, 분류기, 설정·override.
 
 ---
@@ -366,7 +366,7 @@ Output: L3 + L1~L5 확률 → DifficultyDecision
 {"difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10}}
 ```
 
-`backend`에는 등록된 이름(현재 `subscription`), `fallback`에는 다른 backend 이름 또는 `none`을 쓴다. `timeout_s`는 최대 12초다(§3.7).
+`backend`에는 등록된 이름(현재 `subscription`, `jev`), `fallback`에는 다른 backend 이름 또는 `none`을 쓴다. `timeout_s`는 최대 12초다(§3.7).
 
 Registry:
 
@@ -415,7 +415,7 @@ Stage Policy는 단계마다 **모델 tier 하나와 effort 하나**를 반환�
 
 적용 순서: **레벨 기본값 → 위험 신호 최소 프로필 → (검증된 경우) 불확실성 승격 → 사용자 override**
 
-### 11.1 레벨별 기본값 (2차 개정 단계별 표, 3차 개정에서 §11.4로 대체)
+### 11.1 레벨별 기본값 (2차 개정 단계별 표, 3차 개정에서 §11.4로 대체, 코드 삭제됨)
 
 | Level | Plan | Implement | Review |
 |---|---|---|---|
@@ -447,7 +447,7 @@ Stage Policy는 단계마다 **모델 tier 하나와 effort 하나**를 반환�
 - 임계값은 Backend마다 Routing Corpus로 보정한다. 보정 전에는 비활성 상태로 둔다.
 - 공통 임계값은 사용하지 않는다.
 
-### 11.3 출력 (2차 개정 단계별 형식)
+### 11.3 출력 (2차 개정 단계별 형식, 코드 삭제됨)
 
 ```json
 {
@@ -852,17 +852,18 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 ```text
 model_effort_router/          Router Core (stdlib만 사용)
 ├── difficulty/               decision, base, registry, chain(fallback), risk, subscription, usage
-├── policy/                   targeting, overrides, config, stages, router
-├── profiles/                 tier, effort, stage 순서
+├── policy/                   targeting, overrides, config, session(세션 프로필·사다리·위험 최소값), router
+├── profiles/                 tier, effort
 ├── adapters/codex.py         tier/effort 매핑, 모델별 지원 effort
-├── host/                     codex_hooks, instructions, state (세션 상태·잠금·강제 규칙)
+├── host/                     codex_hooks(조언 hook), advice, codex_exec(mer의 codex 호출)
 ├── gate/                     discovery, run (mer-gate)
-└── logging/route_log.py
+└── logging/route_log.py      라우팅 로그, state_dir
+(+ cli.py, flow.py, review.py: mer CLI)
 plugins/codex-model-effort-router/
 ├── .codex-plugin/plugin.json manifest (hooks, skills 선언)
-├── hooks/                    hooks.json, user_prompt_submit.py, pre_tool_use.py
-├── bin/mer-gate
-├── skills/model-effort-router/SKILL.md   (주입 지침과 같은 원본에서 생성)
+├── hooks/                    hooks.json, user_prompt_submit.py
+├── bin/                      mer, mer-gate
+├── skills/model-effort-router/SKILL.md   (조언·mer 사용법, 손으로 관리)
 └── model_effort_router/      Core 복사본 (scripts/sync_plugin.py로 동기화, 테스트로 일치 검사)
 evaluation/                   개발용 평가 도구 (플러그인에 포함하지 않음)
 .agents/plugins/marketplace.json   로컬 marketplace
@@ -965,7 +966,7 @@ Codex에서 최소 플러그인으로 확인한다.
 2. **측정 도구 보완**: 실행 기록에 판정 레벨·세션 프로필·승격 횟수를 남기고, 실행 후 diff를 보존해 요구사항 충족을 사람이 판정할 수 있게 한다.
 3. **구현**: `mer` CLI(판정, 세션 실행, Test Gate, 승격, 고위험 독립 Review, 로그), Policy의 세션 프로필·승격 사다리(§11.4), 플러그인 hook을 조언 모드로 축소. 분류는 규칙 기반을 먼저 쓰고 애매할 때만 모델을 호출하는 방식을 검토한다.
 4. **파일럿 재측정 (live, 승인 필요)**: 같은 4건, 같은 기준선(gpt-6-luna / high). 성공 기준: 테스트 통과·요구사항 충족을 유지하면서 전체 사용량이 기준선 이하.
-5. **정리**: 재측정을 통과하면 단계별 subagent 오케스트레이션 코드(§3.8)를 삭제한다. 통과하지 못하면 기본 모드를 `off`로 두고 고위험 작업 독립 Review 도구로 범위를 줄인다.
+5. **정리 (완료, 2026-10-01)**: 재측정을 통과해 단계별 subagent 오케스트레이션 코드(§3.8)를 삭제했고 hook은 조언 전용이 됐다(§3.7). 통과하지 못했다면 기본 모드를 `off`로 두고 고위험 작업 독립 Review 도구로 범위를 줄인다.
 
 완료 조건: 파일럿 재측정 결과가 기록되고, 그 결과에 따라 기본 모드(`auto` 또는 `off`)가 결정된다.
 

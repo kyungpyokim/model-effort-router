@@ -12,6 +12,7 @@ import signal
 import sys
 import time
 import uuid
+from dataclasses import replace
 
 from . import review as rv
 from .adapters.codex import resolve
@@ -20,7 +21,6 @@ from .difficulty.registry import create
 from .flow import PLAN_FIRST, WRAP_UP, run_flow
 from .gate.run import load_gate_checks, run_gate
 from .host import codex_exec as cx
-from .host import state as host_state
 from .host.codex_hooks import _registry, load_configs
 from .logging import route_log
 from .policy.config import resolve_config
@@ -28,6 +28,7 @@ from .policy.overrides import parse_override
 from .policy.router import route
 from .policy.session import REVIEW_DEFAULT, session_plan
 from .policy.targeting import NO_ROUTE
+from .profiles.profiles import parse_profile
 
 GATE_TIMEOUT_S = 300
 
@@ -112,6 +113,8 @@ def _parser():
     run.add_argument("--level", choices=LEVELS, help="--dry-run only: use this level instead of classifying")
     run.add_argument("--classify", action="store_true",
                      help="--dry-run only: allow one classifier call (uses model quota)")
+    run.add_argument("--review-profile", type=parse_profile, metavar="TIER:EFFORT",
+                     help="minimum profile of the independent review (never lowers the computed one)")
     run.add_argument("--max-escalations", type=int, default=2)
     run.add_argument("--timeout", type=float, default=1200.0, help="seconds per codex call")
     run.add_argument("--json", action="store_true", help="machine-readable output")
@@ -171,6 +174,9 @@ def _main(argv=None, *, env=None, runner=cx.run_subprocess, gate_fn=None, diff_f
     text = text.strip()
     try:
         sp = session_plan(plan.decision, plan.risk_flags, plan.overrides)
+        if args.review_profile:  # carried from hook advice: a re-classified review request must not drop the floor
+            base = sp.review or (REVIEW_DEFAULT if plan.target == "review_only" else None)
+            sp = replace(sp, review=args.review_profile.at_least(base) if base else args.review_profile)
     except ValueError as exc:  # manual mode without a session profile
         print(f"mer: {exc}", file=sys.stderr)
         return 2
@@ -178,7 +184,7 @@ def _main(argv=None, *, env=None, runner=cx.run_subprocess, gate_fn=None, diff_f
         print(_dry_run_text(plan, sp, text), file=out)
         return 0
 
-    sdir, sid = host_state.state_dir(env), f"mer-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+    sdir, sid = route_log.state_dir(env), f"mer-{int(time.time())}-{uuid.uuid4().hex[:6]}"
 
     def emit(event):
         try:
@@ -186,7 +192,7 @@ def _main(argv=None, *, env=None, runner=cx.run_subprocess, gate_fn=None, diff_f
         except OSError:
             pass  # logging must never decide the outcome
 
-    emit({**route_log.route_event(plan, None, latency_ms=latency_ms, prompt=args.request,
+    emit({**route_log.route_event(plan, latency_ms=latency_ms, prompt=args.request,
                                   configured_backend=cfg.backend), "session_plan": sp.to_dict(), "source": "mer"})
     gate_fn = gate_fn or (lambda c: run_gate(c, load_gate_checks(c, env), GATE_TIMEOUT_S))
     result = run_flow(text, sp, cwd=cwd, runner=runner, env=env, gate_fn=gate_fn, diff_fn=diff_fn, emit=emit,

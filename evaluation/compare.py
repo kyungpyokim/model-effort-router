@@ -16,7 +16,7 @@ from model_effort_router.difficulty.chain import classify_with_fallback
 from model_effort_router.difficulty.decision import LEVELS, DifficultyDecision, DifficultyInput
 from model_effort_router.difficulty.registry import BACKENDS, create
 from model_effort_router.difficulty.risk import detect_risk_flags
-from model_effort_router.policy.stages import decide_stages, restrict_to_target
+from model_effort_router.policy.session import REVIEW_DEFAULT, session_plan
 from model_effort_router.policy.targeting import classify_target
 
 from . import cases as corpus
@@ -31,8 +31,11 @@ def _is_critical(final):
 
 
 def _profiles(decision, target):
-    policy = restrict_to_target(decide_stages(decision), target)
-    return tuple((s.stage, s.tier, s.effort) for s in policy.stages)
+    """What a mer run would do: the profile that runs for plan_only / review_only, else start, ladder, plan-first, review."""
+    sp = session_plan(decision)
+    if target == "plan_only":
+        return sp.plan_profile
+    return (sp.review or REVIEW_DEFAULT) if target == "review_only" else (sp.start, sp.ladder, sp.plan_first, sp.review)
 
 
 def _add_usage(total, usage):
@@ -71,7 +74,7 @@ def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=TIM
         if _is_critical(final):
             m["critical_total"] += 1
             m["critical_miss"] += LEVELS.index(decision.level) <= CRITICAL_MAX_PREDICTED
-        # routing level: same pipeline as router.route() -> detected flags merged -> Stage Policy
+        # routing level: same pipeline as router.route() -> detected flags merged -> session_plan
         predicted = decision.with_risk_flags(detect_risk_flags(r["task"], r["paths"]))
         expected = DifficultyDecision(final["level"], "label", risk_flags=tuple(final["risk_flags"]))
         m["stage_profile_match"] += _profiles(predicted, final["target"]) == _profiles(expected, final["target"])
@@ -100,7 +103,7 @@ def to_markdown(res):
     lines = [f"# Backend comparison ({res['cases']} adjudicated cases)", "",
              f"Target rules accuracy: {_pct(t['correct'], t['n'])}", "",
              "| backend | n | exact | +-1 | over | under | mean dist | critical miss | p50 ms | max ms | "
-             "tokens in/out | fallback | stage profiles |",
+             "tokens in/out | fallback | session profiles |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for name, m in res["backends"].items():
         lat = m["latency_ms"] or {}

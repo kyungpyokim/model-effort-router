@@ -2,7 +2,8 @@ import unittest
 
 from model_effort_router.difficulty.decision import DifficultyDecision
 from model_effort_router.policy.router import route
-from model_effort_router.policy.stages import PromotionConfig
+from model_effort_router.profiles.profiles import Profile
+from model_effort_router.policy.session import session_plan
 
 DEV = "Fix the bug in parser.py"
 
@@ -26,8 +27,8 @@ def reg(*backends):
     return {b.name: (lambda b=b: b) for b in backends}
 
 
-def prof(plan):
-    return {s.stage: (s.tier, s.effort) for s in plan.policy.stages}
+def sp(plan):
+    return session_plan(plan.decision, plan.risk_flags, plan.overrides)
 
 
 class RouteTest(unittest.TestCase):
@@ -36,24 +37,23 @@ class RouteTest(unittest.TestCase):
         plan = route(DEV, registry=reg(b), repo_config={"difficulty": {"backend": "fake"}})
         self.assertEqual(plan.target, "route")
         self.assertEqual(plan.decision.level, "L3")
-        self.assertEqual(prof(plan)["implement"], ("balanced", "high"))
+        self.assertEqual(sp(plan).start, Profile("balanced", "high"))
         self.assertEqual(b.calls[0][1], 10)  # default timeout_s
 
     def test_chat_is_not_routed_and_backend_not_called(self):
         b = FakeBackend()
         plan = route("hello there", registry=reg(b), repo_config={"difficulty": {"backend": "fake"}})
         self.assertEqual(plan.target, "no_route")
-        self.assertIsNone(plan.policy)
+        self.assertIsNone(plan.decision)
         self.assertEqual(b.calls, [])
 
     def test_plan_only_and_review_only(self):
         b = FakeBackend(level="L2")
         cfg = {"difficulty": {"backend": "fake"}}
         p = route("Write an implementation plan for the new API endpoint", registry=reg(b), repo_config=cfg)
-        self.assertEqual([s.stage for s in p.policy.stages], ["plan"])
+        self.assertEqual(p.target, "plan_only")
         r = route("Review my code", registry=reg(b), repo_config=cfg)
-        self.assertEqual([s.stage for s in r.policy.stages], ["review"])
-        self.assertEqual(prof(r)["review"], ("frontier", "high"))
+        self.assertEqual((r.target, r.decision.level), ("review_only", "L2"))
 
     def test_risk_flags_merged_with_backend_flags(self):
         b = FakeBackend(level="L2", flags=("auth",))
@@ -63,8 +63,8 @@ class RouteTest(unittest.TestCase):
             repo_config={"difficulty": {"backend": "fake"}},
         )
         self.assertEqual(plan.decision.risk_flags, ("auth", "payment"))
-        self.assertIn("risk_min:payment", plan.policy.applied_rules)
-        self.assertEqual(prof(plan)["plan"], ("frontier", "high"))
+        self.assertIn("risk_min:payment", sp(plan).applied_rules)
+        self.assertTrue(sp(plan).plan_first)
 
     def test_backend_receives_task_without_override_line_and_paths(self):
         b = FakeBackend()
@@ -87,7 +87,7 @@ class RouteTest(unittest.TestCase):
                      registry=reg(p), repo_config={"difficulty": {"backend": "p"}})
         self.assertEqual((plan.decision.backend, plan.decision.level), ("default", "L3"))
         self.assertIn("data_loss", plan.decision.risk_flags)
-        self.assertEqual(prof(plan)["review"], ("frontier", "xhigh"))
+        self.assertEqual((sp(plan).plan_first, sp(plan).review), (True, None))  # data_loss: plan-first, no review below L4
 
     def test_unknown_backend_name_is_a_config_error(self):
         with self.assertRaises(ValueError):
@@ -105,13 +105,6 @@ class RouteTest(unittest.TestCase):
         b = FakeBackend()
         route(DEV, registry=reg(b), repo_config={"difficulty": {"backend": "fake", "timeout_s": 4}})
         self.assertEqual(b.calls[0][1], 4)
-
-    def test_promotion_passthrough(self):
-        b = FakeBackend(level="L3", confidence=0.2)
-        promo = PromotionConfig(enabled=True, thresholds={"fake": 0.8})
-        plan = route(DEV, registry=reg(b), repo_config={"difficulty": {"backend": "fake"}},
-                     promotion=promo)
-        self.assertEqual(plan.policy.level, "L4")
 
 
 class ModeAndOverrideTest(unittest.TestCase):
@@ -144,46 +137,30 @@ class ModeAndOverrideTest(unittest.TestCase):
         plan = route(DEV + "\n/router off", registry=reg(b), repo_config=self.CFG)
         self.assertEqual((plan.mode, plan.target), ("auto", "route"))
 
-    def test_stage_override_applied(self):
+    def test_session_override_exposed_and_skips_no_route_heuristics(self):
         b = FakeBackend(level="L1")
-        plan = route("/router implement=frontier:high\n" + DEV, registry=reg(b), repo_config=self.CFG)
-        self.assertEqual(prof(plan)["implement"], ("frontier", "high"))
-        self.assertIn("override:implement", plan.policy.applied_rules)
-
-    def test_override_clamped_by_risk_minimum(self):
-        b = FakeBackend(level="L3")
-        plan = route("/router review=economy:medium\nFix the data loss bug in parser.py",
-                     registry=reg(b), repo_config=self.CFG)
-        self.assertEqual(prof(plan)["review"], ("frontier", "xhigh"))
-        self.assertIn("override_clamped:review", plan.policy.applied_rules)
-
-    def test_typed_stage_override_skips_no_route_heuristics(self):
-        b = FakeBackend(level="L1")
-        plan = route("/router implement=frontier:high\nhello", registry=reg(b), repo_config=self.CFG)
+        plan = route("/router session=frontier:high\nhello", registry=reg(b), repo_config=self.CFG)
         self.assertEqual(plan.target, "route")
-        self.assertEqual(prof(plan)["implement"], ("frontier", "high"))
+        self.assertEqual(sp(plan).start, Profile("frontier", "high"))
+
+    def test_session_override_keeps_risk_plan_first_and_review_floor(self):
+        b = FakeBackend(level="L3")
+        plan = route("/router session=economy:medium\nFix the auth token check in parser.py",
+                     registry=reg(b), repo_config=self.CFG)
+        self.assertEqual((sp(plan).start, sp(plan).plan_first, sp(plan).review),
+                         (Profile("economy", "medium"), True, Profile("frontier", "high")))
 
     def test_typed_override_keeps_review_only_target(self):
         b = FakeBackend(level="L2")
-        plan = route("/router review=frontier:xhigh\nreview my diff in foo.py",
+        plan = route("/router session=frontier:xhigh\nreview my diff in foo.py",
                      registry=reg(b), repo_config=self.CFG)
         self.assertEqual(plan.target, "review_only")
-        self.assertEqual([s.stage for s in plan.policy.stages], ["review"])
-        self.assertEqual(prof(plan)["review"], ("frontier", "xhigh"))
 
     def test_backend_runtime_failure_recorded_in_default(self):
         b = FakeBackend("p", exc=KeyError("x"))
         plan = route(DEV, registry=reg(b), repo_config={"difficulty": {"backend": "p"}})
         self.assertEqual((plan.decision.backend, plan.decision.level), ("default", "L3"))
         self.assertEqual(plan.decision.reason_codes, ("p:KeyError",))
-
-    def test_manual_adds_risk_floor_stages(self):
-        b = FakeBackend()
-        plan = route("/router manual implement=economy:medium\nfix login auth in foo.py",
-                     registry=reg(b), repo_config=self.CFG)
-        self.assertEqual(prof(plan), {"plan": ("frontier", "high"), "implement": ("economy", "medium"),
-                                      "test_gate": (None, None), "review": ("frontier", "high")})
-        self.assertIn("risk_min:auth", plan.policy.applied_rules)
 
     def test_rejected_command_is_stripped_and_reported(self):
         b = FakeBackend()
@@ -192,30 +169,19 @@ class ModeAndOverrideTest(unittest.TestCase):
         self.assertEqual(b.calls[0][0].task, DEV)
         self.assertFalse(route(DEV, registry=reg(b), repo_config=self.CFG).override_rejected)
 
-    def test_manual_applies_risk_clamp_and_ordering(self):
+    def test_manual_with_session_override_applies_risk_floors_without_classifying(self):
         b = FakeBackend()
-        plan = route("/router manual review=economy:medium implement=economy:medium\n"
-                     "Fix the data loss bug in parser.py", registry=reg(b), repo_config=self.CFG)
-        self.assertEqual([s.stage for s in plan.policy.stages], ["plan", "implement", "test_gate", "review"])
-        self.assertEqual(prof(plan)["review"], ("frontier", "xhigh"))
-        self.assertIsNone(plan.policy.level)
+        plan = route("/router manual session=economy:medium\nFix the data loss bug in parser.py",
+                     registry=reg(b), repo_config=self.CFG)
+        self.assertEqual((plan.mode, plan.target, plan.decision, b.calls), ("manual", "route", None, []))
         self.assertIn("data_loss", plan.risk_flags)
-        self.assertEqual(b.calls, [])
+        self.assertEqual((sp(plan).start, sp(plan).plan_first), (Profile("economy", "medium"), True))
 
     def test_manual_without_overrides_is_no_route(self):
         b = FakeBackend()
         plan = route(DEV, registry=reg(b), repo_config={"router": {"mode": "manual"}, **self.CFG})
         self.assertEqual(plan.target, "no_route")
         self.assertEqual(b.calls, [])
-
-    def test_manual_with_overrides_runs_only_overridden_stages_without_classifying(self):
-        b = FakeBackend()
-        plan = route("/router manual implement=economy:medium\n" + DEV, registry=reg(b),
-                     repo_config=self.CFG)
-        self.assertEqual(plan.mode, "manual")
-        self.assertEqual([s.stage for s in plan.policy.stages], ["implement", "test_gate"])
-        self.assertEqual(b.calls, [])
-        self.assertIsNone(plan.decision)
 
 
 if __name__ == "__main__":

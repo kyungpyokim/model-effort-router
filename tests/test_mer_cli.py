@@ -58,6 +58,15 @@ class DryRunTest(CliCase):
                        "review: frontier:high", "1. frontier:xhigh", "risk_min:auth"):
             self.assertIn(needle, out)
 
+    def test_review_profile_raises_but_never_lowers_the_review(self):
+        _, out = self.mer("review only: check the current diff", "--dry-run", "--review-profile", "frontier:xhigh")
+        self.assertIn("review: frontier:xhigh", out)
+        _, out = self.mer("Fix the login auth check in auth.py", "--dry-run", "--review-profile", "economy:medium")
+        self.assertIn("review: frontier:high", out)  # auth floor kept
+        with self.assertRaises(SystemExit) as cm:  # argparse rejects a malformed profile
+            self.mer("Fix it", "--dry-run", "--review-profile", "nope")
+        self.assertEqual(cm.exception.code, 2)
+
     def test_dry_run_with_session_override_keeps_risk_plan_first_and_auth_review(self):
         _, out = self.mer("/router session=economy:medium\nFix the login auth check in auth.py", "--dry-run")
         for needle in ("session: economy:medium", "plan first: yes", "review: frontier:high", "override:session"):

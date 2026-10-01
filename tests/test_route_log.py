@@ -14,15 +14,6 @@ STREAM = "\n".join([
 ])
 
 
-class RouteLogGapsTest(unittest.TestCase):
-    def test_review_event_has_no_free_text(self):
-        ev = route_log.review_event("changes_requested", findings=3, fix_count=1)
-        self.assertEqual(ev, {"event": "review", "verdict": "changes_requested", "findings": 3, "fix_count": 1})
-
-    def test_review_event_rejects_unknown_verdict(self):
-        with self.assertRaises(ValueError):
-            route_log.review_event("lgtm")
-
 class ClassifierUsageInRouteTest(unittest.TestCase):
     class B:
         def __init__(self, name, usage, exc=None, calls_model=True):
@@ -45,13 +36,13 @@ class ClassifierUsageInRouteTest(unittest.TestCase):
         plan = self.route(self.B("a", u1, RuntimeError("bad")), self.B("b", u2))
         self.assertEqual(plan.classifier_usage, {"input_tokens": 15, "cached_input_tokens": 2,
                                                  "output_tokens": 4, "reasoning_output_tokens": 0})
-        ev = route_log.route_event(plan, None, latency_ms=1, prompt="p", configured_backend="a")
+        ev = route_log.route_event(plan, latency_ms=1, prompt="p", configured_backend="a")
         self.assertEqual(ev["classifier_usage"], plan.classifier_usage)
 
     def test_model_backend_without_usage_is_missing_and_logged_as_explicit_null(self):
         plan = self.route(self.B("a", None))
         self.assertTrue(plan.classifier_usage_missing)
-        ev = route_log.route_event(plan, None, latency_ms=1, prompt="p", configured_backend="a")
+        ev = route_log.route_event(plan, latency_ms=1, prompt="p", configured_backend="a")
         self.assertIn("classifier_usage", ev)
         self.assertIsNone(ev["classifier_usage"])
 
@@ -59,7 +50,7 @@ class ClassifierUsageInRouteTest(unittest.TestCase):
         plan = self.route(self.B("a", None, calls_model=False))
         self.assertFalse(plan.classifier_usage_missing)
         self.assertIsNone(plan.classifier_usage)
-        ev = route_log.route_event(plan, None, latency_ms=1, prompt="p", configured_backend="a")
+        ev = route_log.route_event(plan, latency_ms=1, prompt="p", configured_backend="a")
         self.assertNotIn("classifier_usage", ev)
 
     def test_fallback_that_never_ran_is_not_missing(self):

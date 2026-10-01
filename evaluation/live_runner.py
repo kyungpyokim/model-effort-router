@@ -26,7 +26,7 @@ import time
 from model_effort_router.difficulty.registry import BACKENDS
 from model_effort_router.difficulty.subscription import default_runner
 from model_effort_router.difficulty.usage import sum_usage
-from model_effort_router.host.state import state_dir
+from model_effort_router.logging.route_log import state_dir
 
 from . import baseline, usage
 from . import cases as corpus

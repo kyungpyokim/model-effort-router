@@ -4,9 +4,20 @@ from typing import Mapping, Optional, Tuple
 
 from ..difficulty.decision import RISK_FLAGS
 from ..profiles.profiles import Profile
-from .stages import _risk_floors
 
 E, B, F = "economy", "balanced", "frontier"
+
+# 11.2 -- risk minimums. A "plan" minimum forces plan-first; a "review" minimum is the floor of the independent
+# review (which only L4/L5 and REVIEW_FLAGS get, spec 11.4).
+RISK_MINIMUMS = {
+    "security": {"plan": Profile(F, "high"), "review": Profile(F, "high")},
+    "auth": {"plan": Profile(F, "high"), "review": Profile(F, "high")},
+    "payment": {"plan": Profile(F, "high"), "review": Profile(F, "high")},
+    "data_migration": {"plan": Profile(F, "high"), "review": Profile(F, "xhigh")},
+    "data_loss": {"plan": Profile(F, "high"), "review": Profile(F, "xhigh")},
+    "concurrency": {"review": Profile(F, "high")},
+}
+assert set(RISK_MINIMUMS) == set(RISK_FLAGS)
 
 # level -> (start, ladder of at most two escalation steps; running out = stop and report, plan_first)
 # plan_first for L3 was dropped after the pilot (extra tokens); risk floors with a plan minimum still force it
@@ -36,6 +47,14 @@ class SessionPlan:
         prof = lambda p: {"tier": p.tier, "effort": p.effort} if p else None
         return {"level": self.level, "start": prof(self.start), "ladder": [prof(p) for p in self.ladder],
                 "plan_first": self.plan_first, "review": prof(self.review), "applied_rules": list(self.applied_rules)}
+
+
+def _risk_floors(risk_flags) -> dict:
+    floors = {}
+    for flag in (f for f in RISK_FLAGS if f in risk_flags):
+        for stage, floor in RISK_MINIMUMS[flag].items():
+            floors[stage] = floors[stage].at_least(floor) if stage in floors else floor
+    return floors
 
 
 def _dominates(p: Profile, base: Profile) -> bool:

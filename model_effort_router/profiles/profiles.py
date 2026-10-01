@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 TIERS = ("economy", "balanced", "frontier")
 EFFORTS = ("medium", "high", "xhigh")
-STAGES = ("plan", "implement", "review")  # executable stages, in run order
 
 
 @dataclass(frozen=True)

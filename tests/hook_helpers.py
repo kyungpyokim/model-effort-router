@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from model_effort_router.host import state as host_state
+from model_effort_router.logging import route_log
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = Path(__file__).resolve().parent.parent / "plugins" / "codex-model-effort-router"
@@ -53,23 +53,11 @@ class HookCase(unittest.TestCase):
         return run_script("hooks/user_prompt_submit.py", stdin=json.dumps(payload),
                           env=self.env(**(env_extra or {})), cwd=str(self.root))
 
-    def spawn(self, stage, *, sid=SID, tool="collaborationspawn_agent", **over):
-        ti = {"task_name": f"mer_{stage}" if stage else "other", "message": "gAAAA",
-              "fork_turns": "none"}
-        ti.update(over)
-        ti = {k: v for k, v in ti.items() if v is not None}
-        payload = {"session_id": sid, "cwd": str(self.repo), "hook_event_name": "PreToolUse",
-                   "tool_name": tool, "tool_input": ti, "tool_use_id": "c1"}
-        return run_script("hooks/pre_tool_use.py", stdin=json.dumps(payload), env=self.env())
-
-    def plan_state(self, sid=SID):
-        return json.loads(self.plan_file(sid).read_text())
-
-    def plan_file(self, sid=SID):
-        return Path(host_state.plan_path(str(self.state), sid))
+    def plugin_root(self):
+        return PLUGIN
 
     def log_file(self, sid=SID):
-        return Path(host_state.log_path(str(self.state), sid))
+        return Path(route_log.log_path(str(self.state), sid))
 
     def log_events(self, sid=SID):
         p = self.log_file(sid)

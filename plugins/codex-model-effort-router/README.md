@@ -1,8 +1,11 @@
-# Model-Effort Router (Codex plugin, Phase 3)
+# Model-Effort Router (Codex plugin)
 
-Routes development requests through Plan, Implement, Test Gate and Review. The main agent runs each
-stage as a subagent with the model and reasoning effort the Router chose; hooks inject the protocol
-and deny spawns that deviate from it.
+Two parts. The **`mer` CLI is the main path**: it classifies a request, runs it as one Codex session with the model and
+reasoning effort the Router chose, gates it, escalates the same session on failure, and adds an independent review for
+high-risk work (see "mer CLI"). The **UserPromptSubmit hook is advisory only**: inside a normal Codex session it adds
+a short note (difficulty, risk flags, recommended model/effort, plan-first and review advice). It never blocks, denies
+or enforces anything and never asks the model to spawn subagents. (The earlier subagent orchestration and its
+PreToolUse enforcement were removed in Phase 7.)
 
 ## Install (run these yourself; nothing here has been installed or run live)
 
@@ -14,8 +17,8 @@ codex plugin marketplace add .
 codex plugin add model-effort-router@model-effort-router-local
 ```
 
-Then start a Codex session and open `/hooks`: review and trust both hooks (UserPromptSubmit, PreToolUse).
-**Untrusted hooks are skipped silently**, so until you trust them the Router is simply off.
+Then start a Codex session and open `/hooks`: review and trust the hook (UserPromptSubmit).
+**Untrusted hooks are skipped silently**, so until you trust it there is no advice. **After updating the plugin the hook set has changed (PreToolUse is gone): re-trust the hooks in `/hooks`.** The `mer` CLI needs no hook.
 
 ## Configuration (JSON; YAML is deferred)
 
@@ -26,16 +29,27 @@ Then start a Codex session and open `/hooks`: review and trust both hooks (UserP
 - Test Gate commands: `{"gate": {"checks": {"test": "python3 -m unittest", "lint": "...", "typecheck": "...", "build": "..."}}}`.
   Otherwise discovered from AGENTS.md/CLAUDE.md, CI files, then package.json / pyproject.toml / Makefile.
   Checks not found are reported `not_run`, never passed.
-- Per-request override: first line `/router off`, `/router implement=frontier:high`, ...
-- State and log: `$MER_STATE_DIR`, else `${XDG_STATE_HOME:-~/.local/state}/model-effort-router/`
-  (`<session>.plan.json`, `<session>.log.jsonl`; the log holds a prompt hash and length only).
+- Per-request override: first line `/router off`, `/router session=frontier:high` (session profile; never below a risk floor).
+- Log: `$MER_STATE_DIR`, else `${XDG_STATE_HOME:-~/.local/state}/model-effort-router/`
+  (`<session>.log.jsonl`; it holds a prompt hash and length only, never prompt text).
+
+## Advisory hook
+
+For a routed prompt (a code-change, plan-only or review-only request; not questions, not `/router off`) the hook classifies it with the configured backend (jev or subscription) and adds only `additionalContext`, e.g.:
+
+```
+[model-effort-router] Advisory only: nothing is enforced and no subagents are needed. ...
+Difficulty: L4 (confidence 0.62). Risk flags: auth.
+Recommended session: gpt-6-sol, reasoning effort high; switch with /model if you want.
+Plan first: write a short plan before changing code.
+This work warrants an independent review (gpt-6-sol, reasoning effort high) after the change. Run it with `python3 <plugin>/bin/mer run --review-profile frontier:high 'review only: check the current diff for <the task>'`, or run the whole task through `python3 <plugin>/bin/mer run '<the task>'` (Test Gate, escalation and review included). Single-quote the request (write ' as '\'') so the shell expands nothing in it.
+```
+
+Non-routed prompts and `/router off` get no context at all. The hook is fail-open (any error, timeout or untrusted hook = no output), logs a `route` event, and no-ops when `MER_CLASSIFIER=1` (set inside mer-driven and classifier sessions).
 
 ## Gate CLI
 
-`mer-gate` runs repo-defined commands (config, AGENTS.md/CLAUDE.md fenced blocks, CI, manifests). The main agent invokes it through its own shell tool, so sandboxing and approval apply; hooks never run it. Mark the last Review `--mark review done` so a finished plan can be dropped.
-
-`python3 <plugin>/bin/mer-gate [--session ID] [--cwd DIR] [--timeout S]` prints JSON per check.
-`--session ID --mark <stage> <done|failed|cancelled>` records a stage outcome so it can be retried (an implement retry still uses a fix round).
+`python3 <plugin>/bin/mer-gate [--cwd DIR] [--timeout S]` runs repo-defined commands (config, AGENTS.md/CLAUDE.md fenced blocks, CI, manifests) and prints JSON per check. `mer` runs the same gate itself; hooks never run it.
 
 ## mer CLI (request-level routing, Phase 7)
 
@@ -49,24 +63,18 @@ Then start a Codex session and open `/hooks`: review and trust both hooks (UserP
 ## Maintenance
 
 The plugin bundles a copy of `model_effort_router/`. After editing core: `python3 scripts/sync_plugin.py`
-(a unit test fails if the copy or `skills/.../SKILL.md` drifts).
+(a unit test fails if the copy drifts; `skills/.../SKILL.md` is hand-written).
 
 ## Known limitations
 
-- Fail-open: any hook error, hook timeout, or untrusted hook means no routing and no enforcement. Errors go to the log as `error` events.
-- Plugin updates change the hook hash; re-review and re-trust in `/hooks` after every update or the Router goes silent.
-- A previous plan stays in force until the next routed prompt replaces it, all its stages are done, it is 2 h old, or 3 consecutive prompts did not route.
+- Fail-open: any hook error, hook timeout, or untrusted hook means no advice. Errors go to the log as `error` events.
+- Plugin updates change the hook hash; re-review and re-trust in `/hooks` after every update or the hook goes silent.
 - `difficulty.timeout_s` above 12 is clamped to 12 (logged as `timeout_clamped`) so backend + fallback fit the 30 s hook timeout.
-- A `running` stage older than 30 min is treated as dead; respawning implement always counts as a fix round.
-- Stage `done` is inferred (the next stage starts, or the gate runs); SubagentStop carries no task name. A crashed or cancelled stage must be marked with `--mark` before retrying.
-- Enforcement is deny-and-retry (documented). `updatedInput` rewriting is not used.
-- Hook processes do not lock the state file; Codex runs hooks for one session sequentially as far as observed.
-- Classification costs one nested `codex exec` (about 4-6 s, about 30k input tokens per the phase-0 spike).
+- The advice costs one classification per routed prompt: Jev about 541 input tokens; the subscription backend one nested `codex exec` (about 4-6 s, about 27k input tokens).
 
 ## Unverified (needs a live check)
 
 - Codex reads `.codex-plugin/plugin.json`. A root `plugin.json` with the Agent Plugins `$schema` made Codex ignore hooks/skills (observed in logs), so it was removed.
 - `.agents/plugins/marketplace.json` field names (`source.source`, `source.path`) and the `codex plugin add <plugin>@<marketplace>` syntax.
-- PreToolUse matcher `.*spawn_agent` (observed tool name `collaborationspawn_agent`; the documented `Agent` matcher was not tried).
 - Plugin-delivered UserPromptSubmit actually firing, and the `MER_CLASSIFIER` guard stopping recursion from the nested classifier.
-- Whether the main model follows the injected protocol, and denial reasons being acted on.
+- Whether the main model surfaces the advice to the user.

@@ -1,18 +1,18 @@
 {
   "name": "model-effort-router",
   "version": "0.1.0",
-  "description": "Routes development tasks through Plan, Implement, Test Gate and Review subagents with per-stage model and reasoning effort.",
+  "description": "Advises a model and reasoning effort per request and ships the mer CLI (same-session escalation, Test Gate, independent review).",
   "license": "MIT",
   "keywords": [
     "router",
-    "subagents",
+    "cascade",
     "reasoning-effort"
   ],
   "skills": "./skills/",
   "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Model-Effort Router",
-    "shortDescription": "Per-stage model and effort routing",
+    "shortDescription": "Per-request model and effort routing",
     "developerName": "Model-Effort Router contributors",
     "category": "Coding",
     "capabilities": [
