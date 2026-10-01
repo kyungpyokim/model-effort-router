@@ -964,6 +964,26 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
   - sol 승격·Review는 약 65% 비싸다.
 - Router는 비용을 낮은 단계에서 아껴 높은 단계의 검증에 쓰는 구조다. 총비용은 기준선과 비슷하고 auth·보안 작업의 품질은 더 좋다.
 
+**실제 기본값 기준선** (2026-10-02, `runs/pilot-v3-sol-baseline.jsonl`, 짝 `runs/pilot-v3-sol-paired.jsonl`, 보고서 `runs/pilot-v3-sol-report.md`)
+
+위 파일럿의 기준선 gpt-6-luna/high는 사용자의 실제 Codex 기본값이 아니었다. 실제 기본값은 `~/.codex/config.toml` 기준 gpt-6.1-sol/medium이다. 그래서 기준선만 실제 기본값으로 다시 돌렸다(`live_runner --modes baseline`, 13건 × 2회). 이번에도 크레딧이 소진돼 유효 실행은 14회다(1회차 l3c 제외 12건, 2회차 l1·l2). 짝은 이렇게 맞췄다.
+- 1회차 기준선은 v2 2회차 Router와 짝지었다.
+- 2회차 기준선은 v2 1회차 Router와 짝지었다.
+
+| 묶음 | 기준선 (sol/medium) | Router | 증감 |
+|---|---:|---:|---:|
+| 합계 (14쌍) | 10.69M | 7.87M | **−26%** |
+| 위험 없는 L1~L3 (l1 ×2, l2 ×2, l2b, l2c, l2d, l3, l3b) | | | −83~+18%, 9쌍 중 8쌍 감소 |
+| sol 승격·Review (l3d, l4b, l5) | | | +32~+37% |
+| l1b, l4-auth (luna + auth Review) | | | −11%, −25% |
+
+- 도구 판정은 `auto_allowed`다. 품질은 14쌍 모두 preserved, 14개 기준선 결과물 모두 테스트를 통과했고 요구사항을 충족했다.
+- sol 기준선은 l4-auth와 l5에서 비ASCII 서명, surrogate, `None` 입력을 모두 `PermissionError`로 처리했다. luna 기준선 대비로 보였던 Router의 "품질 개선"은 실제 기본값 대비로는 없다. 대신 Router는 같은 품질을 더 적은 토큰으로 낸다.
+- 시간은 Router가 합계 487초 길다. L5의 sol/xhigh와 auth Review 때문이다.
+- 이 지표는 토큰 수만 더한다. Router 토큰의 대부분은 sol보다 싼 luna 세션이므로 실제 비용 절감폭은 −26%보다 클 것으로 본다. 단가 비율은 측정하지 않았다.
+
+**결정 (2026-10-02)**: 기본 모드 `auto`를 유지한다. 근거는 실제 기본값(gpt-6.1-sol/medium) 대비 토큰 −26%, 품질 동일이다. 남은 개선 대상은 sol 승격·Review 경로(+32~+37%)다.
+
 ---
 
 ## 23. 패키징과 프로젝트 구조
