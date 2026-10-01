@@ -45,6 +45,10 @@ class ValidateRecordTest(unittest.TestCase):
         self.bad({**rec(), "router_active": "yes"}, "router_active")
         self.bad({**rec(), "review_findings": -1}, "review_findings")
 
+    def test_unknown_review_verdict_is_valid_and_counts_as_not_approved(self):
+        self.assertEqual(baseline.validate_record(router(review="unknown"))["review_verdict"], "unknown")
+        self.assertEqual(baseline.compare_pair(rec(review="approved"), router(review="unknown"))["quality"], "regressed")
+
     def test_requirements_met_may_be_unset(self):
         self.assertIsNone(baseline.validate_record(rec(req=None))["requirements_met"])
 
@@ -137,8 +141,8 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(rep["aggregate"]["excluded"], [{"case_id": "a", "reason": "baseline_contaminated"}])
         self.assertEqual(rep["decision"]["verdict"], "insufficient_data")
 
-    def test_insufficient_when_subagent_usage_missing_or_no_subagents_seen(self):
-        for bad in (router("a", total=1, missing=["review"]), router("a", total=1, children=0)):
+    def test_insufficient_when_stage_usage_missing_or_nothing_measured_for_router(self):
+        for bad in (router("a", total=1, missing=["review"]), router("a", total=0)):
             self.assertEqual(baseline.report([rec("a"), bad])["decision"]["verdict"], "insufficient_data")
 
     def test_insufficient_on_error_or_incomplete_reasons(self):

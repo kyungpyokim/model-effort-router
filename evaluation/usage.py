@@ -44,15 +44,27 @@ def _events(text):
             yield ev
 
 
-def exec_stream_usage(text):
-    """(thread_id, summed turn.completed usage) of a `codex exec --json` stdout."""
-    thread_id, total = None, normalize(None)
+def exec_stream_usage_by_thread(text):
+    """{thread_id: usage} from `codex exec --json` stdout. `turn.completed.usage` is CUMULATIVE per thread
+    (resume included, Phase 7 spike), so the largest value per thread is its total, never a sum of turns."""
+    by_thread, current = {}, None
     for ev in _events(text):
         if ev.get("type") == "thread.started":
-            thread_id = ev.get("thread_id")
+            current = ev.get("thread_id")
         elif ev.get("type") == "turn.completed":
-            total = add(total, normalize(ev.get("usage")))
-    return thread_id, total
+            cum = normalize(ev.get("usage"))
+            seen = by_thread.get(current)
+            by_thread[current] = cum if seen is None else {k: max(seen[k], cum[k]) for k in cum}
+    return by_thread
+
+
+def exec_stream_usage(text):
+    """(first thread_id, usage summed over distinct threads) of a `codex exec --json` stdout."""
+    by_thread = exec_stream_usage_by_thread(text)
+    total = normalize(None)
+    for u in by_thread.values():
+        total = add(total, u)
+    return next((t for t in by_thread if t), None), total
 
 
 def _token_count_total(ev):
@@ -95,8 +107,10 @@ def _first_session_id(path):
 
 
 def find_rollouts(sessions_dir, root_session_id, since_mtime=None):
-    """Rollout files (main + all subagents) of one root session, modified at/after `since_mtime` (run start).
+    """Rollout files (main + all subagents) of one root session (or any of several ids, e.g. mer's implement and
+    review sessions), modified at/after `since_mtime` (run start).
     Only the first line is read to filter; matches are parsed later by the caller."""
+    ids = {root_session_id} if isinstance(root_session_id, str) else set(root_session_id)
     base = Path(sessions_dir)
     if not base.is_dir():
         return []
@@ -107,15 +121,17 @@ def find_rollouts(sessions_dir, root_session_id, since_mtime=None):
                 continue
         except OSError:
             continue
-        if _first_session_id(p) == root_session_id:
+        if _first_session_id(p) in ids:
             out.append(p)
     return out
 
 
-def aggregate(exec_text, rollout_paths, classifier=None):
+def aggregate(exec_text, rollout_paths, classifier=None, extra_main=None):
     """Everything a run consumed. The exec stream is the main session when given (no double count with
-    its rollout); otherwise the non-subagent rollouts are."""
+    its rollout); otherwise the non-subagent rollouts are (each is cumulative for its thread, so resumed sessions
+    count once). `extra_main`: usage of threads that have no rollout (taken from the tool's own report)."""
     main = exec_stream_usage(exec_text)[1] if exec_text is not None else normalize(None)
+    main = add(main, extra_main) if extra_main else main
     stages, missing, children = {}, [], 0
     for path in rollout_paths:
         r = read_rollout(path)

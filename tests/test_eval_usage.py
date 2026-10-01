@@ -25,12 +25,19 @@ class ParseTest(unittest.TestCase):
     def test_total_is_input_plus_output(self):
         self.assertEqual(usage.total_tokens(u(10, 9, 3, 2)), 13)  # cached is a subset of input, reasoning of output
 
-    def test_exec_stream_sums_turns_and_reads_thread_id(self):
+    def test_exec_stream_takes_last_cumulative_usage_per_thread(self):
         text = (FIX / "exec_router.jsonl").read_text() + json.dumps(
-            {"type": "turn.completed", "usage": {"input_tokens": 1, "output_tokens": 1}}) + "\nnot json\n"
+            {"type": "turn.completed", "usage": {"input_tokens": 400000, "output_tokens": 1100}}) + "\nnot json\n"
         tid, total = usage.exec_stream_usage(text)
-        self.assertEqual(tid, ROOT)
-        self.assertEqual(total, u(384935, 374784, 1086, 0))
+        self.assertEqual((tid, total), (ROOT, u(400000, 374784, 1100, 0)))
+
+    def test_exec_stream_resume_is_cumulative_not_summed_and_threads_are_summed(self):
+        def run(tid, i):
+            return json.dumps({"type": "thread.started", "thread_id": tid}) + "\n" + json.dumps(
+                {"type": "turn.completed", "usage": {"input_tokens": i, "output_tokens": i // 10}}) + "\n"
+        text = run("A", 100) + run("A", 250) + run("B", 40)  # A resumed: 250 is the session total
+        self.assertEqual(usage.exec_stream_usage(text), ("A", u(290, 0, 29, 0)))
+        self.assertEqual(usage.exec_stream_usage_by_thread(text), {"A": u(250, 0, 25, 0), "B": u(40, 0, 4, 0)})
 
     def test_exec_stream_without_usage_is_zero(self):
         self.assertEqual(usage.exec_stream_usage("")[1], u())
@@ -71,6 +78,11 @@ class ParseTest(unittest.TestCase):
             os.utime(old, (1000, 1000))
             self.assertEqual([p.name for p in usage.find_rollouts(d, ROOT, since_mtime=time.time() - 60)],
                              ["rollout-new.jsonl"])
+
+    def test_find_rollouts_accepts_several_thread_ids(self):
+        found = {p.name for p in usage.find_rollouts(ROLL, {ROOT, "nope"})}
+        self.assertIn("rollout-main.jsonl", found)
+        self.assertEqual(usage.find_rollouts(ROLL, set()), [])
 
     def test_find_rollouts_reads_only_the_first_session_meta_line_to_filter(self):
         with tempfile.TemporaryDirectory() as d:
@@ -127,6 +139,10 @@ class AggregateTest(unittest.TestCase):
     def test_clean_run_reports_no_missing_usage(self):
         agg = usage.aggregate(None, self.rollouts())
         self.assertEqual((agg["stages_without_usage"], agg["subagent_rollouts"]), ([], 3))
+
+    def test_extra_main_usage_added_for_threads_without_rollout(self):
+        agg = usage.aggregate(None, [ROLL / "rollout-main.jsonl"], extra_main=u(10, 0, 5, 0))
+        self.assertEqual(agg["orchestrator"], u(384944, 374784, 1090))
 
     def test_classifier_absent_stays_none_and_empty_run_is_zero(self):
         agg = usage.aggregate(None, [])

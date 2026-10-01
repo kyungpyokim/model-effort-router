@@ -12,7 +12,7 @@ from model_effort_router.host import state as host_state
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = Path(__file__).resolve().parent.parent / "plugins" / "codex-model-effort-router"
 SID = "sess-0001"
-DEV = "Fix the bug in parser.py ZEBRA_SECRET_PROMPT"
+DEV = "Fix the bug in parser.py ZEBRA_PROMPT_MARKER"
 
 
 def run_script(rel, *, stdin="", env=None, cwd=None, argv=()):

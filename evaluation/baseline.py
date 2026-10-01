@@ -12,7 +12,7 @@ import sys
 
 MODES = ("baseline", "router")
 GATES = ("passed", "failed", "incomplete")
-VERDICTS = ("approved", "changes_requested")
+VERDICTS = ("approved", "changes_requested", "unknown")  # unknown: review output had no parseable verdict
 AUTO_OK, NOT_AUTO, INSUFFICIENT = "auto_allowed", "do_not_default_to_auto", "insufficient_data"
 
 
@@ -74,8 +74,8 @@ def incomplete_reasons(r):
     if r.get("error"):
         why.append("run_error")
     why += [f"no_usage:{s}" for s in u.get("stages_without_usage") or []]
-    if r["mode"] == "router" and not u.get("subagent_rollouts"):
-        why.append("no_subagent_rollouts")
+    if r["mode"] == "router" and not u.get("total"):  # mer sessions leave rollouts; none found = nothing measured
+        why.append("no_usage_measured")
     return why
 
 

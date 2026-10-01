@@ -474,7 +474,7 @@ Stage Policy는 단계마다 **모델 tier 하나와 effort 하나**를 반환�
 
 - **승격 조건**: Test Gate `failed`, 독립 Review `changes_requested`. `not_run`만 있는 경우는 승격하지 않고 보고에 남긴다.
 - **위험 신호**: §11.2 최소 조건을 그대로 쓰되, "Plan 수행"은 같은 세션에서 계획을 먼저 쓰게 하는 지침으로, "Review 최소값"은 독립 Review를 붙이고 그 프로필의 하한으로 적용한다. 위험 신호가 있으면 L1~L3이어도 독립 Review를 붙인다.
-- **사용자 override**: `/router session=frontier:high`처럼 세션 프로필을 지정할 수 있다. 위험 신호 최소값 아래로는 내려가지 않는다.
+- **사용자 override**: `/router session=frontier:high`처럼 세션 프로필을 지정할 수 있다. 위험 신호는 기본값이든 override든 세션 프로필을 올리지 않는다. 대신 계획 먼저 쓰기와 독립 Review 하한은 override로 없앨 수 없다.
 - 이 표는 초기값이며 파일럿 재측정(Phase 7)과 §22 평가로 조정한다. 현재 Codex에서는 economy와 balanced가 같은 모델(gpt-6-luna)이라, 낮은 단계의 승격은 사실상 effort 상승이다.
 
 ---

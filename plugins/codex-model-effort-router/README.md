@@ -36,6 +36,15 @@ Then start a Codex session and open `/hooks`: review and trust both hooks (UserP
 `python3 <plugin>/bin/mer-gate [--session ID] [--cwd DIR] [--timeout S]` prints JSON per check.
 `--session ID --mark <stage> <done|failed|cancelled>` records a stage outcome so it can be retried (an implement retry still uses a fix round).
 
+## mer CLI (request-level routing, Phase 7)
+
+`python3 <plugin>/bin/mer run [--cwd DIR] [--dry-run [--level L1..L5 | --classify]] [--max-escalations N] [--json] "<request>"` classifies the request, runs it as ONE Codex session (`codex exec -m <model> -c model_reasoning_effort=<effort>`), runs the Test Gate, and on a failed gate resumes the same session (`codex exec resume`) at the next ladder profile (up to 2 steps). L4/L5 and risk-flagged work then get one independent read-only review of the git diff (`VERDICT: approved|changes_requested`); `changes_requested` resumes the implement session once and reviews once more. Exit 0 only if the gate did not fail and a required review returned `approved` (no parseable verdict = `review_unknown`, no git repo = `review_skipped`, both exit 1).
+
+- Your explicit `mer` call always routes; "plan only" requests run one read-only planning session, "review only" reviews the current diff. A directory that is not a git repo skips the review (mer never runs `git init`).
+- `/router session=frontier:high` on the first line sets the session profile; risk-flagged work still gets plan-first and the independent review at its floor; `/router off` runs nothing.
+- `--dry-run` prints the decision, profiles, ladder and exact first command and starts no session. It never calls a model-calling classifier: pass `--level L1..L5` to fix the level, or `--classify` to allow one classifier call. Escalation resumes keep `sandbox_mode="workspace-write"`. Run mer on a clean work tree: the review diffs against HEAD, so earlier uncommitted changes are reviewed too. Events (`route`, `session_start`, `gate`, `escalate`, `review`, `done`) go to the route log with hashes, token deltas and thread ids, never prompt text.
+- Codex sessions started by mer run with `MER_CLASSIFIER=1`, so this plugin's hooks no-op inside them.
+
 ## Maintenance
 
 The plugin bundles a copy of `model_effort_router/`. After editing core: `python3 scripts/sync_plugin.py`

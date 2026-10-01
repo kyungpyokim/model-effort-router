@@ -111,7 +111,7 @@ class UserPromptSubmitTest(HookCase):
         self.assertEqual(ev["prompt_len"], len(DEV))
         self.assertEqual(len(ev["prompt_sha"]), 12)
         for f in self.state.iterdir():
-            self.assertNotIn("ZEBRA_SECRET_PROMPT", f.read_text())
+            self.assertNotIn("ZEBRA_PROMPT_MARKER", f.read_text())
 
     def test_backend_failure_falls_back_to_default_and_logs_it(self):
         self.fake = {"raise": True}
@@ -127,7 +127,7 @@ class UserPromptSubmitTest(HookCase):
         self.assertEqual((p.returncode, p.stdout), (0, ""))
         errs = [e for e in self.log_events() if e["event"] == "error"]
         self.assertEqual(len(errs), 1)
-        self.assertNotIn("ZEBRA_SECRET_PROMPT", json.dumps(errs))
+        self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(errs))
 
     def test_garbage_stdin_is_fail_open(self):
         p = run_script("hooks/user_prompt_submit.py", stdin="not json", env=self.env())

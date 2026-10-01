@@ -23,7 +23,9 @@ class BackendOutputError(ValueError):
     """Backend output could not be turned into a DifficultyDecision."""
 
 
-def default_runner(cmd, *, stdin, env, timeout_s, cwd):
+def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace_s=5):
+    """Runs `cmd` in its own process group. On timeout or any interruption the group gets SIGTERM, then SIGKILL
+    after `grace_s`, so a child that cleans up its own children on SIGTERM (mer) gets the chance to."""
     proc = subprocess.Popen(
         cmd, stdin=stdin, env=env, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, start_new_session=True,  # own process group so a timeout can kill grandchildren
@@ -31,20 +33,26 @@ def default_runner(cmd, *, stdin, env, timeout_s, cwd):
     try:
         stdout, stderr = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired as exc:
-        raise TimeoutError(f"classifier exceeded {timeout_s}s") from exc
+        raise TimeoutError(f"{label} exceeded {timeout_s}s") from exc
     finally:  # timeout, KeyboardInterrupt, anything: never leave the group running
         if proc.poll() is None:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except OSError:
-                pass
-            try:
-                proc.communicate(timeout=5)
-            except (subprocess.TimeoutExpired, OSError):
-                pass
+            _stop_group(proc, grace_s)
     if proc.returncode != 0:
-        raise RuntimeError(f"classifier exited {proc.returncode}: {stderr[-200:]}")
+        raise RuntimeError(f"{label} exited {proc.returncode}: {stderr[-200:]}")
     return stdout
+
+
+def _stop_group(proc, grace_s):
+    """SIGTERM, wait for the leader up to `grace_s`, then SIGKILL whatever is left of the group."""
+    for sig, wait_s in ((signal.SIGTERM, grace_s), (signal.SIGKILL, 5)):
+        try:
+            os.killpg(proc.pid, sig)
+        except OSError:
+            pass  # group already gone
+        try:
+            proc.communicate(timeout=wait_s)
+        except (subprocess.TimeoutExpired, OSError):
+            pass
 
 
 def build_prompt(task: DifficultyInput) -> str:
