@@ -249,3 +249,42 @@ class WrapperTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChatTest(CliCase):
+    def chat(self, request, *flags, spec=None, exec_fn=None):
+        out, calls = io.StringIO(), []
+        exec_fn = exec_fn or (lambda f, argv, env: calls.append((f, argv, env)))
+        rc = cli.main(["chat", "--cwd", str(self.cwd), *flags, request], env=self.env(**(spec or {})),
+                      runner=self.h.runner, gate_fn=self.h.gate, diff_fn=lambda c: self.h.diff, out=out, exec_fn=exec_fn)
+        return rc, out.getvalue(), calls
+
+    def test_l2_starts_interactive_codex_at_the_routed_profile_with_the_hook_guard(self):
+        rc, _, calls = self.chat("Fix the discount bug in pricing.py")
+        f, argv, env = calls[0]
+        self.assertEqual((rc, f, argv[:3]), (0, "codex", ["codex", "--cd", str(self.cwd)]))
+        self.assertEqual(argv[argv.index("-m") + 1], "gpt-6-luna")
+        self.assertIn("model_reasoning_effort=medium", argv)
+        self.assertNotIn("exec", argv)  # interactive, not `codex exec`
+        self.assertEqual((argv[-1], env["MER_CLASSIFIER"]), ("Fix the discount bug in pricing.py", "1"))
+        self.assertEqual(self.h.calls, [])  # no gate/escalation/review session
+        self.assertEqual([e["source"] for e in self.log_events()], ["mer chat"])
+
+    def test_auth_work_gets_plan_first_and_review_hint(self):
+        rc, out, calls = self.chat("Fix the login auth check in auth.py", "--dry-run", spec={"level": "L3"})
+        self.assertEqual(calls, [])
+        self.assertIn("gpt-6-luna -c model_reasoning_effort=high", out)
+        self.assertIn("short plan", out)
+
+    def test_plan_only_is_read_only(self):
+        _, out, _ = self.chat("plan only: how should we add caching to pricing.py?", "--dry-run")
+        self.assertIn("-s read-only", out)
+
+    def test_off_starts_plain_codex(self):
+        _, _, calls = self.chat("/router off\nFix the bug in calc.py")
+        self.assertEqual(calls[0][1], ["codex", "--cd", str(self.cwd), "Fix the bug in calc.py"])
+
+    def test_missing_codex_is_reported(self):
+        def boom(f, argv, env):
+            raise FileNotFoundError("codex")
+        self.assertEqual(self.chat("Fix the bug in calc.py", exec_fn=boom)[0], 127)

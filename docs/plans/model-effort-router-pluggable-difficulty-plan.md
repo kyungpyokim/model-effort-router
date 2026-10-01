@@ -212,6 +212,8 @@ scope_changed → 새 DifficultyDecision → Stage Policy 재계산 → 남은 �
 Host Event → Host Hook Adapter → Router Core
 ```
 
+대화형 사용은 `mer chat '<요청>'`이 맡는다(2026-10-01 추가): 판정 후 라우팅된 모델·effort로 대화형 `codex`를 띄우고(`codex -m ... -c model_reasoning_effort=...`, 계획 먼저 지침 포함), 이후 대화는 사용자 몫이다(Test Gate·승격·Review 없음, 세션 안에서 hook은 `MER_CLASSIFIER=1`로 조용). Codex hook은 열린 세션의 모델을 바꿀 수 없으므로 자동 라우팅은 세션 시작 시점에 `mer`가 한다. 턴마다 바꾸려면 app-server 클라이언트가 필요하다(미구현).
+
 전환 후 플러그인 hook의 역할은 **조언**이다(2026-10-01 구현 완료). `UserPromptSubmit` hook 하나만 남고, 설정된 Backend(jev 또는 subscription)로 판정한 뒤 `additionalContext`에 레벨·confidence, 위험 신호, 권장 세션 설정(호스트 모델과 effort, 예: `gpt-6-luna, reasoning effort medium`, `/model`로 전환), L4 이상·위험 신호의 계획 먼저 권고, 독립 Review가 필요한 작업(L4/L5, auth/security)에는 `mer run --review-profile <Review 프로필> 'review only: ...'` 또는 `mer run '<작업>'` 안내만 넣는다(`--review-profile`은 재판정된 Review 요청이 위험 신호 하한을 잃지 않게 하고, 작은따옴표는 작업 문장 안의 `$(...)` 등이 셸에서 실행되지 않게 한다). subagent 생성 지시, 차단, 강제는 없다. 라우팅 대상이 아니거나 `off`면 컨텍스트가 없다. 모델 변경은 사용자가 한다. hook 구성이 바뀌었으므로(PreToolUse 제거) 업데이트 후 Codex `/hooks`에서 다시 신뢰해야 한다.
 
 hook 공통 규칙(유지):

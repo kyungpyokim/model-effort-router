@@ -3,6 +3,8 @@
 Classifies the request (the configured backend, as the hooks do), then runs it as one Codex session with
 cascade escalation and an independent review for high-risk work (spec 3.4). --dry-run starts no session and
 never calls a model-calling classifier unless --classify is given; --level Lx fixes the level instead.
+`mer chat "<request>"` classifies the same way, then replaces itself with an interactive `codex` session started
+at the routed model/effort (no gate, escalation or review: the conversation is yours from there).
 """
 import argparse
 import json
@@ -103,16 +105,41 @@ def _human(out):
     return "\n".join(lines)
 
 
+def _chat_argv(target, sp, text, cwd):
+    """Interactive codex at the routed profile; plan/review-only requests stay read-only."""
+    if target == "plan_only":
+        profile, extra = sp.plan_profile, ["-s", "read-only"]
+    elif target == "review_only":
+        profile, extra = sp.review or REVIEW_DEFAULT, ["-s", "read-only"]
+    else:
+        profile, extra = sp.start, []
+        text = f"{text}\n\n{PLAN_FIRST.strip()}" if sp.plan_first else text
+    r = resolve(profile)
+    return ["codex", "--cd", cwd, "-m", r.model, "-c", f"model_reasoning_effort={r.applied_effort}", *extra, text], profile
+
+
+def _chat_note(plan, sp, profile):
+    d = plan.decision
+    note = (f"mer chat: {d.level if d else 'manual'}, risk flags {', '.join(plan.risk_flags) or 'none'} -> "
+            f"{_fmt(profile)}. No gate/escalation/review here; switch with /model if the task grows.")
+    if sp.review and plan.target == "route":
+        note += (f"\nThis work warrants an independent review afterwards: mer run --review-profile "
+                 f"{sp.review.tier}:{sp.review.effort} 'review only: check the current diff for <the task>'")
+    return note
+
+
 def _parser():
     ap = argparse.ArgumentParser(prog="mer", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="command", required=True)
-    run = sub.add_parser("run", help="route and run a request")
-    run.add_argument("request")
-    run.add_argument("--cwd", default=os.getcwd())
-    run.add_argument("--dry-run", action="store_true", help="print decision, ladder and first command only")
-    run.add_argument("--level", choices=LEVELS, help="--dry-run only: use this level instead of classifying")
-    run.add_argument("--classify", action="store_true",
-                     help="--dry-run only: allow one classifier call (uses model quota)")
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("request")
+    common.add_argument("--cwd", default=os.getcwd())
+    common.add_argument("--dry-run", action="store_true", help="print decision and the first command only")
+    common.add_argument("--level", choices=LEVELS, help="--dry-run only: use this level instead of classifying")
+    common.add_argument("--classify", action="store_true",
+                        help="--dry-run only: allow one classifier call (uses model quota)")
+    sub.add_parser("chat", parents=[common], help="route, then start interactive codex at that model/effort")
+    run = sub.add_parser("run", parents=[common], help="route and run a request")
     run.add_argument("--review-profile", type=parse_profile, metavar="TIER:EFFORT",
                      help="minimum profile of the independent review (never lowers the computed one)")
     run.add_argument("--max-escalations", type=int, default=2)
@@ -135,11 +162,13 @@ def main(argv=None, **kw):
         signal.signal(signal.SIGTERM, previous)
 
 
-def _main(argv=None, *, env=None, runner=cx.run_subprocess, gate_fn=None, diff_fn=rv.git_diff, out=None):
+def _main(argv=None, *, env=None, runner=cx.run_subprocess, gate_fn=None, diff_fn=rv.git_diff, out=None,
+          exec_fn=os.execvpe):
     out = out or sys.stdout
     env = dict(os.environ) if env is None else env
     args = _parser().parse_args(argv)
-    if args.max_escalations < 0:
+    chat = args.command == "chat"
+    if not chat and args.max_escalations < 0:
         print("mer: --max-escalations must be >= 0", file=sys.stderr)
         return 2
     if (args.level or args.classify) and not args.dry_run:
@@ -167,6 +196,9 @@ def _main(argv=None, *, env=None, runner=cx.run_subprocess, gate_fn=None, diff_f
         print("mer: the /router line was not understood; nothing was run", file=sys.stderr)
         return 2
     if plan.target == NO_ROUTE:
+        if chat:  # the user still asked for a conversation: start one with their own defaults
+            return _exec(["codex", "--cd", cwd, parse_override(args.request)[1].strip()], cx.session_env(env), exec_fn, args.dry_run, out,
+                         f"mer chat: routing is {plan.mode}; starting codex with your defaults")
         print(f"mer: routing is {plan.mode}; nothing was run", file=out)
         return 0
 
@@ -174,12 +206,23 @@ def _main(argv=None, *, env=None, runner=cx.run_subprocess, gate_fn=None, diff_f
     text = text.strip()
     try:
         sp = session_plan(plan.decision, plan.risk_flags, plan.overrides)
-        if args.review_profile:  # carried from hook advice: a re-classified review request must not drop the floor
+        if getattr(args, "review_profile", None):  # carried from hook advice: a re-classified review request must not drop the floor
             base = sp.review or (REVIEW_DEFAULT if plan.target == "review_only" else None)
             sp = replace(sp, review=args.review_profile.at_least(base) if base else args.review_profile)
     except ValueError as exc:  # manual mode without a session profile
         print(f"mer: {exc}", file=sys.stderr)
         return 2
+    if chat:
+        argv, profile = _chat_argv(plan.target, sp, text, cwd)
+        if not args.dry_run:
+            try:
+                route_log.append(route_log.state_dir(env), f"mer-chat-{int(time.time())}-{uuid.uuid4().hex[:6]}",
+                                 {**route_log.route_event(plan, latency_ms=latency_ms, prompt=args.request,
+                                                          configured_backend=cfg.backend),
+                                  "session_plan": sp.to_dict(), "source": "mer chat"})
+            except OSError:
+                pass  # logging must never decide the outcome
+        return _exec(argv, cx.session_env(env), exec_fn, args.dry_run, out, _chat_note(plan, sp, profile))
     if args.dry_run:
         print(_dry_run_text(plan, sp, text), file=out)
         return 0
@@ -202,6 +245,20 @@ def _main(argv=None, *, env=None, runner=cx.run_subprocess, gate_fn=None, diff_f
                   session_plan=sp.to_dict())
     print(json.dumps(result, ensure_ascii=False) if args.json else _human(result), file=out)
     return 0 if args.exit_zero else result["exit_code"]
+
+
+def _exec(argv, env, exec_fn, dry_run, out, note):
+    """Replace mer with codex (keeps the terminal). `session_env` sets the guard: the plugin hook stays quiet in it."""
+    print(note, file=sys.stderr)
+    if dry_run:
+        print("command: " + shlex.join(argv), file=out)
+        return 0
+    try:
+        exec_fn(argv[0], argv, env)
+    except OSError as exc:
+        print(f"mer: could not start codex: {exc}", file=sys.stderr)
+        return 127
+    return 0  # only reached with an injected exec_fn
 
 
 if __name__ == "__main__":

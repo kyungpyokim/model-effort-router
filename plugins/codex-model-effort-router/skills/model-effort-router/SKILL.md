@@ -10,6 +10,7 @@ The UserPromptSubmit hook may add a `[model-effort-router]` note: difficulty lev
 - Mention the recommendation to the user briefly when it differs from the current model/effort; they switch with `/model`.
 - Follow plan-first advice by writing a short plan before changing code.
 - For routed work the user can run the whole task through the `mer` CLI, which runs one session at the recommended profile, runs the Test Gate, escalates the same session on failure and adds an independent review when required: `python3 <plugin root>/bin/mer run "<the task>"`.
+- To start an interactive Codex session already at the routed model/effort: `python3 <plugin root>/bin/mer chat '<the task>'` (routing happens once, at the start; later prompts in that session are not re-routed).
 - An independent review of the current diff only: `python3 <plugin root>/bin/mer run --review-profile <tier:effort from the advice> 'review only: check the current diff for <the task>'`. Single-quote requests (write ' as '\'') so the shell expands nothing.
 - The Test Gate alone: `python3 <plugin root>/bin/mer-gate`. A check with status `not_run` is not passed; report it as not run.
 - Override on the first line of a prompt: `/router off`, `/router session=frontier:high`.
