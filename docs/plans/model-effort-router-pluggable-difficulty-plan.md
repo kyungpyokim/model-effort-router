@@ -940,6 +940,30 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 - auth 작업에서 결함 수정이 반복 확인됐다.
 - 남은 확인 사항: L5 Router(크레딧 소진으로 미측정), 2회차 반복(회차 편차).
 
+**파일럿 세트 v2 2회차** (2026-10-02, 같은 13건 × 1회, `runs/pilot-v2b.jsonl`, 보고서 `runs/pilot-v2b-report.md`)
+
+- 26회 모두 성공했다. 26개 결과물 모두 diff 적용 후 테스트를 통과했다.
+- 품질은 preserved 12, improved 1(l4-auth)이다. 기준선 l4-auth는 다시 비ASCII 서명 `TypeError`, surrogate `UnicodeEncodeError`, `None` 입력 `AttributeError`가 났다. Router는 Review 반영 후 모두 `PermissionError`였다.
+- L5 Router 첫 측정: sol/xhigh, Review approved, 2.60M(기준선 1.41M, +85%), 798초, subagent 5개. 결과물은 malformed 입력을 모두 `PermissionError`로 처리했다. 기준선은 v2와 같은 원본 결함이 남았다(요구사항 밖이라 둘 다 충족).
+- 2회차 합계: 기준선 7.26M, Router 8.06M(**+11%**). 도구 판정은 `do_not_default_to_auto`다.
+- Jev 판정은 l4b(L3)를 빼고 1회차와 같았다.
+
+**v2 합산** (1회차 유효 12쌍 + 2회차 13쌍 = 25쌍, `runs/pilot-v2-combined.jsonl`, `runs/pilot-v2-combined-report.md`)
+
+| 묶음 | 기준선 | Router | 증감 |
+|---|---:|---:|---:|
+| sol 승격·독립 Review 없음 (l1, l2 4건, l3, l3b, l3c; 16쌍) | 9.31M | 5.42M | −42% |
+| sol 승격 또는 Review (l1b, l3d, l4-auth, l4b, l5; 9쌍) | 5.90M | 9.74M | +65% |
+| 합계 (25쌍) | 15.21M | 15.17M | **−0.3%** |
+
+- 도구 판정은 `auto_allowed`(품질 23 preserved, 2 improved, 전체 감소)지만 감소폭 0.3%는 회차 편차 안이다. 시간은 Router가 합계 721초 길다. subagent 수는 기준선 28, Router 29로 같다.
+- 지금까지 파일럿 증감: +22%, −20%, +35%, −11%(v2 1회차), +11%(v2 2회차), 합산 −0.3%. **전체 비용 절감은 확인되지 않았다.**
+- 확인된 것:
+  - 위험 없는 L1~L3는 기준선보다 약 40% 싸다.
+  - auth 작업에서 Review 반영으로 결함이 고쳐진다(4회 연속).
+  - sol 승격·Review는 약 65% 비싸다.
+- Router는 비용을 낮은 단계에서 아껴 높은 단계의 검증에 쓰는 구조다. 총비용은 기준선과 비슷하고 auth·보안 작업의 품질은 더 좋다.
+
 ---
 
 ## 23. 패키징과 프로젝트 구조
