@@ -51,9 +51,9 @@ class UserPromptSubmitTest(HookCase):
     def test_l4_advises_plan_first_and_independent_review_with_exact_mer_commands(self):
         self.fake = {"level": "L4"}
         c = self.ctx(self.submit())
-        self.assertIn("Recommended session: gpt-6-sol, reasoning effort high", c)
+        self.assertIn("Recommended session: gpt-6.1-sol, reasoning effort high", c)
         self.assertIn("Plan first: write a short plan", c)
-        self.assertIn("independent review (gpt-6-sol, reasoning effort high)", c)
+        self.assertIn("independent review (gpt-6.1-sol, reasoning effort high)", c)
         mer = f'python3 {self.plugin_root() / "bin" / "mer"} run'
         self.assertIn(f"`{mer} --review-profile frontier:high 'review only: check the current diff for <the task>'`", c)
         self.assertIn(f"`{mer} '<the task>'`", c)
@@ -93,14 +93,14 @@ class UserPromptSubmitTest(HookCase):
     def test_plan_only_and_review_only_targets(self):
         self.fake = {"level": "L3"}
         c = self.ctx(self.submit("Write a plan to refactor parser.py, plan only"))
-        self.assertIn("Recommended for planning: gpt-6-sol, reasoning effort high", c)
+        self.assertIn("Recommended for planning: gpt-6.1-sol, reasoning effort high", c)
         self.assertNotIn("Recommended session", c)
         c = self.ctx(self.submit("review only: check the changes in parser.py"))
-        self.assertIn("Recommended for this review: gpt-6-sol, reasoning effort high", c)
+        self.assertIn("Recommended for this review: gpt-6.1-sol, reasoning effort high", c)
 
     def test_session_override_shapes_the_recommendation(self):
         self.fake = {"level": "L1"}
-        self.assertIn("gpt-6-sol, reasoning effort xhigh", self.ctx(self.submit("/router session=frontier:xhigh\n" + DEV)))
+        self.assertIn("gpt-6.1-sol, reasoning effort xhigh", self.ctx(self.submit("/router session=frontier:xhigh\n" + DEV)))
 
     def test_backend_failure_still_advises_from_the_default_level_and_logs_it(self):
         self.fake = {"raise": True}

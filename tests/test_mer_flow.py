@@ -90,7 +90,7 @@ class ImplementTest(unittest.TestCase):
         h.run("L5")
         start = h.events[0]
         self.assertEqual((start["role"], start["model"], start["requested_effort"], start["applied_effort"]),
-                         ("implement", "gpt-6-sol", "xhigh", "xhigh"))
+                         ("implement", "gpt-6.1-sol", "xhigh", "xhigh"))
         self.assertEqual(start["thread_id"], "T-impl")
 
     def test_usage_delta_per_call_is_not_cumulative_sum(self):
@@ -131,7 +131,7 @@ class EscalationTest(unittest.TestCase):
         h = Harness(gates=(GATE_BAD,))
         r = h.run("L2")
         models = [c["argv"][c["argv"].index("-m") + 1] for c in h.calls]
-        self.assertEqual(models, ["gpt-6-luna", "gpt-6-luna", "gpt-6-sol"])
+        self.assertEqual(models, ["gpt-6-luna", "gpt-6-luna", "gpt-6.1-sol"])
         self.assertEqual((r["exit_code"], r["status"], r["escalations"]), (1, "gate_failed", 2))
 
     def test_max_escalations_option(self):
@@ -173,7 +173,7 @@ class EscalationTest(unittest.TestCase):
         from model_effort_router.profiles.profiles import Profile
         h = Harness()
         h.run("L2", overrides={"session": Profile("frontier", "high")})
-        self.assertEqual(h.calls[0]["argv"][h.calls[0]["argv"].index("-m") + 1], "gpt-6-sol")
+        self.assertEqual(h.calls[0]["argv"][h.calls[0]["argv"].index("-m") + 1], "gpt-6.1-sol")
 
 
 class ReviewTest(unittest.TestCase):
@@ -183,7 +183,7 @@ class ReviewTest(unittest.TestCase):
         rev = h.calls[1]["argv"]
         self.assertIn("read-only", rev)
         self.assertNotIn("resume", rev)
-        self.assertEqual(rev[rev.index("-m") + 1], "gpt-6-sol")
+        self.assertEqual(rev[rev.index("-m") + 1], "gpt-6.1-sol")
         self.assertIn("model_reasoning_effort=high", rev)
         for needle in (REQ, "+new line", '"overall": "passed"', "VERDICT: approved|changes_requested", "FINDINGS: <n>"):
             self.assertIn(needle, rev[-1])

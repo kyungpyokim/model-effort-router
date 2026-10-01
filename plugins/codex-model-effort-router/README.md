@@ -40,9 +40,9 @@ For a routed prompt (a code-change, plan-only or review-only request; not questi
 ```
 [model-effort-router] Advisory only: nothing is enforced and no subagents are needed. ...
 Difficulty: L4 (confidence 0.62). Risk flags: auth.
-Recommended session: gpt-6-sol, reasoning effort high; switch with /model if you want.
+Recommended session: gpt-6.1-sol, reasoning effort high; switch with /model if you want.
 Plan first: write a short plan before changing code.
-This work warrants an independent review (gpt-6-sol, reasoning effort high) after the change. Run it with `python3 <plugin>/bin/mer run --review-profile frontier:high 'review only: check the current diff for <the task>'`, or run the whole task through `python3 <plugin>/bin/mer run '<the task>'` (Test Gate, escalation and review included). Single-quote the request (write ' as '\'') so the shell expands nothing in it.
+This work warrants an independent review (gpt-6.1-sol, reasoning effort high) after the change. Run it with `python3 <plugin>/bin/mer run --review-profile frontier:high 'review only: check the current diff for <the task>'`, or run the whole task through `python3 <plugin>/bin/mer run '<the task>'` (Test Gate, escalation and review included). Single-quote the request (write ' as '\'') so the shell expands nothing in it.
 ```
 
 Non-routed prompts and `/router off` get no context at all. The hook is fail-open (any error, timeout or untrusted hook = no output), logs a `route` event, and no-ops when `MER_CLASSIFIER=1` (set inside mer-driven and classifier sessions).

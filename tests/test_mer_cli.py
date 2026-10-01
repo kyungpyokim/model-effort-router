@@ -48,13 +48,13 @@ class DryRunTest(CliCase):
         rc, out = self.mer("Fix the discount bug in pricing.py", "--dry-run")
         self.assertEqual((rc, self.h.calls, self.state.exists()), (0, [], False))
         for needle in ("level: L2", "session: economy:medium -> gpt-6-luna/medium", "plan first: no", "review: none",
-                       "1. balanced:high -> gpt-6-luna/high", "2. frontier:high -> gpt-6-sol/high",
+                       "1. balanced:high -> gpt-6-luna/high", "2. frontier:high -> gpt-6.1-sol/high",
                        "first command: codex exec --json --skip-git-repo-check -s workspace-write -m gpt-6-luna"):
             self.assertIn(needle, out)
 
     def test_l4_auth_dry_run_shows_plan_first_review_and_single_rung(self):
         rc, out = self.mer("Fix the login auth check in auth.py", "--dry-run", spec={"level": "L4"})
-        for needle in ("level: L4", "risk flags: auth", "session: frontier:high -> gpt-6-sol/high", "plan first: yes",
+        for needle in ("level: L4", "risk flags: auth", "session: frontier:high -> gpt-6.1-sol/high", "plan first: yes",
                        "review: frontier:high", "1. frontier:xhigh", "risk_min:auth"):
             self.assertIn(needle, out)
 
@@ -173,7 +173,7 @@ class RunTest(CliCase):
         self.assertEqual(self.mer("Fix the bug in calc.py")[0], 0)
         self.assertEqual(self.h.calls, [])
         rc, out = self.mer("/router session=frontier:high\nFix the bug in calc.py", "--json")
-        self.assertEqual((rc, json.loads(out)["profile"]["model"]), (0, "gpt-6-sol"))
+        self.assertEqual((rc, json.loads(out)["profile"]["model"]), (0, "gpt-6.1-sol"))
 
     def test_bad_config_is_exit_2(self):
         (self.cwd / ".model-effort-router.json").write_text('{"difficulty": {"backend": "nope"}}')

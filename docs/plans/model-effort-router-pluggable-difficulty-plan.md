@@ -500,7 +500,7 @@ Codex adapter 현재 기본값(데이터로 관리, 확인 필요 항목 포함)
 |---|---|---|
 | economy | gpt-6-luna | low, medium, high, xhigh, max |
 | balanced | gpt-6-luna (economy와 같음, 확인 필요) | 위와 같음 |
-| frontier | gpt-6-sol | low, medium, high, xhigh, max, ultra |
+| frontier | gpt-6.1-sol (2026-10-01 변경, 이전 gpt-6-sol; Codex 목록 최상위·사용자 기본 모델) | low, medium, high, xhigh, max, ultra |
 
 추상 effort `medium / high / xhigh`는 Codex effort 이름과 같다. 현재 두 모델 모두 세 값을 지원하므로 대체 규칙이 발동하지 않는다. Codex는 미지원 effort 지정 시 subagent 생성을 오류로 거부하므로, Adapter 설정 생성 시점에 검증한다.
 

@@ -8,7 +8,7 @@ class CodexAdapterTest(unittest.TestCase):
     def test_default_tier_models(self):
         self.assertEqual(resolve(Profile("economy", "medium")).model, "gpt-6-luna")
         self.assertEqual(resolve(Profile("balanced", "high")).model, "gpt-6-luna")
-        self.assertEqual(resolve(Profile("frontier", "high")).model, "gpt-6-sol")
+        self.assertEqual(resolve(Profile("frontier", "high")).model, "gpt-6.1-sol")
 
     def test_supported_effort_is_unchanged_and_both_reported(self):
         r = resolve(Profile("frontier", "xhigh"))
