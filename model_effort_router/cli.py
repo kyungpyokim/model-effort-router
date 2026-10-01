@@ -98,7 +98,7 @@ def _human(out):
     lines.append(f"usage: {u['total']} tokens (in {u['input']}, out {u['output']}) over {len(out['calls'])} call(s)")
     if out.get("error"):
         lines.append(f"error: {out['error']}")
-    if out["status"] == "changes_requested" and r.get("text"):
+    if out["status"] in ("changes_requested", "review_fixed") and r.get("text"):
         lines += ["", "review findings:", r["text"]]
     if out.get("message"):
         lines += ["", out["message"]]

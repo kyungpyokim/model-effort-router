@@ -107,9 +107,21 @@ class _Flow:
         gate = self.gate_loop()
         if sp.review and gate["overall"] == "failed":
             self.review["skipped"] = "gate failed"
-        elif sp.review:
-            self.run_review(sp.review)  # changes_requested ends the run: findings are reported, no fix loop
+        elif sp.review and self.run_review(sp.review) and self.review["verdict"] == "changes_requested" and self.thread:
+            self.apply_review()
         return self.outcome()
+
+    def apply_review(self):
+        """One fix turn in the implement session at its current profile, then the gate; no re-review (pilot v4:
+        reviews found real defects that a report-only run left unfixed; a re-review loop doubled the cost)."""
+        text = ("An independent review requested changes. Address these findings, then stop.\n\n"
+                f"{self.review['text'][-rv.FINDINGS_MAX:]}")
+        stream, rec = self.call("review_fix", cx.resume_argv(self.profile, self.thread, text, self.config),
+                                self.profile, self.thread)
+        self.message = stream.text or self.message
+        self.emit({"event": "review_fix", **rec})
+        self.review = {**self.review, "fixed": True}
+        self.run_gate()
 
     def review_only(self):
         if not self.diff_fn(self.cwd).get("is_repo"):
@@ -131,12 +143,12 @@ class _Flow:
         if self.gate and self.gate["overall"] == "failed":
             status = "gate_failed"
         elif self.review["verdict"] == "changes_requested":
-            status = "changes_requested"
+            status = "review_fixed" if self.review.get("fixed") else "changes_requested"
         elif self.review_required and self.review["verdict"] != "approved":  # a required review never passes silently
             status = "review_skipped" if self.review["skipped"] else "review_unknown"
         else:
             status = "ok"
-        return {"status": status, "exit_code": 0 if status == "ok" else 1, "message": self.message}
+        return {"status": status, "exit_code": 0 if status in ("ok", "review_fixed") else 1, "message": self.message}
 
 
 def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="route", max_escalations=2,

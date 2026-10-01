@@ -146,10 +146,10 @@ class RunTest(CliCase):
         self.mer("Fix the bug in calc.py", "--max-escalations", "1", h=h)
         self.assertEqual(len(h.calls), 2)
 
-    def test_review_changes_requested_exit_nonzero(self):
-        h = Harness(verdicts=[("changes_requested", 2), ("changes_requested", 1)])
+    def test_review_changes_requested_gets_fixed_once(self):
+        h = Harness(verdicts=[("changes_requested", 2)])
         rc, out = self.mer("Fix the login auth check in auth.py", "--json", spec={"level": "L4"}, h=h)
-        self.assertEqual((rc, json.loads(out)["status"]), (1, "changes_requested"))
+        self.assertEqual((rc, json.loads(out)["status"]), (0, "review_fixed"))
 
     def test_explicit_invocation_routes_non_dev_text(self):
         rc, out = self.mer("hello there", "--json")

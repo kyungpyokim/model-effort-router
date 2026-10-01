@@ -211,13 +211,30 @@ class ReviewTest(unittest.TestCase):
         h.run("L4", ("data_loss",))
         self.assertIn("model_reasoning_effort=xhigh", h.calls[-1]["argv"])
 
-    def test_changes_requested_ends_run_with_findings_and_no_escalation_or_re_review(self):
+    def test_changes_requested_gets_one_fix_turn_in_the_same_session_and_no_re_review(self):
         for level, flags in (("L4", ()), ("L4", ("auth",)), ("L5", ())):
             h = Harness(verdicts=[("changes_requested", 2)])
             r = h.run(level, flags)
-            self.assertEqual((len(h.calls), r["escalations"], r["exit_code"], r["status"]), (2, 0, 1, "changes_requested"))
-            self.assertEqual((r["review"]["findings"], "looks ok" in r["review"]["text"]), (2, True))
-            self.assertEqual(h.kinds().count("gate"), 1)
+            fix = h.calls[2]["argv"]
+            self.assertEqual((len(h.calls), r["escalations"], r["exit_code"], r["status"]), (3, 0, 0, "review_fixed"))
+            self.assertIn("resume", fix)
+            self.assertEqual(fix[-2], "T-impl")  # same implement session, not a new one
+            self.assertIn("looks ok", fix[-1])  # the review findings are handed over
+            self.assertEqual(h.calls[2]["argv"][h.calls[2]["argv"].index("-m") + 1],
+                             h.calls[0]["argv"][h.calls[0]["argv"].index("-m") + 1])  # current profile, no escalation
+            self.assertEqual((h.kinds().count("gate"), h.kinds().count("review"), r["review"]["fixed"]), (2, 1, True))
+
+    def test_gate_failing_after_the_review_fix_fails_the_run(self):
+        h = Harness(gates=(GATE_OK, GATE_BAD), verdicts=[("changes_requested", 1)])
+        r = h.run("L4")
+        self.assertEqual((r["status"], r["exit_code"], len(h.calls)), ("gate_failed", 1, 3))
+
+    def test_no_thread_id_means_no_fix_turn(self):
+        h = Harness(verdicts=[("changes_requested", 1)])
+        orig = h.runner
+        h.runner = lambda argv, **k: "\n".join(l for l in orig(argv, **k).splitlines() if "thread.started" not in l)
+        r = h.run("L4")
+        self.assertEqual((r["status"], r["exit_code"], len(h.calls)), ("changes_requested", 1, 2))
 
     def test_unknown_verdict_no_loop_but_fails_required_review(self):
         h = Harness()

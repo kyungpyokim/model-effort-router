@@ -153,7 +153,7 @@ mer "<요청>" [--cwd DIR]
  ├─ mer-gate (Test Gate)
  ├─ 실패 → 같은 세션을 다음 승격 프로필로 재개하고 실패 내용 전달 → mer-gate  (최대 2회)
  ├─ 고위험 작업이면 독립 Review 세션 1회 (새 세션, Review 프로필, 요청·diff·gate 결과만)
- │     changes_requested → 승격·재Review 없이 종료(종료 코드 1), 지적 내용을 보고
+ │     changes_requested → 같은 구현 세션에서 지적 반영 1턴 → Test Gate (재Review 없음)
  └─ 라우팅 로그 기록
 ```
 
@@ -479,7 +479,7 @@ Stage Policy는 단계마다 **모델 tier 하나와 effort 하나**를 반환�
 | L4 | frontier / high | frontier / xhigh | 중단 후 사용자 보고 | frontier / high |
 | L5 | frontier / xhigh | 중단 후 사용자 보고 | — | frontier / xhigh |
 
-- **승격 조건**: Test Gate `failed`만. 독립 Review `changes_requested`는 승격이나 재Review를 일으키지 않고 지적 내용과 함께 실행을 `changes_requested`(종료 코드 1)로 끝낸다(파일럿 재측정에서 Review → 승격 → 재Review 루프가 비용과 시간을 키웠다). `not_run`만 있는 경우도 승격하지 않고 보고에 남긴다.
+- **승격 조건**: Test Gate `failed`만. 독립 Review `changes_requested`는 승격하지 않고, **같은 구현 세션을 현재 프로필로 1턴 이어 지적을 반영**한 뒤 Test Gate만 다시 돈다(재Review 없음, 상태 `review_fixed`, gate가 실패하면 `gate_failed`). 세션 id가 없으면 반영 없이 `changes_requested`(종료 코드 1). 파일럿 재측정에서 Review → 승격 → 재Review 루프는 비용을 키웠고, L4 인증 재측정에서는 보고만 하는 Review가 찾은 결함이 그대로 남았다. `not_run`만 있는 경우도 승격하지 않고 보고에 남긴다.
 - **위험 신호**: §11.2 최소 조건을 그대로 쓰되, "Plan 수행"은 같은 세션에서 계획을 먼저 쓰게 하는 지침으로(계획 먼저는 Plan 최소값이 있는 위험 신호(concurrency 제외)와 L4 이상에만 붙는다. L3 단독에는 붙이지 않는다: 파일럿에서 턴 수만 늘렸다), "Review 최소값"은 독립 Review 프로필의 하한으로 적용한다. L1~L3에는 **auth·security 신호가 있을 때만** 독립 Review(frontier/high 이상)를 붙인다(레벨을 낮게 판정해도 인증·보안 작업의 Review가 빠지지 않게). 그 밖의 위험 신호만으로는 붙이지 않는다(파일럿 v2: 구현 세션의 자체 리뷰와 중복돼 사용량이 두 배가 됐다).
 - **사용자 override**: `/router session=frontier:high`처럼 세션 프로필을 지정할 수 있다. 위험 신호는 기본값이든 override든 세션 프로필을 올리지 않는다. 대신 계획 먼저 쓰기와 독립 Review 하한은 override로 없앨 수 없다.
 - 이 표는 초기값이며 파일럿 재측정(Phase 7)과 §22 평가로 조정한다. 현재 Codex에서는 economy와 balanced가 같은 모델(gpt-6-luna)이라, 낮은 단계의 승격은 사실상 effort 상승이다.
@@ -886,7 +886,7 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 
 - Review 세션 비용: 0.4~0.5M → **138k, 175k**. Review 세션은 subagent를 만들지 않았다.
 - Router 합계 1,247k / 1,219k(평균 1.23M), 기준선 1,010k / 646k(평균 0.83M) → +49%. 남은 차이는 구현 세션이 ECC 지침대로 만드는 code-reviewer·python-reviewer subagent(286k, 482k)와 회차 편차다. 기준선도 subagent를 만든다.
-- 두 Review 모두 changes_requested였고, 4개 결과물(기준선 2, Router 2) 모두 비ASCII 서명에서 `TypeError`가 나는 같은 경계 결함이 있다. Review가 찾은 결함이 승격 없이 끝나 반영되지 않는다.
+- 두 Review 모두 changes_requested였고, 4개 결과물(기준선 2, Router 2) 모두 비ASCII 서명에서 `TypeError`가 나는 같은 경계 결함이 있다. Review가 찾은 결함이 승격 없이 끝나 반영되지 않는다. → 조치(2026-10-01): changes_requested면 같은 구현 세션에서 지적 반영 1턴(재Review 없음).
 - v4의 L1~L3와 이 L4를 합치면 기준선 1.97M, Router 2.18M(+11%)이다(서로 다른 실행을 합친 값이라 참고용).
 
 **결정 (2026-10-01)**: 기본 모드는 `auto`로 유지한다(Phase 7 완료 조건). 단 v3에서 L4 인증 작업이 L3로 판정돼 독립 Review가 빠졌으므로, L1~L3에서도 auth·security 신호가 있으면 독립 Review를 붙인다(§11.4). 이 조건은 L4 인증 사례에 Review 세션 1회를 더하므로, 표본을 늘린 재측정(코퍼스, 반복 횟수)에서 절감 폭을 다시 확인한다.
