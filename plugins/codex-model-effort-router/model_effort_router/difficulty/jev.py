@@ -25,6 +25,11 @@ RISK_THRESHOLD = 0.5  # noul probability at or above this sets the flag (per-fla
 # ones only raise the L4/L5 review floor, so those two are tuned for recall.
 RISK_THRESHOLDS = {"security": 0.6, "auth": 0.6, "payment": 0.95, "data_migration": 0.7, "data_loss": 0.6,
                    "concurrency": 0.6}
+# L4/L5 moves the session to frontier with an independent review, so Jev must be sure: P(L4)+P(L5) below this
+# demotes an L4/L5 argmax to L3. Calibrated on corpus-v1 (plan 22.3, 2026-10-02): labeled L1-L3 judged L4+ fell from
+# 10 to 4 of 130, labeled L4/L5 judged lower stayed at 1. Jev inflates concurrency work (true L4+ >= 0.85, L3 <= 0.75).
+L4_MIN_PROB = 0.6
+L4_MIN_PROB_BY_FLAG = {"concurrency": 0.8}
 
 _RISK_HELP = {
     "security": "security-sensitive code (crypto, input sanitising, vulnerabilities, secrets)",
@@ -187,6 +192,9 @@ class JevBackend:
         flags = tuple(f for f in RISK_FLAGS if scores[f] >= RISK_THRESHOLDS.get(f, RISK_THRESHOLD))
         resp_model = data.get("model")
         codes = ("jev",) + ((resp_model,) if isinstance(resp_model, str) else ())
+        need = max([L4_MIN_PROB] + [L4_MIN_PROB_BY_FLAG[f] for f in flags if f in L4_MIN_PROB_BY_FLAG])
+        if level in ("L4", "L5") and dist["L4"] + dist["L5"] < need:
+            level, codes = "L3", codes + ("jev_l4_unsure",)
         return DifficultyDecision(
             level, self.name, confidence=conf if conf is not None and 0 <= conf <= 1 else None,
             distribution=dist, reason_codes=codes, risk_flags=flags, target=target)

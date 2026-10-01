@@ -87,8 +87,25 @@ class MappingTest(unittest.TestCase):
         self.assertEqual(d.reason_codes, ("jev", "jev-1.13.0"))
 
     def test_tie_picks_higher_level(self):
-        _, d = run(FakeTransport(response((0, 0.5, 0, 0.5, 0))))
-        self.assertEqual(d.level, "L4")
+        _, d = run(FakeTransport(response((0.5, 0.5, 0, 0, 0))))
+        self.assertEqual(d.level, "L2")
+
+    def test_unsure_l4_or_l5_is_demoted_to_l3_and_stricter_with_concurrency(self):
+        for probs, risks, level in (
+            ((0, 0, 0.41, 0.59, 0), None, "L3"),       # argmax L4 but P(L4+L5) < 0.6
+            ((0, 0, 0.4, 0.6, 0), None, "L4"),          # exactly at the threshold keeps L4
+            ((0, 0, 0.25, 0.1, 0.65), None, "L5"),
+            ((0, 0, 0.25, 0.75, 0), {"concurrency": 0.9}, "L3"),  # concurrency needs 0.8
+            ((0, 0, 0.2, 0.8, 0), {"concurrency": 0.9}, "L4"),
+            ((0, 0.2, 0.2, 0.6, 0), {"concurrency": 0.5}, "L4"),  # flag below its threshold: plain rule
+        ):
+            with self.subTest(probs=probs, risks=risks):
+                _, d = run(FakeTransport(response(probs, risks=risks)))
+                self.assertEqual(d.level, level)
+                self.assertEqual("jev_l4_unsure" in d.reason_codes, level == "L3")
+                self.assertAlmostEqual(d.distribution["L4"], probs[3] / sum(probs))  # distribution untouched
+        _, d = run(FakeTransport(response((0, 0, 0.4, 0.3, 0.3))))  # argmax L3: never promoted by the L4+ mass
+        self.assertEqual((d.level, "jev_l4_unsure" in d.reason_codes), ("L3", False))
 
     def test_distribution_renormalized(self):
         _, d = run(FakeTransport(response((0.1, 0.1, 0.1, 0.1, 0.1))))  # sums 0.5
