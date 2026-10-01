@@ -18,7 +18,10 @@ KEY_ENV = "TYPESAFE_API_KEY"
 MODEL_ENV = "MER_JEV_MODEL"
 DEFAULT_MODEL = "jev-latest"
 RISK_THRESHOLD = 0.5  # noul probability at or above this sets the flag (per-flag values: RISK_THRESHOLDS)
-RISK_THRESHOLDS = {}  # flag -> threshold, calibrated on the corpus (plan 22.2); missing flags use RISK_THRESHOLD
+# flag -> threshold, calibrated on the 40-case seed corpus (plan 22.2, 2026-10-01): Jev over-flags at 0.5 (precision
+# 51%); these keep every labeled flag (with the rule-based detector merged) at 79% precision. Small sample: recheck.
+RISK_THRESHOLDS = {"security": 0.85, "auth": 0.5, "payment": 0.95, "data_migration": 0.7, "data_loss": 0.75,
+                   "concurrency": 0.8}
 
 _RISK_HELP = {
     "security": "security-sensitive code (crypto, input sanitising, vulnerabilities, secrets)",

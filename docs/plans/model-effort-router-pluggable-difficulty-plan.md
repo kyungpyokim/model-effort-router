@@ -735,6 +735,7 @@ Review Fail → 현재 Implement 프로필로 Fix → Test Gate → Review
 - 위험 신호: Jev 단독 재현율 21/22(95%), 정밀도 21/41(51%). 정규식과 합치면 22/22, 정밀도 51%. 정규식 단독은 13/22, 정밀도 87%.
 - **Jev는 위험 신호를 과하게 붙인다**(오탐 20개): security 8, payment 5, concurrency 5, data_loss 2 등. 예: 이메일 입력 검증·업로드 리뷰에 security, 통화 포맷·폼 상태에 payment, 캐시·이벤트 버스에 concurrency.
 - 영향: security·auth 오탐은 L1~L3에도 독립 Review를 붙이고(§11.4), 위험 신호는 계획 먼저 쓰기를 붙여 비용을 늘린다. 다음 단계로 noul 원값을 기록해 임계값(현재 0.5)을 신호별로 정한다.
+- **임계값 보정** (2026-10-01, noul 원값 기록 후 재실행 `runs/compare-seed-jev2.json`): 신호별 임계값 security 0.85, auth 0.5, payment 0.95, data_migration 0.7, data_loss 0.75, concurrency 0.8(`difficulty/jev.py` `RISK_THRESHOLDS`). 같은 기록에서 정규식과 합친 결과가 재현율 22/22 유지, 정밀도 51% → 79%(오탐 21 → 6). auth·payment·data_migration 일부는 정규식이 이미 잡아 임계값을 높여도 놓치지 않는다. 보정과 평가가 같은 40건이라 과적합 위험이 있으므로 코퍼스를 늘리면 다시 확인한다.
 
 ### 22.3 비용 기준선
 
