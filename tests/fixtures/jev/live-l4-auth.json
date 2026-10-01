@@ -1,0 +1,25 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "level": {
+      "type": "score",
+      "score": 1.95,
+      "confidence": 0.49,
+      "legend": {
+        "0": "mechanical (rename, typo, trivial config)",
+        "1": "local change (single function, small bug fix)",
+        "2": "multi-file, moderate design judgment",
+        "3": "architectural (structure, persistence, concurrency design, API contract)",
+        "4": "critical/deep (security core, data-loss migration, complex concurrency, unknown root cause)"
+      },
+      "probabilities": {"0": 0.0, "1": 0.33, "2": 0.51, "3": 0.03, "4": 0.13}
+    },
+    "security": {"type": "noul", "noul": 0.95},
+    "auth": {"type": "noul", "noul": 0.99},
+    "payment": {"type": "noul", "noul": 0.06},
+    "data_migration": {"type": "noul", "noul": 0.05},
+    "data_loss": {"type": "noul", "noul": 0.09},
+    "concurrency": {"type": "noul", "noul": 0.08}
+  },
+  "usage": {"input_tokens": 541, "output_tokens": 119}
+}

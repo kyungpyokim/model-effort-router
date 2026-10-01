@@ -341,7 +341,8 @@ Jev는 TypeSafe의 외부 API다. 구현은 `difficulty/jev.py`의 `JevBackend`�
 - **매핑**: level = score 확률(키 정확히 `"0"`..`"4"`)의 argmax(동률이면 높은 레벨, 안전 방향). distribution = 확률(합이 1이 아니면 재정규화), confidence = 답의 confidence, 위험 플래그 = noul >= 0.5(bool 허용). 실제 응답으로 확인하기 전까지 **문서와 다른 형태는 모두 실패로 처리한다**: 확률 키가 다르거나, 확률 없이 score만 있거나, 위험 답이 없거나 확률이 아니면 예외. `reason_codes` = `("jev", <응답 model>)`. 사용량은 `input_tokens`/`output_tokens`로 보고한다.
 - **실패**: non-2xx(리다이렉트 포함), 네트워크 오류, timeout, JSON 오류, 답 누락·무효는 모두 예외로 올려 fallback 체인이 처리한다(오류 코드·rate limit 문서 없음). 답을 쓸 수 없어도 응답에 사용량이 있으면 기록한다.
 - **비용·프라이버시**: 구독이 아니라 외부 API로 별도 과금된다(벤더 공시 입력 약 $0.042/M 토큰, 호출당 입력 수백 토큰). **작업 텍스트와 경로가 TypeSafe로 전송된다.** 평가에서는 `--live` 없이 호출되지 않는다.
-- **미검증**: 실제 응답의 예외 경우(오류 본문, 확률 키 누락, rate limit)와 실제 분류 품질. live 호출은 하지 않았다.
+- **live 확인 (2026-10-01, 1회)**: 파일럿 L4 인증 작업으로 `jev-latest`(응답 model `jev-1.13.0`)를 호출했다. 응답 형태는 문서와 같았다(score 확률 키 `"0"`..`"4"`, `legend`가 우리 기준 순서를 그대로 반환, noul은 float). 결과: L3(확률 L2 0.33 / L3 0.51 / L5 0.13, confidence 0.49), security 0.95·auth 0.99. 사용량 입력 541 / 출력 119 토큰(Subscription 분류기 약 27k 대비 약 2%). 응답은 `tests/fixtures/jev/live-l4-auth.json`에 저장했다.
+- **미검증**: 오류 응답 본문, rate limit, 분류 품질(코퍼스 비교 필요).
 
 ### 8.3 Nimble Backend (선택 기능, MVP 제외)
 

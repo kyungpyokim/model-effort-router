@@ -1,5 +1,6 @@
 import json
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from model_effort_router.difficulty.decision import RISK_FLAGS, DifficultyDecision, DifficultyInput
@@ -135,6 +136,19 @@ class MappingTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             b.classify(DifficultyInput("x"), 5)
         self.assertIsNone(b.last_usage)
+
+
+class LiveShapeTest(unittest.TestCase):
+    def test_recorded_live_response_maps(self):
+        """Recorded once from jev-latest (2026-10-01, pilot L4 auth task): the shape the mapping relies on."""
+        body = json.loads((Path(__file__).resolve().parent / "fixtures" / "jev" / "live-l4-auth.json").read_text())
+        b, d = run(FakeTransport(body))
+        self.assertEqual((d.level, d.confidence, d.risk_flags), ("L3", 0.49, ("security", "auth")))
+        self.assertAlmostEqual(d.distribution["L2"], 0.33)
+        self.assertEqual(d.reason_codes, ("jev", "jev-1.13.0"))
+        self.assertEqual(b.last_usage, {"input_tokens": 541, "output_tokens": 119})
+        legend = body["answers"]["level"]["legend"]  # criteria are echoed in our order: index i == L(i+1)
+        self.assertEqual([legend[str(i)] for i in range(5)], list(jev.QUESTIONS["level"]["criteria"]))
 
 
 class FailureTest(unittest.TestCase):
