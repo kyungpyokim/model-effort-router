@@ -21,7 +21,7 @@ from model_effort_router.policy.targeting import classify_target
 
 from . import cases as corpus
 
-LIVE_BACKENDS = {"subscription"}  # backends that call a model
+LIVE_BACKENDS = {"subscription", "jev"}  # backends that call a model
 CRITICAL_MAX_PREDICTED = LEVELS.index("L2")
 TIMEOUT_S = 30.0
 
@@ -125,7 +125,7 @@ def main(argv=None, registry=None):
     ap.add_argument("--md")
     ap.add_argument("--dry-run", action="store_true", help="validate and print the plan; call no backend")
     ap.add_argument("--live", action="store_true",
-                    help=f"allow model-calling backends {sorted(LIVE_BACKENDS)}; consumes subscription usage")
+                    help=f"allow model-calling backends {sorted(LIVE_BACKENDS)}; consumes subscription usage or external API credit")
     args = ap.parse_args(argv)
     names = [n for n in args.backends.split(",") if n]
     unknown = [n for n in names if n not in registry]

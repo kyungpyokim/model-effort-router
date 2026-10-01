@@ -33,7 +33,8 @@ def session_env(base):
 
 
 def run_subprocess(argv, *, cwd, env, timeout_s):
-    return default_runner(argv, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd, label="codex exec")
+    return default_runner(argv, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd, label="codex exec",
+                          grace_s=5)
 
 
 def _events(text):

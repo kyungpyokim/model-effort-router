@@ -1,7 +1,8 @@
 """name -> factory registry. New backends register here; Router Core is untouched."""
+from .jev import JevBackend
 from .subscription import SubscriptionBackend
 
-BACKENDS = {"subscription": SubscriptionBackend}
+BACKENDS = {"subscription": SubscriptionBackend, "jev": JevBackend}
 
 
 def register(name, factory, registry=BACKENDS):

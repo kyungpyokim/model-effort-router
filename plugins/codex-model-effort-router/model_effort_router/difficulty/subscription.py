@@ -11,11 +11,18 @@ import signal
 import subprocess
 import tempfile
 
-from .decision import RISK_FLAGS, DifficultyDecision, DifficultyInput
+from .decision import LEVELS, RISK_FLAGS, DifficultyDecision, DifficultyInput
 
 GUARD_ENV = "MER_CLASSIFIER"  # child env guard: the Router's own hook must no-op when set
 MAX_TASK_CHARS = 4000
 MAX_PATHS = 50
+LEVEL_DESCRIPTIONS = (  # shared with the Jev backend's score criteria
+    "mechanical (rename, typo, trivial config)",
+    "local change (single function, small bug fix)",
+    "multi-file, moderate design judgment",
+    "architectural (structure, persistence, concurrency design, API contract)",
+    "critical/deep (security core, data-loss migration, complex concurrency, unknown root cause)",
+)
 DEFAULT_MODEL = "gpt-6-luna"  # default to confirm
 
 
@@ -23,7 +30,7 @@ class BackendOutputError(ValueError):
     """Backend output could not be turned into a DifficultyDecision."""
 
 
-def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace_s=5):
+def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace_s=1):  # hook budget: short grace
     """Runs `cmd` in its own process group. On timeout or any interruption the group gets SIGTERM, then SIGKILL
     after `grace_s`, so a child that cleans up its own children on SIGTERM (mer) gets the chance to."""
     proc = subprocess.Popen(
@@ -59,11 +66,7 @@ def build_prompt(task: DifficultyInput) -> str:
     paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
     return (
         "Classify the difficulty of this software task as one of:\n"
-        "L1 mechanical (rename, typo, trivial config)\n"
-        "L2 local change (single function, small bug fix)\n"
-        "L3 multi-file, moderate design judgment\n"
-        "L4 architectural (structure, persistence, concurrency design, API contract)\n"
-        "L5 critical/deep (security core, data-loss migration, complex concurrency, unknown root cause)\n"
+        + "".join(f"{lv} {d}\n" for lv, d in zip(LEVELS, LEVEL_DESCRIPTIONS)) +
         'Reply with ONLY a JSON object: {"level": "L1".."L5", "confidence": 0..1, '
         '"reason_codes": [short_snake_case], "risk_flags": subset of '
         '[security, auth, payment, data_migration, data_loss, concurrency]}.\n'

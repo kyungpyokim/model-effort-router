@@ -334,13 +334,14 @@ class DifficultyBackend(Protocol):
 
 ### 8.2 Jev Backend
 
-Jev 고유의 입력 스키마, typed decision, 내부 판단 방법은 `JevBackend` 안에 격리한다.
+Jev는 TypeSafe의 외부 API다. 구현은 `difficulty/jev.py`의 `JevBackend`에 격리했다(`calls_model = True`).
 
-도입 전 정의할 것(현재 미정):
-
-- 제품/저장소 위치와 라이선스
-- 실행 방식(로컬 프로세스 / 호스트 모델 호출 / 외부 서비스)
-- 호출당 지연과 비용
+- **호출**: `POST https://api.typesafe.ai/v1/systemone`, `Authorization: Bearer $TYPESAFE_API_KEY`. 키는 호출 시점에 환경에서 읽고(없으면 변수명만 담은 오류), 생성자는 네트워크·키 검사를 하지 않는다. 모델은 기본 `jev-latest`, `MER_JEV_MODEL`로 고정 버전(예: `jev-1.13.0`)을 지정한다. HTTP는 `difficulty.timeout_s`(최대 12)를 호출 전체 기한으로 강제한다(DNS·느린 응답 포함). 리다이렉트는 따르지 않고 오류로 처리하며, 인증 헤더는 리다이렉트 요청에 복사되지 않는다.
+- **질문 설계**: `state` = 작업 텍스트(4000자) + 경로(50개). 질문은 `score` 하나(`level`, 기준 5개 = Subscription 프롬프트와 같은 L1..L5 설명)와 위험 플래그마다 `noul` 하나(security, auth, payment, data_migration, data_loss, concurrency).
+- **매핑**: level = score 확률(키 정확히 `"0"`..`"4"`)의 argmax(동률이면 높은 레벨, 안전 방향). distribution = 확률(합이 1이 아니면 재정규화), confidence = 답의 confidence, 위험 플래그 = noul >= 0.5(bool 허용). 실제 응답으로 확인하기 전까지 **문서와 다른 형태는 모두 실패로 처리한다**: 확률 키가 다르거나, 확률 없이 score만 있거나, 위험 답이 없거나 확률이 아니면 예외. `reason_codes` = `("jev", <응답 model>)`. 사용량은 `input_tokens`/`output_tokens`로 보고한다.
+- **실패**: non-2xx(리다이렉트 포함), 네트워크 오류, timeout, JSON 오류, 답 누락·무효는 모두 예외로 올려 fallback 체인이 처리한다(오류 코드·rate limit 문서 없음). 답을 쓸 수 없어도 응답에 사용량이 있으면 기록한다.
+- **비용·프라이버시**: 구독이 아니라 외부 API로 별도 과금된다(벤더 공시 입력 약 $0.042/M 토큰, 호출당 입력 수백 토큰). **작업 텍스트와 경로가 TypeSafe로 전송된다.** 평가에서는 `--live` 없이 호출되지 않는다.
+- **미검증**: 실제 응답의 예외 경우(오류 본문, 확률 키 누락, rate limit)와 실제 분류 품질. live 호출은 하지 않았다.
 
 ### 8.3 Nimble Backend (선택 기능, MVP 제외)
 
@@ -772,6 +773,28 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 
 결론: 3차 개정에서 실행 구조를 요청 단위 라우팅 + cascade로 전환한다(§3).
 
+**파일럿 재측정 결과** (2026-10-01, 3차 개정 구조 `mer`, 같은 4건, `runs/pilot-p7.jsonl`)
+
+조건: 기준선 = gpt-6-luna / high 단일 세션. Router = `mer`(구독 분류기 1회 + 세션 + Test Gate + 승격 + 고위험 Review). "전체"는 입력+출력(캐시 입력 포함), "비캐시"는 캐시되지 않은 입력+출력.
+
+| 사례 | 판정 | 기준선 전체 | Router 전체 | 기준선 비캐시 | Router 비캐시 | 시간 (기준선 → Router) |
+|---|---|---:|---:|---:|---:|---|
+| L1 문자열 변경 | L1, luna/medium | 92k | 181k | 25k | 32k | 15s → 31s |
+| L2 함수 추가 | L2, luna/medium | 321k | 182k | 41k | 28k | 69s → 44s |
+| L3 여러 파일 | L3, luna/high + 계획 먼저 | 499k | 1,017k | 40k | 103k | 123s → 132s |
+| L4 인증 | **L2**(오판) + auth, luna/medium → 승격 luna/high, Review sol/high 2회 모두 changes_requested | 365k | 1,068k | 13k | 242k | 112s → 694s |
+| 합계 | | 1.28M | 2.45M (+92%) | 118k | 404k | 319s → 902s |
+
+- 8회 모두 테스트 통과, 저장된 diff 기준 요구사항 8건 모두 충족(`baseline mark` yes). 품질 4건 preserved. 판정: `do_not_default_to_auto`.
+- 2차 구조(+209%)보다 나아졌지만 기준선보다 여전히 많다. 기준선보다 적은 것은 L2 1건뿐이다.
+- 원인:
+  1. **분류기 고정 비용**: 요청마다 입력 약 27k(비캐시 5~20k). L1 작업 전체 비용에 맞먹는다.
+  2. **L3 계획 먼저 쓰기**: 같은 luna/high인데 기준선의 약 2배를 썼다. 계획 지침이 턴 수를 늘린다.
+  3. **고위험 Review 루프**: L4 인증이 L2로 오판됐고, auth 신호로 붙은 sol/high Review가 두 번 모두 changes_requested를 내 승격 1회 + 재Review로 비용과 시간이 커졌다. 최종 diff는 기준선과 마찬가지로 요구사항을 충족했다. Review 본문은 기록되지 않아 무엇을 요구했는지는 확인할 수 없다.
+  4. **절감 여지가 작다**: 현재 Codex에서 economy와 balanced가 같은 모델(gpt-6-luna)이라, 기준선(luna/high) 대비 Router가 줄일 수 있는 것은 effort(high → medium)뿐이다.
+- 측정 도구: 저장 diff에 `__pycache__`가 섞여 있었다(평가 저장소 exclude에 추가해 수정). Gate는 lint/typecheck/build 명령이 없어 4건 모두 `incomplete`(test는 통과).
+- 표본이 4건 × 1회라 분산이 크다(L1은 diff가 같은데 Router 세션만 153k 입력).
+
 ---
 
 ## 23. 패키징과 프로젝트 구조
@@ -960,7 +983,7 @@ MVP 이후: Claude Code Plugin, Jev·Nimble Backend 비교.
 | 메인 모델이 차단 사유를 따라 재시도하는가 | live 미관측 |
 | 플러그인 업데이트 후 hook 재신뢰 필요 조건 | hook 설정이 같으면 유지됨. 설정 변경 시 미확인 |
 | `updatedInput`·`tool_name` 형식의 버전 의존성 | 버전 업그레이드 시 재확인 |
-| Jev의 정체, 실행 방식, 비용 | Phase 6 이전 |
+| 해소됨: Jev의 정체(TypeSafe 외부 API), 실행 방식(HTTPS), 비용(별도 과금, §8.2). 실제 응답 품질은 live 비교 때 확인 | Phase 6 |
 | Backend별 confidence 임계값 | Phase 6 |
 | 해소됨: subagent 모델·effort 동적 지정, 구독 인증 분류 호출, Codex 모델별 지원 effort, rollout `token_count` 형식 | Phase 0 / live 테스트 |
 

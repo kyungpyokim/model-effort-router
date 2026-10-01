@@ -22,6 +22,7 @@ Then start a Codex session and open `/hooks`: review and trust both hooks (UserP
 - Repo: `.model-effort-router.json` in the working directory. User: `$MER_USER_CONFIG`, else
   `${XDG_CONFIG_HOME:-~/.config}/model-effort-router/config.json`. Repo beats user.
 - Same schema as Router Core: `{"router": {"mode": "auto|manual|off"}, "difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10}}`.
+- Jev backend (external difficulty classifier): `{"difficulty": {"backend": "jev", "fallback": "subscription"}}` in `.model-effort-router.json`, with `TYPESAFE_API_KEY` set in the environment Codex runs with. `MER_JEV_MODEL` optionally pins a model (default `jev-latest`). **The task text and paths are sent to the TypeSafe API** and billed there, separately from the subscription. Without the key the backend fails and the fallback applies.
 - Test Gate commands: `{"gate": {"checks": {"test": "python3 -m unittest", "lint": "...", "typecheck": "...", "build": "..."}}}`.
   Otherwise discovered from AGENTS.md/CLAUDE.md, CI files, then package.json / pyproject.toml / Makefile.
   Checks not found are reported `not_run`, never passed.
