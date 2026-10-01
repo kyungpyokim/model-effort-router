@@ -898,6 +898,48 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 
 **결정 (2026-10-01)**: 기본 모드는 `auto`로 유지한다(Phase 7 완료 조건). 단 v3에서 L4 인증 작업이 L3로 판정돼 독립 Review가 빠졌으므로, L1~L3에서도 auth·security 신호가 있으면 독립 Review를 붙인다(§11.4). 이 조건은 L4 인증 사례에 Review 세션 1회를 더하므로, 표본을 늘린 재측정(코퍼스, 반복 횟수)에서 절감 폭을 다시 확인한다.
 
+**파일럿 세트 v2 결과** (2026-10-01, 13건 × 2회 계획, `evaluation/pilot/cases-v2.jsonl`, `runs/pilot-v2.jsonl`, 보고서 `runs/pilot-v2-report.md`)
+
+1회차 도중 Codex 워크스페이스 크레딧이 소진됐다(rollout: `usage_limit_exceeded`, "Your workspace is out of credits"). 그래서 L5 Router 1회차와 2회차 26회 전체가 약 3초 만에 실패했다. 유효한 쌍은 1회차 12건(L5 제외)이다. 2회차의 Jev 분류는 실패 전에 끝났으므로 판정 기록은 남아 있다.
+
+| 사례 | 라벨 | Jev 판정 (r1 / r2) | 기준선 | Router | 증감 | subagent (기준선 / Router) |
+|---|---|---|---:|---:|---:|---|
+| l1 문구 변경 | L1 | L2 / L2 | 92k | 185k | +101% | 0 / 0 |
+| l1b 상수 변경 (auth.py) | L1 | L1 / L1, auth → Review approved | 341k | 285k | −17% | 1 / 0 |
+| l2 restock | L2 | L2 / L2 | 527k | 125k | −76% | 1 / 0 |
+| l2b qty TypeError | L2 | L2 / L2 | 441k | 420k | −5% | 1 / 1 |
+| l2c 모르는 필드 무시 | L2 | L2 / L2 | 828k | 402k | −51% | 2 / 1 |
+| l2d 원자적 저장 (data_loss) | L2 | L2 / L2 | 827k | 469k | −43% | 2 / 1 |
+| l3 할인 (여러 파일) | L3 | L3 / L3 | 467k | 941k | +101% | 1 / 2 |
+| l3b 환불 (payment) | L3 | L2 / L2 | 896k | 156k | −83% | 2 / 0 |
+| l3c 저장 형식 v2 (data_migration) | L3 | L3 / L3 | 999k | 496k | −50% | 3 / 1 |
+| l3d 동시성 (concurrency) | L3 | L4 / L4, sol/high + Review approved | 937k | 1,098k | +17% | 1 / 3 |
+| l4-auth 토큰 만료 | L4 | L3 / L3, auth → Review changes_requested → review_fixed | 830k | 992k | +19% | 1 / 2 |
+| l4b PriceRule 파이프라인 | L4 | L4 / **L3**, sol/high + Review changes_requested → review_fixed | 764k | 1,540k | +102% | 1 / 4 |
+| l5 키 회전 | L5 | L5 / L5 | 3,497k | (실패) | | 3 / – |
+| 합계 (12쌍) | | | 7.95M | 7.11M | **−11%** | 16 / 15 |
+
+- 품질: 12쌍 중 preserved 11, improved 1(l4-auth). 24개 결과물 모두 fixture 복사본에 diff를 적용해 테스트를 통과했다. 요구사항은 저장 diff를 읽어 판정했다.
+- l4-auth 기준선은 비ASCII 서명(`ann.1000.é`)에서 `PermissionError` 대신 `TypeError`가 난다. "malformed 토큰은 invalid token" 요구에 어긋나므로 미충족으로 판정했다. Router 결과물은 Review 반영 턴에서 이 결함이 고쳐졌다(v4 이후 3회 연속 같은 결과).
+- l5 기준선은 요구사항을 충족한다. 다만 비ASCII 서명, 짝 없는 surrogate, `None` 입력에서 `PermissionError`가 아닌 예외가 난다. fixture 원본에 이미 있던 결함이고 L5 요구사항에 malformed 처리가 없어 충족으로 판정했다. L5 기준선 한 건이 3.5M으로 가장 비싸다.
+- 판정: 도구 판정은 `insufficient_data`(실패 실행 제외 때문). 유효 12쌍만 보면 품질을 유지하면서 전체 사용량이 11% 줄어 §22.3의 `auto` 조건을 만족한다.
+- 비용 구조는 이전 파일럿과 같다.
+  - L1·L2·위험 신호만 있는 L3에서는 싸다. 9건 중 7건 감소, 큰 폭은 −43~−83%다.
+  - sol 승격이나 독립 Review가 붙는 작업은 비싸다(+17~+102%).
+  - l1(+101%)은 diff가 기준선과 같은데 Router 세션 입력이 2배다. 1회 표본의 회차 편차로 본다.
+- 사용량 차이의 상당 부분은 ECC 전역 지침으로 생기는 subagent 수와 함께 움직인다. Router가 effort를 낮춘 세션은 subagent를 덜 만들고, sol/high 세션은 더 만든다(l4b Router 4개). 라우팅 효과와 subagent 효과가 섞여 있다.
+- 분류:
+  - Jev 레벨은 1회차 13건 중 8건이 라벨과 일치했다.
+  - 낮게 본 것: l3b(payment) → L2, l4-auth → L3.
+  - 높게 본 것: l1 → L2, l3d → L4.
+  - l4b는 같은 입력에 1회차 L4, 2회차 L3으로 판정이 갈렸다.
+  - 위험 신호가 auth Review를 붙여 l4-auth 결함을 고쳤다. l1b에서는 상수 변경에 Review가 붙어 비용이 들었다(그래도 기준선보다 적음).
+
+**결정 유지 (2026-10-01)**: 기본 모드 `auto`를 유지한다. 근거는 세 가지다.
+- 4건 파일럿의 +22%·−20%·+35%와 달리, 12건 표본에서 −11%이고 품질 저하가 없다.
+- auth 작업에서 결함 수정이 반복 확인됐다.
+- 남은 확인 사항: L5 Router(크레딧 소진으로 미측정), 2회차 반복(회차 편차).
+
 ---
 
 ## 23. 패키징과 프로젝트 구조
