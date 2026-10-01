@@ -69,4 +69,4 @@ python3 -m evaluation.live_runner --cases evaluation/pilot/cases.jsonl --fixture
 - 빈 시트: `python3 -m evaluation.labels sheet evaluation/corpus/seed.jsonl OUT.tsv` (id, task, paths만 담김).
 - 시트 열: `level`은 L1~L5(no_route면 비움), `risk_flags`는 쉼표 구분, `target`은 route / plan_only / review_only / no_route.
 - 합치기: `python3 -m evaluation.labels merge evaluation/corpus/seed.jsonl OUT.jsonl evaluation/corpus/labels-claude.jsonl evaluation/corpus/labels-user.tsv`. 라벨 2개가 모인 케이스는 `labeled`가 되고 `proposed`는 빠진다. 일치 보고(discuss / revise_guide)를 출력한다.
-- 시드 40건: `labels-claude.jsonl`(Claude, 2026-10-01), `labels-user.tsv`(사용자 작성용 빈 시트).
+- 시드 40건: `labels-claude.jsonl`(메인 세션), `labels-opus.jsonl`(라벨을 보지 않은 별도 Opus 에이전트), 합의 결과 `seed-labeled.jsonl`(40건 adjudicated, 35건 일치, 2026-10-01). 사람 라벨러는 아직 없다.
