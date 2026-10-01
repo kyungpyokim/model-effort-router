@@ -74,6 +74,8 @@ class Env(unittest.TestCase):
             (Path(env["MER_STATE_DIR"]) / "s.log.jsonl").write_text("\n".join(map(json.dumps, log_events)))
         (Path(cwd) / "calc.py").write_text("x = 2\n")  # the run edits its own copy
         (Path(cwd) / "new.py").write_text("y = 1\n")
+        (Path(cwd) / "__pycache__").mkdir(exist_ok=True)
+        (Path(cwd) / "__pycache__" / "calc.cpython-311.pyc").write_bytes(b"\x00bytecode")
         (Path(cwd) / "stale.txt").write_text("left over")
         for f in self.root.rglob("rollout-*.jsonl"):  # rollouts written during the run
             os.utime(f, None)
@@ -240,6 +242,7 @@ class RunCaseTest(Env):
         self.assertIn("new.py", text.split("diff --git")[0])  # untracked list header
         self.assertIn("+y = 1", text)
         self.assertNotIn(lr.MARKER, text)
+        self.assertNotIn("__pycache__", text)  # bytecode from test runs never reaches the saved diff
         self.assertEqual(Path(self.run_case("baseline", events=[], sessions=self.clean_sessions())["diff_path"]).name,
                          "c1.baseline.diff")
 
