@@ -192,13 +192,18 @@ class ReviewTest(unittest.TestCase):
         self.assertEqual(h.kinds(), ["session_start", "gate", "session_start", "review", "done"])
         self.assertEqual(h.events[3]["thread_id"], "T-rev1")
 
-    def test_risk_flag_adds_review_on_low_level_with_floor(self):
+    def test_risk_flag_alone_adds_no_review_below_l4(self):
         h = Harness()
-        h.run("L1", ("data_loss",))
+        r = h.run("L1", ("data_loss",))
+        self.assertEqual((len(h.calls), r["review"]["skipped"]), (1, "not required"))
+
+    def test_risk_flag_raises_l4_review_to_its_floor(self):
+        h = Harness()
+        h.run("L4", ("data_loss",))
         self.assertIn("model_reasoning_effort=xhigh", h.calls[-1]["argv"])
 
     def test_changes_requested_ends_run_with_findings_and_no_escalation_or_re_review(self):
-        for level, flags in (("L4", ()), ("L3", ("auth",)), ("L5", ())):
+        for level, flags in (("L4", ()), ("L4", ("auth",)), ("L5", ())):
             h = Harness(verdicts=[("changes_requested", 2)])
             r = h.run(level, flags)
             self.assertEqual((len(h.calls), r["escalations"], r["exit_code"], r["status"]), (2, 0, 1, "changes_requested"))

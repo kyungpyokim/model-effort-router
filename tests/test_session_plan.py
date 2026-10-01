@@ -41,19 +41,22 @@ class TableTest(unittest.TestCase):
 
 
 class RiskTest(unittest.TestCase):
-    def test_each_flag_forces_plan_first_and_review(self):
-        for flag, review in (("security", P(F, "high")), ("auth", P(F, "high")), ("payment", P(F, "high")),
-                             ("data_migration", P(F, "xhigh")), ("data_loss", P(F, "xhigh"))):
+    def test_each_flag_forces_plan_first_but_no_review_below_l4(self):
+        for flag in ("security", "auth", "payment", "data_migration", "data_loss"):
             with self.subTest(flag=flag):
                 sp = session_plan(dec("L1"), (flag,), None)
                 self.assertTrue(sp.plan_first)
-                self.assertEqual(sp.review, review)
+                self.assertIsNone(sp.review)  # pilot v2: duplicated the session's own reviews
                 self.assertIn(f"risk_min:{flag}", sp.applied_rules)
                 self.assertEqual(sp.start, TABLE["L1"][0])  # risk never raises the start profile
 
-    def test_concurrency_adds_review_but_not_plan(self):
+    def test_concurrency_adds_neither_plan_nor_review_below_l4(self):
         sp = session_plan(dec("L2"), ("concurrency",), None)
-        self.assertEqual((sp.plan_first, sp.review), (False, P(F, "high")))
+        self.assertEqual((sp.plan_first, sp.review), (False, None))
+
+    def test_flag_raises_l4_review_to_its_floor(self):
+        self.assertEqual(session_plan(dec("L4"), ("data_migration",), None).review, P(F, "xhigh"))
+        self.assertEqual(session_plan(dec("L4"), ("auth",), None).review, P(F, "high"))
 
     def test_risk_floor_never_lowers_a_higher_review(self):
         self.assertEqual(session_plan(dec("L5"), ("auth",), None).review, P(F, "xhigh"))
@@ -62,7 +65,7 @@ class RiskTest(unittest.TestCase):
     def test_flags_come_from_decision_and_argument_merged(self):
         sp = session_plan(dec("L2", ["auth"]), ("concurrency",), None)
         self.assertTrue(sp.plan_first)
-        self.assertEqual(sp.review, P(F, "high"))
+        self.assertEqual(sp.applied_rules, ("level_default", "risk_min:auth", "risk_min:concurrency"))
 
     def test_plan_profile_respects_floor_and_level(self):
         self.assertEqual(session_plan(dec("L3"), (), None).plan_profile, P(F, "high"))
@@ -83,7 +86,9 @@ class OverrideTest(unittest.TestCase):
     def test_override_with_risk_keeps_plan_first_and_review_floor(self):
         # Same as the default path: risk never moves the session profile, only plan-first + review floor.
         sp = session_plan(dec("L2"), ("auth",), {"session": P(E, "medium")})
-        self.assertEqual((sp.start, sp.plan_first, sp.review), (P(E, "medium"), True, P(F, "high")))
+        self.assertEqual((sp.start, sp.plan_first, sp.review), (P(E, "medium"), True, None))
+        sp = session_plan(dec("L4"), ("data_loss",), {"session": P(E, "medium")})
+        self.assertEqual((sp.start, sp.plan_first, sp.review), (P(E, "medium"), True, P(F, "xhigh")))
         self.assertEqual(sp.start, session_plan(dec("L1"), ("auth",), {"session": P(E, "medium")}).start)
 
     def test_override_never_clamped_without_risk(self):
@@ -93,7 +98,7 @@ class OverrideTest(unittest.TestCase):
     def test_manual_no_decision_uses_override_only(self):
         sp = session_plan(None, ("auth",), {"session": P(F, "xhigh")})
         self.assertEqual((sp.level, sp.start, sp.ladder, sp.plan_first, sp.review),
-                         (None, P(F, "xhigh"), (), True, P(F, "high")))
+                         (None, P(F, "xhigh"), (), True, None))
 
     def test_no_decision_and_no_override_is_an_error(self):
         with self.assertRaises(ValueError):
