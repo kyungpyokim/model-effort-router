@@ -84,6 +84,19 @@ class ParseTest(unittest.TestCase):
         self.assertIn("rollout-main.jsonl", found)
         self.assertEqual(usage.find_rollouts(ROLL, set()), [])
 
+    def test_forked_subagent_keeps_its_own_meta_not_the_copied_parent_one(self):
+        """Codex forks a spawned subagent's rollout with the parent's session_meta copied after its own."""
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "rollout-fork.jsonl"
+            p.write_text('{"type":"session_meta","payload":{"id":"child","session_id":"%s","thread_source":"subagent",'
+                         '"agent_path":"/root/tdd_review"}}\n' % ROOT
+                         + '{"type":"session_meta","payload":{"id":"%s","session_id":"%s","thread_source":"user"}}\n'
+                         % (ROOT, ROOT))
+            r = usage.read_rollout(p)
+            self.assertEqual((r["id"], r["thread_source"], r["agent_path"]), ("child", "subagent", "/root/tdd_review"))
+            agg = usage.aggregate('{"type":"thread.started","thread_id":"%s"}' % ROOT, [p])
+            self.assertEqual(agg["subagent_rollouts"], 1)  # never folded into (or dropped from) the main session
+
     def test_find_rollouts_reads_only_the_first_session_meta_line_to_filter(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "rollout-big.jsonl"

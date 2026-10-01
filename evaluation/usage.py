@@ -80,8 +80,8 @@ def _token_count_total(ev):
 def read_rollout(path):
     meta, last = {}, None
     for ev in _events(Path(path).read_text(encoding="utf-8", errors="replace")):
-        if ev.get("type") == "session_meta" and isinstance(ev.get("payload"), dict):
-            meta = ev["payload"]
+        if ev.get("type") == "session_meta" and isinstance(ev.get("payload"), dict) and not meta:
+            meta = ev["payload"]  # the first one is the file's own; a forked subagent then copies its parent's
         counted = _token_count_total(ev)
         if counted is not None:
             last = counted

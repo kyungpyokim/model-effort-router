@@ -796,6 +796,24 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 - 측정 도구: 저장 diff에 `__pycache__`가 섞여 있었다(평가 저장소 exclude에 추가해 수정). Gate는 lint/typecheck/build 명령이 없어 4건 모두 `incomplete`(test는 통과).
 - 표본이 4건 × 1회라 분산이 크다(L1은 diff가 같은데 Router 세션만 153k 입력).
 
+**측정 오류 정정 (2026-10-01)**: Codex 세션 안에서 모델이 사용자 전역 `~/.codex/AGENTS.md`(ECC 지침: "코드 수정 후 code-reviewer, 기능·버그 수정은 tdd-guide를 즉시 사용") 때문에 subagent(gpt-5.6-terra)를 스스로 만들고 있었다. 이 subagent의 rollout은 자기 `session_meta` 뒤에 부모의 `session_meta`를 복사해 두는데, `read_rollout`이 마지막 것을 읽어 부모(메인 세션)로 잘못 분류했다. 그 결과 기준선(exec 스트림을 메인으로 씀)은 subagent 사용량이 **빠졌고**, Router(rollout 합산)는 포함됐다. 첫 `session_meta`를 쓰도록 고쳤고(`evaluation/usage.py`), 위 표를 같은 rollout으로 재집계하면 기준선 1.78M, Router 2.45M(+38%)이다(`runs/pilot-p7.reagg.jsonl`).
+
+**파일럿 v2 결과** (2026-10-01, 분류기 Jev → 실패 시 subscription, L3 계획 먼저 제거, Review 반복 제거, 4건 × 2회, 정정된 집계, `runs/pilot-p7b.reagg.jsonl`)
+
+| 사례 | Jev 판정 | 기준선 평균 | Router 평균 | 증감 |
+|---|---|---:|---:|---:|
+| L1 문자열 변경 | L2 | 253k | 108k | −58% |
+| L2 함수 추가 | L2 | 463k | 155k | −66% |
+| L3 여러 파일 | L3 + 위험 신호(Jev, 정규식은 없음) → 계획 먼저 + sol/high Review | 585k | 1,232k | +111% |
+| L4 인증 | L3 + auth → 계획 먼저 + sol/high Review | 765k | 1,036k | +35% |
+| 합계 (8쌍) | | 4.13M | 5.06M | +22% |
+
+- 16회 모두 테스트 통과, 요구사항 16건 충족(저장 diff 확인). 품질 8쌍 모두 preserved. Router Review 4건 모두 changes_requested(승격·재Review 없이 종료). 판정: `do_not_default_to_auto`.
+- Jev는 8회 모두 성공(fallback 없음), 호출당 입력 567~627 / 출력 119 토큰.
+- **위험 신호가 없는 작업(L1·L2)에서는 Router가 기준선보다 58~66% 적다.** 세션 하나를 luna/medium으로 돌리고, 모델이 subagent를 만들지 않았다(기준선은 L1·L2 4회 중 3회 code-reviewer subagent를 만들었다).
+- **위험 신호가 붙은 작업(L3·L4)에서는 많다.** 구현 세션이 tdd-guide·code-reviewer subagent를 만들고, mer의 독립 Review 세션이 다시 code-reviewer subagent를 만들어 리뷰가 중복된다(L3·L4 Router run당 subagent 2~3개, 기준선 1~2개).
+- 사용자 전역 AGENTS.md는 두 모드에 똑같이 적용되므로 비교는 공정하지만, 이 지침이 없는 환경에서는 숫자가 크게 달라진다.
+
 ---
 
 ## 23. 패키징과 프로젝트 구조
