@@ -220,6 +220,7 @@ class ReviewTest(unittest.TestCase):
             self.assertIn("resume", fix)
             self.assertEqual(fix[-2], "T-impl")  # same implement session, not a new one
             self.assertIn("looks ok", fix[-1])  # the review findings are handed over
+            self.assertIn("do not spawn subagents", fix[-1])  # pilot: the fix turn spawned a reviewer subagent
             self.assertEqual(h.calls[2]["argv"][h.calls[2]["argv"].index("-m") + 1],
                              h.calls[0]["argv"][h.calls[0]["argv"].index("-m") + 1])  # current profile, no escalation
             self.assertEqual((h.kinds().count("gate"), h.kinds().count("review"), r["review"]["fixed"]), (2, 1, True))

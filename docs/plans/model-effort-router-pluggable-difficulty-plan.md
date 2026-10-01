@@ -889,6 +889,13 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 - 두 Review 모두 changes_requested였고, 4개 결과물(기준선 2, Router 2) 모두 비ASCII 서명에서 `TypeError`가 나는 같은 경계 결함이 있다. Review가 찾은 결함이 승격 없이 끝나 반영되지 않는다. → 조치(2026-10-01): changes_requested면 같은 구현 세션에서 지적 반영 1턴(재Review 없음).
 - v4의 L1~L3와 이 L4를 합치면 기준선 1.97M, Router 2.18M(+11%)이다(서로 다른 실행을 합친 값이라 참고용).
 
+**L4 인증 재측정 2** (2026-10-01, Review 지적 반영 1턴 추가, 2회, `runs/pilot-p7f-l4.jsonl`)
+
+- 두 Router 실행 모두 Review가 changes_requested → 반영 1턴 → `review_fixed`. **두 결과물 모두 비ASCII 서명 결함이 고쳐졌다**(기준선은 2회 중 1회 남음).
+- 비용: Router 1,097k / 998k(평균 1.05M), 기준선 771k / 470k(평균 0.62M) → +69%. 구현 세션 자체(613k, 631k)는 기준선과 비슷하고, 차이는 Review 세션(171k, 174k)과 반영 턴, 반영 턴에서 ECC 지침으로 생긴 python-reviewer subagent(135k)다. 반영 지시에도 subagent 금지를 추가했다.
+- Review 세션은 더 이상 subagent를 만들지 않았다.
+- 정리: auth·security·L4 이상 작업에서 Router는 기준선보다 비싸지만 품질이 더 좋다(결함 수정). L1·L2에서는 크게 싸다. 기본 모드 결정은 더 큰 파일럿 세트(코퍼스에서 10건 안팎)로 한다.
+
 **결정 (2026-10-01)**: 기본 모드는 `auto`로 유지한다(Phase 7 완료 조건). 단 v3에서 L4 인증 작업이 L3로 판정돼 독립 Review가 빠졌으므로, L1~L3에서도 auth·security 신호가 있으면 독립 Review를 붙인다(§11.4). 이 조건은 L4 인증 사례에 Review 세션 1회를 더하므로, 표본을 늘린 재측정(코퍼스, 반복 횟수)에서 절감 폭을 다시 확인한다.
 
 ---

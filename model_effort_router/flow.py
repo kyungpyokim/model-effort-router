@@ -114,7 +114,8 @@ class _Flow:
     def apply_review(self):
         """One fix turn in the implement session at its current profile, then the gate; no re-review (pilot v4:
         reviews found real defects that a report-only run left unfixed; a re-review loop doubled the cost)."""
-        text = ("An independent review requested changes. Address these findings, then stop.\n\n"
+        text = ("An independent review requested changes. Address these findings yourself in this session (do not "
+                "spawn subagents), then stop.\n\n"
                 f"{self.review['text'][-rv.FINDINGS_MAX:]}")
         stream, rec = self.call("review_fix", cx.resume_argv(self.profile, self.thread, text, self.config),
                                 self.profile, self.thread)
