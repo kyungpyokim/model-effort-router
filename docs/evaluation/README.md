@@ -72,3 +72,4 @@ python3 -m evaluation.live_runner --cases evaluation/pilot/cases.jsonl --fixture
 - 시드 40건: `labels-claude.jsonl`(메인 세션), `labels-opus.jsonl`(라벨을 보지 않은 별도 Opus 에이전트), 합의 결과 `seed-labeled.jsonl`(40건 adjudicated, 35건 일치, 2026-10-01). 사람 라벨러는 아직 없다.
 - 확장 110건: `expansion.jsonl`(초안), `labels-exp-opus.jsonl`·`labels-exp-sonnet.jsonl`(독립 라벨), `expansion-labeled.jsonl`(100건 일치, 10건 합의). 시드와 합친 150건: `corpus-v1.jsonl`(L1 26, L2 32, L3 34, L4 23, L5 15, no_route 20; 위험 신호 47건; plan_only 11, review_only 10). 라벨러는 모두 AI 에이전트이고 사람 라벨은 아직 없다.
 - 2026-10-01부터 `compare`는 no_route 케이스도 분류기를 돌려 target을 채점한다. 그래서 `tokens`, 지연, `fallback_count`에 no_route 케이스가 포함되며 이전 보고서와 직접 비교할 수 없다.
+- 파일럿 세트 v2 (`evaluation/pilot/cases-v2.jsonl`, 13건, 같은 fixture): 기존 4건 + 9건. L1 2, L2 4, L3 4, L4 2, L5 1. 위험 신호 6건(auth, data_loss, payment, data_migration, concurrency, security+auth). 작성자 단일 라벨(`pilot`).
