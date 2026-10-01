@@ -9,7 +9,7 @@ removed); a baseline run that still shows router activity is marked `contaminate
 Router = the `mer` CLI (model_effort_router.cli run), which classifies, runs the session, gates, escalates and
 reviews itself; a router run whose mer log lacks a `route` and a `session_start` event gets router_active=false.
 Every workdir is made a git repo (fixed identity, one fixture commit) before the run; afterwards `git diff` and the
-untracked list go to <out dir>/<case>.<mode>.diff so a human can judge requirements_met.
+untracked list go to <out without .jsonl>-diffs/<case>.<mode>.r<run>.diff so a human can judge requirements_met.
 Usage: python3 -m evaluation.live_runner --cases CORPUS --fixture DIR --out RUNS.jsonl [--model M] [--effort E] [--baseline-model/-effort] [--limit N] [--live]
 """
 import argparse
@@ -387,7 +387,7 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
         return 0
     extra = JEV_NOTICE.format(fallback=fallback) if backend == "jev" else ""
     print(BANNER.format(workdir=real_workdir, extra=extra), file=sys.stderr)
-    out_dir = os.path.dirname(os.path.abspath(args.out))
+    out_dir = os.path.splitext(os.path.abspath(args.out))[0] + "-diffs"  # per output file: pilots never overwrite each other
     os.makedirs(out_dir, exist_ok=True)
     with open(args.out, "a", encoding="utf-8") as out:
         for run, r, mode in ((k, r, m) for k in range(1, args.repeat + 1) for r in rows for m in MODES):

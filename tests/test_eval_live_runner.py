@@ -458,7 +458,7 @@ class CliTest(Env):
         recs = [json.loads(l) for l in self.out.read_text().splitlines()]
         self.assertEqual([(r["case_id"], r["mode"], r["run"]) for r in recs],
                          [("a", "baseline", 1), ("a", "router", 1), ("a", "baseline", 2), ("a", "router", 2)])
-        self.assertEqual(sorted(p.name for p in self.root.glob("*.diff")),
+        self.assertEqual(sorted(p.name for p in self.out.with_name(self.out.stem + "-diffs").glob("*.diff")),
                          ["a.baseline.r1.diff", "a.baseline.r2.diff", "a.router.r1.diff", "a.router.r2.diff"])
         self.assertEqual(self.cli(*self.base_args(), "--live", "--repeat", "0")[0], 1)
         self.assertEqual(len(self.calls), 4)
@@ -490,10 +490,10 @@ class CliTest(Env):
             self.assertIn(needle, self.err)
         self.assertNotIn("bypass", self.err.replace("does not use", ""))
 
-    def test_live_run_saves_diffs_next_to_the_output_file(self):
+    def test_live_run_saves_diffs_in_a_directory_per_output_file(self):
         self.cli(*self.base_args(), "--live")
-        self.assertEqual(sorted(p.name for p in self.root.glob("*.diff")),
-                         ["a.baseline.r1.diff", "a.router.r1.diff"])
+        diffs = self.out.with_name(self.out.stem + "-diffs")  # a later pilot with another --out never overwrites them
+        self.assertEqual(sorted(p.name for p in diffs.glob("*.diff")), ["a.baseline.r1.diff", "a.router.r1.diff"])
         recs = [json.loads(l) for l in self.out.read_text().splitlines()]
         self.assertEqual([Path(r["diff_path"]).name for r in recs], ["a.baseline.r1.diff", "a.router.r1.diff"])
 

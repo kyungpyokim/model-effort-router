@@ -29,7 +29,7 @@ Router가 품질을 유지하면서 전체 사용량(구현 세션 + 독립 Revi
 - 플러그인이 전역 설치되어 있으면 baseline 실행도 라우팅될 수 있다. baseline에서 router 활동(route 이벤트 또는 `mer_` subagent rollout)이 보이면 `contaminated: true`로 기록되고 보고서에서 제외된다.
 - 실행은 **고정된 eval workdir 하나**(`--workdir`, 기본 `<state dir>/eval-workdir`, realpath)를 매번 지우고 fixture로 다시 채워 쓴다. Codex가 이 경로에 대해 `~/.codex/config.toml`에 `trust_level` 항목을 **하나 영구 저장**한다. 끝나면 직접 지워도 된다. 도구는 workdir이 없거나 자신이 만든 마커 파일(`.mer-eval-workdir`)이 있을 때만 내용을 지운다. 마커 없는 기존 디렉터리, fixture와 같거나 그 안팎인 경로, 현재 디렉터리·홈·루트(또는 그 상위)는 아무것도 지우지 않고 거부한다(종료 코드 1).
 - 케이스 하나가 실패하면 `error`가 있는 기록(gate `incomplete`)을 남기고 다음 케이스로 계속한다. 이런 기록이 있으면 판정은 `insufficient_data`다.
-- 실행 후 `<out 디렉터리>/<case>.<mode>.r<run>.diff`에 변경 전체(`git diff`, 새 파일 포함)와 `# untracked:` 목록이 저장되고 기록의 `diff_path`에 경로가 남는다. `requirements_met`은 이 diff를 보고 사람이 `mark`로 기록한다.
+- 실행 후 `<out 파일명에서 .jsonl을 뺀 경로>-diffs/<case>.<mode>.r<run>.diff`에 변경 전체(`git diff`, 새 파일 포함)와 `# untracked:` 목록이 저장되고 기록의 `diff_path`에 경로가 남는다. `requirements_met`은 이 diff를 보고 사람이 `mark`로 기록한다.
 - router 기록에는 추가로 `level`, `session_profile`(시작), `final_profile`, `escalations`, `review_verdict`(`approved`/`changes_requested`/`unknown`), `review_findings`, `thread_ids`, `mer_status`가 남는다. `fix_rounds`는 승격 횟수다. `unknown`(파싱 불가 verdict)은 승인으로 치지 않는다.
 
 ## 알려진 한계
