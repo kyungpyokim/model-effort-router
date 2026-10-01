@@ -347,6 +347,8 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
     ap.add_argument("--router-fallback", choices=sorted(BACKENDS) + ["none"],
                     help="fallback classifier for router runs (default subscription when --router-backend is given)")
     ap.add_argument("--repeat", type=int, default=1, help="runs per case and mode (records get run 1..N)")
+    ap.add_argument("--modes", default=",".join(MODES), help="comma-separated subset of: " + ", ".join(MODES)
+                    + " (e.g. a new baseline against router runs already recorded)")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     ap.add_argument("--live", action="store_true", help="actually run codex exec (consumes subscription usage)")
@@ -359,6 +361,10 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
     rows = rows[: args.limit] if args.limit is not None else rows
     if args.repeat < 1:
         print("--repeat must be >= 1", file=sys.stderr)
+        return 1
+    modes = tuple(m for m in MODES if m in args.modes.split(","))
+    if not modes or set(args.modes.split(",")) - set(MODES):
+        print(f"--modes must be a comma-separated subset of {', '.join(MODES)}", file=sys.stderr)
         return 1
     if not rows or not os.path.isdir(args.fixture):
         print("nothing to run: need adjudicated or pilot route cases (and --limit > 0) and an existing --fixture dir",
@@ -375,13 +381,13 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
         print(f"unsafe workdir: {exc}", file=sys.stderr)
         return 1
     if not args.live:
-        n = len(rows) * len(MODES) * args.repeat
-        print(f"dry-run: {len(rows)} cases x {len(MODES)} modes x {args.repeat} repeat(s) = {n} runs "
+        n = len(rows) * len(modes) * args.repeat
+        print(f"dry-run: {len(rows)} cases x {len(modes)} modes x {args.repeat} repeat(s) = {n} runs "
               "(pass --live to execute; this consumes subscription usage)")
         if backend or fallback:
             print(f"router classifier: backend {backend or '(config)'}, fallback {fallback or '(config)'}")
         for r in rows:
-            for mode in MODES:
+            for mode in modes:
                 print(mode, r["id"], build_mer_command(r["task"], real_workdir) if mode == "router"
                       else build_command(r["task"], real_workdir, *settings[mode]))
         return 0
@@ -390,7 +396,7 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
     out_dir = os.path.splitext(os.path.abspath(args.out))[0] + "-diffs"  # per output file: pilots never overwrite each other
     os.makedirs(out_dir, exist_ok=True)
     with open(args.out, "a", encoding="utf-8") as out:
-        for run, r, mode in ((k, r, m) for k in range(1, args.repeat + 1) for r in rows for m in MODES):
+        for run, r, mode in ((k, r, m) for k in range(1, args.repeat + 1) for r in rows for m in modes):
             rec = run_case(r, mode, args.fixture, workdir=workdir, runner=runner, sessions_dir=sessions_dir,
                            gate_fn=gate_fn, model=settings[mode][0], effort=settings[mode][1], timeout_s=args.timeout,
                            out_dir=out_dir, run=run, router_backend=backend, router_fallback=fallback)

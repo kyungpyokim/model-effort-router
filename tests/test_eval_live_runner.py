@@ -463,6 +463,16 @@ class CliTest(Env):
         self.assertEqual(self.cli(*self.base_args(), "--live", "--repeat", "0")[0], 1)
         self.assertEqual(len(self.calls), 4)
 
+    def test_modes_runs_only_the_chosen_mode_and_rejects_unknown(self):
+        rc, out = self.cli(*self.base_args(), "--modes", "baseline")
+        self.assertIn("1 cases x 1 modes x 1 repeat(s) = 1 runs", out)
+        rc, _ = self.cli(*self.base_args(), "--live", "--modes", "baseline")
+        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        self.assertEqual((rc, [(r["case_id"], r["mode"]) for r in recs], len(self.calls)), (0, [("a", "baseline")], 1))
+        for bad in ("", "basline", "baseline,oops"):
+            self.assertEqual(self.cli(*self.base_args(), "--live", "--modes", bad)[0], 1)
+        self.assertEqual(len(self.calls), 1)
+
     def test_router_backend_flags_dry_run_banner_and_config(self):
         _, out = self.cli(*self.base_args(), "--router-backend", "jev", "--repeat", "2")
         self.assertIn("2 repeat(s) = 4 runs", out)
