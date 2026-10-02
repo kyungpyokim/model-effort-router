@@ -1,4 +1,4 @@
-"""Copy the core package into the plugin bundle. `--check` (default in tests) only reports drift."""
+"""Copy the core package into BOTH plugin bundles (codex, claude). `--check` (default in tests) only reports drift."""
 import filecmp
 import shutil
 import sys
@@ -6,8 +6,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "model_effort_router"
-PLUGIN = ROOT / "plugins" / "codex-model-effort-router"
-DST = PLUGIN / "model_effort_router"
+PLUGINS = ROOT / "plugins"
+BUNDLES = [PLUGINS / "codex-model-effort-router" / "model_effort_router",
+           PLUGINS / "claude-model-effort-router" / "model_effort_router"]  # both get an identical core copy
 
 
 def _files(base):
@@ -17,18 +18,21 @@ def _files(base):
 
 def check():
     drift = []
-    src, dst = _files(SRC), _files(DST) if DST.exists() else []
-    drift += [f"missing in plugin: {f}" for f in sorted(set(src) - set(dst))]
-    drift += [f"extra in plugin: {f}" for f in sorted(set(dst) - set(src))]
-    drift += [f"differs: {f}" for f in sorted(set(src) & set(dst))
-              if not filecmp.cmp(SRC / f, DST / f, shallow=False)]
+    for dst_dir in BUNDLES:
+        tag = dst_dir.parent.name
+        src, dst = _files(SRC), _files(dst_dir) if dst_dir.exists() else []
+        drift += [f"{tag}: missing in plugin: {f}" for f in sorted(set(src) - set(dst))]
+        drift += [f"{tag}: extra in plugin: {f}" for f in sorted(set(dst) - set(src))]
+        drift += [f"{tag}: differs: {f}" for f in sorted(set(src) & set(dst))
+                  if not filecmp.cmp(SRC / f, dst_dir / f, shallow=False)]
     return drift
 
 
 def sync():
-    if DST.exists():
-        shutil.rmtree(DST)
-    shutil.copytree(SRC, DST, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    for dst_dir in BUNDLES:
+        if dst_dir.exists():
+            shutil.rmtree(dst_dir)
+        shutil.copytree(SRC, dst_dir, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
 
 if __name__ == "__main__":

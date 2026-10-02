@@ -160,6 +160,15 @@ class EvaluateBackendTest(unittest.TestCase):
         self.assertIn({"id": "c1", "final": "L1", "predicted": "L2"}, m["misses"])
 
 
+class HostIndependenceTest(unittest.TestCase):
+    def test_default_backends_ignore_an_exported_mer_host(self):
+        import os
+        from unittest import mock
+        from model_effort_router.difficulty.registry import create
+        with mock.patch.dict(os.environ, {"MER_HOST": "claude"}):
+            self.assertIsNone(create("subscription")._host)  # the comparison measures codex; nothing picks the env up
+
+
 class TargetAccuracyTest(unittest.TestCase):
     def test_uses_cheap_target_rules(self):
         rows = [case("a", "Fix the bug in parser.py", "L2"),

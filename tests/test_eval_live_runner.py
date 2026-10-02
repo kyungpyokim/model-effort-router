@@ -128,6 +128,10 @@ class CommandTest(unittest.TestCase):
         self.assertNotIn("MER_CLASSIFIER", router)  # mer sets the guard itself for the sessions it starts
         self.assertTrue(os.path.isdir(os.path.join(router["PYTHONPATH"], "model_effort_router")))
 
+    def test_env_pins_the_codex_host_in_both_modes(self):
+        for mode in ("baseline", "router"):
+            self.assertEqual(lr.build_env(mode, "/s", {"MER_HOST": "claude"})["MER_HOST"], "codex")
+
     def test_build_mer_command(self):
         cmd = lr.build_mer_command("do it", "/w/x")
         self.assertEqual(cmd[1:4], ["-m", "model_effort_router.cli", "run"])

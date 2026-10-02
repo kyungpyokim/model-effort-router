@@ -1,0 +1,11 @@
+{
+  "name": "model-effort-router-local",
+  "owner": {"name": "Model-Effort Router contributors"},
+  "plugins": [
+    {
+      "name": "model-effort-router",
+      "source": "./plugins/claude-model-effort-router",
+      "description": "Per-request model and effort advice plus the mer CLI for Claude Code"
+    }
+  ]
+}

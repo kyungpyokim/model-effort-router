@@ -1240,6 +1240,8 @@ Codex에서 측정으로 안정된 구조를 그대로 옮긴다. 구조는 조�
 
 **분류기**: 기본은 Jev(호스트와 무관)다. subscription fallback은 호스트의 CLI를 쓰도록 바꾼다. Claude에서는 `claude -p --model claude-haiku-4-5`이고, Codex가 없는 환경에서 `codex exec`를 부르지 않게 한다.
 
+**구현 상태 (2026-10-02, 단위 테스트까지; live 확인 전)**: `adapters/claude.py`, `host/claude_exec.py`(argv, 결과 파싱, 호출별 사용량), `host/hosts.py`(`--host codex|claude`, 없으면 `MER_HOST`, 없으면 codex), host 인식 subscription 분류기(`claude -p --model claude-haiku-4-5 --permission-mode dontAsk --tools ""`), `plugins/claude-model-effort-router/`, 루트 `.claude-plugin/marketplace.json`, `scripts/sync_plugin.py`의 두 번들 동기화, `evaluation/prices.json`의 Claude 가격. 평가 도구(`live_runner`, `cost.py`)의 Claude 지원은 아직 없다: live_runner는 `--host`를 mer에 넘기고 `codex exec` 기준선 명령을 `claude -p`로 바꿔야 하고, rollout 대신 mer가 보고한 호출별 사용량(`calls[].usage`)을 써야 하며, cost.py는 rollout의 모델별 사용량 대신 그 호출 기록의 모델을 써야 한다.
+
 **검증 순서**:
 1. 단위 테스트(모델 호출 없음).
 2. live 확인(사용자 승인 후): `--output-format json` 응답 형태, `--resume`에서 모델·effort 변경, `--disallowedTools Agent` 효과, 권한 모드에서 Gate 명령 실행.

@@ -1,12 +1,12 @@
 """mer run flow (spec 3.4): implement session -> Test Gate -> cascade escalation -> independent review.
 
 All I/O is injected (runner, gate_fn, diff_fn, emit) so the flow is testable without codex or git.
+The host (codex or claude, host/hosts.py) supplies the argv builders, stream parser and effort mapping.
 """
 import time
 
 from . import review as rv
-from .adapters.codex import CodexConfig, resolve
-from .host import codex_exec as cx
+from .host.hosts import CODEX
 from .policy.session import REVIEW_DEFAULT
 
 GATE_TEXT_MAX = 2000
@@ -40,29 +40,34 @@ def _profile(call):
 
 
 class _Flow:
-    def __init__(self, request, sp, cwd, runner, env, gate_fn, diff_fn, emit, max_esc, timeout_s, config, clock):
+    def __init__(self, request, sp, cwd, runner, env, gate_fn, diff_fn, emit, max_esc, timeout_s, config, clock, host):
+        self.host, self.cx = host, host.exec
         self.request, self.sp, self.cwd, self.runner = request, sp, cwd, runner
-        self.env, self.gate_fn, self.diff_fn, self.emit = cx.session_env(env), gate_fn, diff_fn, emit
+        self.env, self.gate_fn, self.diff_fn, self.emit = self.cx.session_env(env), gate_fn, diff_fn, emit
         self.max_esc, self.timeout_s, self.config, self.clock = max_esc, timeout_s, config, clock
-        self.calls, self.tracker = [], cx.UsageTracker()
+        self.calls, self.tracker = [], self.cx.UsageTracker()
         self.thread, self.esc, self.profile, self.message = None, 0, sp.start, None
         self.gate = None
         self.review = {"verdict": None, "findings": None, "skipped": "not required"}
         self.review_required = bool(sp.review)
 
     def call(self, role, argv, profile, thread=None, subagents=None):
-        t0, r = self.clock(), resolve(profile, self.config)
+        t0, r = self.clock(), self.host.resolve(profile, self.config)
         rec = {"role": role, "thread_id": thread, "tier": profile.tier, "model": r.model,
                "requested_effort": r.requested_effort, "applied_effort": r.applied_effort, "subagents": subagents,
                "usage": None}
         self.calls.append(rec)  # before running: a timed-out call still shows up (usage None = missing)
         try:
-            stream = cx.parse_stream(self.runner(argv, cwd=self.cwd, env=self.env, timeout_s=self.timeout_s))
+            stream = self.cx.parse_stream(self.runner(argv, cwd=self.cwd, env=self.env, timeout_s=self.timeout_s))
         finally:
             rec["wall_s"] = round(self.clock() - t0, 3)
         tid = stream.thread_id or thread
         # no thread id: a fresh session's cumulative usage is its own (never share a tracker slot)
         rec.update(thread_id=tid, usage=self.tracker.delta(tid, stream.usage) if tid else stream.usage)
+        if getattr(stream, "extra", None):  # host-reported cost / per-model usage: a cross-check, never required
+            rec.update(host_reported=stream.extra)
+        if thread and tid:
+            self.thread = tid  # a resume may answer with another id (claude --resume): follow it
         return stream, rec
 
     def run_gate(self):
@@ -80,7 +85,7 @@ class _Flow:
     def escalate(self, reason, text):
         profile = self.sp.ladder[self.esc]
         n = self.sp.implement_subagents
-        stream, rec = self.call("escalate", cx.resume_argv(profile, self.thread, text, self.config, n), profile, self.thread, n)
+        stream, rec = self.call("escalate", self.cx.resume_argv(profile, self.thread, text, self.config, n), profile, self.thread, n)
         self.esc, self.profile, self.message = self.esc + 1, profile, stream.text or self.message
         self.emit({"event": "escalate", "reason": reason, "index": self.esc, **rec})
 
@@ -98,7 +103,7 @@ class _Flow:
             return False
         prompt = rv.review_prompt(self.request, diff, self.gate)
         n = self.sp.review_subagents
-        stream, rec = self.call("review", cx.session_argv(profile, prompt, "read-only", self.config, n), profile, subagents=n)
+        stream, rec = self.call("review", self.cx.session_argv(profile, prompt, "read-only", self.config, n), profile, subagents=n)
         self.emit({"event": "session_start", **rec})
         verdict, findings = rv.parse_verdict(stream.text)
         self.review = {"verdict": verdict, "findings": findings, "skipped": None, "text": stream.text or ""}
@@ -118,7 +123,7 @@ class _Flow:
             return True
         n = self.sp.implement_subagents
         text = "No file in the workspace was changed. Make the requested change now by editing the files, then stop."
-        stream, rec = self.call("nudge", cx.resume_argv(self.profile, self.thread, text, self.config, n),
+        stream, rec = self.call("nudge", self.cx.resume_argv(self.profile, self.thread, text, self.config, n),
                                 self.profile, self.thread, n)
         self.message = stream.text or self.message
         self.emit({"event": "nudge", **rec})
@@ -129,7 +134,7 @@ class _Flow:
         n = sp.implement_subagents
         was_clean = self._clean()
         prompt = f"{self.request}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{SELF_CHECK if n == 0 else ''}{WRAP_UP}"
-        stream, rec = self.call("implement", cx.session_argv(sp.start, prompt, "workspace-write", self.config, n), sp.start,
+        stream, rec = self.call("implement", self.cx.session_argv(sp.start, prompt, "workspace-write", self.config, n), sp.start,
                                 subagents=n)
         self.thread, self.message = rec["thread_id"], stream.text
         self.emit({"event": "session_start", **rec})
@@ -150,7 +155,7 @@ class _Flow:
                 f"{self.review['text'][-rv.FINDINGS_MAX:]}")
         # the fix is applied in this session, as its text says: no subagents even at L5 ("codex" policy: no flags)
         n = None if self.sp.implement_subagents is None else 0
-        stream, rec = self.call("review_fix", cx.resume_argv(self.profile, self.thread, text, self.config, n),
+        stream, rec = self.call("review_fix", self.cx.resume_argv(self.profile, self.thread, text, self.config, n),
                                 self.profile, self.thread, n)
         self.message = stream.text or self.message
         self.emit({"event": "review_fix", **rec})
@@ -168,7 +173,7 @@ class _Flow:
 
     def plan_only(self):
         prompt = f"{self.request}\n\nWrite an implementation plan only. Do not modify any files."
-        stream, rec = self.call("plan", cx.session_argv(self.sp.plan_profile, prompt, "read-only", self.config),
+        stream, rec = self.call("plan", self.cx.session_argv(self.sp.plan_profile, prompt, "read-only", self.config),
                                 self.sp.plan_profile)
         self.emit({"event": "session_start", **rec})
         return {"status": "ok", "exit_code": 0, "message": stream.text}
@@ -186,8 +191,9 @@ class _Flow:
 
 
 def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="route", max_escalations=2,
-             timeout_s=1200, config=CodexConfig(), clock=time.monotonic):
-    flow = _Flow(request, sp, cwd, runner, env, gate_fn, diff_fn, emit, max_escalations, timeout_s, config, clock)
+             timeout_s=1200, config=None, clock=time.monotonic, host=CODEX):
+    flow = _Flow(request, sp, cwd, runner, env, gate_fn, diff_fn, emit, max_escalations, timeout_s,
+                 config or host.config, clock, host)
     t0 = clock()
     try:
         result = getattr(flow, {"plan_only": "plan_only", "review_only": "review_only"}.get(target, "implement"))()

@@ -24,6 +24,7 @@ LEVEL_DESCRIPTIONS = (  # shared with the Jev backend's score criteria
     "critical/deep (security core, data-loss migration, complex concurrency, unknown root cause)",
 )
 DEFAULT_MODEL = "gpt-6-luna"  # default to confirm
+CLAUDE_MODEL = "claude-haiku-4-5"  # the classifier model under host claude (plan Phase 5)
 
 
 class BackendOutputError(ValueError):
@@ -113,7 +114,10 @@ def _as_list(value):
 
 
 def parse_output(stdout: str, backend_name: str) -> DifficultyDecision:
-    text = _agent_text(stdout)
+    return decision_from_text(_agent_text(stdout), backend_name)
+
+
+def decision_from_text(text: str, backend_name: str) -> DifficultyDecision:
     match = re.search(r"\{.*\}", text, re.DOTALL)
     try:
         data = json.loads(match.group(0)) if match else None
@@ -135,17 +139,20 @@ class SubscriptionBackend:
     name = "subscription"
     calls_model = True  # route events log its usage (explicit null when unreported)
 
-    def __init__(self, runner=default_runner, model=DEFAULT_MODEL):
+    def __init__(self, runner=default_runner, model=None, host=None):
         self._runner = runner
+        self._host = host  # "claude" or codex (None): given by the caller; the env is only read in host/hosts.get
         self._model = model
         self.last_usage = None  # usage of the most recent call, for evaluation (not part of DifficultyDecision)
 
     def classify(self, task: DifficultyInput, timeout_s: float) -> DifficultyDecision:
         self.last_usage = None  # never report a previous call's usage
+        if self._host == "claude":
+            return self._classify_claude(task, timeout_s)
         cmd = [
             "codex", "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config",
             "-s", "read-only",
-            "-m", self._model, "-c", "model_reasoning_effort=low",
+            "-m", self._model or DEFAULT_MODEL, "-c", "model_reasoning_effort=low",
             build_prompt(task),
         ]
         env = {**os.environ, GUARD_ENV: "1"}
@@ -157,3 +164,25 @@ class SubscriptionBackend:
             shutil.rmtree(cwd, ignore_errors=True)
         self.last_usage = parse_usage(stdout)
         return parse_output(stdout, self.name)
+
+    def _classify_claude(self, task, timeout_s):
+        """`claude -p` on Haiku, as isolated and cheap as --help allows: no tools (`--tools ""`), safe mode (no CLAUDE.md,
+        skills, plugins, hooks, MCP, memory), no MCP servers, nothing persisted, an empty cwd, guard env set."""
+        from ..host import claude_exec  # lazy: claude_exec imports this module
+        cmd = ["claude", "-p", "--output-format", "json", "--model", self._model or CLAUDE_MODEL,
+               "--permission-mode", "dontAsk", "--tools", "", "--safe-mode", "--strict-mcp-config", "--no-session-persistence",
+               "--", build_prompt(task)]
+        env = {**os.environ, GUARD_ENV: "1"}
+        cwd = tempfile.mkdtemp(prefix="mer-classifier-")
+        try:
+            stdout = self._runner(cmd, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd)
+        finally:
+            shutil.rmtree(cwd, ignore_errors=True)
+        try:
+            stream = claude_exec.parse_stream(stdout)
+        except claude_exec.ClaudeResultError as exc:
+            raise BackendOutputError(str(exc)) from exc
+        u = stream.usage  # back to the codex-style keys every classifier-usage consumer reads
+        self.last_usage = {"input_tokens": u["input"], "cached_input_tokens": u["cached_input"],
+                           "output_tokens": u["output"], "reasoning_output_tokens": 0}
+        return decision_from_text(stream.text, self.name)

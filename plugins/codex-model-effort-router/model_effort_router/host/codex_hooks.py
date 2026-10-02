@@ -7,12 +7,12 @@ import time
 from pathlib import Path
 
 from ..difficulty.registry import BACKENDS
-from ..difficulty.subscription import GUARD_ENV
+from ..difficulty.subscription import GUARD_ENV, SubscriptionBackend
 from ..logging import route_log
 from ..policy.config import resolve_config
 from ..policy.router import route
 from ..policy.targeting import NO_ROUTE
-from . import advice
+from . import advice, hosts
 
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
 USER_CONFIG_ENV = "MER_USER_CONFIG"
@@ -22,6 +22,9 @@ MAX_BACKEND_TIMEOUT_S = 12  # backend + fallback must fit in the 30s hook timeou
 
 def _registry(env):
     reg = dict(BACKENDS)
+    if reg.get("subscription") is SubscriptionBackend:  # its CLI follows the host, which only hosts.get reads from the env
+        name = hosts.get(env=env).name
+        reg["subscription"] = lambda: SubscriptionBackend(host=name)
     module = env.get(REGISTRY_MODULE_ENV)
     if module:
         if not module.startswith("tests."):
@@ -70,7 +73,7 @@ def user_prompt_submit(data, env, plugin_root):
     if plan.target == NO_ROUTE and plan.decision is None:  # rules said no_route: nothing was spent, nothing to log
         return None
     out = None if plan.target == NO_ROUTE else _context_output(
-        "UserPromptSubmit", advice.render(plan, f'python3 {Path(plugin_root) / "bin" / "mer"} run'))
+        "UserPromptSubmit", advice.render(plan, f'python3 {Path(plugin_root) / "bin" / "mer"} run', hosts.get(env=env)))
     try:  # logging must never change what the hook outputs; a backend-decided no_route still logs the spend
         route_log.append(sdir, sid, route_log.route_event(
             plan, latency_ms=latency_ms, prompt=prompt, configured_backend=cfg.backend, timeout_clamped=clamped))

@@ -72,7 +72,7 @@ def write_router_config(repo, backend, fallback, subagent_policy=None):
 
 
 def build_env(mode, state_dir, base):
-    env = {**base, "MER_STATE_DIR": state_dir}
+    env = {**base, "MER_STATE_DIR": state_dir, "MER_HOST": "codex"}  # pinned: an exported MER_HOST=claude must not leak in
     if mode == "baseline":
         env["MER_CLASSIFIER"] = "1"  # spec-documented guard: Router hooks no-op
     else:  # mer sets the guard itself for the codex sessions it starts; it must find this checkout's package

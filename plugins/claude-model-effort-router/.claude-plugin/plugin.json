@@ -1,0 +1,7 @@
+{
+  "name": "model-effort-router",
+  "version": "0.1.0",
+  "description": "Advises a model and effort per request and ships the mer CLI for Claude Code (same-session escalation, Test Gate, independent review).",
+  "license": "MIT",
+  "keywords": ["router", "cascade", "effort"]
+}
