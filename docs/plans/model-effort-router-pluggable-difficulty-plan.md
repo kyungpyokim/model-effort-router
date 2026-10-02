@@ -1249,6 +1249,20 @@ Codex에서 측정으로 안정된 구조를 그대로 옮긴다. 구조는 조�
 
 완료 조건: 같은 Router Core로 Claude Code에서 `mer run`이 Codex와 같은 흐름으로 동작하고, 파일럿에서 품질을 유지한다.
 
+**live 확인 (2026-10-03, Claude Code 2.1.285, `evaluation/probes/claude_live_probe.sh`)**:
+- 동작이 확인된 것:
+  - 결과 JSON 형태
+  - 호출 단위 `usage`
+  - 재개 시 세션 id 유지와 모델·effort 전환
+  - `auto` 모드에서 확인 질문 없는 명령 실행
+  - `--disallowedTools Agent`로 subagent 도구 제거
+  - 읽기 전용 Review의 수정 불가
+  - 격리된 분류기 호출(약 3.2초, Haiku 입력 3.7k)
+  - pilot-l1의 `mer run --host claude` 성공(Sonnet 5.5/medium, 167k 토큰, 정확한 diff와 테스트)
+- Claude Code 2.1.280은 `claude-sonnet-5-5`를 모른다. 최신 Claude Code가 필요하다.
+- `total_cost_usd`와 `modelUsage`는 세션 누적값이고, 세션 시작 시의 Haiku 부수 호출은 `usage`에 없다. 비용 환산은 세션별 마지막 `total_cost_usd`로 한다.
+- 남은 것: 플러그인 설치(hook·manifest), 승격·Review 경로, 파일럿 측정(평가 도구의 Claude 지원 필요). 상세는 `plugins/claude-model-effort-router/README.md`.
+
 ### Phase 6 — 추가 Backend
 
 - Jev Backend (§8.2 정의 완료 후)
