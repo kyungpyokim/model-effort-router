@@ -1213,28 +1213,27 @@ Codex에서 측정으로 안정된 구조를 그대로 옮긴다. 구조는 조�
 
 | tier | 모델 | effort | API 정가 USD/1M (입력 / 캐시 / 출력) |
 |---|---|---|---|
-| economy | claude-haiku-4-5 | 지원 안 함: `--effort`를 붙이지 않는다 | 1 / 0.10 / 5 |
+| economy | claude-sonnet-5-5 (2026-10-02 결정; Codex와 같이 balanced와 같은 모델이고 effort로 구분) | low~max | 2 / 0.20 / 10 |
 | balanced | claude-sonnet-5-5 | low~max | 2 / 0.20 / 10 |
-| frontier | claude-opus-5-5 | low~max (API 기본 medium) | 4 / 0.20 / 20 |
-| (선택) frontier | claude-fable-5-1 | low~max | 10 / 0.25 / 50 |
+| frontier | claude-opus-5-5 (2026-10-02 결정) | low~max (API 기본 medium) | 4 / 0.20 / 20 |
 
-- 지원 effort가 없는 모델은 effort 플래그를 생략한다. 기존 규칙(가장 가까운 상위값)은 지원 목록이 비어 있을 때 적용할 수 없다.
+참고: claude-haiku-4-5(1 / 0.10 / 5)는 effort를 지원하지 않는다. claude-fable-5-1(10 / 0.25 / 50)은 설정으로 바꿔 쓸 수 있게만 둔다.
+
+- 지원 effort가 없는 모델(Haiku)을 설정으로 고르면 effort 플래그를 생략한다. 기존 규칙(가장 가까운 상위값)은 지원 목록이 비어 있을 때 적용할 수 없다.
 - 가격은 `evaluation/prices.json`에 추가해 비용 환산을 그대로 쓴다.
 
 **2. 세션 실행 (`host/claude_exec.py`, mer의 호스트 선택)**: Claude Code CLI 2.1.280에서 확인한 플래그로 `codex exec`를 대응시킨다.
 
 | 역할 | Codex | Claude Code |
 |---|---|---|
-| 구현 | `codex exec -s workspace-write -m M -c model_reasoning_effort=E` | `claude -p --output-format json --model M [--effort E] --permission-mode <결정 필요>` |
+| 구현 | `codex exec -s workspace-write -m M -c model_reasoning_effort=E` | `claude -p --output-format json --model M [--effort E] --permission-mode auto` |
 | 재개(승격·반영·빈 변경) | `codex exec resume <id>` | `claude -p --resume <session_id> --model M [--effort E]` |
 | 독립 Review(읽기 전용) | `-s read-only` | `--permission-mode dontAsk --allowedTools Read,Grep,Glob` |
 | subagent 끄기 | `-c agents.enabled=false` | `--disallowedTools Agent` |
 | subagent 동시 1개(L5) | `-c agents.max_concurrent_threads_per_session=1` | 강제 수단 없음: 프롬프트 지시만 |
 | 사용량 | `--json` 스트림 + rollout | `--output-format json`의 `usage`·`session_id`(필드 이름은 live 확인 필요) |
 
-- 구현 세션의 권한 모드는 결정이 필요하다. 안전 우회 플래그(`bypassPermissions`)는 쓰지 않는다.
-  - `auto`: 분류기 기반 자동 승인으로, Codex workspace-write와 가장 가깝다.
-  - `acceptEdits` + `--allowedTools`에 Gate 명령 허용: 더 좁지만, 세션 안에서 다른 명령을 쓰지 못한다.
+- 구현 세션의 권한 모드는 `auto`다(2026-10-02 결정). 분류기 기반 자동 승인으로 Codex workspace-write와 가장 가깝다. 안전 우회 플래그(`bypassPermissions`)는 쓰지 않는다.
 - 분류기 재귀 방지: mer의 세션에는 `MER_CLASSIFIER=1`을 두고, hook은 이 값을 보면 아무것도 하지 않는다(Codex와 같음).
 
 **3. 플러그인 패키지 (`plugins/claude-model-effort-router/`)**: `.claude-plugin/plugin.json`, `hooks/hooks.json`(UserPromptSubmit 조언 hook, 출력은 `hookSpecificOutput.additionalContext`), `bin/mer`, `bin/mer-gate`, skill. Core 복사본은 `scripts/sync_plugin.py`로 동기화한다. 로컬 marketplace에 등록한다.
