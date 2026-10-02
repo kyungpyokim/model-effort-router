@@ -8,7 +8,7 @@ Status: unit-tested, and the session mechanics were checked live on Claude Code 
 
 ```bash
 # from the repo root (python3 scripts/sync_plugin.py first if you changed model_effort_router/)
-claude plugin marketplace add .
+claude plugin marketplace add ./
 claude plugin install model-effort-router@model-effort-router-local
 ```
 
