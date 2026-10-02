@@ -8,6 +8,8 @@ the growth of each `token_count` event's cumulative `total_token_usage` is attri
 `turn_context` (Codex sometimes writes the same token_count twice, so `last_token_usage` would double count) (a resumed session can change model on escalation). The Jev classifier is an external API with its
 own price, reported as raw tokens only. Prices: USD per 1M tokens; cached input is a subset of input, reasoning a
 subset of output (verified: total_tokens = input + output).
+Claude records (`host: claude`) have no rollouts: tokens come from the record's `model_usage` (Claude's per-model totals, subagents included; else its usage) and USD from the `cost_usd`
+the Claude Code results reported (live_runner sums the last `total_cost_usd` per session); unreported = unpriced.
 """
 import argparse
 import json
@@ -61,6 +63,13 @@ def usd(u, price):
 
 
 def run_cost(record, sessions_dir, prices):
+    if record.get("host") == "claude":
+        classifier = usage.total_tokens(record["usage"]["classifier"]) if record["usage"].get("classifier") else 0
+        cost, mu = record.get("cost_usd"), record.get("model_usage")
+        by_model = {m: u["input"] + u["output"] for m, u in mu.items()} if mu else {}  # includes subagent/side-call tokens
+        return {"case_id": record["case_id"], "run": record["run"], "mode": record["mode"],
+                "tokens": sum(by_model.values()) if mu else record["usage"]["total"] - classifier, "usd": cost,
+                "unpriced": [] if cost is not None else ["claude:no_cost"], "by_model": by_model, "classifier_tokens": classifier}
     by = run_by_model(record, sessions_dir)
     tokens = sum(u["input"] + u["output"] for u in by.values())
     costs = {m: usd(u, prices.get(m)) for m, u in by.items()}

@@ -24,6 +24,7 @@ import tempfile
 import time
 
 from model_effort_router.difficulty.registry import BACKENDS
+from model_effort_router.host.claude_exec import parse_stream as parse_claude
 from model_effort_router.difficulty.subscription import default_runner
 from model_effort_router.policy.config import SUBAGENT_POLICIES
 from model_effort_router.difficulty.usage import sum_usage
@@ -41,7 +42,10 @@ MER_GRACE_S = 15  # SIGTERM -> SIGKILL: mer needs time to stop its own codex cal
 DEFAULT_SESSIONS = os.path.join(os.path.expanduser("~"), ".codex", "sessions")  # read only under --live
 
 
-def build_command(prompt, workdir, model=None, effort=None):
+def build_command(prompt, workdir, model=None, effort=None, host="codex"):
+    if host == "claude":  # stock behaviour: no --model = Claude Code's own default, Agent tool NOT denied
+        return ["claude", "-p", "--output-format", "json", "--permission-mode", "auto",
+                *(["--model", model] if model else []), *(["--effort", effort] if effort else []), "--", prompt]
     cmd = ["codex", "exec", "--json", "--skip-git-repo-check", "-s", "workspace-write"]
     if model:
         cmd += ["-m", model]
@@ -50,9 +54,9 @@ def build_command(prompt, workdir, model=None, effort=None):
     return cmd + ["-c", f'projects."{workdir}".trust_level="trusted"', prompt]
 
 
-def build_mer_command(task, workdir, call_timeout_s=DEFAULT_TIMEOUT_S):
+def build_mer_command(task, workdir, call_timeout_s=DEFAULT_TIMEOUT_S, host="codex"):
     return [sys.executable, "-m", "model_effort_router.cli", "run", "--cwd", workdir, "--json", "--exit-zero",
-            "--timeout", f"{call_timeout_s:g}", task]
+            "--timeout", f"{call_timeout_s:g}", *(["--host", "claude"] if host == "claude" else []), task]
 
 
 def write_router_config(repo, backend, fallback, subagent_policy=None):
@@ -71,8 +75,8 @@ def write_router_config(repo, backend, fallback, subagent_policy=None):
         json.dump(cfg, f, indent=2)
 
 
-def build_env(mode, state_dir, base):
-    env = {**base, "MER_STATE_DIR": state_dir, "MER_HOST": "codex"}  # pinned: an exported MER_HOST=claude must not leak in
+def build_env(mode, state_dir, base, host="codex"):
+    env = {**base, "MER_STATE_DIR": state_dir, "MER_HOST": host}  # pinned to the chosen host, never inherited
     if mode == "baseline":
         env["MER_CLASSIFIER"] = "1"  # spec-documented guard: Router hooks no-op
     else:  # mer sets the guard itself for the codex sessions it starts; it must find this checkout's package
@@ -133,6 +137,15 @@ Preconditions (yours, this tool does not do them):
     no-op inside them. If the plugin is installed globally, baseline runs may still route; they are then marked
     contaminated.
   - Codex persists one trust_level entry for the eval workdir ({workdir}) in ~/.codex/config.toml.
+  - The workdir is turned into a git repo (fixed identity, one commit); diffs are saved next to --out.
+{extra}"""
+BANNER_CLAUDE = """\
+LIVE RUN: this executes `claude -p` (baseline directly, router through the `mer --host claude` CLI) and consumes Claude subscription usage.
+Preconditions (yours, this tool does not do them):
+  - Router runs need no plugin: mer starts its claude sessions with MER_CLASSIFIER=1, and the baseline runs with it
+    too, so the hook of an installed Claude plugin stays quiet in both.
+  - No Codex trust entry is written (the workdir is {workdir}); Claude Code has no per-workdir trust setting here.
+  - The baseline is Claude Code's stock behaviour (its default model unless --model is given; Agent tool allowed).
   - The workdir is turned into a git repo (fixed identity, one commit); diffs are saved next to --out.
 {extra}"""
 JEV_NOTICE = """\
@@ -234,10 +247,50 @@ def _classifier_backend(events):
     return d.get("backend"), bool(routes[-1].get("fallback")), causes
 
 
-def _error_record(case, mode, exc, wall, model=None, effort=None, run=1):
+def _last_reported(mer, key, ok):
+    """{thread: value} of the LAST call per thread reporting `key` (cumulative per session, so never summed). None when
+    the run errored or has no calls, or when ANY call lacks it (a timed-out resume or a thread-less call must not drop out)."""
+    if mer.get("status") == "error":
+        return None
+    last = {}
+    for call in mer.get("calls", []):
+        value = (call.get("host_reported") or {}).get(key)
+        if not call.get("thread_id") or not ok(value):
+            return None
+        last[call["thread_id"]] = value
+    return last or None
+
+
+def _num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _router_cost(mer):
+    last = _last_reported(mer, "total_cost_usd", _num)
+    return sum(last.values()) if last else None
+
+
+def _model_usage(by_session):
+    """{model: {input, cached_input, cache_write, output}} from Claude `modelUsage` dicts (one per session). `input`
+    includes cached and cache-creation tokens, as parse_stream counts it. None if there is nothing or an entry is odd."""
+    out = {}
+    for usages in by_session or ():
+        for model, u in usages.items():
+            if not isinstance(u, dict):
+                return None
+            n = lambda k: u[k] if _num(u.get(k)) else 0
+            acc = out.setdefault(model, dict.fromkeys(("input", "cached_input", "cache_write", "output"), 0))
+            acc["input"] += n("inputTokens") + n("cacheReadInputTokens") + n("cacheCreationInputTokens")
+            acc["cached_input"] += n("cacheReadInputTokens")
+            acc["cache_write"] += n("cacheCreationInputTokens")
+            acc["output"] += n("outputTokens")
+    return out or None
+
+
+def _error_record(case, mode, exc, wall, model=None, effort=None, run=1, host="codex"):
     agg = usage.aggregate(None, [])
     agg["incomplete_reasons"] = ["run_error"]
-    return {"case_id": case["id"], "run": run, "mode": mode, "gate_overall": "incomplete", "review_verdict": None,
+    return {"case_id": case["id"], "run": run, "mode": mode, "host": host, "gate_overall": "incomplete", "review_verdict": None,
             "review_findings": None, "fix_rounds": 0, "requirements_met": None, "usage": agg,
             "wall_s": round(wall, 3), "model": model, "effort": effort, "diff_path": None,
             "error": f"{type(exc).__name__}: {exc}"[:300],
@@ -264,7 +317,7 @@ def _mer_thread_usage(mer, covered):
 def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessions_dir=DEFAULT_SESSIONS,
              gate_fn=default_gate, model=None, effort=None, timeout_s=DEFAULT_TIMEOUT_S, clock=time.monotonic,
              base_env=None, out_dir=None, run=1, router_backend=None, router_fallback=None,
-             subagent_policy=None):
+             subagent_policy=None, host="codex"):
     """One run in the fixed eval workdir. Per-case failures become a record with `error`, never an exception."""
     repo = check_workdir(workdir or default_workdir(), fixture)  # realpath: Codex trusts the resolved path
     state = tempfile.mkdtemp(prefix="mer-eval-state-")
@@ -276,16 +329,16 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         _clear_contents(repo)
         shutil.copytree(fixture, repo, dirs_exist_ok=True)
         if mode == "baseline":
-            shutil.rmtree(os.path.join(repo, ".codex"), ignore_errors=True)
+            shutil.rmtree(os.path.join(repo, ".claude" if host == "claude" else ".codex"), ignore_errors=True)
         if mode == "router" and (router_backend or router_fallback or subagent_policy):
             write_router_config(repo, router_backend, router_fallback, subagent_policy)
         init_git_repo(repo)
-        env = build_env(mode, state, os.environ if base_env is None else base_env)
+        env = build_env(mode, state, os.environ if base_env is None else base_env, host)
         if mode == "router":
-            cmd, extra = build_mer_command(case["task"], repo, timeout_s), {"grace_s": MER_GRACE_S}
+            cmd, extra = build_mer_command(case["task"], repo, timeout_s, host), {"grace_s": MER_GRACE_S}
             outer_s = timeout_s * MER_CALL_BUDGET + MER_GATE_BUDGET_S
         else:
-            cmd, extra, outer_s = build_command(case["task"], repo, model, effort), {}, timeout_s
+            cmd, extra, outer_s = build_command(case["task"], repo, model, effort, host), {}, timeout_s
         stdout = runner(cmd, stdin=subprocess.DEVNULL, env=env, timeout_s=outer_s, cwd=repo, **extra)
         wall = clock() - t0
         gate = gate_fn(repo)
@@ -298,12 +351,16 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         if mode == "router":
             mer = _parse_mer(stdout)
             threads = [t for t in mer.get("threads", []) if t]
+        elif host == "claude":
+            claude = parse_claude(stdout)  # one JSON result; a malformed or error result is the normal error record
+            threads = [claude.thread_id]
         else:
             thread_id, _ = usage.exec_stream_usage(stdout)
             threads = [thread_id] if thread_id else []
-        rollouts = usage.find_rollouts(sessions_dir, threads, since_mtime=started) if threads else []
+        # claude keeps no rollouts (and ~/.codex/sessions is never read): usage comes from the results themselves
+        rollouts = usage.find_rollouts(sessions_dir, threads, since_mtime=started) if threads and host != "claude" else []
     except Exception as exc:  # timeout, crash, bad fixture: record it and let the batch continue
-        return _error_record(case, mode, exc, clock() - t0, model, effort, run)
+        return _error_record(case, mode, exc, clock() - t0, model, effort, run, host)
     finally:
         _clear_contents(repo)
         shutil.rmtree(state, ignore_errors=True)
@@ -313,16 +370,26 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         # a rollout without token_count does not cover its thread: fall back to what mer reported
         covered = {r["session_id"] for r in map(usage.read_rollout, rollouts) if r["usage"] is not None}
         agg = usage.aggregate(None, rollouts, classifier, extra_main=_mer_thread_usage(mer, covered))
+    elif host == "claude":
+        agg = usage.aggregate(None, [], None, extra_main=claude.usage)
     else:
         agg = usage.aggregate(stdout, rollouts, classifier)
     agg["incomplete_reasons"] = [] if complete else ["classifier_usage_missing"]
     escalations, verdict, findings = _outcome(events) if mode == "router" else (0, None, None)
-    rec = {"case_id": case["id"], "run": run, "mode": mode, "gate_overall": gate, "review_verdict": verdict,
+    rec = {"case_id": case["id"], "run": run, "mode": mode, "host": host, "gate_overall": gate, "review_verdict": verdict,
            "review_findings": findings, "fix_rounds": escalations, "requirements_met": None, "usage": agg,
            "wall_s": round(wall, 3), "model": model, "effort": effort, "thread_ids": threads,
            "diff_path": diff_path}
     if diff_error:
         rec["diff_error"] = diff_error
+    if host == "claude":  # codex records are priced by evaluation.cost from rollouts
+        if mode == "router":
+            last = _last_reported(mer, "modelUsage", lambda v: isinstance(v, dict))
+            rec["cost_usd"], rec["model_usage"] = _router_cost(mer), _model_usage(last.values() if last else None)
+        else:  # modelUsage (all models, subagents and side calls included) is the fuller token count than `usage`
+            mu = (claude.extra or {}).get("modelUsage")
+            rec["cost_usd"] = (claude.extra or {}).get("total_cost_usd")
+            rec["model_usage"] = _model_usage([mu]) if isinstance(mu, dict) else None
     if mode == "router":
         profile = mer.get("profile") or {}
         backend, fell_back, causes = _classifier_backend(events)
@@ -334,7 +401,7 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
                    model=profile.get("model"), effort=profile.get("applied_effort"))
     else:
         mer_children = any(usage.stage_of(usage.read_rollout(p)["agent_path"]) != "other" for p in rollouts)
-        rec["contaminated"] = bool(routes) or mer_children
+        rec["contaminated"] = bool(routes) or (host != "claude" and mer_children)
     return rec
 
 
@@ -348,6 +415,8 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
     ap.add_argument("--baseline-model")
     ap.add_argument("--baseline-effort")
     ap.add_argument("--workdir", help="fixed eval workdir, reset between runs (default: <state dir>/eval-workdir)")
+    ap.add_argument("--host", choices=("codex", "claude"), default="codex",
+                    help="host CLI under test: codex exec, or claude -p (router runs mer --host claude)")
     ap.add_argument("--router-backend", choices=sorted(BACKENDS), help="classifier backend for router runs (written "
                     "into the workdir config; default: the fixture's / built-in one)")
     ap.add_argument("--router-fallback", choices=sorted(BACKENDS) + ["none"],
@@ -398,11 +467,11 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
         print(f"router subagent policy: {args.subagent_policy or '(config, default level)'}")
         for r in rows:
             for mode in modes:
-                print(mode, r["id"], build_mer_command(r["task"], real_workdir) if mode == "router"
-                      else build_command(r["task"], real_workdir, *settings[mode]))
+                print(mode, r["id"], build_mer_command(r["task"], real_workdir, host=args.host) if mode == "router"
+                      else build_command(r["task"], real_workdir, *settings[mode], host=args.host))
         return 0
     extra = JEV_NOTICE.format(fallback=fallback) if backend == "jev" else ""
-    print(BANNER.format(workdir=real_workdir, extra=extra), file=sys.stderr)
+    print((BANNER_CLAUDE if args.host == "claude" else BANNER).format(workdir=real_workdir, extra=extra), file=sys.stderr)
     out_dir = os.path.splitext(os.path.abspath(args.out))[0] + "-diffs"  # per output file: pilots never overwrite each other
     os.makedirs(out_dir, exist_ok=True)
     with open(args.out, "a", encoding="utf-8") as out:
@@ -410,7 +479,7 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
             rec = run_case(r, mode, args.fixture, workdir=workdir, runner=runner, sessions_dir=sessions_dir,
                            gate_fn=gate_fn, model=settings[mode][0], effort=settings[mode][1], timeout_s=args.timeout,
                            out_dir=out_dir, run=run, router_backend=backend, router_fallback=fallback,
-                           subagent_policy=args.subagent_policy)
+                           subagent_policy=args.subagent_policy, host=args.host)
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
     return 0

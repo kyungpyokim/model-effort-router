@@ -37,6 +37,15 @@ def case(id="c1", task="Fix the bug in calc.py", target="route", level="L2"):
             "final": {"level": level, "risk_flags": [], "target": target}}
 
 
+def claude_result(sid="CS1", text="done", i=10, created=20, read=300, o=5, cost=0.0123):
+    return json.dumps({"type": "result", "subtype": "success", "is_error": False, "session_id": sid, "result": text,
+                       "usage": {"input_tokens": i, "cache_creation_input_tokens": created, "cache_read_input_tokens": read,
+                                 "output_tokens": o}, "total_cost_usd": cost})
+
+
+CLAUDE_RESULT = claude_result()
+
+
 def write_rollout(directory, thread, i, o):
     lines = [{"type": "session_meta", "payload": {"id": thread, "session_id": thread, "thread_source": "user"}},
              {"type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {
@@ -61,11 +70,12 @@ class Env(unittest.TestCase):
         self.calls = []
         self.fail_first = False
         self.mer = MER
+        self.claude = CLAUDE_RESULT
 
     def runner(self, cmd, *, stdin, env, timeout_s, cwd, grace_s=None, log_events=()):
         git = subprocess.run(["git", "log", "--oneline"], cwd=cwd, capture_output=True, text=True)
         self.calls.append({"cmd": cmd, "env": env, "cwd": cwd, "timeout_s": timeout_s, "grace_s": grace_s,
-                           "had_hooks": (Path(cwd) / ".codex").exists(), "stale": (Path(cwd) / "stale.txt").exists(),
+                           "had_hooks": (Path(cwd) / ".codex").exists(), "had_claude": (Path(cwd) / ".claude").exists(), "stale": (Path(cwd) / "stale.txt").exists(),
                            "commits": len(git.stdout.splitlines()) if git.returncode == 0 else None,
                            "config": (Path(cwd) / ".model-effort-router.json").read_text()
                            if (Path(cwd) / ".model-effort-router.json").exists() else None})
@@ -81,7 +91,7 @@ class Env(unittest.TestCase):
         (Path(cwd) / "stale.txt").write_text("left over")
         for f in self.root.rglob("rollout-*.jsonl"):  # rollouts written during the run
             os.utime(f, None)
-        return STREAM if cmd[0] == "codex" else json.dumps(self.mer)
+        return STREAM if cmd[0] == "codex" else self.claude if cmd[0] == "claude" else json.dumps(self.mer)
 
     def run_case(self, mode, events=GOOD_EVENTS, sessions=None, **kw):
         kw.setdefault("out_dir", self.root / "out")
@@ -422,6 +432,137 @@ class RunCaseTest(Env):
         baseline.validate_record(self.run_case("router"))
 
 
+class ClaudeHostTest(Env):
+    """--host claude: no rollouts (~/.codex/sessions is never read), usage and cost come from the results."""
+
+    def run_claude(self, mode, **kw):
+        kw.setdefault("events", [ROUTE, START] if mode == "router" else [])
+        return self.run_case(mode, sessions=self.root / "no-such-sessions", host="claude", **kw)
+
+    def test_baseline_command_has_the_prompt_after_dashes_and_keeps_the_agent_tool(self):
+        cmd = lr.build_command("do it", "/w", host="claude")
+        self.assertEqual(cmd, ["claude", "-p", "--output-format", "json", "--permission-mode", "auto", "--", "do it"])
+        cmd = lr.build_command("--model evil", "/w", "m", "high", host="claude")
+        self.assertEqual(cmd[-4:], ["--effort", "high", "--", "--model evil"])
+        self.assertEqual(cmd[cmd.index("--model") + 1], "m")
+        self.assertFalse([c for c in cmd if "disallowed" in c.lower() or "bypass" in c.lower() or "trust_level" in c])
+        self.assertEqual(lr.build_command("p", "/w")[:2], ["codex", "exec"])  # codex unchanged
+
+    def test_router_command_adds_host_claude_only_for_claude(self):
+        self.assertEqual(lr.build_mer_command("t", "/w", host="claude")[-3:-1], ["--host", "claude"])
+        self.assertNotIn("--host", lr.build_mer_command("t", "/w"))
+
+    def test_env_pins_the_chosen_host_and_baseline_keeps_the_guard(self):
+        for host in ("codex", "claude"):
+            self.assertEqual(lr.build_env("router", "/s", {"MER_HOST": "other"}, host)["MER_HOST"], host)
+        env = lr.build_env("baseline", "/s", {}, "claude")
+        self.assertEqual((env["MER_HOST"], env["MER_CLASSIFIER"]), ("claude", "1"))
+
+    def test_baseline_record_usage_cost_thread_and_workdir(self):
+        (self.fixture / ".claude").mkdir()
+        (self.fixture / ".claude" / "settings.json").write_text("{}")
+        rec = self.run_claude("baseline")
+        call = self.calls[0]
+        self.assertEqual((call["cmd"][0], call["cmd"][-1], call["env"]["MER_HOST"], call["env"]["MER_CLASSIFIER"]),
+                         ("claude", "Fix the bug in calc.py", "claude", "1"))
+        self.assertEqual(call["cmd"][-2], "--")
+        self.assertTrue(call["had_hooks"])  # .codex belongs to codex: only .claude is removed for a claude baseline
+        self.assertFalse(call["had_claude"])
+        self.assertEqual((rec["host"], rec["thread_ids"], rec["cost_usd"]), ("claude", ["CS1"], 0.0123))
+        self.assertEqual(rec["usage"]["total"], 330 + 5)  # input + cache creation + cache read, plus output
+        self.assertEqual(rec["usage"]["orchestrator"], {"input": 330, "cached_input": 300, "output": 5, "reasoning_output": 0})
+        self.assertIsNone(rec["usage"]["classifier"])
+        self.assertEqual(rec["usage"]["incomplete_reasons"], [])
+        self.assertFalse(rec["contaminated"])
+
+    def test_baseline_contaminated_only_by_route_events(self):
+        self.assertTrue(self.run_claude("baseline", events=[ROUTE])["contaminated"])
+
+    def test_baseline_without_reported_cost_has_none(self):
+        body = json.loads(CLAUDE_RESULT)
+        del body["total_cost_usd"]
+        self.claude = json.dumps(body)
+        self.assertIsNone(self.run_claude("baseline")["cost_usd"])
+
+    def test_malformed_and_error_results_are_normal_error_records(self):
+        for bad in ("not json", claude_result().replace('"is_error": false', '"is_error": true')):
+            self.claude = bad
+            rec = self.run_claude("baseline")
+            self.assertEqual((rec["host"], "error" in rec, rec["gate_overall"]), ("claude", True, "incomplete"))
+            self.assertIn("ClaudeResultError", rec["error"])
+
+    def call(self, role, tid, cost, i=100, o=10):
+        c = {"role": role, "thread_id": tid, "usage": {"input": i, "cached_input": 0, "output": o, "reasoning_output": 0}}
+        if cost is not None:
+            c["host_reported"] = {"total_cost_usd": cost}
+        return c
+
+    def test_router_usage_from_mer_calls_only_and_cost_is_last_per_thread(self):
+        self.mer = {**MER, "threads": ["S1", "R1"], "calls": [
+            self.call("implement", "S1", 0.10), self.call("escalate", "S1", 0.25),  # cumulative: only 0.25 counts
+            self.call("review", "R1", 0.05)]}
+        rec = self.run_claude("router")
+        self.assertEqual(rec["cost_usd"], 0.30)
+        self.assertEqual(rec["host"], "claude")
+        self.assertIn("--host", self.calls[0]["cmd"])
+        self.assertEqual(self.calls[0]["env"]["MER_HOST"], "claude")
+        # no rollouts: all three calls come from mer's own report, the codex fixture rollouts are not read
+        self.assertEqual(rec["usage"]["total"], 3 * 110 + 29777)  # + the classifier tokens of ROUTE
+        self.assertEqual(rec["thread_ids"], ["S1", "R1"])
+
+    def test_router_cost_is_none_when_anything_lacks_it(self):
+        ok = lambda role, tid: self.call(role, tid, 0.1)
+        cases = {"review without cost": [ok("implement", "S1"), self.call("review", "R1", None)],
+                 "timed-out resume on the implement thread": [ok("implement", "S1"), self.call("escalate", "S1", None)],
+                 "review call without a thread id": [ok("implement", "S1"), self.call("review", None, 0.05)],
+                 "no calls": []}
+        for name, calls in cases.items():
+            self.mer = {**MER, "threads": ["S1", "R1"], "calls": calls}
+            with self.subTest(name):
+                self.assertIsNone(self.run_claude("router")["cost_usd"])
+        self.mer = {**MER, "status": "error", "threads": ["S1"], "calls": [ok("implement", "S1")]}
+        self.assertIsNone(self.run_claude("router")["cost_usd"])  # an errored run is incomplete
+        self.mer = {**MER, "threads": ["S1"], "calls": [self.call("implement", "S1", 0.1), self.call("escalate", "S1", 0.3)]}
+        self.assertEqual(self.run_claude("router")["cost_usd"], 0.3)
+
+    def with_models(self, call, models):
+        call["host_reported"] = {**call.get("host_reported", {}), "modelUsage": models}
+        return call
+
+    def test_model_usage_last_per_thread_converted_and_summed(self):
+        opus = lambda i, r, c, o: {"claude-opus-5-5": {"inputTokens": i, "cacheReadInputTokens": r,
+                                                       "cacheCreationInputTokens": c, "outputTokens": o, "costUSD": 1}}
+        haiku = {"claude-haiku-4-5": {"inputTokens": 5, "outputTokens": 1}}
+        self.mer = {**MER, "threads": ["S1", "R1"], "calls": [
+            self.with_models(self.call("implement", "S1", 0.1), opus(1, 2, 3, 4)),
+            self.with_models(self.call("escalate", "S1", 0.2), {**opus(10, 20, 30, 40), **haiku}),  # cumulative: this wins
+            self.with_models(self.call("review", "R1", 0.05), opus(100, 0, 0, 7))]}
+        mu = self.run_claude("router")["model_usage"]
+        self.assertEqual(mu["claude-opus-5-5"], {"input": 60 + 100, "cached_input": 20, "cache_write": 30, "output": 47})
+        self.assertEqual(mu["claude-haiku-4-5"], {"input": 5, "cached_input": 0, "cache_write": 0, "output": 1})
+
+    def test_model_usage_none_when_any_call_lacks_it_and_for_baseline_shapes(self):
+        self.mer = {**MER, "threads": ["S1"], "calls": [self.with_models(self.call("implement", "S1", 0.1), {"m": {"inputTokens": 1}}),
+                                                         self.call("escalate", "S1", 0.2)]}
+        self.assertIsNone(self.run_claude("router")["model_usage"])
+        body = json.loads(CLAUDE_RESULT)
+        self.assertIsNone(self.run_claude("baseline")["model_usage"])  # absent
+        body["modelUsage"] = {"claude-sonnet-5-5": {"inputTokens": 10, "cacheReadInputTokens": 300,
+                                                    "cacheCreationInputTokens": 20, "outputTokens": 5}}
+        self.claude = json.dumps(body)
+        self.assertEqual(self.run_claude("baseline")["model_usage"],
+                         {"claude-sonnet-5-5": {"input": 330, "cached_input": 300, "cache_write": 20, "output": 5}})
+        body["modelUsage"] = {"m": "odd"}
+        self.claude = json.dumps(body)
+        self.assertIsNone(self.run_claude("baseline")["model_usage"])
+
+    def test_codex_records_have_host_codex_and_no_cost(self):
+        rec = self.run_case("router")
+        self.assertEqual(rec["host"], "codex")
+        self.assertNotIn("cost_usd", rec)
+
+
+
 class CliTest(Env):
     def setUp(self):
         super().setUp()
@@ -509,6 +650,27 @@ class CliTest(Env):
         self.assertEqual([r["subagent_policy"] for r in recs if r["mode"] == "router"], ["codex"])
         with self.assertRaises(SystemExit):
             self.cli(*self.base_args(), "--subagent-policy", "all")
+
+    def test_host_claude_dry_run_live_run_banner_and_records(self):
+        self.claude = CLAUDE_RESULT
+        _, out = self.cli(*self.base_args(), "--host", "claude")
+        lines = {l.split()[0]: l for l in out.splitlines() if l.startswith(("baseline ", "router "))}
+        self.assertIn("'claude', '-p'", lines["baseline"])
+        self.assertIn("'--', 'Fix the bug in calc.py'", lines["baseline"])
+        self.assertIn("'--host', 'claude'", lines["router"])
+        self.assertEqual(self.calls, [])
+        self.cli(*self.base_args(), "--host", "claude", "--live")
+        for needle in ("claude -p", "Claude subscription usage", "No Codex trust entry", "MER_CLASSIFIER=1"):
+            self.assertIn(needle, self.err)
+        self.assertNotIn("trust_level", self.err)
+        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        self.assertEqual({r["mode"]: r["host"] for r in recs}, {"baseline": "claude", "router": "claude"})
+        self.assertEqual(recs[0]["cost_usd"], 0.0123)
+
+    def test_default_host_is_codex_with_the_unchanged_banner(self):
+        self.cli(*self.base_args(), "--live")
+        self.assertIn("trust_level", self.err)
+        self.assertEqual({json.loads(l)["host"] for l in self.out.read_text().splitlines()}, {"codex"})
 
     def test_live_banner_states_preconditions_and_trust_side_effect(self):
         self.cli(*self.base_args(), "--live")
