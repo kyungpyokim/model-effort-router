@@ -1205,11 +1205,48 @@ Codex에서 최소 플러그인으로 확인한다.
 
 완료 조건: Baseline 대비 품질·전체 사용량·완료 시간·재작업 횟수를 수치로 비교할 수 있다.
 
-### Phase 5 — Claude Code Plugin
+### Phase 5 — Claude Code Plugin (2026-10-02 개정)
 
-- Claude Code Hook Adapter, Host Adapter, subagent 정의
+Codex에서 측정으로 안정된 구조를 그대로 옮긴다. 구조는 조언 hook, `mer` CLI(분류 → 세션 → Test Gate → 승격 → 독립 Review → 반영 1턴), 레벨별 subagent 정책, 보완책, 빈 변경 감지다. 2차 개정의 "subagent 정의" 방식은 쓰지 않는다(§3.8). Core(분류, 위험 신호, 세션 정책, Gate)는 그대로 공유하고, 호스트별로 다른 것은 세 곳뿐이다.
 
-완료 조건: 같은 Router Core로 Claude Code에서 Phase 3과 같은 흐름이 동작한다.
+**1. Host Adapter (`adapters/claude.py`)**: tier → 모델, 모델별 지원 effort(데이터로 관리).
+
+| tier | 모델 | effort | API 정가 USD/1M (입력 / 캐시 / 출력) |
+|---|---|---|---|
+| economy | claude-haiku-4-5 | 지원 안 함: `--effort`를 붙이지 않는다 | 1 / 0.10 / 5 |
+| balanced | claude-sonnet-5-5 | low~max | 2 / 0.20 / 10 |
+| frontier | claude-opus-5-5 | low~max (API 기본 medium) | 4 / 0.20 / 20 |
+| (선택) frontier | claude-fable-5-1 | low~max | 10 / 0.25 / 50 |
+
+- 지원 effort가 없는 모델은 effort 플래그를 생략한다. 기존 규칙(가장 가까운 상위값)은 지원 목록이 비어 있을 때 적용할 수 없다.
+- 가격은 `evaluation/prices.json`에 추가해 비용 환산을 그대로 쓴다.
+
+**2. 세션 실행 (`host/claude_exec.py`, mer의 호스트 선택)**: Claude Code CLI 2.1.280에서 확인한 플래그로 `codex exec`를 대응시킨다.
+
+| 역할 | Codex | Claude Code |
+|---|---|---|
+| 구현 | `codex exec -s workspace-write -m M -c model_reasoning_effort=E` | `claude -p --output-format json --model M [--effort E] --permission-mode <결정 필요>` |
+| 재개(승격·반영·빈 변경) | `codex exec resume <id>` | `claude -p --resume <session_id> --model M [--effort E]` |
+| 독립 Review(읽기 전용) | `-s read-only` | `--permission-mode dontAsk --allowedTools Read,Grep,Glob` |
+| subagent 끄기 | `-c agents.enabled=false` | `--disallowedTools Agent` |
+| subagent 동시 1개(L5) | `-c agents.max_concurrent_threads_per_session=1` | 강제 수단 없음: 프롬프트 지시만 |
+| 사용량 | `--json` 스트림 + rollout | `--output-format json`의 `usage`·`session_id`(필드 이름은 live 확인 필요) |
+
+- 구현 세션의 권한 모드는 결정이 필요하다. 안전 우회 플래그(`bypassPermissions`)는 쓰지 않는다.
+  - `auto`: 분류기 기반 자동 승인으로, Codex workspace-write와 가장 가깝다.
+  - `acceptEdits` + `--allowedTools`에 Gate 명령 허용: 더 좁지만, 세션 안에서 다른 명령을 쓰지 못한다.
+- 분류기 재귀 방지: mer의 세션에는 `MER_CLASSIFIER=1`을 두고, hook은 이 값을 보면 아무것도 하지 않는다(Codex와 같음).
+
+**3. 플러그인 패키지 (`plugins/claude-model-effort-router/`)**: `.claude-plugin/plugin.json`, `hooks/hooks.json`(UserPromptSubmit 조언 hook, 출력은 `hookSpecificOutput.additionalContext`), `bin/mer`, `bin/mer-gate`, skill. Core 복사본은 `scripts/sync_plugin.py`로 동기화한다. 로컬 marketplace에 등록한다.
+
+**분류기**: 기본은 Jev(호스트와 무관)다. subscription fallback은 호스트의 CLI를 쓰도록 바꾼다. Claude에서는 `claude -p --model claude-haiku-4-5`이고, Codex가 없는 환경에서 `codex exec`를 부르지 않게 한다.
+
+**검증 순서**:
+1. 단위 테스트(모델 호출 없음).
+2. live 확인(사용자 승인 후): `--output-format json` 응답 형태, `--resume`에서 모델·effort 변경, `--disallowedTools Agent` 효과, 권한 모드에서 Gate 명령 실행.
+3. 파일럿 13건으로 기준선(사용자의 Claude Code 기본 모델) 대비 측정. 지표는 Codex와 같다(품질, 토큰, 금액).
+
+완료 조건: 같은 Router Core로 Claude Code에서 `mer run`이 Codex와 같은 흐름으로 동작하고, 파일럿에서 품질을 유지한다.
 
 ### Phase 6 — 추가 Backend
 
