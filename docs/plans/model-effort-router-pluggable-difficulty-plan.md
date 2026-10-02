@@ -480,6 +480,7 @@ Stage Policy는 단계마다 **모델 tier 하나와 effort 하나**를 반환�
 | L5 | frontier / xhigh | 중단 후 사용자 보고 | — | frontier / xhigh |
 
 - **승격 조건**: Test Gate `failed`만. 독립 Review `changes_requested`는 승격하지 않고, **같은 구현 세션을 현재 프로필로 1턴 이어 지적을 반영**한 뒤 Test Gate만 다시 돈다(재Review 없음, 상태 `review_fixed`, gate가 실패하면 `gate_failed`). 세션 id가 없으면 반영 없이 `changes_requested`(종료 코드 1). 파일럿 재측정에서 Review → 승격 → 재Review 루프는 비용을 키웠고, L4 인증 재측정에서는 보고만 하는 Review가 찾은 결함이 그대로 남았다. `not_run`만 있는 경우도 승격하지 않고 보고에 남긴다.
+- **빈 변경**: 구현 대상인데 구현 세션 전 깨끗했던 작업 트리가 세션 뒤에도 그대로면 같은 세션을 1턴 재개해 변경을 요구한다(`nudge`, 같은 프로필·subagent 정책). 그래도 그대로면 Gate·Review 없이 `no_changes`(종료 코드 1). 세션 전부터 변경이 있던 트리는 검사하지 않는다(이미 바뀐 파일의 추가 수정은 diff로 구별할 수 없음). 측정 B'에서 도구 호출 없이 "변경했다"고 답한 세션이 `ok`로 끝난 것을 막는다.
 - **위험 신호**: §11.2 최소 조건을 그대로 쓰되, "Plan 수행"은 같은 세션에서 계획을 먼저 쓰게 하는 지침으로(계획 먼저는 Plan 최소값이 있는 위험 신호(concurrency 제외)와 L4 이상에만 붙는다. L3 단독에는 붙이지 않는다: 파일럿에서 턴 수만 늘렸다), "Review 최소값"은 독립 Review 프로필의 하한으로 적용한다. L1~L3에는 **auth·security 신호가 있을 때만** 독립 Review(frontier/high 이상)를 붙인다(레벨을 낮게 판정해도 인증·보안 작업의 Review가 빠지지 않게). 그 밖의 위험 신호만으로는 붙이지 않는다(파일럿 v2: 구현 세션의 자체 리뷰와 중복돼 사용량이 두 배가 됐다).
 - **사용자 override**: `/router session=frontier:high`처럼 세션 프로필을 지정할 수 있다. 위험 신호는 기본값이든 override든 세션 프로필을 올리지 않는다. 대신 계획 먼저 쓰기와 독립 Review 하한은 override로 없앨 수 없다.
 - 이 표는 초기값이며 파일럿 재측정(Phase 7)과 §22 평가로 조정한다. 현재 Codex에서는 economy와 balanced가 같은 모델(gpt-6-luna)이라, 낮은 단계의 승격은 사실상 effort 상승이다.

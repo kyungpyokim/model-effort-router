@@ -27,14 +27,16 @@ GATE_BAD = {"overall": "failed", "checks": {"test": {"status": "failed", "comman
                                                     "output_tail": "AssertionError: 3 != 4"}}}
 GATE_NR = {"overall": "incomplete", "checks": {"test": {"status": "not_run", "reason": "no command discovered"}}}
 REPO = {"is_repo": True, "diff": "diff --git a/x b/x\n+new line\n", "files": ["x"], "untracked": ["new.py"]}
+CLEAN = {"is_repo": True, "diff": "", "files": [], "untracked": []}
 
 
 class Harness:
     """Scripted runner: answers by argv shape; records every call."""
 
-    def __init__(self, gates=(GATE_OK,), verdicts=(), diff=REPO, impl_text="implemented"):
+    def __init__(self, gates=(GATE_OK,), verdicts=(), diff=REPO, impl_text="implemented", changes_after=1):
         self.calls, self.events = [], []
         self.gates, self.verdicts, self.diff, self.impl_text = list(gates), list(verdicts), diff, impl_text
+        self.changes_after = changes_after  # codex calls before the tree shows `diff` (clean until then); None: never
         self.impl_i, self.fail_on = 0, None
 
     def runner(self, argv, *, cwd, env, timeout_s):
@@ -50,17 +52,51 @@ class Harness:
         self.impl_i += 1  # cumulative usage like a real resumed session
         return stream("T-impl", self.impl_text, i=100 * self.impl_i * self.impl_i, c=10 * self.impl_i, o=10 * self.impl_i)
 
+    def diff_fn(self, cwd):
+        if not self.diff.get("is_repo"):
+            return self.diff
+        changed = self.changes_after is not None and len(self.calls) >= self.changes_after
+        return self.diff if changed else CLEAN
+
     def gate(self, cwd):
         return self.gates.pop(0) if len(self.gates) > 1 else self.gates[0]
 
     def run(self, level="L2", flags=(), request=REQ, **kw):
         kw.setdefault("target", "route")
         return run_flow(request, splan(level, flags, kw.pop("overrides", None), kw.pop("policy", "level")), cwd="/w", runner=self.runner,
-                        env={"A": "1"}, gate_fn=self.gate, diff_fn=lambda cwd: self.diff, emit=self.events.append,
+                        env={"A": "1"}, gate_fn=self.gate, diff_fn=self.diff_fn, emit=self.events.append,
                         **kw)
 
     def kinds(self):
         return [e["event"] for e in self.events]
+
+
+class NoChangeTest(unittest.TestCase):
+    """Measurement B' (plan 22.3): a session claimed a change without touching a file."""
+
+    def test_unchanged_tree_gets_one_nudge_then_continues(self):
+        h = Harness(changes_after=2)
+        r = h.run("L2")
+        self.assertEqual([c["role"] for c in r["calls"]], ["implement", "nudge"])
+        self.assertIn(h.calls[0]["argv"][-1].split("\n")[0], REQ)
+        self.assertIn("resume", h.calls[1]["argv"])
+        self.assertIn("No file in the workspace was changed", h.calls[1]["argv"][-1])
+        self.assertIn("agents.enabled=false", h.calls[1]["argv"])  # same subagent policy as the implement session
+        self.assertEqual((r["status"], r["exit_code"], r["gate"]), ("ok", 0, "passed"))
+        self.assertIn("nudge", h.kinds())
+
+    def test_still_unchanged_after_the_nudge_is_no_changes_without_gate_or_review(self):
+        h = Harness(changes_after=None)
+        r = h.run("L4")
+        self.assertEqual([c["role"] for c in r["calls"]], ["implement", "nudge"])
+        self.assertEqual((r["status"], r["exit_code"], r["gate"]), ("no_changes", 1, None))
+
+    def test_changed_tree_and_dirty_or_non_repo_trees_are_not_nudged(self):
+        self.assertEqual([c["role"] for c in Harness().run("L2")["calls"]], ["implement"])
+        dirty = Harness(changes_after=0)  # dirty before the session: edits may be invisible, never nudge
+        dirty.diff_fn = lambda cwd: REPO
+        self.assertEqual([c["role"] for c in dirty.run("L2")["calls"]], ["implement"])
+        self.assertEqual([c["role"] for c in Harness(diff={"is_repo": False}).run("L2")["calls"]], ["implement"])
 
 
 class ImplementTest(unittest.TestCase):

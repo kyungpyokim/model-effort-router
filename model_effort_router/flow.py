@@ -106,14 +106,35 @@ class _Flow:
                    "usage": rec["usage"]})
         return True
 
+    def _clean(self):
+        d = self.diff_fn(self.cwd)
+        return bool(d.get("is_repo")) and not d.get("diff") and not d.get("untracked")
+
+    def nudge_if_unchanged(self, was_clean):
+        """A route request must change files. Measurement B' (plan 22.3): a session answered "changed" without a
+        single tool call and the unchanged tests passed. Checked only on a tree that was clean before (a dirty tree's
+        edits to already-changed files are not visible). One nudge in the same session; still nothing -> False."""
+        if not was_clean or not self.thread or not self._clean():
+            return True
+        n = self.sp.implement_subagents
+        text = "No file in the workspace was changed. Make the requested change now by editing the files, then stop."
+        stream, rec = self.call("nudge", cx.resume_argv(self.profile, self.thread, text, self.config, n),
+                                self.profile, self.thread, n)
+        self.message = stream.text or self.message
+        self.emit({"event": "nudge", **rec})
+        return not self._clean()
+
     def implement(self):
         sp = self.sp
         n = sp.implement_subagents
+        was_clean = self._clean()
         prompt = f"{self.request}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{SELF_CHECK if n == 0 else ''}{WRAP_UP}"
         stream, rec = self.call("implement", cx.session_argv(sp.start, prompt, "workspace-write", self.config, n), sp.start,
                                 subagents=n)
         self.thread, self.message = rec["thread_id"], stream.text
         self.emit({"event": "session_start", **rec})
+        if not self.nudge_if_unchanged(was_clean):
+            return {"status": "no_changes", "exit_code": 1, "message": self.message}
         gate = self.gate_loop()
         if sp.review and gate["overall"] == "failed":
             self.review["skipped"] = "gate failed"
