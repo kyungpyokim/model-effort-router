@@ -95,10 +95,15 @@ class ParseTest(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(cx.ClaudeResultError):
                 cx.parse_stream(json.dumps(bad))
 
-    def test_error_result_raises(self):
+    def test_error_result_raises_with_its_reason(self):
         with self.assertRaises(cx.ClaudeResultError) as cm:
-            cx.parse_stream(result(is_error=True, subtype="error_max_turns"))
+            cx.parse_stream(result(is_error=True, subtype="error_max_turns", text=None))
         self.assertIn("error_max_turns", str(cm.exception))
+        # live 2026-10-03: an expired login is subtype "success" + is_error, the reason only in `result`
+        expired = "Failed to authenticate: OAuth session expired and could not be refreshed"
+        with self.assertRaises(cx.ClaudeResultError) as cm:
+            cx.parse_stream(result(is_error=True, subtype="success", text=expired))
+        self.assertIn("OAuth session expired", str(cm.exception))
 
     def test_malformed_or_unknown_shapes_raise_value_errors(self):
         good = json.loads(result())
@@ -186,7 +191,7 @@ class FlowTest(unittest.TestCase):
 
     def test_error_result_becomes_an_error_status(self):
         sp = session_plan(decision("L2"), (), None)
-        out = run_flow(REQ, sp, cwd="/w", runner=lambda argv, **k: result(is_error=True, subtype="error_during_execution"),
+        out = run_flow(REQ, sp, cwd="/w", runner=lambda argv, **k: result(is_error=True, subtype="error_during_execution", text=None),
                        env={}, gate_fn=lambda c: GATE_OK, diff_fn=lambda c: REPO, emit=lambda e: None, host=hosts.CLAUDE)
         self.assertEqual((out["status"], out["exit_code"]), ("error", 1))
         self.assertIn("error_during_execution", out["error"])

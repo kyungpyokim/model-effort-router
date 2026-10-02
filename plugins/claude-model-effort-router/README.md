@@ -2,7 +2,7 @@
 
 Same two parts as the Codex plugin, on the Claude Code host. The **`mer` CLI is the main path**: it classifies a request, runs it as one `claude -p` session with the model and effort the Router chose, gates it, escalates the same session (`--resume`) on a failed gate, and adds an independent read-only review for high-risk work. The **UserPromptSubmit hook is advisory only**: it adds a short note (difficulty, risk flags, recommended model/effort, plan-first and review advice) and never blocks, denies or enforces anything.
 
-Status: unit-tested only. Nothing here has been installed or run against a live Claude Code (see "Unverified").
+Status: unit-tested, and the session mechanics were checked live on Claude Code 2.1.285 (2026-10-03, see "Verified live"). Not yet installed as a plugin; no pilot measurement yet.
 
 ## Install (run these yourself)
 
@@ -44,15 +44,19 @@ Same output as the Codex hook (`hookSpecificOutput.additionalContext`), fail-ope
 
 The plugin bundles a copy of `model_effort_router/`. After editing core: `python3 scripts/sync_plugin.py` (it syncs BOTH plugin bundles; a unit test fails if either drifts).
 
+## Verified live (Claude Code 2.1.285, 2026-10-03, `evaluation/probes/claude_live_probe.sh`)
+
+- Claude Code 2.1.280 does not know `claude-sonnet-5-5` (`[claude-code:unrecognized_model]`); 2.1.285 does. Keep Claude Code current.
+- The `-p --output-format json` result has `type`, `is_error`, `session_id`, `result`, `usage` (`input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`), `total_cost_usd`, `modelUsage` and `subagent_stats`. An expired login is `is_error: true` with subtype `success` and the reason in `result`.
+- `usage` is per invocation; `total_cost_usd` and `modelUsage` are cumulative for the session (a resume shows earlier models too). Claude Code also makes a small Haiku call once per new session (~900 input tokens) that appears only in `modelUsage`/`total_cost_usd`, not in `usage`.
+- `--resume <id>` keeps the session id and switches `--model`/`--effort` (Sonnet 5.5 -> Opus 5.5 confirmed).
+- `--permission-mode auto` runs a shell command without a prompt. `--disallowedTools Agent` removes the subagent tool (it is not in the session's tool list; `subagent_stats.spawned` 0).
+- The read-only review argv cannot edit: asked to change a file, the session reported only Read/Glob/Grep and the file stayed unchanged.
+- The isolated classifier call (`--safe-mode --tools ""`) works and authenticates: about 3.2 s and 3.7k input tokens on Haiku.
+- `mer run --host claude` on the pilot L1 task: ok, one Sonnet 5.5/medium session, correct diff plus a test; 167k tokens (mostly cache creation: the user-level Claude Code setup is loaded into implement sessions).
+
 ## Unverified (needs a live check)
 
-- The `claude -p --output-format json` result shape (`type`, `is_error`, `session_id`, `result`, `usage.*`): parsing fails closed on anything else.
-- Whether `--resume <id>` keeps the session id (mer follows the id the result reports), lets `--model`/`--effort` change, and keeps `--permission-mode auto`.
-- `--permission-mode auto` actually running the Test Gate commands without prompts in `-p` mode, and `dontAsk` + `--allowedTools Read,Grep,Glob` giving a usable read-only review.
-- `--disallowedTools Agent` removing subagents (the tool's name may differ), and `--` ending the variadic tool options before the prompt.
-- `--tools ""` giving the classifier no tools, and `--no-session-persistence` with `-p`.
-- Claude Code plugin manifest/marketplace field names, `${CLAUDE_PLUGIN_ROOT}` in hook commands, hook timeout units, and UserPromptSubmit `additionalContext` being surfaced.
-- Classifier latency and tokens: whether `--safe-mode` really keeps the Haiku call within the hook's 12 s clamp and small (Jev needs about 600 tokens; claude -p carries a system prompt), and that auth still works in safe mode.
-- Whether `--tools` accepts the comma form, `--setting-sources user` loads what a review needs (auth, model), and `--strict-mcp-config` without `--mcp-config` means no MCP servers.
-- Whether `usage` in the `-p` JSON includes Agent-tool (subagent) tokens, and whether usage on `--resume` is per invocation (assumed) or cumulative. mer records `total_cost_usd` and `modelUsage` from the result, when present, as `host_reported` on each call record as a cross-check; absence is not an error.
-- A model that rejects `--effort` values, and the `error` result shape (an error result raises and its usage is not logged).
+- Claude Code plugin manifest/marketplace field names, `${CLAUDE_PLUGIN_ROOT}` in hook commands, hook timeout units, and UserPromptSubmit `additionalContext` being surfaced (needs a plugin install).
+- Whether `usage` includes Agent-tool (subagent) tokens at L5.
+- Escalation, review and review-fix paths end to end, and quality/cost against a Claude Code baseline (pilot measurement).

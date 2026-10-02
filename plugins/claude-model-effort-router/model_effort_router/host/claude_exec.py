@@ -82,7 +82,9 @@ def parse_stream(text) -> Stream:
     if not isinstance(data, dict) or data.get("type") != "result":
         raise ClaudeResultError("claude output is not a result object")
     if data.get("is_error") is not False:
-        raise ClaudeResultError(f"claude reported an error result ({str(data.get('subtype'))[:60]})")
+        # live 2026-10-03: an expired login comes back as subtype "success" with is_error and the reason in `result`
+        reason = data.get("result") if isinstance(data.get("result"), str) else data.get("subtype")
+        raise ClaudeResultError(f"claude reported an error result: {str(reason)[:160]}")
     sid, result, usage = data.get("session_id"), data.get("result"), data.get("usage")
     if not isinstance(sid, str) or not sid or not isinstance(result, str) or not isinstance(usage, dict):
         raise ClaudeResultError("claude result lacks session_id, result or usage")
