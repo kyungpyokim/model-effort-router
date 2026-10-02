@@ -1,0 +1,6 @@
+{
+  "_source": "OpenAI API list prices, USD per 1M tokens, as published by third-party aggregators (requesty.ai, aitokenprice.com, techjacksolutions.com), looked up 2026-10-02. API prices, not subscription quota weights.",
+  "gpt-6.1-sol": {"input": 2.00, "cached_input": 0.10, "cache_write": 2.50, "output": 10.00},
+  "gpt-6-luna": {"input": 0.10, "cached_input": 0.01, "output": 0.50},
+  "gpt-5.6-terra": {"input": 2.00, "cached_input": 0.20, "output": 12.00}
+}
