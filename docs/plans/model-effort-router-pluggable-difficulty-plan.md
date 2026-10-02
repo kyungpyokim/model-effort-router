@@ -1053,6 +1053,20 @@ live 실행 전제: 사용자가 플러그인을 설치하고 hook을 직접 신
 - 도구 판정은 `do_not_default_to_auto`(regressed 1건, l1 빈 변경)다.
 - 다음: 구현 대상(`route`)인데 구현 세션 뒤 diff가 비면 같은 세션을 한 번 재개해 변경을 요구하고, 그래도 비면 `no_changes`(exit 1)로 끝낸다.
 
+**측정 v4d: 현재 구성 반복** (2026-10-02, 과승격 규칙 + subagent 정책 + 보완책 + 빈 변경 감지, Router 13건 × 2회, `runs/pilot-v4d-router.jsonl`, 보고서 `runs/pilot-v4d-report.md`)
+- 26회 모두 변경이 있었고 테스트를 통과했으며 요구사항을 충족했다.
+- 경계 검사도 2회 모두 통과했다.
+  - l3d: 동시성 테스트가 락을 뺀 코드에서 20회 모두 실패한다.
+  - l3: 잘못된 할인율에서 재고를 바꾸지 않는다.
+  - l4-auth·l5: 비ASCII 서명, surrogate, `None`, 빈 문자열, 정수 입력을 모두 `PermissionError`로 처리한다.
+- subagent: L1~L4 24회 모두 0개. L5는 1개와 2개였다. 동시 상한 1은 지켰고, 총 개수는 강제되지 않는다.
+- 독립 Review: l4-auth(auth), l1b(auth), l3d(concurrency), l5(L5)에 붙었다. changes_requested는 반영 턴으로 모두 `review_fixed`가 됐다.
+- 토큰 (건별 평균, sol 기준선이 있는 12건): sol/medium 9.62M → 3.82M(**−60%**).
+  - 위험 없는 L1~L3: −62~−83%.
+  - Review가 붙은 작업: −20~−54%.
+  - L5: −40%.
+- 도구 판정(sol 기준선과 짝지은 14쌍): **`auto_allowed`**. 품질은 14쌍 모두 preserved, 10.69M → 4.03M. 시간은 합계 222초 길다(Review와 L5 xhigh).
+
 ---
 
 ## 23. 패키징과 프로젝트 구조
