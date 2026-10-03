@@ -24,7 +24,7 @@ class ClaudeConfig:
     efforts: Mapping[str, str] = field(default_factory=lambda: _EFFORTS)
     model_efforts: Mapping[str, Tuple[str, ...]] = field(default_factory=lambda: _MODEL_EFFORTS)
     context: str = "lean"  # session.claude_context: "lean" drops plugins/user settings/MCP, "full" loads everything (host/claude_exec)
-    guards: Optional[Callable[[], dict]] = None  # lean: the user's deny/ask/sandbox settings to pass through (default: read the file)
+    plugins_off: Optional[Callable[[], dict]] = None  # lean: {plugin id: False} to switch off (default: the user settings file)
 
     def __post_init__(self):
         if self.context not in CONTEXTS:

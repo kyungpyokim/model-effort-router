@@ -32,7 +32,7 @@ def tearDownModule():
 
 P = Profile("frontier", "high")
 FULL = ClaudeConfig(context="full")  # the unrestricted argv (session.claude_context = "full")
-LEAN_FLAGS = ["--setting-sources", "project,local", "--strict-mcp-config"]
+LEAN_FLAGS = ["--strict-mcp-config"]  # no plugins enabled (hermetic settings dir): nothing to switch off
 
 
 def result(sid="S1", text="done", i=10, created=20, read=300, o=5, **over):
@@ -88,15 +88,15 @@ class ArgvTest(unittest.TestCase):
                                   "--disallowedTools", "Agent", "--strict-mcp-config", "--setting-sources", "user", "--settings",
                                   '{"disableAllHooks": true}', "--", "r"])
 
-    def test_lean_never_uses_safe_mode_or_bare(self):
+    def test_lean_never_uses_safe_mode_bare_or_setting_sources_for_implement(self):
         for argv in (cx.session_argv(P, "p", "workspace-write"), cx.resume_argv(P, "S", "p"), cx.session_argv(P, "p", "read-only")):
             self.assertFalse([a for a in argv if a in ("--safe-mode", "--bare")])  # they would drop CLAUDE.md / need an API key
             self.assertIn("--strict-mcp-config", argv)
         for argv in (cx.session_argv(P, "p", "workspace-write"), cx.resume_argv(P, "S", "p")):
-            self.assertEqual(argv[argv.index("--setting-sources") + 1], "project,local")  # plugins/user hooks live in user settings
+            self.assertNotIn("--setting-sources", argv)  # all sources load: ~/.claude/rules and user settings survive
 
     def test_read_only_never_loads_project_or_local_settings_in_either_mode(self):
-        for config in (ClaudeConfig(), FULL, ClaudeConfig(context="lean", guards=lambda: {"permissions": {"deny": ["Bash(rm *)"]}})):
+        for config in (ClaudeConfig(), FULL, ClaudeConfig(context="lean", plugins_off=lambda: {"x": False})):
             argv = cx.session_argv(P, "p", "read-only", config)
             sources = argv[argv.index("--setting-sources") + 1].split(",")
             self.assertEqual(sources, ["user"])
@@ -105,53 +105,44 @@ class ArgvTest(unittest.TestCase):
         self.assertEqual(lean[lean.index("--settings") + 1], '{"disableAllHooks": true}')  # a reviewed change cannot run hooks
         self.assertNotIn("--settings", cx.session_argv(P, "p", "read-only", FULL))  # full: exactly the old argv
 
-    def test_lean_implement_passes_the_users_guard_rails_only(self):
-        guards = {"permissions": {"deny": ["Bash(rm *)"], "ask": ["Edit(.env)"]}, "sandbox": {"enabled": True}}
-        cfg = ClaudeConfig(guards=lambda: guards)
+    def test_lean_implement_switches_enabled_plugins_off_via_settings(self):
+        cfg = ClaudeConfig(plugins_off=lambda: {"superpowers@m": False, "caveman@m": False})
         for argv in (cx.session_argv(P, "p", "workspace-write", cfg), cx.resume_argv(P, "S", "p", cfg)):
-            self.assertEqual(json.loads(argv[argv.index("--settings") + 1]), guards)
+            self.assertEqual(json.loads(argv[argv.index("--settings") + 1]), {"enabledPlugins": {"superpowers@m": False, "caveman@m": False}})
             self.assertLess(argv.index("--settings"), argv.index("--"))
-        self.assertNotIn("--settings", cx.session_argv(P, "p", "workspace-write", ClaudeConfig(guards=lambda: {})))
-        self.assertNotIn("--settings", cx.session_argv(P, "p", "workspace-write", ClaudeConfig(context="full", guards=lambda: guards)))
+            self.assertIn("--strict-mcp-config", argv)
+        self.assertNotIn("--settings", cx.session_argv(P, "p", "workspace-write", ClaudeConfig(plugins_off=lambda: {})))  # none enabled
+        self.assertNotIn("--settings", cx.session_argv(P, "p", "workspace-write", ClaudeConfig(context="full", plugins_off=lambda: {"x": False})))
 
-    def test_user_guards_reads_only_deny_ask_sandbox_and_never_crashes(self):
-        text = json.dumps({"permissions": {"deny": ["a"], "ask": [], "allow": ["Bash"], "defaultMode": "auto"},
-                           "sandbox": {"enabled": True}, "enabledPlugins": {"x": True}, "hooks": {"SessionStart": []},
-                           "env": {"K": "V"}})
-        self.assertEqual(cx.user_guards("/x", lambda p: text), {"permissions": {"deny": ["a"]}, "sandbox": {"enabled": True}})
-        self.assertEqual(cx.user_guards("/x", lambda p: json.dumps({"permissions": {"ask": ["b"]}})), {"permissions": {"ask": ["b"]}})
-        def boom(p):
-            raise OSError("nope")
-        for read in (boom, lambda p: "{not json", lambda p: "[]", lambda p: "null", lambda p: json.dumps({"permissions": "x"}),
-                     lambda p: json.dumps({"enabledPlugins": {}}), lambda p: json.dumps({"permissions": {"deny": "notalist"}})):
-            self.assertEqual(cx.user_guards("/x", read), {})
+    def test_plugins_off_reads_user_project_and_local_settings_and_never_crashes(self):
+        files = {"/u/settings.json": json.dumps({"enabledPlugins": {"a@m": True, "b@m": False, "c@m": "yes"}, "hooks": {}}),
+                 "/w/.claude/settings.json": json.dumps({"enabledPlugins": {"d@m": True}}),
+                 "/w/.claude/settings.local.json": json.dumps({"enabledPlugins": {"a@m": True, "e@m": True}})}
 
-    def test_user_guards_keep_only_pretooluse_and_permissionrequest_hooks(self):
-        pre, perm = [{"matcher": "Bash", "hooks": [{"type": "command", "command": "guard.sh"}]}], [{"hooks": []}]
-        text = json.dumps({"hooks": {"PreToolUse": pre, "PermissionRequest": perm, "SessionStart": [{"hooks": []}],
-                                     "UserPromptSubmit": [{"hooks": []}], "Stop": [{"hooks": []}]}})
-        self.assertEqual(cx.user_guards("/x", lambda p: text), {"hooks": {"PreToolUse": pre, "PermissionRequest": perm}})
-        only_start = json.dumps({"hooks": {"SessionStart": [{"hooks": []}]}})
-        self.assertEqual(cx.user_guards("/x", lambda p: only_start), {})
-        for bad in ({"hooks": "x"}, {"hooks": []}, {"hooks": {"PreToolUse": "x"}}, {"hooks": {"PreToolUse": []}},
-                    {"hooks": {"PreToolUse": {"a": 1}}}):
-            with self.subTest(bad=bad):
-                self.assertEqual(cx.user_guards("/x", lambda p, b=bad: json.dumps(b)), {})
-        both = json.dumps({"permissions": {"deny": ["a"]}, "hooks": {"PreToolUse": pre}})
-        self.assertEqual(cx.user_guards("/x", lambda p: both), {"permissions": {"deny": ["a"]}, "hooks": {"PreToolUse": pre}})
+        def read(path):
+            return files[path]  # KeyError for anything unlisted
 
-    def test_lean_implement_settings_json_carries_guard_hooks(self):
-        pre = [{"matcher": "Bash", "hooks": [{"type": "command", "command": "guard.sh"}]}]
-        argv = cx.resume_argv(P, "S", "p", ClaudeConfig(guards=lambda: {"hooks": {"PreToolUse": pre}}))
-        self.assertEqual(json.loads(argv[argv.index("--settings") + 1]), {"hooks": {"PreToolUse": pre}})
+        with unittest.mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": "/u"}):
+            self.assertEqual(cx.plugins_off("/w", lambda p: files.get(p) or (_ for _ in ()).throw(OSError(p))),
+                             {"a@m": False, "d@m": False, "e@m": False})  # only value true counts, deduplicated
+            self.assertEqual(cx.plugins_off(None, lambda p: files[p]), {"a@m": False})  # no cwd: user settings only
+            def boom(p):
+                raise OSError("nope")
+            for bad in (boom, lambda p: "{not json", lambda p: "[]", lambda p: "null", lambda p: json.dumps({"enabledPlugins": "x"}),
+                        lambda p: json.dumps({"enabledPlugins": ["a"]}), lambda p: json.dumps({})):
+                self.assertEqual(cx.plugins_off("/w", bad), {})
+            partial = lambda p: files[p] if p == "/w/.claude/settings.json" else (_ for _ in ()).throw(OSError(p))
+            self.assertEqual(cx.plugins_off("/w", partial), {"d@m": False})  # one bad/missing file does not hide the others
 
-    def test_user_guards_path_honours_claude_config_dir(self):
-        seen = []
-        cx.user_guards(read=lambda p: seen.append(p) or "{}")
-        self.assertEqual(seen, [os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "settings.json")])
-        with tempfile.TemporaryDirectory() as d, unittest.mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": d}):
-            (__import__("pathlib").Path(d) / "settings.json").write_text('{"sandbox": {"enabled": true}}')
-            self.assertEqual(cx.user_guards(), {"sandbox": {"enabled": True}})  # the default reader, a real file
+    def test_plugins_off_default_reader_uses_claude_config_dir_and_real_files(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as w, unittest.mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": d}):
+            pathlib = __import__("pathlib")
+            pathlib.Path(d, "settings.json").write_text('{"enabledPlugins": {"x@m": true}}')
+            pathlib.Path(w, ".claude").mkdir()
+            pathlib.Path(w, ".claude", "settings.local.json").write_text('{"enabledPlugins": {"y@m": true}}')
+            self.assertEqual(cx.plugins_off(w), {"x@m": False, "y@m": False})
+            argv = cx.session_argv(P, "p", "workspace-write", ClaudeConfig(plugins_off=lambda: cx.plugins_off(w)))
+            self.assertEqual(json.loads(argv[argv.index("--settings") + 1]), {"enabledPlugins": {"x@m": False, "y@m": False}})
 
     def test_full_context_has_no_context_flags_for_implement_and_user_settings_for_read_only(self):
         for argv in (cx.session_argv(P, "p", "workspace-write", FULL), cx.resume_argv(P, "S", "p", FULL)):
@@ -349,15 +340,18 @@ class ContextConfigTest(CliCase):
         return out.getvalue()
 
     def test_full_in_repo_config_restores_the_unrestricted_argv_in_dry_run(self):
-        self.assertIn("--setting-sources project,local", self.dry())
+        self.assertIn("--strict-mcp-config", self.dry())
+        self.assertNotIn("--setting-sources", self.dry())  # implement: all sources load
         (self.cwd / ".model-effort-router.json").write_text('{"difficulty": {"backend": "fake"}, "session": {"claude_context": "full"}}')
-        self.assertNotIn("--setting-sources", self.dry())
+        out = self.dry()
+        self.assertNotIn("--setting-sources", out)
+        self.assertNotIn("--strict-mcp-config", out)  # full: no context flags on the implement argv
 
     def test_config_reaches_the_executed_sessions_and_codex_ignores_it(self):
         runner = ClaudeRunner()
         cli.main(["run", "--cwd", str(self.cwd), "--host", "claude", "Fix the bug in calc.py"], env=self.env(), runner=runner,
                  gate_fn=lambda c: GATE_OK, diff_fn=lambda c: REPO, out=io.StringIO())
-        self.assertIn("project,local", runner.calls[0]["argv"])
+        self.assertIn("--strict-mcp-config", runner.calls[0]["argv"])
         (self.cwd / ".model-effort-router.json").write_text('{"difficulty": {"backend": "fake"}, "session": {"claude_context": "full"}}')
         runner = ClaudeRunner()
         cli.main(["run", "--cwd", str(self.cwd), "--host", "claude", "Fix the bug in calc.py"], env=self.env(), runner=runner,
@@ -400,7 +394,7 @@ class CliHostTest(CliCase):
                 self.assertIn("host: claude", out)
                 self.assertIn("session: economy:medium -> claude-sonnet-5-5/medium", out)
                 self.assertIn("first command: claude -p --output-format json --model claude-sonnet-5-5 --effort medium "
-                              "--permission-mode auto --disallowedTools Agent --setting-sources project,local --strict-mcp-config -- ", out)
+                              "--permission-mode auto --disallowedTools Agent --strict-mcp-config -- ", out)
 
     def test_flag_beats_env_and_bad_host_is_exit_2(self):
         _, out = self.run_cli("--dry-run", "--level", "L2", "--host", "codex", "x.py", env_extra={"MER_HOST": "claude"})

@@ -4,15 +4,16 @@ Counterpart of host/codex_exec.py with the same function names, so flow.py stays
 Everything about Claude Code's runtime behaviour here is from `claude --help` (CLI 2.1.280) and the documented
 result shape; it is UNVERIFIED live, so parsing fails closed like difficulty/jev.py.
 
-Fixed context (pilot-c1: ~200k tokens per session): a user's enabled plugins, user hooks (SessionStart injects large
-text) and MCP tool lists ride along in every `claude -p`. "lean" (config.context, default) keeps CLAUDE.md memory
-(project chain, ~/.claude/rules) but loads only project/local settings (`--setting-sources project,local`: enabledPlugins
-and user hooks live in user settings) and no MCP servers (`--strict-mcp-config`). Not --safe-mode (drops CLAUDE.md) and
-not --bare (needs an API key). "full" is the unrestricted argv. The classifier already runs --safe-mode in a temp dir.
-Lean keeps the user's own guard rails (permissions.deny/ask, sandbox, PreToolUse/PermissionRequest hooks from the user
-settings file) via `--settings`; plugin-provided guard hooks and other user settings are dropped.
+Fixed context (pilot-c1: ~200k tokens per session): the user's enabled plugins and MCP tool lists ride along in every
+`claude -p`. "lean" (config.context, default) turns exactly those off and keeps everything else: all settings sources and
+instructions (CLAUDE.md chain, ~/.claude/rules), the user's permissions and hooks. Plugins: `--settings` with
+`enabledPlugins: {id: false}` for every plugin enabled in the user settings or the cwd's project/local settings (unverified
+live that this overrides a user `true`). MCP: `--strict-mcp-config`. Not --safe-mode (drops CLAUDE.md), not --bare (needs an
+API key), and not --setting-sources (a probe showed project,local dropped ~/.claude/rules). "full" is the unrestricted argv.
+The classifier already runs --safe-mode in a temp dir.
 Read-only sessions (review/plan) never load project or local settings, in either mode: a reviewed change could add
-a `.claude/settings.local.json` whose hooks, apiKeyHelper, env or extra directories would otherwise run or redirect them.
+a `.claude/settings.local.json` whose hooks, apiKeyHelper, env or extra directories would otherwise run or redirect them;
+lean also disables all their hooks.
 """
 import json
 import os
@@ -24,7 +25,6 @@ from ..difficulty.subscription import GUARD_ENV, default_runner
 
 Stream = namedtuple("Stream", "thread_id usage text extra", defaults=(None,))  # usage: THIS invocation's, short keys, or None
 READ_ONLY_TOOLS = "Read,Grep,Glob"
-GUARD_HOOK_EVENTS = ("PreToolUse", "PermissionRequest")  # the only user hooks lean sessions keep (SessionStart etc. inject context)
 
 
 class ClaudeResultError(ValueError):
@@ -44,40 +44,36 @@ def _base(resolved, extra):
     return cmd + extra
 
 
-def user_guards(path=None, read=None):
-    """The user's guard rails from their settings file: only permissions.deny/ask, sandbox and the PreToolUse and
-    PermissionRequest hooks. A missing, unreadable or
-    invalid file means nothing to pass (never an error). `read(path) -> text` is injectable for tests."""
-    path = path or os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude"),
-                                "settings.json")
-    try:
-        data = json.loads((read or (lambda p: open(p, encoding="utf-8").read()))(path))
-    except (OSError, ValueError, TypeError):
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    perms = data.get("permissions") if isinstance(data.get("permissions"), dict) else {}
-    out = {k: perms[k] for k in ("deny", "ask") if isinstance(perms.get(k), list) and perms[k]}
-    guards = {"permissions": out} if out else {}
-    if data.get("sandbox"):
-        guards["sandbox"] = data["sandbox"]
-    hooks = data.get("hooks") if isinstance(data.get("hooks"), dict) else {}
-    kept = {e: hooks[e] for e in GUARD_HOOK_EVENTS if isinstance(hooks.get(e), list) and hooks[e]}  # guard hooks only
-    if kept:
-        guards["hooks"] = kept
-    return guards
+def _user_settings_path():
+    return os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude"), "settings.json")
+
+
+def plugins_off(cwd=None, read=None):
+    """{plugin id: False} for every plugin enabled (true) in the user settings and in `cwd`/.claude/settings(.local).json.
+    A missing, unreadable or invalid file contributes nothing (never an error). `read(path) -> text` is injectable."""
+    read = read or (lambda p: open(p, encoding="utf-8").read())
+    paths = [_user_settings_path()] + ([os.path.join(cwd, ".claude", n) for n in ("settings.json", "settings.local.json")] if cwd else [])
+    off = {}
+    for path in paths:
+        try:
+            enabled = json.loads(read(path)).get("enabledPlugins")
+        except (OSError, ValueError, TypeError, AttributeError):
+            continue
+        if isinstance(enabled, dict):
+            off.update({k: False for k, v in enabled.items() if v is True and isinstance(k, str)})
+    return off
 
 
 def isolation(config, read_only):
     """Context flags. full: the unrestricted implement argv, and read-only sessions with user settings (as before).
-    lean implement/resume: project,local settings, no MCP servers, plus the user's own deny/ask/sandbox and PreToolUse/PermissionRequest hooks.
+    lean implement/resume: all settings sources, no MCP servers, enabled plugins turned off.
     lean read-only: user settings only (never project/local) with all hooks disabled."""
     if config.context == "lean":
         if read_only:
             return ["--strict-mcp-config", "--setting-sources", "user", "--settings", '{"disableAllHooks": true}']
-        guards = (config.guards or user_guards)()
-        return ["--setting-sources", "project,local", "--strict-mcp-config",
-                *(["--settings", json.dumps(guards, sort_keys=True, separators=(",", ":"))] if guards else [])]
+        off = (config.plugins_off or plugins_off)()
+        return ["--strict-mcp-config",
+                *(["--settings", json.dumps({"enabledPlugins": off}, sort_keys=True, separators=(",", ":"))] if off else [])]
     return ["--strict-mcp-config", "--setting-sources", "user"] if read_only else []
 
 

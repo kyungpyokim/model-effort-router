@@ -15,11 +15,13 @@ import sys
 import time
 import uuid
 from dataclasses import replace
+from functools import partial
 
 from . import review as rv
 from .adapters.claude import ClaudeConfig
 from .difficulty.decision import LEVELS, DifficultyDecision
 from .difficulty.registry import create
+from .host.claude_exec import plugins_off
 from .flow import PLAN_FIRST, SUBAGENT_HINT, WRAP_UP, run_flow
 from .gate.run import load_gate_checks, run_gate
 from .difficulty.subscription import SubscriptionBackend
@@ -234,7 +236,7 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
         print(f"mer: {exc}", file=sys.stderr)
         return 2
     # the claude host's context mode (session.claude_context); codex keeps its own config and ignores it
-    host_config = ClaudeConfig(context=cfg.claude_context) if host.name == "claude" else host.config
+    host_config = ClaudeConfig(context=cfg.claude_context, plugins_off=partial(plugins_off, cwd)) if host.name == "claude" else host.config
     if chat:
         argv, profile = _chat_argv(plan.target, sp, text, cwd, host)
         if not args.dry_run:
