@@ -56,14 +56,18 @@ The plugin bundles a copy of `model_effort_router/`. After editing core: `python
 - The isolated classifier call (`--safe-mode --tools ""`) works and authenticates: about 3.2 s and 3.7k input tokens on Haiku.
 - `mer run --host claude` on the pilot L1 task: ok, one Sonnet 5.5/medium session, correct diff plus a test; 167k tokens (mostly cache creation: the user-level Claude Code setup is loaded into implement sessions).
 
+## Verified live (2026-10-03/04)
+
+- Plugin install (marketplace `./`), the UserPromptSubmit hook and its `additionalContext` reaching the conversation.
+- Review and review-fix paths (pilots c1r/c3: `changes_requested` then fixed), quality and cost against a stock Claude Code baseline (plan Phase 5).
+- Lean context (probe steps 7, 8, 8b): `enabledPlugins: false` via `--settings` drops the plugins while ~/.claude/rules and CLAUDE.md still load (first-call cache write 31.6k -> 21.8k tokens); read-only sessions run no project/local hooks and `disableAllHooks` also stops a hook given in `--settings`.
+
 ## Unverified (needs a live check)
 
-- Claude Code plugin manifest/marketplace field names, `${CLAUDE_PLUGIN_ROOT}` in hook commands, hook timeout units, and UserPromptSubmit `additionalContext` being surfaced (needs a plugin install).
-- Whether `usage` includes Agent-tool (subagent) tokens at L5.
-- Escalation, review and review-fix paths end to end, and quality/cost against a Claude Code baseline (pilot measurement).
-- Lean context: that `--settings '{"enabledPlugins": {"<id>": false}}'` overrides the user's `true` (and that plugin skills, hooks and agents really drop), that ~/.claude/rules and CLAUDE.md still load, and how much smaller the fixed context gets (probe step 7 vs step 1, `7-check.txt`).
-- Lean read-only: that `--settings '{"disableAllHooks": true}'` is a valid key that really stops user hooks, and that `--settings` with only deny/ask/sandbox merges with the user's other settings as assumed (probe step 8 checks project/local hooks stay silent).
+- The escalation path (a failed gate resuming the session at the next profile): no pilot run escalated.
+- Whether `usage`/`modelUsage` count Agent-tool (subagent) tokens at L5: no pilot run used the Agent tool.
+- Hook timeout units and whether a changed hook config needs re-trusting after an update.
 
 ## Nimble classifier (optional)
 
-- Nimble backend (local, free): `ollama pull nimble` (about 9.4 GB), then `{"difficulty": {"backend": "nimble", "fallback": "subscription"}}`. It talks to Ollama's `systemone` endpoint on localhost only (`http://127.0.0.1:11434/v1/systemone`; any loopback port is accepted, a non-loopback `url` is a config error and is refused before anything is sent). Optional `difficulty.nimble`: `{"model": "nimble", "url": "...", "risk_thresholds": {"auth": 0.6}, "l4_min_prob": 0.6, "l4_min_prob_by_flag": {"concurrency": 0.8}, "l4_promote_prob": 0.2}`; env `MER_NIMBLE_MODEL`, `MER_NIMBLE_URL`; config beats env beats defaults. Pre-load the model (`ollama run nimble` once, or set `OLLAMA_KEEP_ALIVE`): a cold load can exceed the 12 s hook timeout, and that call then falls back. Risk thresholds are Jev's; Nimble under-rates L4/L5, so its defaults turn the L4 demotion off and promote to L4/L5 when P(L4)+P(L5) >= 0.2 (`l4_promote_prob`, tuned on corpus-v1 itself: overfit risk). Re-check with a compare run (`python3 -m evaluation.compare --backends nimble --live`).
+- Nimble backend (local, free): `ollama pull nimble` (about 9.4 GB), then `{"difficulty": {"backend": "nimble", "fallback": "subscription"}}`, or as Jev's local fallback `{"difficulty": {"backend": "jev", "fallback": "nimble"}}` (compare on corpus-v1: Nimble exact 78% / under 21 / 1 critical miss vs Jev 82% / 5 / 0). It talks to Ollama's `systemone` endpoint on localhost only (`http://127.0.0.1:11434/v1/systemone`; any loopback port is accepted, a non-loopback `url` is a config error and is refused before anything is sent). Optional `difficulty.nimble`: `{"model": "nimble", "url": "...", "risk_thresholds": {"auth": 0.6}, "l4_min_prob": 0.0, "l4_min_prob_by_flag": {}, "l4_promote_prob": 0.2}` (the defaults); env `MER_NIMBLE_MODEL`, `MER_NIMBLE_URL`; config beats env beats defaults. Pre-load the model (`ollama run nimble` once, or set `OLLAMA_KEEP_ALIVE`): a cold load can exceed the 12 s hook timeout, and that call then falls back. Risk thresholds are Jev's; Nimble under-rates L4/L5, so its defaults turn the L4 demotion off and promote to L4/L5 when P(L4)+P(L5) >= 0.2 (`l4_promote_prob`, tuned on corpus-v1 itself: overfit risk). Re-check with a compare run (`python3 -m evaluation.compare --backends nimble --live`).
