@@ -1261,7 +1261,16 @@ Codex에서 측정으로 안정된 구조를 그대로 옮긴다. 구조는 조�
   - pilot-l1의 `mer run --host claude` 성공(Sonnet 5.5/medium, 167k 토큰, 정확한 diff와 테스트)
 - Claude Code 2.1.280은 `claude-sonnet-5-5`를 모른다. 최신 Claude Code가 필요하다.
 - `total_cost_usd`와 `modelUsage`는 세션 누적값이고, 세션 시작 시의 Haiku 부수 호출은 `usage`에 없다. 비용 환산은 세션별 마지막 `total_cost_usd`로 한다.
-- 남은 것: 플러그인 설치(hook·manifest), 승격·Review 경로, 파일럿 측정(평가 도구의 Claude 지원 필요). 상세는 `plugins/claude-model-effort-router/README.md`.
+- 남은 것: 승격 경로(파일럿에서 승격 0회). 상세는 `plugins/claude-model-effort-router/README.md`.
+- 플러그인 설치(2026-10-03, user scope): hook이 개발 요청에 `[model-effort-router] Advisory only ...` 조언을 대화에 넣는 것을 확인했다. subagent 보고 같은 비사용자 메시지도 분류되는 오분류가 있다.
+
+**파일럿 (2026-10-03, 13건 × 1회, Jev, subagent 정책 level, `runs/pilot-c1r*`, `runs/pilot-c1-opus*`)**:
+- Claude Code 기본 모델은 Sonnet 5.5였고, 기준선은 subagent를 쓰지 않았다.
+- Sonnet 기준선 대비 라우터: 토큰 +17%, USD +74%($3.13 → $5.44). 기준선이 이미 economy 단계와 같은 모델이라 내릴 곳이 없고, 리뷰·L5 비용만 더해진다.
+- Opus 기준선(`--baseline-model claude-opus-5-5`) 대비 라우터: USD −5%($5.72 → $5.44). L5를 빼면 −35%, Sonnet medium으로 간 6건은 −54%. 위험 표시 리뷰 3건은 ±0%. L5 한 건(Opus xhigh + 리뷰 후 수정)이 $2.07로 Opus 단독($0.56)의 3.7배였다.
+- 품질: 저장된 diff 25건(Sonnet 기준선 중 14건은 `.omc/` 경합으로 diff 유실, 수정됨)을 다시 적용하면 모두 테스트를 통과한다.
+- 조치: Claude adapter의 xhigh를 high로 매핑했다. L5 구현·리뷰와 data_loss 리뷰가 Opus high가 되고, high→xhigh 승격 단계는 같은 profile 재시도가 된다.
+- 결론: 기본 모델이 Sonnet인 사용자에게 라우터는 비용 절감 수단이 아니다. 비용 이득은 기본 모델이 Opus일 때만 있다.
 
 ### Phase 6 — 추가 Backend
 

@@ -8,9 +8,9 @@ from model_effort_router.profiles.profiles import Profile
 class ResolveTest(unittest.TestCase):
     def test_default_tiers_and_efforts(self):
         for tier, model in (("economy", "claude-sonnet-5-5"), ("balanced", "claude-sonnet-5-5"), ("frontier", "claude-opus-5-5")):
-            for effort in ("medium", "high", "xhigh"):
+            for effort, host in (("medium", "medium"), ("high", "high"), ("xhigh", "high")):
                 r = resolve(Profile(tier, effort))
-                self.assertEqual((r.tier, r.model, r.requested_effort, r.applied_effort), (tier, model, effort, effort))
+                self.assertEqual((r.tier, r.model, r.requested_effort, r.applied_effort), (tier, model, host, host))
 
     def test_same_resolved_shape_as_codex(self):
         from dataclasses import fields
@@ -23,7 +23,8 @@ class ResolveTest(unittest.TestCase):
         self.assertEqual((r.model, r.requested_effort, r.applied_effort), (HAIKU, "high", None))
 
     def test_nearest_higher_supported_effort_else_highest(self):
-        cfg = ClaudeConfig(model_efforts={"claude-sonnet-5-5": ("high", "max"), "claude-opus-5-5": ("low",), HAIKU: ()})
+        cfg = ClaudeConfig(model_efforts={"claude-sonnet-5-5": ("high", "max"), "claude-opus-5-5": ("low",), HAIKU: ()},
+                           efforts={"medium": "medium", "high": "high", "xhigh": "xhigh"})
         self.assertEqual(resolve(Profile("balanced", "medium"), cfg).applied_effort, "high")
         self.assertEqual(resolve(Profile("frontier", "xhigh"), cfg).applied_effort, "low")
         self.assertEqual(resolve(Profile("balanced", "xhigh"), cfg).applied_effort, "max")

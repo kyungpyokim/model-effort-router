@@ -12,7 +12,9 @@ _FIVE = CLAUDE_EFFORTS
 # Per-model supported efforts (plan Phase 5, 2026-10-02 decision). An empty tuple = the model takes no --effort.
 _MODEL_EFFORTS = MappingProxyType({"claude-sonnet-5-5": _FIVE, "claude-opus-5-5": _FIVE, HAIKU: ()})
 _TIERS = MappingProxyType({"economy": "claude-sonnet-5-5", "balanced": "claude-sonnet-5-5", "frontier": "claude-opus-5-5"})
-_EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "xhigh"})
+# xhigh -> high: pilot-c1 (2026-10-03) L5 at Opus xhigh + review cost 3.7x a stock Opus run that also passed;
+# an escalation step from high to xhigh is then a plain retry at the same profile
+_EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "high"})
 
 
 @dataclass(frozen=True)
