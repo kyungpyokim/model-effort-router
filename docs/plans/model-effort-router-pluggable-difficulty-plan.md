@@ -1271,6 +1271,11 @@ Codex에서 측정으로 안정된 구조를 그대로 옮긴다. 구조는 조�
 - 품질: 저장된 diff 25건(Sonnet 기준선 중 14건은 `.omc/` 경합으로 diff 유실, 수정됨)을 다시 적용하면 모두 테스트를 통과한다.
 - 조치: Claude adapter의 xhigh를 high로 매핑했다. L5 구현·리뷰와 data_loss 리뷰가 Opus high가 되고, high→xhigh 승격 단계는 같은 profile 재시도가 된다.
 - 조치 후 L5 재실행(`runs/pilot-c1-l5*`): Opus high, 리뷰 approved(지적 3건, 수정 없음), $0.99(이전 $2.07, Opus 단독 $0.56), 테스트 통과. 계획·구현·리뷰 세션마다 약 20만 토큰의 고정 맥락이 붙어 단독 실행보다 여전히 비싸다. 이 값으로 바꾸면 라우터 합계는 Opus 기준선 대비 −24%, Sonnet 기준선 대비 +39%다.
+- 고정 맥락 축소(`session.claude_context`, 기본 lean, 2026-10-03):
+  - 1차 lean(`--setting-sources project,local`)은 첫 호출 캐시 쓰기를 31.6k → 5.1k로 줄였고 L5는 $0.70(승인)이었지만, `~/.claude/rules`까지 빠져 폐기했다.
+  - 현재 lean: 구현·재개 세션은 모든 설정을 읽고 켜진 플러그인만 `--settings {"enabledPlugins": {id: false}}`로 끄며 MCP를 뺀다. 읽기 전용 세션은 user 설정만 읽고 hook을 모두 끈다.
+  - 프로브(7·8단계): 사용자 규칙 11개 파일과 프로젝트 CLAUDE.md가 읽히고, 플러그인 8개가 꺼졌으며(남은 skill 목록은 사용자 `~/.claude/commands`·`skills`와 claude.ai 조직 skill), 첫 호출 캐시 쓰기는 31.6k → 21.8k(−31%). 읽기 전용 세션에서 project/local hook과 `--settings` hook이 실행되지 않았다.
+  - L5 재측정(`runs/pilot-c1-l5-lean2*`): 리뷰 changes_requested 후 수정까지 가서 $1.55, 테스트 통과. 리뷰 결과에 따라 세션 수가 달라져 단일 실행으로는 lean 효과를 판단할 수 없다.
 - 결론: 기본 모델이 Sonnet인 사용자에게 라우터는 비용 절감 수단이 아니다. 비용 이득은 기본 모델이 Opus일 때만 있다.
 
 ### Phase 6 — 추가 Backend
