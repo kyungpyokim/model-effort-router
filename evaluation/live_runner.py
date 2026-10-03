@@ -109,7 +109,9 @@ def init_git_repo(repo):
     _git(repo, "init", "-q")
     os.makedirs(os.path.join(repo, ".git", "info"), exist_ok=True)  # absent without a template dir
     with open(os.path.join(repo, ".git", "info", "exclude"), "a") as f:
-        f.write(MARKER + "\n__pycache__/\n*.pyc\n")  # test runs leave bytecode; keep it out of the saved diff
+        # test runs leave bytecode; a user's Claude plugin (oh-my-claudecode) writes .omc/ state in the background,
+        # which raced `git add -A` and lost 14 of 26 diffs in pilot-c1r
+        f.write(MARKER + "\n__pycache__/\n*.pyc\n.omc/\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "--allow-empty", "-m", "fixture")
 
