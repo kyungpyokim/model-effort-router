@@ -1,6 +1,6 @@
 {
-  "name": "model-effort-router-local",
-  "interface": {"displayName": "Model-Effort Router (local)"},
+  "name": "model-effort-router",
+  "interface": {"displayName": "Model-Effort Router"},
   "plugins": [
     {
       "name": "model-effort-router",

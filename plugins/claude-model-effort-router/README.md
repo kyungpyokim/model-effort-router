@@ -2,17 +2,16 @@
 
 Same two parts as the Codex plugin, on the Claude Code host. The **`mer` CLI is the main path**: it classifies a request, runs it as one `claude -p` session with the model and effort the Router chose, gates it, escalates the same session (`--resume`) on a failed gate, and adds an independent read-only review for high-risk work. The **UserPromptSubmit hook is advisory only**: it adds a short note (difficulty, risk flags, recommended model/effort, plan-first and review advice) and never blocks, denies or enforces anything. When the session Claude Code starts with (`model` and `effortLevel` in your user, project or local settings) already is the recommended one, the model/effort line is left out, and the note is skipped entirely if there is no plan-first or review advice either (a `/model` switch made inside the running session is not visible to the hook).
 
-Status: unit-tested, and the session mechanics were checked live on Claude Code 2.1.285 (2026-10-03, see "Verified live"). Not yet installed as a plugin; no pilot measurement yet.
+Status: installed and measured live on Claude Code 2.1.285 (2026-10-03/04, see "Verified live" and plan Phase 5).
 
 ## Install (run these yourself)
 
 ```bash
-# from the repo root (python3 scripts/sync_plugin.py first if you changed model_effort_router/)
-claude plugin marketplace add ./
-claude plugin install model-effort-router@model-effort-router-local
+claude plugin marketplace add kyungpyokim/model-effort-router-next
+claude plugin install model-effort-router@model-effort-router
 ```
 
-The marketplace file is `.claude-plugin/marketplace.json` at the repo root. Claude Code asks you to trust plugin hooks; until you do there is no advice. After updating the plugin, re-check the hook in `/hooks`.
+Update later with `claude plugin marketplace update model-effort-router` then `claude plugin update model-effort-router@model-effort-router` (bump `version` in `.claude-plugin/plugin.json` on every change, or the update is skipped). For development from a checkout use `claude plugin marketplace add ./` instead (run `python3 scripts/sync_plugin.py` first if you changed model_effort_router/). The marketplace file is `.claude-plugin/marketplace.json` at the repo root. Claude Code asks you to trust plugin hooks; until you do there is no advice. After updating the plugin, re-check the hook in `/hooks`.
 
 ## Models and effort
 

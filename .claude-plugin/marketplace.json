@@ -1,5 +1,5 @@
 {
-  "name": "model-effort-router-local",
+  "name": "model-effort-router",
   "owner": {"name": "Model-Effort Router contributors"},
   "plugins": [
     {

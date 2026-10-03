@@ -7,15 +7,16 @@ a short note (difficulty, risk flags, recommended model/effort, plan-first and r
 or enforces anything and never asks the model to spawn subagents. (The earlier subagent orchestration and its
 PreToolUse enforcement were removed in Phase 7.)
 
-## Install (run these yourself; nothing here has been installed or run live)
+## Install (run these yourself)
 
 The manifest must declare `skills` and `hooks` (fixed after a live install where `/hooks` showed nothing). Hook commands use `${CLAUDE_PLUGIN_ROOT}` because that variable is verified working in Codex 0.159.2.
 
 ```bash
-# from the repo root (python3 scripts/sync_plugin.py first if you changed model_effort_router/)
-codex plugin marketplace add .
-codex plugin add model-effort-router@model-effort-router-local
+codex plugin marketplace add kyungpyokim/model-effort-router-next
+codex plugin add model-effort-router@model-effort-router
 ```
+
+Update later with `codex plugin marketplace upgrade model-effort-router` then `codex plugin add model-effort-router@model-effort-router` (bump `version` in `.codex-plugin/plugin.json` on every change). For development from a checkout use `codex plugin marketplace add .` instead (run `python3 scripts/sync_plugin.py` first if you changed model_effort_router/).
 
 Then start a Codex session and open `/hooks`: review and trust the hook (UserPromptSubmit).
 **Untrusted hooks are skipped silently**, so until you trust it there is no advice. **After updating the plugin the hook set has changed (PreToolUse is gone): re-trust the hooks in `/hooks`.** The `mer` CLI needs no hook.
