@@ -8,6 +8,7 @@ from ..difficulty.decision import DifficultyDecision, DifficultyInput
 from ..difficulty.registry import BACKENDS, create
 from ..difficulty.risk import detect_risk_flags
 from ..difficulty.usage import sum_usage
+from ..difficulty.nimble import NimbleBackend
 from .config import resolve_config
 from .overrides import parse_override
 from .targeting import NO_ROUTE, ROUTE, classify_target
@@ -41,7 +42,9 @@ def _backends(config, registry):
     out = []
     for name in names:
         try:
-            out.append(create(name, registry))
+            # nimble's options go only to the real NimbleBackend: any other factory (a stand-in, a test double) gets none
+            real = name == "nimble" and config.nimble and registry.get("nimble") is NimbleBackend
+            out.append(create(name, registry, **({"options": config.nimble} if real else {})))
         except Exception as exc:
             out.append(_Broken(name, exc))
     return out

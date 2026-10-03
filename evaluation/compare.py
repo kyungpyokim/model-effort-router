@@ -4,10 +4,12 @@ Lives in the top-level `evaluation/` package, not in `model_effort_router/`: eva
 dev-only and must not be copied into the shipped plugin bundle (scripts/sync_plugin.py bundles only the core).
 
 Usage: python3 -m evaluation.compare --corpus FILE --backends a,b [--json OUT] [--md OUT] [--dry-run] [--live]
-`subscription` calls a model (`codex exec`), so it only runs with --live.
+`subscription` calls a model (`codex exec`), so it only runs with --live. `nimble` uses the `difficulty.nimble` options
+of the working directory's .model-effort-router.json (or the user config), exactly as mer does.
 """
 import argparse
 import json
+import os
 import statistics
 import sys
 import time
@@ -15,13 +17,16 @@ import time
 from model_effort_router.difficulty.chain import classify_with_fallback
 from model_effort_router.difficulty.decision import LEVELS, DifficultyDecision, DifficultyInput
 from model_effort_router.difficulty.registry import BACKENDS, create
+from model_effort_router.difficulty.nimble import NimbleBackend
 from model_effort_router.difficulty.risk import detect_risk_flags
+from model_effort_router.host.codex_hooks import load_configs
+from model_effort_router.policy.config import resolve_config
 from model_effort_router.policy.session import REVIEW_DEFAULT, session_plan
 from model_effort_router.policy.targeting import classify_target
 
 from . import cases as corpus
 
-LIVE_BACKENDS = {"subscription", "jev"}  # backends that call a model
+LIVE_BACKENDS = {"subscription", "jev", "nimble"}  # backends that call a model
 CRITICAL_MAX_PREDICTED = LEVELS.index("L2")
 TIMEOUT_S = 30.0
 
@@ -203,7 +208,14 @@ def main(argv=None, registry=None):
               f"({sum(r['final']['level'] is not None for r in adj)} scored for level; every case is classified for the target); "
               "no backend called")
         return 0
-    res = compare(rows, {n: create(n, registry) for n in names})
+    try:  # nimble gets the `difficulty.nimble` options mer would use from the cwd's repo/user config (thresholds, model, url)
+        repo_cfg, user_cfg = load_configs(os.getcwd(), os.environ) if "nimble" in names else (None, None)
+        nimble_options = resolve_config(repo=repo_cfg, user=user_cfg).nimble
+    except (ValueError, OSError) as exc:
+        print(f"invalid router config: {exc}", file=sys.stderr)
+        return 2
+    opts = lambda n: {"options": nimble_options} if n == "nimble" and nimble_options and registry.get("nimble") is NimbleBackend else {}
+    res = compare(rows, {n: create(n, registry, **opts(n)) for n in names})
     md = to_markdown(res)
     for path, text in ((args.json, json.dumps(res, ensure_ascii=False, indent=2)), (args.md, md)):
         if path:

@@ -75,25 +75,25 @@ class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_RefuseRedirect)
 
 
-def _post(url, headers, body, timeout_s):
+def _post(url, headers, body, timeout_s, opener=None):
     plain = {k: v for k, v in headers.items() if k.lower() != "authorization"}
     req = urllib.request.Request(url, data=body, headers=plain, method="POST")
     if "Authorization" in headers:  # never copied onto a redirected request
         req.add_unredirected_header("Authorization", headers["Authorization"])
     try:
-        with _OPENER.open(req, timeout=timeout_s) as resp:
+        with (opener or _OPENER).open(req, timeout=timeout_s) as resp:
             return resp.status, resp.read().decode("utf-8")
     except urllib.error.HTTPError as exc:  # status only: never echo headers
         return exc.code, ""
 
 
-def default_transport(url, headers, body, timeout_s):
+def default_transport(url, headers, body, timeout_s, opener=None):
     """`urlopen(timeout=)` bounds each socket op, not DNS or a trickling body: enforce a total deadline."""
     out = {}
 
     def call():
         try:
-            out["ok"] = _post(url, headers, body, timeout_s)
+            out["ok"] = _post(url, headers, body, timeout_s, opener)
         except Exception as exc:
             out["err"] = exc
 
@@ -101,7 +101,7 @@ def default_transport(url, headers, body, timeout_s):
     worker.start()
     worker.join(timeout_s)
     if worker.is_alive():
-        raise TimeoutError(f"jev exceeded {timeout_s}s")
+        raise TimeoutError(f"systemone request exceeded {timeout_s}s")
     if "err" in out:
         raise out["err"]
     return out["ok"]
@@ -114,42 +114,44 @@ def _num(v):
 LEVEL_KEYS = tuple(str(i) for i in range(len(LEVELS)))  # score probabilities are keyed by criterion index
 
 
-def _level_and_dist(ans):
+def _level_and_dist(ans, who="jev"):
     """Fail closed: any other key set or scale (unverified against a live response) raises."""
     probs = ans.get("probabilities")
     if not isinstance(probs, dict) or set(probs) != set(LEVEL_KEYS):
-        raise BackendOutputError("jev level probabilities must be keyed exactly 0..4")
+        raise BackendOutputError(f"{who} level probabilities must be keyed exactly 0..4")
     vals = [_num(probs[k]) for k in LEVEL_KEYS]
     if any(v is None or v < 0 for v in vals) or sum(vals) <= 0:
-        raise BackendOutputError("jev level probabilities are not usable")
+        raise BackendOutputError(f"{who} level probabilities are not usable")
     top = max(vals)
     idx = max(i for i, v in enumerate(vals) if v == top)  # tie -> higher level is safer
     total = sum(vals)
     return LEVELS[idx], {lv: v / total for lv, v in zip(LEVELS, vals)}
 
 
-def _risk(answers, flag):
+def _risk(answers, flag, who="jev"):
     """The noul value in [0, 1] (bool accepted). Missing or anything else raises: a lost risk flag must not pass silently."""
     ans = answers.get(flag)
     v = ans.get("noul") if isinstance(ans, dict) else None
     v = float(v) if isinstance(v, bool) else _num(v)
     if v is None or not 0 <= v <= 1:
-        raise BackendOutputError(f"jev answer for {flag} is missing or not a probability")
+        raise BackendOutputError(f"{who} answer for {flag} is missing or not a probability")
     return v
 
 
-def _target(answers):
+def _target(answers, who="jev"):
     """The `choice` answer (an option name) as a target. Anything else raises."""
     ans = answers.get("target")
     choice = ans.get("choice") if isinstance(ans, dict) else None
     if choice not in TARGETS:
-        raise BackendOutputError("jev target answer is missing or not one of the offered choices")
+        raise BackendOutputError(f"{who} target answer is missing or not one of the offered choices")
     return choice
 
 
-class JevBackend:
-    name = "jev"
-    calls_model = True  # external API; route events log its usage
+class SystemOneBackend:
+    """The shared `systemone` request/parse path: the same questions, answer shape, risk thresholds and L4 demotion
+    for TypeSafe Jev and a local Nimble. Subclasses give the endpoint (url, headers, model) and the tuning."""
+    name = None
+    calls_model = True  # route events log its usage
     provides_target = True  # its decision carries the routing target; the router classifies before the rule check
 
     def __init__(self, transport=default_transport, model=None, env=None):
@@ -157,22 +159,24 @@ class JevBackend:
         self.last_usage = None  # {"input_tokens", "output_tokens"} of the latest call
         self.last_risk_scores = None  # raw noul per flag of the latest call (evaluation: threshold calibration)
 
+    def _endpoint(self, env):  # -> (url, headers, model); raises before anything is sent
+        raise NotImplementedError
+
+    def _tuning(self):  # -> (risk thresholds, default threshold, L4 min probability, L4 min by flag); read per call
+        raise NotImplementedError
+
     def classify(self, task: DifficultyInput, timeout_s: float) -> DifficultyDecision:
         self.last_usage = self.last_risk_scores = None
         env = os.environ if self._env is None else self._env
-        key = env.get(KEY_ENV)
-        if not key:
-            raise RuntimeError(f"{KEY_ENV} is not set")
-        model = self._model or env.get(MODEL_ENV) or DEFAULT_MODEL
+        url, headers, model = self._endpoint(env)
         paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
         body = json.dumps({
             "state": f"Task:\n{task.task[:MAX_TASK_CHARS]}\n\nChanged/expected paths:\n{paths}",
             "model": model, "questions": QUESTIONS,
         }).encode("utf-8")
-        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-        status, text = self._transport(URL, headers, body, timeout_s)
+        status, text = self._transport(url, headers, body, timeout_s)
         if not 200 <= status < 300:
-            raise RuntimeError(f"jev HTTP {status}")
+            raise RuntimeError(f"{self.name} HTTP {status}")
         try:
             data = json.loads(text)
             used = data.get("usage") if isinstance(data, dict) else None
@@ -181,20 +185,35 @@ class JevBackend:
             answers = data["answers"]
             level_ans = answers["level"]
         except (ValueError, KeyError, TypeError) as exc:
-            raise BackendOutputError("jev response missing answers.level") from exc
+            raise BackendOutputError(f"{self.name} response missing answers.level") from exc
         if not isinstance(level_ans, dict):
-            raise BackendOutputError("jev level answer is not an object")
-        level, dist = _level_and_dist(level_ans)
+            raise BackendOutputError(f"{self.name} level answer is not an object")
+        level, dist = _level_and_dist(level_ans, self.name)
         conf = _num(level_ans.get("confidence"))
-        target = _target(answers)
-        scores = {f: _risk(answers, f) for f in RISK_FLAGS}
+        target = _target(answers, self.name)
+        scores = {f: _risk(answers, f, self.name) for f in RISK_FLAGS}
         self.last_risk_scores = scores
-        flags = tuple(f for f in RISK_FLAGS if scores[f] >= RISK_THRESHOLDS.get(f, RISK_THRESHOLD))
+        thresholds, default, l4_min, l4_by_flag = self._tuning()
+        flags = tuple(f for f in RISK_FLAGS if scores[f] >= thresholds.get(f, default))
         resp_model = data.get("model")
-        codes = ("jev",) + ((resp_model,) if isinstance(resp_model, str) else ())
-        need = max([L4_MIN_PROB] + [L4_MIN_PROB_BY_FLAG[f] for f in flags if f in L4_MIN_PROB_BY_FLAG])
+        codes = (self.name,) + ((resp_model,) if isinstance(resp_model, str) else ())
+        need = max([l4_min] + [l4_by_flag[f] for f in flags if f in l4_by_flag])
         if level in ("L4", "L5") and dist["L4"] + dist["L5"] < need:
-            level, codes = "L3", codes + ("jev_l4_unsure",)
+            level, codes = "L3", codes + (f"{self.name}_l4_unsure",)
         return DifficultyDecision(
             level, self.name, confidence=conf if conf is not None and 0 <= conf <= 1 else None,
             distribution=dist, reason_codes=codes, risk_flags=flags, target=target)
+
+
+class JevBackend(SystemOneBackend):
+    name = "jev"
+
+    def _endpoint(self, env):
+        key = env.get(KEY_ENV)
+        if not key:
+            raise RuntimeError(f"{KEY_ENV} is not set")
+        return (URL, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                self._model or env.get(MODEL_ENV) or DEFAULT_MODEL)
+
+    def _tuning(self):
+        return RISK_THRESHOLDS, RISK_THRESHOLD, L4_MIN_PROB, L4_MIN_PROB_BY_FLAG

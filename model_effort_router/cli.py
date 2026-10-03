@@ -202,7 +202,7 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
         cfg = resolve_config(task=parse_override(args.request)[0].as_config(), repo=repo_cfg, user=user_cfg,
                              registry=registry)
         if args.level:
-            registry = {name: (lambda: _FixedLevel(args.level)) for name in registry}
+            registry = {name: (lambda **_options: _FixedLevel(args.level)) for name in registry}  # ignores factory options
         elif args.dry_run and not args.classify and cfg.mode == "auto" and _calls_model(cfg, registry):
             print(f"mer: --dry-run would call the {'/'.join(_calls_model(cfg, registry))} classifier; "
                   "pass --level L1..L5, or --classify to allow one call", file=sys.stderr)

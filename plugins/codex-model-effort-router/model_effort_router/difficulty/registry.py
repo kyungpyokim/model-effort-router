@@ -1,8 +1,9 @@
 """name -> factory registry. New backends register here; Router Core is untouched."""
 from .jev import JevBackend
+from .nimble import NimbleBackend
 from .subscription import SubscriptionBackend
 
-BACKENDS = {"subscription": SubscriptionBackend, "jev": JevBackend}
+BACKENDS = {"subscription": SubscriptionBackend, "jev": JevBackend, "nimble": NimbleBackend}
 
 
 def register(name, factory, registry=BACKENDS):
@@ -11,5 +12,6 @@ def register(name, factory, registry=BACKENDS):
     registry[name] = factory
 
 
-def create(name, registry=BACKENDS):
-    return registry[name]()  # KeyError for unknown names
+def create(name, registry=BACKENDS, **options):
+    """`options` (e.g. nimble's validated config) are passed to the factory only when given."""
+    return registry[name](**options)  # KeyError for unknown names

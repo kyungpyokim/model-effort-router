@@ -4,7 +4,9 @@ Takes already-parsed dicts; file loading (JSON/YAML) is left to the host hook la
 """
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import Optional
 
+from ..difficulty.nimble import validate_options as validate_nimble
 from ..adapters.claude import CONTEXTS as CLAUDE_CONTEXTS  # lean = CLAUDE.md + guard rails, full = plugins/user settings/MCP too
 
 MODES = ("auto", "manual", "off")
@@ -28,6 +30,7 @@ class RouterConfig:
     timeout_s: float
     subagent_policy: str = "level"
     claude_context: str = "lean"
+    nimble: Optional[dict] = None  # validated `difficulty.nimble` options (None = defaults/env)
 
 
 def _check_layer(layer, name):
@@ -67,4 +70,6 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
                 raise ValueError(f"unknown difficulty.{key}: {diff[key]!r}")
         if diff["backend"] == "none":
             raise ValueError("difficulty.backend cannot be 'none'")
-    return RouterConfig(router["mode"], diff["backend"], diff["fallback"], timeout, sess["subagent_policy"], sess["claude_context"])
+    nimble = validate_nimble(diff["nimble"]) if "nimble" in diff else None
+    return RouterConfig(router["mode"], diff["backend"], diff["fallback"], timeout, sess["subagent_policy"],
+                        sess["claude_context"], nimble)

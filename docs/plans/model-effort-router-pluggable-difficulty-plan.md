@@ -361,6 +361,12 @@ Output: L3 + L1~L5 확률 → DifficultyDecision
 
 로컬 실행은 모델·런타임 설치가 필요해 설치 단순화 목표와 충돌한다. 따라서 선택 기능으로 두고, Routing Corpus로 성능을 검증한 뒤에만 기본값 후보로 올린다.
 
+**구현 (2026-10-04)**: Ollama(0.35.1 확인)가 TypeSafe Jev와 같은 `systemone` API를 로컬로 제공한다(`POST http://127.0.0.1:11434/v1/systemone`, API 키 없음, choice/noul/score 질문과 같은 응답 형태). `ollama pull nimble`(태그 `nimble` = nimble:9b, 약 9.4GB; 이 기기에는 아직 받지 않았다). 그래서 요청·파싱은 `difficulty/jev.py`의 공용 `SystemOneBackend`로 합치고(Jev의 URL, 베어러 키, 임계값, L4 강등, reason code는 그대로), `difficulty/nimble.py`의 `NimbleBackend`(`name = "nimble"`, `calls_model`, `provides_target`)가 로컬 URL로 보낸다. Authorization 헤더는 없다. reason code는 `nimble` + 응답 모델, L4 강등은 `nimble_l4_unsure`. 사용량은 Jev처럼 route 이벤트에 기록한다.
+
+- **옵션** (모두 선택, 설정 > 환경 변수 > 기본값, 키 단위): `difficulty.nimble` = `{"model": "nimble", "url": "http://127.0.0.1:11434/v1/systemone", "risk_thresholds": {플래그: p}, "l4_min_prob": 0.6, "l4_min_prob_by_flag": {"concurrency": 0.8}}`; 환경 변수 `MER_NIMBLE_MODEL`, `MER_NIMBLE_URL`. 알 수 없는 키·플래그와 0..1 밖 확률은 설정 오류다(`policy/config.py`). 임계값과 L4 값의 기본값은 지금은 Jev의 값이다. **Nimble에 대해 보정하지 않았으므로** `evaluation.compare` 실행 전에는 의미가 없다.
+- **안전**: URL은 http(s)이고 호스트가 loopback(localhost, 127.0.0.1, ::1)이어야 한다. 아니면 보내기 전에 예외를 올려 fallback 체인이 처리한다(오타로 작업 텍스트가 기기를 떠나지 않게). 리다이렉트는 따르지 않고, 환경의 프록시도 쓰지 않는다. 설정의 `url`은 설정 검증에서도 검사하고(잘못된 URL은 시작 때 설정 오류), 환경 변수와 기본값은 전송 시점에 검사한다. loopback이면 포트는 아무거나 허용한다. `evaluation.compare`는 작업 디렉터리의 저장소·사용자 설정에서 mer와 같은 방식으로 `difficulty.nimble`을 읽는다.
+- 비용: 로컬이라 과금이 없고 호출당 지연은 하드웨어에 달렸다. 평가(`compare`, `live_runner --router-backend nimble`)는 `--live`가 필요하다.
+
 ---
 
 ## 9. Backend 선택, Registry, Fallback
@@ -369,16 +375,18 @@ Output: L3 + L1~L5 확률 → DifficultyDecision
 
 ```json
 {"difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10}}
+{"difficulty": {"backend": "nimble", "fallback": "subscription", "nimble": {"model": "nimble", "l4_min_prob": 0.6}}}
 ```
 
-`backend`에는 등록된 이름(현재 `subscription`, `jev`), `fallback`에는 다른 backend 이름 또는 `none`을 쓴다. `timeout_s`는 최대 12초다(§3.7).
+`backend`에는 등록된 이름(현재 `subscription`, `jev`, `nimble`), `fallback`에는 다른 backend 이름 또는 `none`을 쓴다. `timeout_s`는 최대 12초다(§3.7).
 
 Registry:
 
 ```python
 BACKENDS = {
     "subscription": SubscriptionBackend,
-    # "jev", "nimble": Phase 6
+    "jev": JevBackend,      # Phase 6
+    "nimble": NimbleBackend,  # Phase 6, local Ollama
 }
 ```
 

@@ -7,7 +7,7 @@
 | 도구 | 기본(모델 호출 없음) | `--live` |
 |---|---|---|
 | 코퍼스 검증과 라벨러 일치율 | `python3 -m evaluation.cases evaluation/corpus/seed.jsonl` | 해당 없음 |
-| Backend 비교 | `python3 -m evaluation.compare --corpus C.jsonl --backends NAME --dry-run` (fake/등록된 오프라인 Backend는 `--live` 없이 실행) | `subscription`·`jev` Backend는 `--live` 필요. subscription은 케이스당 `codex exec` 1회(입력 약 29.8k 토큰, `no_route` 케이스도 실행), jev는 케이스당 외부 API 1회(약 600 토큰, 텍스트가 TypeSafe로 전송됨) |
+| Backend 비교 | `python3 -m evaluation.compare --corpus C.jsonl --backends NAME --dry-run` (fake/등록된 오프라인 Backend는 `--live` 없이 실행) | `subscription`·`jev`·`nimble` Backend는 `--live` 필요(nimble은 로컬 Ollama 호출이라 과금은 없고, 작업 디렉터리의 `difficulty.nimble` 설정을 mer처럼 적용한다; `ollama pull nimble` 필요, 임계값은 Jev 값을 빌려 쓰므로 이 비교로 보정한다). subscription은 케이스당 `codex exec` 1회(입력 약 29.8k 토큰, `no_route` 케이스도 실행), jev는 케이스당 외부 API 1회(약 600 토큰, 텍스트가 TypeSafe로 전송됨) |
 | 비용 기준선 실행 | `python3 -m evaluation.live_runner --cases C.jsonl --fixture DIR --out runs.jsonl` (실행 계획만 출력) | `--live`를 붙이면 케이스마다 baseline과 router 두 번 `codex exec` 실행 |
 | 기준선 비교 보고 | `python3 -m evaluation.baseline report runs.jsonl --md out.md --json out.json` | 해당 없음 (기록 파일만 읽음) |
 | 요구사항 충족 기록 | `python3 -m evaluation.baseline mark runs.jsonl CASE_ID baseline\|router yes\|no [--run K]` | 해당 없음 (수동 판단) |
