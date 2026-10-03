@@ -1276,6 +1276,11 @@ Codex에서 측정으로 안정된 구조를 그대로 옮긴다. 구조는 조�
   - 현재 lean: 구현·재개 세션은 모든 설정을 읽고 켜진 플러그인만 `--settings {"enabledPlugins": {id: false}}`로 끄며 MCP를 뺀다. 읽기 전용 세션은 user 설정만 읽고 hook을 모두 끈다.
   - 프로브(7·8단계): 사용자 규칙 11개 파일과 프로젝트 CLAUDE.md가 읽히고, 플러그인 8개가 꺼졌으며(남은 skill 목록은 사용자 `~/.claude/commands`·`skills`와 claude.ai 조직 skill), 첫 호출 캐시 쓰기는 31.6k → 21.8k(−31%). 읽기 전용 세션에서 project/local hook과 `--settings` hook이 실행되지 않았다.
   - L5 재측정(`runs/pilot-c1-l5-lean2*`): 리뷰 changes_requested 후 수정까지 가서 $1.55, 테스트 통과. 리뷰 결과에 따라 세션 수가 달라져 단일 실행으로는 lean 효과를 판단할 수 없다. 2회 더 돌린 3회: $1.55·$1.22(둘 다 수정 요청 후 수정), $0.84(승인), 평균 $1.20, 모두 테스트 통과. 승인된 실행끼리 보면 full $0.99 → lean $0.84(−15%). L5 라우터는 Opus 단독($0.56)의 1.5~2.8배이고, 3회 중 2회가 리뷰 후 수정까지 간다.
+- 라우터 재측정(lean + xhigh→high, `runs/pilot-c2-router.jsonl`, 2026-10-04): L1~L4 12건 유효, L5는 리뷰 수정 단계에서 mer error(원인 미기록), 같은 파일로 다시 돌린 2차 13건은 모두 2.7초 만에 mer error. 2차가 1차 diff를 빈 diff로 덮어써 c2 품질은 판정 못 함(덮어쓰기와 오류 사유 미기록은 수정).
+  - 리뷰 없는 9건: Sonnet 기준선 $2.14, Opus $3.79, 이전 라우터 $1.98, lean 라우터 $1.54(Sonnet 대비 −28%, Opus 대비 −59%).
+  - Opus 리뷰가 붙은 3건: Sonnet $0.71, Opus $1.38, lean 라우터 $1.12(Sonnet 대비 +58%, Opus 대비 −19%).
+  - 12건 합계: lean 라우터 $2.66, Sonnet 대비 −6%, Opus 대비 −48%.
+  - 기준선은 플러그인을 모두 불러오는 stock 상태라, 절감의 상당 부분은 mer 세션의 lean 맥락에서 온다. advisory hook만 쓰는 사용자 세션에는 lean이 적용되지 않는다.
 - 결론: 기본 모델이 Sonnet인 사용자에게 라우터는 비용 절감 수단이 아니다. 비용 이득은 기본 모델이 Opus일 때만 있다.
 
 ### Phase 6 — 추가 Backend
