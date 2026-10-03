@@ -722,6 +722,9 @@ Review Fail → 현재 Implement 프로필로 Fix → Test Gate → Review
 - Critical task miss (L4·L5 또는 위험 신호 작업을 L2 이하로 판정)
 - latency, token usage, cost, local resource usage
 - confidence 보정 결과(§11.2 임계값 산출용) — Phase 6
+  - Jev (2026-10-04, 오프라인, `runs/compare-v1-jev-dist.json`의 분포 최댓값을 confidence로, corpus-v1 합의 라벨 109건): confidence 0.9 이상 66건 정확 95%, 0.7~0.9 25건 80%, 0.5~0.7 14건 57%, 0.5 미만 4건 25%로 잘 보정돼 있다. 그런데 낮은 confidence의 오답은 대부분 높게 본 쪽(0.5~0.7 구간 과대 36%, 과소 7%)이고, 과소는 전체 4건, critical miss는 0건이다.
+  - 불확실성 승격 시뮬레이션(confidence < t면 한 단계 올림): t=0.5 과소 4→3·과대 13→14, t=0.7 과소 2·과대 20, t=0.9 과소 1·과대 38. 줄이는 과소보다 늘리는 과대가 훨씬 많아 Jev에는 켜지 않는다(비활성 유지). 라벨이 모델 합의라 사람 라벨(`human-review-30.tsv`)로 다시 확인한다.
+  - Subscription: confidence 데이터가 시드 40건뿐이라 보정하지 않는다(비활성 유지).
 
 구현: `evaluation/compare.py`. 모델을 호출하는 비교는 `--live`에서만 실행한다.
 
