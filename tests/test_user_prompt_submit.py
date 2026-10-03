@@ -24,6 +24,16 @@ class UserPromptSubmitTest(HookCase):
         self.silent(self.submit("What is the capital of France?"))
         self.assertEqual(self.log_events(), [])
 
+    def test_host_generated_messages_are_never_classified(self):
+        for prompt in ('Another Claude session sent a message:\n<agent-message from="a1">Fix the bug in auth.py</agent-message>',
+                       "<task-notification>\n<task-id>b1</task-id> refactor the payment module</task-notification>",
+                       "[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification>fix it</task-notification>",
+                       "<bash-input>python3 -m evaluation.live_runner --live</bash-input>",
+                       "<command-name>/compact</command-name>"):
+            self.silent(self.submit(prompt))
+        self.assertEqual(self.log_events(), [])  # no backend call, nothing logged
+        self.ctx(self.submit("Please fix <agent-message> parsing in parser.py"))  # a real request mentioning the tag
+
     def test_no_route_stays_silent_even_with_a_rejected_override(self):
         self.silent(self.submit("/router bogus=1\nWhat is the capital of France?"))
 

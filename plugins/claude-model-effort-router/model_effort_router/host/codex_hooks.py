@@ -2,6 +2,7 @@
 import importlib
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -17,6 +18,12 @@ from . import advice, hosts
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
 USER_CONFIG_ENV = "MER_USER_CONFIG"
 REPO_CONFIG = ".model-effort-router.json"
+# Messages the host itself puts in the user turn (a subagent's report, a background-task notice, a `!` shell
+# command and its output, a slash-command echo): not the user's request, so never classified (no backend call).
+HARNESS_MESSAGE = re.compile(
+    r"\s*(?:Another Claude session sent a message:\s*)?(?:\[SYSTEM NOTIFICATION[^\]]*\]\s*)?"
+    r"<(?:agent-message|cross-session-message|task-notification|bash-input|bash-stdout|bash-stderr"
+    r"|local-command-stdout|local-command-caveat|command-name)\b")
 MAX_BACKEND_TIMEOUT_S = 12  # backend + fallback must fit in the 30s hook timeout with margin
 
 
@@ -57,7 +64,7 @@ def _with_timeout(repo_cfg, timeout_s):
 
 def user_prompt_submit(data, env, plugin_root):
     prompt = data.get("prompt")
-    if not isinstance(prompt, str):
+    if not isinstance(prompt, str) or HARNESS_MESSAGE.match(prompt):
         return None
     sid = data["session_id"]
     sdir = route_log.state_dir(env)
