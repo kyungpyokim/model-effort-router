@@ -1270,6 +1270,7 @@ Codex에서 측정으로 안정된 구조를 그대로 옮긴다. 구조는 조�
 - Opus 기준선(`--baseline-model claude-opus-5-5`) 대비 라우터: USD −5%($5.72 → $5.44). L5를 빼면 −35%, Sonnet medium으로 간 6건은 −54%. 위험 표시 리뷰 3건은 ±0%. L5 한 건(Opus xhigh + 리뷰 후 수정)이 $2.07로 Opus 단독($0.56)의 3.7배였다.
 - 품질: 저장된 diff 25건(Sonnet 기준선 중 14건은 `.omc/` 경합으로 diff 유실, 수정됨)을 다시 적용하면 모두 테스트를 통과한다.
 - 조치: Claude adapter의 xhigh를 high로 매핑했다. L5 구현·리뷰와 data_loss 리뷰가 Opus high가 되고, high→xhigh 승격 단계는 같은 profile 재시도가 된다.
+- 조치 후 L5 재실행(`runs/pilot-c1-l5*`): Opus high, 리뷰 approved(지적 3건, 수정 없음), $0.99(이전 $2.07, Opus 단독 $0.56), 테스트 통과. 계획·구현·리뷰 세션마다 약 20만 토큰의 고정 맥락이 붙어 단독 실행보다 여전히 비싸다. 이 값으로 바꾸면 라우터 합계는 Opus 기준선 대비 −24%, Sonnet 기준선 대비 +39%다.
 - 결론: 기본 모델이 Sonnet인 사용자에게 라우터는 비용 절감 수단이 아니다. 비용 이득은 기본 모델이 Opus일 때만 있다.
 
 ### Phase 6 — 추가 Backend
