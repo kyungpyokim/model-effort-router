@@ -15,6 +15,10 @@ from tests.test_jev import FakeTransport, response
 TASK = "Fix the discount bug in pricing.py"
 
 
+def jev_run(transport):
+    return jev.JevBackend(transport, env={"TYPESAFE_API_KEY": "fake-cred-value-123"}).classify(DifficultyInput(TASK), 7)
+
+
 def run(transport, env=None, options=None, **kw):
     b = NimbleBackend(transport, env={} if env is None else env, options=options, **kw)
     return b, b.classify(DifficultyInput(TASK), 7)
@@ -118,12 +122,49 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(b.last_usage, {"input_tokens": 392, "output_tokens": 65})
         self.assertTrue(b.calls_model and b.provides_target)
 
-    def test_default_tuning_is_jevs_and_l4_demotion_uses_the_nimble_code(self):
+    def test_defaults_risk_thresholds_are_jevs_and_l4_demotion_is_off(self):
         self.assertEqual(nimble.NIMBLE_RISK_THRESHOLDS, jev.RISK_THRESHOLDS)
-        _, d = run(FakeTransport(response((0, 0, 0.3, 0.4, 0.3))))  # P(L4)+P(L5) = 0.7 >= 0.6: stays L4
-        self.assertEqual((d.level, "nimble_l4_unsure" in d.reason_codes), ("L4", False))
-        _, d = run(FakeTransport(response((0.2, 0.2, 0.2, 0.25, 0.15))))  # argmax L4, 0.4 < 0.6: demoted
-        self.assertEqual((d.level, "nimble_l4_unsure" in d.reason_codes, "jev_l4_unsure" in d.reason_codes), ("L3", True, False))
+        self.assertEqual((nimble.NIMBLE_L4_MIN_PROB, nimble.NIMBLE_L4_MIN_PROB_BY_FLAG, nimble.NIMBLE_L4_PROMOTE_PROB), (0.0, {}, 0.2))
+        _, d = run(FakeTransport(response((0.2, 0.2, 0.2, 0.25, 0.15))))  # argmax L4 with P(L4)+P(L5) = 0.4: Jev would demote it
+        self.assertEqual((d.level, "nimble_l4_unsure" in d.reason_codes, "nimble_l4_promoted" in d.reason_codes), ("L4", False, False))
+        _, d = run(FakeTransport(response((0, 0, 0.3, 0.4, 0.3), risks={"concurrency": 0.95})))  # Jev's concurrency 0.8 rule is off too
+        self.assertEqual(d.level, "L4")
+
+    def test_promotion_when_l4_l5_mass_reaches_the_threshold(self):
+        _, d = run(FakeTransport(response((0, 0.1, 0.65, 0.15, 0.1))))  # argmax L3, mass 0.25 >= 0.2; L4 has more
+        self.assertEqual((d.level, d.reason_codes), ("L4", ("nimble", "jev-1.13.0", "nimble_l4_promoted")))
+        _, d = run(FakeTransport(response((0, 0.1, 0.65, 0.05, 0.2))))  # L5 has more
+        self.assertEqual(d.level, "L5")
+        _, d = run(FakeTransport(response((0, 0.2, 0.5, 0.15, 0.15))))  # tie -> L5
+        self.assertEqual(d.level, "L5")
+        _, d = run(FakeTransport(response((0, 0, 0.8, 0.1, 0.1))))  # exactly the threshold promotes
+        self.assertEqual(d.level, "L4" if d.distribution["L4"] > d.distribution["L5"] else "L5")
+        self.assertIn("nimble_l4_promoted", d.reason_codes)
+        _, d = run(FakeTransport(response((0, 0.1, 0.72, 0.1, 0.08))))  # 0.18 < 0.2: no promotion
+        self.assertEqual((d.level, "nimble_l4_promoted" in d.reason_codes), ("L3", False))
+        _, d = run(FakeTransport(response((0.9, 0.05, 0.03, 0.01, 0.01))))
+        self.assertEqual(d.level, "L1")
+        _, d = run(FakeTransport(response((0, 0, 0.1, 0.5, 0.4))))  # an argmax L4/L5 is not "promoted"
+        self.assertEqual((d.level, "nimble_l4_promoted" in d.reason_codes), ("L4", False))
+
+    def test_promote_option_overrides_and_null_disables(self):
+        body = response((0, 0.1, 0.65, 0.15, 0.1))  # mass 0.25
+        self.assertEqual(run(FakeTransport(body), options={"l4_promote_prob": 0.3})[1].level, "L3")
+        self.assertEqual(run(FakeTransport(body), options={"l4_promote_prob": 0.25})[1].level, "L4")
+        self.assertEqual(run(FakeTransport(body), options={"l4_promote_prob": None})[1].level, "L3")
+        self.assertEqual(run(FakeTransport(body), options={"l4_promote_prob": 0})[1].level, "L4")
+
+    def test_demotion_still_available_by_option_and_is_not_undone_by_promotion(self):
+        both = {"l4_min_prob": 0.6, "l4_promote_prob": 0.2}
+        _, d = run(FakeTransport(response((0.2, 0.2, 0.2, 0.25, 0.15))), options=both)  # argmax L4, 0.4 < 0.6: demoted to L3
+        self.assertEqual((d.level, "nimble_l4_unsure" in d.reason_codes, "nimble_l4_promoted" in d.reason_codes), ("L3", True, False))
+
+    def test_jev_has_no_promotion_by_default(self):
+        for probs in ((0, 0.1, 0.65, 0.15, 0.1), (0, 0, 0.8, 0.1, 0.1), (0.3, 0.2, 0.2, 0.2, 0.1)):
+            d = jev_run(FakeTransport(response(probs)))
+            self.assertNotIn(d.level, ("L4", "L5"))
+            self.assertNotIn("jev_l4_promoted", d.reason_codes)
+        self.assertEqual(jev.JevBackend(FakeTransport())._tuning()[4], None)
 
     def test_options_override_thresholds_and_l4_rules(self):
         body = response(risks={"security": 0.7})
@@ -133,8 +174,8 @@ class ParseTest(unittest.TestCase):
         l4 = response((0, 0, 0.1, 0.5, 0.4))  # P(L4)+P(L5) = 0.9
         self.assertEqual(run(FakeTransport(l4), options={"l4_min_prob": 0.95})[1].level, "L3")
         self.assertEqual(run(FakeTransport(l4))[1].level, "L4")
-        flagged = response((0, 0, 0.3, 0.4, 0.3), risks={"concurrency": 0.95})  # 0.7: concurrency needs 0.8 by default
-        self.assertEqual(run(FakeTransport(flagged))[1].level, "L3")
+        flagged = response((0, 0, 0.3, 0.4, 0.3), risks={"concurrency": 0.95})  # 0.7
+        self.assertEqual(run(FakeTransport(flagged), options={"l4_min_prob_by_flag": {"concurrency": 0.8}})[1].level, "L3")
         self.assertEqual(run(FakeTransport(flagged), options={"l4_min_prob_by_flag": {"concurrency": 0.5}})[1].level, "L4")
 
     def test_malformed_answers_fail_closed_and_name_nimble(self):
@@ -152,7 +193,7 @@ class ConfigTest(unittest.TestCase):
         self.assertIsNone(resolve_config().nimble)
         cfg = {"difficulty": {"backend": "nimble", "nimble": {
             "model": "nimble", "url": "http://localhost:11434/v1/systemone", "risk_thresholds": {"auth": 0.5},
-            "l4_min_prob": 0.6, "l4_min_prob_by_flag": {"concurrency": 0.8}}}}
+            "l4_min_prob": 0.6, "l4_min_prob_by_flag": {"concurrency": 0.8}, "l4_promote_prob": 0.2}}}
         self.assertEqual(resolve_config(repo=cfg, registry=BACKENDS).nimble, cfg["difficulty"]["nimble"])
 
     def test_repo_beats_user(self):
@@ -164,7 +205,8 @@ class ConfigTest(unittest.TestCase):
     def test_invalid_options_are_config_errors(self):
         bad = [{"nope": 1}, {"risk_thresholds": {"typo": 0.5}}, {"l4_min_prob_by_flag": {"typo": 0.5}},
                {"risk_thresholds": {"auth": 1.5}}, {"risk_thresholds": {"auth": -0.1}}, {"risk_thresholds": {"auth": True}},
-               {"risk_thresholds": {"auth": "0.5"}}, {"risk_thresholds": [0.5]}, {"l4_min_prob": 2}, {"l4_min_prob": None},
+               {"risk_thresholds": {"auth": "0.5"}}, {"risk_thresholds": [0.5]}, {"l4_min_prob": 2}, {"l4_min_prob": None}, {"l4_promote_prob": 1.5}, {"l4_promote_prob": -0.1}, {"l4_promote_prob": True},
+               {"l4_promote_prob": "0.2"},
                {"l4_min_prob_by_flag": {"concurrency": 9}}, {"model": ""}, {"model": 3}, {"url": None}, "x", []]
         for raw in bad:
             with self.subTest(raw=raw), self.assertRaises(ValueError):
@@ -174,8 +216,9 @@ class ConfigTest(unittest.TestCase):
 
     def test_boundaries_and_empty_object_are_valid(self):
         self.assertEqual(validate_options({}), {})
-        self.assertEqual(validate_options({"l4_min_prob": 0, "risk_thresholds": {"auth": 1}}),
-                         {"l4_min_prob": 0, "risk_thresholds": {"auth": 1}})
+        self.assertEqual(validate_options({"l4_min_prob": 0, "risk_thresholds": {"auth": 1}, "l4_promote_prob": 1}),
+                         {"l4_min_prob": 0, "risk_thresholds": {"auth": 1}, "l4_promote_prob": 1})
+        self.assertEqual(validate_options({"l4_promote_prob": None}), {"l4_promote_prob": None})  # null = off
 
     def test_a_non_loopback_config_url_is_a_config_error_up_front(self):
         for url in ("http://example.com/x", "https://api.typesafe.ai/v1/systemone", "file:///x", "http://localhost@evil.com/"):

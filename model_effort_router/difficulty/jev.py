@@ -162,7 +162,7 @@ class SystemOneBackend:
     def _endpoint(self, env):  # -> (url, headers, model); raises before anything is sent
         raise NotImplementedError
 
-    def _tuning(self):  # -> (risk thresholds, default threshold, L4 min probability, L4 min by flag); read per call
+    def _tuning(self):  # -> (risk thresholds, default threshold, L4 min prob, L4 min by flag, L4 promote prob or None); per call
         raise NotImplementedError
 
     def classify(self, task: DifficultyInput, timeout_s: float) -> DifficultyDecision:
@@ -193,13 +193,17 @@ class SystemOneBackend:
         target = _target(answers, self.name)
         scores = {f: _risk(answers, f, self.name) for f in RISK_FLAGS}
         self.last_risk_scores = scores
-        thresholds, default, l4_min, l4_by_flag = self._tuning()
+        thresholds, default, l4_min, l4_by_flag, promote = self._tuning()
         flags = tuple(f for f in RISK_FLAGS if scores[f] >= thresholds.get(f, default))
         resp_model = data.get("model")
         codes = (self.name,) + ((resp_model,) if isinstance(resp_model, str) else ())
         need = max([l4_min] + [l4_by_flag[f] for f in flags if f in l4_by_flag])
-        if level in ("L4", "L5") and dist["L4"] + dist["L5"] < need:
+        high = dist["L4"] + dist["L5"]
+        if level in ("L4", "L5") and high < need:
             level, codes = "L3", codes + (f"{self.name}_l4_unsure",)
+        elif level not in ("L4", "L5") and promote is not None and high >= promote:
+            # a model that is underconfident on L4/L5 (Nimble): enough combined mass wins over the argmax; tie -> L5
+            level, codes = ("L5" if dist["L5"] >= dist["L4"] else "L4"), codes + (f"{self.name}_l4_promoted",)
         return DifficultyDecision(
             level, self.name, confidence=conf if conf is not None and 0 <= conf <= 1 else None,
             distribution=dist, reason_codes=codes, risk_flags=flags, target=target)
@@ -216,4 +220,4 @@ class JevBackend(SystemOneBackend):
                 self._model or env.get(MODEL_ENV) or DEFAULT_MODEL)
 
     def _tuning(self):
-        return RISK_THRESHOLDS, RISK_THRESHOLD, L4_MIN_PROB, L4_MIN_PROB_BY_FLAG
+        return RISK_THRESHOLDS, RISK_THRESHOLD, L4_MIN_PROB, L4_MIN_PROB_BY_FLAG, None  # Jev: no promotion

@@ -11,18 +11,23 @@ import urllib.parse
 import urllib.request
 
 from .decision import RISK_FLAGS
-from .jev import L4_MIN_PROB, L4_MIN_PROB_BY_FLAG, RISK_THRESHOLD, RISK_THRESHOLDS, SystemOneBackend, _RefuseRedirect, default_transport
+from .jev import RISK_THRESHOLD, RISK_THRESHOLDS, SystemOneBackend, _RefuseRedirect, default_transport
 
 DEFAULT_URL = "http://127.0.0.1:11434/v1/systemone"  # the address, not the name: no resolver dependence
 DEFAULT_MODEL = "nimble"  # ollama tag `nimble` = nimble:9b
 MODEL_ENV, URL_ENV = "MER_NIMBLE_MODEL", "MER_NIMBLE_URL"
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
-OPTION_KEYS = ("model", "url", "risk_thresholds", "l4_min_prob", "l4_min_prob_by_flag")
-# UNCALIBRATED for Nimble: these start as Jev's calibrated values (corpus-v1, plan 22.2/22.3) and need their own
-# evaluation.compare run before they mean anything for this model; tune through `difficulty.nimble`.
+OPTION_KEYS = ("model", "url", "risk_thresholds", "l4_min_prob", "l4_min_prob_by_flag", "l4_promote_prob")
+# Risk thresholds: still Jev's (calibrated on corpus-v1; the live Nimble compare of 2026-10-04 gave risk recall 96% /
+# precision 67%, fine). L4/L5: Nimble is UNDERconfident there (compare-v1-nimble: P(L4)+P(L5) by gold level, L1/L2 max
+# 0.01, L3 max 0.17, L4 median 0.31, L5 median 0.56), the opposite of Jev, so Jev's demotion (l4_min_prob 0.6) is off and
+# argmax levels below L4 are promoted when P(L4)+P(L5) >= 0.2. Tuned on the same 150 cases it is evaluated on (offline
+# grid: exact 82 -> 88 of 109, under 23 -> 16, critical miss 2 -> 0, no gold L1-L3 promoted): overfit risk, and the
+# margin to the L3 maximum (0.17 vs 0.2) is thin. Re-tune through `difficulty.nimble`.
 NIMBLE_RISK_THRESHOLDS = dict(RISK_THRESHOLDS)
-NIMBLE_L4_MIN_PROB = L4_MIN_PROB
-NIMBLE_L4_MIN_PROB_BY_FLAG = dict(L4_MIN_PROB_BY_FLAG)
+NIMBLE_L4_MIN_PROB = 0.0
+NIMBLE_L4_MIN_PROB_BY_FLAG = {}
+NIMBLE_L4_PROMOTE_PROB = 0.2
 
 # No proxies (an http_proxy in the environment must not carry local task text elsewhere) and no redirects.
 _LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _RefuseRedirect)
@@ -76,6 +81,8 @@ def validate_options(raw):
         check_local_url(out["url"])  # a bad url is a config error up front (checked again at send time: env, defaults)
     if "l4_min_prob" in raw:
         out["l4_min_prob"] = _prob(raw["l4_min_prob"], "l4_min_prob")
+    if "l4_promote_prob" in raw:  # null switches the promotion off
+        out["l4_promote_prob"] = None if raw["l4_promote_prob"] is None else _prob(raw["l4_promote_prob"], "l4_promote_prob")
     for key in ("risk_thresholds", "l4_min_prob_by_flag"):
         if key in raw:
             out[key] = _by_flag(raw[key], key)
@@ -97,4 +104,5 @@ class NimbleBackend(SystemOneBackend):
     def _tuning(self):
         o = self._options
         return ({**NIMBLE_RISK_THRESHOLDS, **o.get("risk_thresholds", {})}, RISK_THRESHOLD,
-                o.get("l4_min_prob", NIMBLE_L4_MIN_PROB), {**NIMBLE_L4_MIN_PROB_BY_FLAG, **o.get("l4_min_prob_by_flag", {})})
+                o.get("l4_min_prob", NIMBLE_L4_MIN_PROB), {**NIMBLE_L4_MIN_PROB_BY_FLAG, **o.get("l4_min_prob_by_flag", {})},
+                o["l4_promote_prob"] if "l4_promote_prob" in o else NIMBLE_L4_PROMOTE_PROB)
