@@ -43,4 +43,38 @@ cp -R "$REPO/evaluation/pilot/fixture" "$WORK/fx"
   ) >"$OUT/6-mer.txt" 2>&1
 (cd "$WORK/fx" && git diff) >"$OUT/6-mer.diff"
 
+echo "== 7. lean context (mer's implement argv): CLAUDE.md must still load, plugins/hooks/MCP must be gone"
+mkdir -p "$WORK/lean"
+printf '# Project instructions\nProject marker: PELICAN-42\n' >"$WORK/lean/CLAUDE.md"
+(cd "$WORK/lean" && claude -p --output-format json --model claude-sonnet-5-5 --effort medium --permission-mode auto \
+  --disallowedTools Agent --setting-sources project,local --strict-mcp-config \
+  -- "Reply with the project marker from your CLAUDE.md instructions, then list the names of any skills or plugins you were told about, then list the file paths of every instruction file (CLAUDE.md or rules) whose contents you were given.") \
+  >"$OUT/7-lean.json" 2>"$OUT/7-err.txt"
+# compare usage in 7-lean.json with 1-shape.json (step 1 runs the full context): the lean fixed context should be far smaller
+
+echo "== 8. lean read-only argv must not run project/local hooks (expected: neither marker exists, is_error false)"
+mkdir -p "$WORK/ro/.claude"
+for kind in project local; do
+  f="$WORK/ro/.claude/settings.json"; [ "$kind" = local ] && f="$WORK/ro/.claude/settings.local.json"
+  printf '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"touch %s/hook-fired-%s"}]}]}}\n' "$WORK/ro" "$kind" >"$f"
+done
+is_error() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("is_error"))' "$1" 2>/dev/null || echo "unparseable"; }
+(cd "$WORK/ro" && claude -p --output-format json --model claude-opus-5-5 --effort high --permission-mode dontAsk \
+  --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --disallowedTools Agent --strict-mcp-config \
+  --setting-sources user --settings '{"disableAllHooks": true}' -- "Reply with exactly: ok") >"$OUT/8-readonly.json" 2>"$OUT/8-err.txt"
+{ echo "8-readonly.json is_error: $(is_error "$OUT/8-readonly.json")  (must be False: a rejected --settings must not look like a pass)"
+  for kind in project local; do
+    if [ -e "$WORK/ro/hook-fired-$kind" ]; then echo "hook-fired-$kind: YES (project/local settings were loaded)"; else echo "hook-fired-$kind: no"; fi
+  done; } >"$OUT/8-hooks.txt"
+
+echo "== 8b. same argv, but --settings ALSO carries a SessionStart hook: disableAllHooks must win (expected: no marker)"
+mkdir -p "$WORK/ro2"
+FLAG_SETTINGS="$(python3 -c 'import json,sys; print(json.dumps({"disableAllHooks": True, "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "touch " + sys.argv[1] + "/hook-fired-flag"}]}]}}))' "$WORK/ro2")"
+(cd "$WORK/ro2" && claude -p --output-format json --model claude-opus-5-5 --effort high --permission-mode dontAsk \
+  --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --disallowedTools Agent --strict-mcp-config \
+  --setting-sources user --settings "$FLAG_SETTINGS" -- "Reply with exactly: ok") >"$OUT/8b-readonly.json" 2>"$OUT/8b-err.txt"
+{ echo "8b-readonly.json is_error: $(is_error "$OUT/8b-readonly.json")  (must be False, else the test proves nothing)"
+  if [ -e "$WORK/ro2/hook-fired-flag" ]; then echo "hook-fired-flag: YES (disableAllHooks was NOT honoured)"; else echo "hook-fired-flag: no"; fi; } >>"$OUT/8-hooks.txt"
+cat "$OUT/8-hooks.txt"
+
 echo "done: $OUT"

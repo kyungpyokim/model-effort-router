@@ -1,7 +1,9 @@
 import io
 import json
 import os
+import tempfile
 import unittest
+import unittest.mock
 from unittest import mock
 
 from model_effort_router import cli
@@ -16,7 +18,21 @@ from model_effort_router.profiles.profiles import Profile
 from tests.test_mer_cli import CliCase
 from tests.test_mer_flow import GATE_BAD, GATE_OK, REPO, REQ
 
+_TMP = tempfile.TemporaryDirectory()
+
+
+def setUpModule():  # hermetic: never read the developer's real ~/.claude/settings.json
+    os.environ["CLAUDE_CONFIG_DIR"] = _TMP.name
+
+
+def tearDownModule():
+    os.environ.pop("CLAUDE_CONFIG_DIR", None)
+    _TMP.cleanup()
+
+
 P = Profile("frontier", "high")
+FULL = ClaudeConfig(context="full")  # the unrestricted argv (session.claude_context = "full")
+LEAN_FLAGS = ["--setting-sources", "project,local", "--strict-mcp-config"]
 
 
 def result(sid="S1", text="done", i=10, created=20, read=300, o=5, **over):
@@ -29,37 +45,123 @@ def result(sid="S1", text="done", i=10, created=20, read=300, o=5, **over):
 
 class ArgvTest(unittest.TestCase):
     def test_implement_argv(self):
-        argv = cx.session_argv(P, "do it", "workspace-write")
+        argv = cx.session_argv(P, "do it", "workspace-write", FULL)
         self.assertEqual(argv, ["claude", "-p", "--output-format", "json", "--model", "claude-opus-5-5", "--effort", "high",
                                 "--permission-mode", "auto", "--", "do it"])
 
     def test_subagent_mapping(self):
-        self.assertEqual(cx.session_argv(P, "p", "workspace-write", subagents=0)[-4:-1], ["--disallowedTools", "Agent", "--"])
+        self.assertEqual(cx.session_argv(P, "p", "workspace-write", FULL, subagents=0)[-4:-1], ["--disallowedTools", "Agent", "--"])
         for n in (None, 1, 3):  # no hard cap exists: allowed stays allowed, the prompt hint carries the limit
             self.assertNotIn("--disallowedTools", cx.session_argv(P, "p", "workspace-write", subagents=n))
             self.assertNotIn("--disallowedTools", cx.resume_argv(P, "S", "p", subagents=n))
 
     def test_resume_argv_adds_resume_before_the_prompt(self):
-        argv = cx.resume_argv(Profile("balanced", "high"), "S1", "fix it", subagents=0)
+        argv = cx.resume_argv(Profile("balanced", "high"), "S1", "fix it", FULL, subagents=0)
         self.assertEqual(argv[:8], ["claude", "-p", "--output-format", "json", "--model", "claude-sonnet-5-5", "--effort", "high"])
         self.assertEqual(argv[8:], ["--permission-mode", "auto", "--disallowedTools", "Agent", "--resume", "S1", "--", "fix it"])
 
     def test_read_only_review_argv_always_denies_agent(self):
         for n in (None, 0, 1):
-            argv = cx.session_argv(P, "review", "read-only", subagents=n)
+            argv = cx.session_argv(P, "review", "read-only", FULL, subagents=n)
             self.assertEqual(argv[8:], ["--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--allowedTools",
                                         "Read,Grep,Glob", "--disallowedTools", "Agent", "--strict-mcp-config",
                                         "--setting-sources", "user", "--", "review"])
 
     def test_read_only_sessions_restrict_the_tool_set_itself_and_isolate_settings(self):
-        argv = cx.session_argv(P, "p", "read-only")
+        argv = cx.session_argv(P, "p", "read-only", FULL)
         self.assertEqual(argv[argv.index("--tools") + 1], "Read,Grep,Glob")  # not only pre-approved
         self.assertIn("--strict-mcp-config", argv)
         self.assertNotIn("--mcp-config", argv)
         self.assertEqual(argv[argv.index("--setting-sources") + 1], "user")  # no project/local permissions or hooks
         for tool in ("Edit", "Write", "Bash"):
             self.assertNotIn(tool, " ".join(argv[:-2]))
-        self.assertNotIn("--tools", cx.session_argv(P, "p", "workspace-write"))  # implement keeps the full tool set
+        self.assertNotIn("--tools", cx.session_argv(P, "p", "workspace-write", FULL))  # implement keeps the full tool set
+
+    def test_lean_is_the_default_and_adds_the_context_flags_to_every_session(self):
+        self.assertEqual(ClaudeConfig().context, "lean")
+        impl = cx.session_argv(P, "do it", "workspace-write", subagents=0)
+        self.assertEqual(impl[8:], ["--permission-mode", "auto", "--disallowedTools", "Agent", *LEAN_FLAGS, "--", "do it"])
+        res = cx.resume_argv(P, "S1", "fix", subagents=0)
+        self.assertEqual(res[8:], ["--permission-mode", "auto", "--disallowedTools", "Agent", *LEAN_FLAGS, "--resume", "S1", "--", "fix"])
+        ro = cx.session_argv(P, "r", "read-only")
+        self.assertEqual(ro[8:], ["--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--allowedTools", "Read,Grep,Glob",
+                                  "--disallowedTools", "Agent", "--strict-mcp-config", "--setting-sources", "user", "--settings",
+                                  '{"disableAllHooks": true}', "--", "r"])
+
+    def test_lean_never_uses_safe_mode_or_bare(self):
+        for argv in (cx.session_argv(P, "p", "workspace-write"), cx.resume_argv(P, "S", "p"), cx.session_argv(P, "p", "read-only")):
+            self.assertFalse([a for a in argv if a in ("--safe-mode", "--bare")])  # they would drop CLAUDE.md / need an API key
+            self.assertIn("--strict-mcp-config", argv)
+        for argv in (cx.session_argv(P, "p", "workspace-write"), cx.resume_argv(P, "S", "p")):
+            self.assertEqual(argv[argv.index("--setting-sources") + 1], "project,local")  # plugins/user hooks live in user settings
+
+    def test_read_only_never_loads_project_or_local_settings_in_either_mode(self):
+        for config in (ClaudeConfig(), FULL, ClaudeConfig(context="lean", guards=lambda: {"permissions": {"deny": ["Bash(rm *)"]}})):
+            argv = cx.session_argv(P, "p", "read-only", config)
+            sources = argv[argv.index("--setting-sources") + 1].split(",")
+            self.assertEqual(sources, ["user"])
+            self.assertFalse({"project", "local"} & set(sources))
+        lean = cx.session_argv(P, "p", "read-only")
+        self.assertEqual(lean[lean.index("--settings") + 1], '{"disableAllHooks": true}')  # a reviewed change cannot run hooks
+        self.assertNotIn("--settings", cx.session_argv(P, "p", "read-only", FULL))  # full: exactly the old argv
+
+    def test_lean_implement_passes_the_users_guard_rails_only(self):
+        guards = {"permissions": {"deny": ["Bash(rm *)"], "ask": ["Edit(.env)"]}, "sandbox": {"enabled": True}}
+        cfg = ClaudeConfig(guards=lambda: guards)
+        for argv in (cx.session_argv(P, "p", "workspace-write", cfg), cx.resume_argv(P, "S", "p", cfg)):
+            self.assertEqual(json.loads(argv[argv.index("--settings") + 1]), guards)
+            self.assertLess(argv.index("--settings"), argv.index("--"))
+        self.assertNotIn("--settings", cx.session_argv(P, "p", "workspace-write", ClaudeConfig(guards=lambda: {})))
+        self.assertNotIn("--settings", cx.session_argv(P, "p", "workspace-write", ClaudeConfig(context="full", guards=lambda: guards)))
+
+    def test_user_guards_reads_only_deny_ask_sandbox_and_never_crashes(self):
+        text = json.dumps({"permissions": {"deny": ["a"], "ask": [], "allow": ["Bash"], "defaultMode": "auto"},
+                           "sandbox": {"enabled": True}, "enabledPlugins": {"x": True}, "hooks": {"SessionStart": []},
+                           "env": {"K": "V"}})
+        self.assertEqual(cx.user_guards("/x", lambda p: text), {"permissions": {"deny": ["a"]}, "sandbox": {"enabled": True}})
+        self.assertEqual(cx.user_guards("/x", lambda p: json.dumps({"permissions": {"ask": ["b"]}})), {"permissions": {"ask": ["b"]}})
+        def boom(p):
+            raise OSError("nope")
+        for read in (boom, lambda p: "{not json", lambda p: "[]", lambda p: "null", lambda p: json.dumps({"permissions": "x"}),
+                     lambda p: json.dumps({"enabledPlugins": {}}), lambda p: json.dumps({"permissions": {"deny": "notalist"}})):
+            self.assertEqual(cx.user_guards("/x", read), {})
+
+    def test_user_guards_keep_only_pretooluse_and_permissionrequest_hooks(self):
+        pre, perm = [{"matcher": "Bash", "hooks": [{"type": "command", "command": "guard.sh"}]}], [{"hooks": []}]
+        text = json.dumps({"hooks": {"PreToolUse": pre, "PermissionRequest": perm, "SessionStart": [{"hooks": []}],
+                                     "UserPromptSubmit": [{"hooks": []}], "Stop": [{"hooks": []}]}})
+        self.assertEqual(cx.user_guards("/x", lambda p: text), {"hooks": {"PreToolUse": pre, "PermissionRequest": perm}})
+        only_start = json.dumps({"hooks": {"SessionStart": [{"hooks": []}]}})
+        self.assertEqual(cx.user_guards("/x", lambda p: only_start), {})
+        for bad in ({"hooks": "x"}, {"hooks": []}, {"hooks": {"PreToolUse": "x"}}, {"hooks": {"PreToolUse": []}},
+                    {"hooks": {"PreToolUse": {"a": 1}}}):
+            with self.subTest(bad=bad):
+                self.assertEqual(cx.user_guards("/x", lambda p, b=bad: json.dumps(b)), {})
+        both = json.dumps({"permissions": {"deny": ["a"]}, "hooks": {"PreToolUse": pre}})
+        self.assertEqual(cx.user_guards("/x", lambda p: both), {"permissions": {"deny": ["a"]}, "hooks": {"PreToolUse": pre}})
+
+    def test_lean_implement_settings_json_carries_guard_hooks(self):
+        pre = [{"matcher": "Bash", "hooks": [{"type": "command", "command": "guard.sh"}]}]
+        argv = cx.resume_argv(P, "S", "p", ClaudeConfig(guards=lambda: {"hooks": {"PreToolUse": pre}}))
+        self.assertEqual(json.loads(argv[argv.index("--settings") + 1]), {"hooks": {"PreToolUse": pre}})
+
+    def test_user_guards_path_honours_claude_config_dir(self):
+        seen = []
+        cx.user_guards(read=lambda p: seen.append(p) or "{}")
+        self.assertEqual(seen, [os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "settings.json")])
+        with tempfile.TemporaryDirectory() as d, unittest.mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": d}):
+            (__import__("pathlib").Path(d) / "settings.json").write_text('{"sandbox": {"enabled": true}}')
+            self.assertEqual(cx.user_guards(), {"sandbox": {"enabled": True}})  # the default reader, a real file
+
+    def test_full_context_has_no_context_flags_for_implement_and_user_settings_for_read_only(self):
+        for argv in (cx.session_argv(P, "p", "workspace-write", FULL), cx.resume_argv(P, "S", "p", FULL)):
+            self.assertNotIn("--setting-sources", argv)
+            self.assertNotIn("--strict-mcp-config", argv)
+        self.assertEqual(cx.session_argv(P, "p", "read-only", FULL)[-5:-2], ["--strict-mcp-config", "--setting-sources", "user"])
+
+    def test_context_validated(self):
+        with self.assertRaises(ValueError):
+            ClaudeConfig(context="all")
 
     def test_no_safety_bypass_anywhere(self):
         for argv in (cx.session_argv(P, "p", "workspace-write"), cx.session_argv(P, "p", "read-only"), cx.resume_argv(P, "S", "p")):
@@ -230,6 +332,42 @@ class HostReportedTest(unittest.TestCase):
         self.assertNotIn("host_reported", out["calls"][0])
 
 
+class ContextConfigTest(CliCase):
+    def test_config_default_values_and_validation(self):
+        from model_effort_router.policy.config import resolve_config
+        self.assertEqual(resolve_config().claude_context, "lean")
+        self.assertEqual(resolve_config(repo={"session": {"claude_context": "full"}}).claude_context, "full")
+        self.assertEqual(resolve_config(repo={"session": {"subagent_policy": "codex"}}).claude_context, "lean")  # keys independent
+        for bad in ("none", None, "LEAN"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                resolve_config(repo={"session": {"claude_context": bad}})
+
+    def dry(self, host="claude"):
+        out = io.StringIO()
+        cli.main(["run", "--cwd", str(self.cwd), "--dry-run", "--level", "L2", "--host", host, "Fix the bug in calc.py"],
+                 env=self.env(), out=out)
+        return out.getvalue()
+
+    def test_full_in_repo_config_restores_the_unrestricted_argv_in_dry_run(self):
+        self.assertIn("--setting-sources project,local", self.dry())
+        (self.cwd / ".model-effort-router.json").write_text('{"difficulty": {"backend": "fake"}, "session": {"claude_context": "full"}}')
+        self.assertNotIn("--setting-sources", self.dry())
+
+    def test_config_reaches_the_executed_sessions_and_codex_ignores_it(self):
+        runner = ClaudeRunner()
+        cli.main(["run", "--cwd", str(self.cwd), "--host", "claude", "Fix the bug in calc.py"], env=self.env(), runner=runner,
+                 gate_fn=lambda c: GATE_OK, diff_fn=lambda c: REPO, out=io.StringIO())
+        self.assertIn("project,local", runner.calls[0]["argv"])
+        (self.cwd / ".model-effort-router.json").write_text('{"difficulty": {"backend": "fake"}, "session": {"claude_context": "full"}}')
+        runner = ClaudeRunner()
+        cli.main(["run", "--cwd", str(self.cwd), "--host", "claude", "Fix the bug in calc.py"], env=self.env(), runner=runner,
+                 gate_fn=lambda c: GATE_OK, diff_fn=lambda c: REPO, out=io.StringIO())
+        self.assertNotIn("--setting-sources", runner.calls[0]["argv"])
+        codex_out = self.dry("codex")
+        self.assertNotIn("--setting-sources", codex_out)
+        self.assertIn("first command: codex exec", codex_out)
+
+
 class HostSelectionTest(unittest.TestCase):
     def test_default_env_and_flag(self):
         self.assertIs(hosts.get(), hosts.CODEX)
@@ -262,7 +400,7 @@ class CliHostTest(CliCase):
                 self.assertIn("host: claude", out)
                 self.assertIn("session: economy:medium -> claude-sonnet-5-5/medium", out)
                 self.assertIn("first command: claude -p --output-format json --model claude-sonnet-5-5 --effort medium "
-                              "--permission-mode auto --disallowedTools Agent -- ", out)
+                              "--permission-mode auto --disallowedTools Agent --setting-sources project,local --strict-mcp-config -- ", out)
 
     def test_flag_beats_env_and_bad_host_is_exit_2(self):
         _, out = self.run_cli("--dry-run", "--level", "L2", "--host", "codex", "x.py", env_extra={"MER_HOST": "claude"})

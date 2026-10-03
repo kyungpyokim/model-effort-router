@@ -5,6 +5,8 @@ Takes already-parsed dicts; file loading (JSON/YAML) is left to the host hook la
 from dataclasses import dataclass
 from types import MappingProxyType
 
+from ..adapters.claude import CONTEXTS as CLAUDE_CONTEXTS  # lean = CLAUDE.md + guard rails, full = plugins/user settings/MCP too
+
 MODES = ("auto", "manual", "off")
 SUBAGENT_POLICIES = ("level", "codex")  # level: per-level Codex subagent caps (spec 11.4); codex: no flags
 SECTIONS = ("router", "difficulty", "session")
@@ -13,7 +15,7 @@ DEFAULTS = MappingProxyType(
     {
         "router": {"mode": "auto"},
         "difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10},
-        "session": {"subagent_policy": "level"},
+        "session": {"subagent_policy": "level", "claude_context": "lean"},
     }
 )
 
@@ -25,6 +27,7 @@ class RouterConfig:
     fallback: str
     timeout_s: float
     subagent_policy: str = "level"
+    claude_context: str = "lean"
 
 
 def _check_layer(layer, name):
@@ -50,6 +53,8 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         raise ValueError(f"router.mode must be one of {MODES}, got {router['mode']!r}")
     if sess["subagent_policy"] not in SUBAGENT_POLICIES:
         raise ValueError(f"session.subagent_policy must be one of {SUBAGENT_POLICIES}, got {sess['subagent_policy']!r}")
+    if sess["claude_context"] not in CLAUDE_CONTEXTS:
+        raise ValueError(f"session.claude_context must be one of {CLAUDE_CONTEXTS}, got {sess['claude_context']!r}")
     timeout = diff["timeout_s"]
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
         raise ValueError("difficulty.timeout_s must be a positive number")
@@ -62,4 +67,4 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
                 raise ValueError(f"unknown difficulty.{key}: {diff[key]!r}")
         if diff["backend"] == "none":
             raise ValueError("difficulty.backend cannot be 'none'")
-    return RouterConfig(router["mode"], diff["backend"], diff["fallback"], timeout, sess["subagent_policy"])
+    return RouterConfig(router["mode"], diff["backend"], diff["fallback"], timeout, sess["subagent_policy"], sess["claude_context"])

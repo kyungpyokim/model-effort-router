@@ -17,6 +17,7 @@ import uuid
 from dataclasses import replace
 
 from . import review as rv
+from .adapters.claude import ClaudeConfig
 from .difficulty.decision import LEVELS, DifficultyDecision
 from .difficulty.registry import create
 from .flow import PLAN_FIRST, SUBAGENT_HINT, WRAP_UP, run_flow
@@ -68,19 +69,19 @@ def _fmt(p, host):
         f" (requested {r.requested_effort})" if r.requested_effort != r.applied_effort else "")
 
 
-def _first_argv(target, sp, text, host):
+def _first_argv(target, sp, text, host, config):
     cx = host.exec
     if target == "plan_only":
-        return cx.session_argv(sp.plan_profile, f"{text}\n\nWrite an implementation plan only. Do not modify any files.", "read-only")
+        return cx.session_argv(sp.plan_profile, f"{text}\n\nWrite an implementation plan only. Do not modify any files.", "read-only", config)
     if target == "review_only":
-        return cx.session_argv(sp.review or REVIEW_DEFAULT, "<review prompt: request + git diff + gate JSON>", "read-only",
+        return cx.session_argv(sp.review or REVIEW_DEFAULT, "<review prompt: request + git diff + gate JSON>", "read-only", config,
                                subagents=sp.review_subagents)
     n = sp.implement_subagents
     return cx.session_argv(sp.start, f"{text}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{WRAP_UP}",
-                           "workspace-write", subagents=n)
+                           "workspace-write", config, subagents=n)
 
 
-def _dry_run_text(plan, sp, text, host):
+def _dry_run_text(plan, sp, text, host, config):
     d = plan.decision
     ladder = "; ".join(f"{i}. {_fmt(p, host)}" for i, p in enumerate(sp.ladder, 1)) or "none"
     lines = [f"host: {host.name}", f"level: {sp.level or 'manual'}" + (f" (backend {d.backend})" if d else ""),
@@ -88,7 +89,7 @@ def _dry_run_text(plan, sp, text, host):
              f"session: {_fmt(sp.start, host)}", f"plan first: {'yes' if sp.plan_first else 'no'}",
              f"review: {_fmt(sp.review, host) if sp.review else 'none'}",
              f"ladder: {ladder} (then stop and report)", f"rules: {', '.join(sp.applied_rules)}",
-             "first command: " + shlex.join(_first_argv(plan.target, sp, text, host))]
+             "first command: " + shlex.join(_first_argv(plan.target, sp, text, host, config))]
     return "\n".join(lines)
 
 
@@ -232,6 +233,8 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
     except ValueError as exc:  # manual mode without a session profile
         print(f"mer: {exc}", file=sys.stderr)
         return 2
+    # the claude host's context mode (session.claude_context); codex keeps its own config and ignores it
+    host_config = ClaudeConfig(context=cfg.claude_context) if host.name == "claude" else host.config
     if chat:
         argv, profile = _chat_argv(plan.target, sp, text, cwd, host)
         if not args.dry_run:
@@ -244,7 +247,7 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
                 pass  # logging must never decide the outcome
         return _exec(argv, cx.session_env(env), exec_fn, args.dry_run, out, _chat_note(plan, sp, profile, host), cwd, host)
     if args.dry_run:
-        print(_dry_run_text(plan, sp, text, host), file=out)
+        print(_dry_run_text(plan, sp, text, host, host_config), file=out)
         return 0
 
     sdir, sid = route_log.state_dir(env), f"mer-{int(time.time())}-{uuid.uuid4().hex[:6]}"
@@ -259,7 +262,7 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
                                   configured_backend=cfg.backend), "session_plan": sp.to_dict(), "source": "mer"})
     gate_fn = gate_fn or (lambda c: run_gate(c, load_gate_checks(c, env), GATE_TIMEOUT_S))
     result = run_flow(text, sp, cwd=cwd, runner=runner or cx.run_subprocess, env=env, host=host, gate_fn=gate_fn, diff_fn=diff_fn, emit=emit,
-                      target=plan.target, max_escalations=args.max_escalations, timeout_s=args.timeout)
+                      target=plan.target, max_escalations=args.max_escalations, timeout_s=args.timeout, config=host_config)
     d = plan.decision
     result.update(session_id=sid, risk_flags=list(plan.risk_flags), backend=d.backend if d else None,
                   session_plan=sp.to_dict())

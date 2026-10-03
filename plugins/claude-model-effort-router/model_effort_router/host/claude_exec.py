@@ -3,8 +3,19 @@
 Counterpart of host/codex_exec.py with the same function names, so flow.py stays host-agnostic.
 Everything about Claude Code's runtime behaviour here is from `claude --help` (CLI 2.1.280) and the documented
 result shape; it is UNVERIFIED live, so parsing fails closed like difficulty/jev.py.
+
+Fixed context (pilot-c1: ~200k tokens per session): a user's enabled plugins, user hooks (SessionStart injects large
+text) and MCP tool lists ride along in every `claude -p`. "lean" (config.context, default) keeps CLAUDE.md memory
+(project chain, ~/.claude/rules) but loads only project/local settings (`--setting-sources project,local`: enabledPlugins
+and user hooks live in user settings) and no MCP servers (`--strict-mcp-config`). Not --safe-mode (drops CLAUDE.md) and
+not --bare (needs an API key). "full" is the unrestricted argv. The classifier already runs --safe-mode in a temp dir.
+Lean keeps the user's own guard rails (permissions.deny/ask, sandbox, PreToolUse/PermissionRequest hooks from the user
+settings file) via `--settings`; plugin-provided guard hooks and other user settings are dropped.
+Read-only sessions (review/plan) never load project or local settings, in either mode: a reviewed change could add
+a `.claude/settings.local.json` whose hooks, apiKeyHelper, env or extra directories would otherwise run or redirect them.
 """
 import json
+import os
 import subprocess
 from collections import namedtuple
 
@@ -13,6 +24,7 @@ from ..difficulty.subscription import GUARD_ENV, default_runner
 
 Stream = namedtuple("Stream", "thread_id usage text extra", defaults=(None,))  # usage: THIS invocation's, short keys, or None
 READ_ONLY_TOOLS = "Read,Grep,Glob"
+GUARD_HOOK_EVENTS = ("PreToolUse", "PermissionRequest")  # the only user hooks lean sessions keep (SessionStart etc. inject context)
 
 
 class ClaudeResultError(ValueError):
@@ -32,6 +44,43 @@ def _base(resolved, extra):
     return cmd + extra
 
 
+def user_guards(path=None, read=None):
+    """The user's guard rails from their settings file: only permissions.deny/ask, sandbox and the PreToolUse and
+    PermissionRequest hooks. A missing, unreadable or
+    invalid file means nothing to pass (never an error). `read(path) -> text` is injectable for tests."""
+    path = path or os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude"),
+                                "settings.json")
+    try:
+        data = json.loads((read or (lambda p: open(p, encoding="utf-8").read()))(path))
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    perms = data.get("permissions") if isinstance(data.get("permissions"), dict) else {}
+    out = {k: perms[k] for k in ("deny", "ask") if isinstance(perms.get(k), list) and perms[k]}
+    guards = {"permissions": out} if out else {}
+    if data.get("sandbox"):
+        guards["sandbox"] = data["sandbox"]
+    hooks = data.get("hooks") if isinstance(data.get("hooks"), dict) else {}
+    kept = {e: hooks[e] for e in GUARD_HOOK_EVENTS if isinstance(hooks.get(e), list) and hooks[e]}  # guard hooks only
+    if kept:
+        guards["hooks"] = kept
+    return guards
+
+
+def isolation(config, read_only):
+    """Context flags. full: the unrestricted implement argv, and read-only sessions with user settings (as before).
+    lean implement/resume: project,local settings, no MCP servers, plus the user's own deny/ask/sandbox and PreToolUse/PermissionRequest hooks.
+    lean read-only: user settings only (never project/local) with all hooks disabled."""
+    if config.context == "lean":
+        if read_only:
+            return ["--strict-mcp-config", "--setting-sources", "user", "--settings", '{"disableAllHooks": true}']
+        guards = (config.guards or user_guards)()
+        return ["--setting-sources", "project,local", "--strict-mcp-config",
+                *(["--settings", json.dumps(guards, sort_keys=True, separators=(",", ":"))] if guards else [])]
+    return ["--strict-mcp-config", "--setting-sources", "user"] if read_only else []
+
+
 def _prompted(cmd, prompt):
     return cmd + ["--", prompt]  # --allowedTools/--disallowedTools are variadic: `--` keeps the prompt out of them
 
@@ -41,17 +90,17 @@ def session_argv(profile, prompt, sandbox, config=ClaudeConfig(), subagents=None
     dontAsk with Read/Grep/Glob only and the Agent tool always denied."""
     resolved = resolve(profile, config)
     if sandbox == "workspace-write":
-        extra = ["--permission-mode", "auto"] + agents_flags(subagents)
+        extra = ["--permission-mode", "auto"] + agents_flags(subagents) + isolation(config, False)
     else:
         # --tools restricts the tool SET itself (--allowedTools only pre-approves: settings could still allow Edit/Bash);
-        # project/local settings and MCP servers are left out so nothing else can grant a tool
+        # no MCP servers, and user settings only in full context, so nothing else can grant a tool
         extra = ["--permission-mode", "dontAsk", "--tools", READ_ONLY_TOOLS, "--allowedTools", READ_ONLY_TOOLS,
-                 "--disallowedTools", "Agent", "--strict-mcp-config", "--setting-sources", "user"]
+                 "--disallowedTools", "Agent"] + isolation(config, True)
     return _prompted(_base(resolved, extra), prompt)
 
 
 def resume_argv(profile, session_id, prompt, config=ClaudeConfig(), subagents=None):
-    extra = ["--permission-mode", "auto"] + agents_flags(subagents) + ["--resume", session_id]
+    extra = ["--permission-mode", "auto"] + agents_flags(subagents) + isolation(config, False) + ["--resume", session_id]
     return _prompted(_base(resolve(profile, config), extra), prompt)
 
 
