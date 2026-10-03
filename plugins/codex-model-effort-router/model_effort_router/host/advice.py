@@ -15,9 +15,10 @@ def _already(profile, host, current):
     """The user's default session (model, effort) already is this profile: a model alias like "sonnet" counts
     when it names the same family. Unknown effort never counts as a match."""
     model, effort = current or (None, None)
+    model = model.split("[")[0].strip().lower() if model else None  # "sonnet[1m]": a context-size variant, same model
     r = host.resolve(profile)
     family = r.model.split("-")[1] if r.model.count("-") >= 1 else r.model  # claude-sonnet-5-5 -> sonnet
-    same_model = bool(model) and (model == r.model or model.lower() == family)
+    same_model = bool(model) and model in (r.model, family)
     return same_model and (r.applied_effort is None or effort == r.applied_effort)
 
 

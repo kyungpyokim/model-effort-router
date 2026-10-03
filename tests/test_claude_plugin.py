@@ -154,7 +154,7 @@ class HookTest(unittest.TestCase):
 
     def test_silent_when_the_default_session_already_is_the_recommended_one(self):
         self.fake = {"level": "L2", "confidence": 0.9, "risk_flags": []}
-        self.user_default("sonnet", "medium")
+        self.user_default("sonnet[1m]", "medium")  # the 1M-context alias is the same model
         prompt = "Rename the helper in utils.py and update its callers"  # no rule-based risk flag
         p = self.submit(prompt)
         self.assertEqual((p.returncode, p.stdout), (0, ""), p.stderr)
