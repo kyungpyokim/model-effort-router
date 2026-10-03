@@ -53,7 +53,8 @@ class SessionPlan:
     review_subagents: Optional[int] = None
 
     def to_dict(self) -> dict:
-        prof = lambda p: {"tier": p.tier, "effort": p.effort} if p else None
+        def prof(p):
+            return {"tier": p.tier, "effort": p.effort} if p else None
         return {"level": self.level, "start": prof(self.start), "ladder": [prof(p) for p in self.ladder],
                 "plan_first": self.plan_first, "review": prof(self.review), "applied_rules": list(self.applied_rules),
                 "implement_subagents": self.implement_subagents, "review_subagents": self.review_subagents}

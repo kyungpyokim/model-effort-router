@@ -32,7 +32,7 @@ def read_labels(path):
                  "risk_flags": [x.strip() for x in (r.get("risk_flags") or "").split(",") if x.strip()],
                  "target": (r.get("target") or "").strip()} for r in rows]
     with open(path, encoding="utf-8") as f:
-        return [json.loads(l) for l in f if l.strip()]
+        return [json.loads(line) for line in f if line.strip()]
 
 
 def merge(corpus_path, label_paths):

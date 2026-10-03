@@ -284,7 +284,8 @@ def _model_usage(by_session):
         for model, u in usages.items():
             if not isinstance(u, dict):
                 return None
-            n = lambda k: u[k] if _num(u.get(k)) else 0
+            def n(k):
+                return u[k] if _num(u.get(k)) else 0
             acc = out.setdefault(model, dict.fromkeys(("input", "cached_input", "cache_write", "output"), 0))
             acc["input"] += n("inputTokens") + n("cacheReadInputTokens") + n("cacheCreationInputTokens")
             acc["cached_input"] += n("cacheReadInputTokens")
@@ -304,7 +305,7 @@ def _error_record(case, mode, exc, wall, model=None, effort=None, run=1, host="c
 
 
 def _parse_mer(stdout):
-    lines = [l for l in stdout.splitlines() if l.strip()]
+    lines = [line for line in stdout.splitlines() if line.strip()]
     result = json.loads(lines[-1]) if lines else None
     if not isinstance(result, dict) or "calls" not in result:
         raise ValueError("mer printed no JSON result")

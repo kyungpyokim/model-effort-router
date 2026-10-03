@@ -25,7 +25,8 @@ class Fake:
 
 
 def case(id, task, level, flags=(), target="route"):
-    lab = lambda who: {"labeler": who, "level": level, "risk_flags": list(flags), "target": target}
+    def lab(who):
+        return {"labeler": who, "level": level, "risk_flags": list(flags), "target": target}
     return {"id": id, "task": task, "paths": [], "status": "adjudicated", "labels": [lab("a"), lab("b")],
             "final": {"level": level, "risk_flags": list(flags), "target": target}}
 

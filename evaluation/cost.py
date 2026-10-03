@@ -86,7 +86,8 @@ def summarize(rows):
     acc = defaultdict(list)
     for r in rows:
         acc[(r["case_id"], r["mode"])].append(r)
-    mean = lambda xs: sum(xs) / len(xs) if xs else None
+    def mean(xs):
+        return sum(xs) / len(xs) if xs else None
     cases = sorted({c for c, _ in acc})
     modes = sorted({m for _, m in acc})
     table = {}
@@ -107,7 +108,8 @@ def to_markdown(s):
     head = "| case | " + " | ".join(f"{m} tokens | {m} USD" for m in modes) + " |"
     lines = [f"# Cost by model ({len(s['complete'])} cases in every mode)", "", head,
              "|---|" + "---:|" * (2 * len(modes))]
-    fmt = lambda v, d: "-" if v is None else f"{v:,.{d}f}"
+    def fmt(v, d):
+        return "-" if v is None else f"{v:,.{d}f}"
     for c in s["cases"]:
         lines.append(f"| {c} | " + " | ".join(f"{fmt(s['table'][(c, m)]['tokens'], 0)} | "
                                               f"{fmt(s['table'][(c, m)]['usd'], 4)}" for m in modes) + " |")

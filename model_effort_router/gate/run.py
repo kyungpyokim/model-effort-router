@@ -7,10 +7,9 @@ import signal
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 from ..host.codex_hooks import load_configs
-from .discovery import KINDS, discover
+from .discovery import discover
 
 DEFAULT_TIMEOUT_S = 300
 TAIL_CHARS = 2000

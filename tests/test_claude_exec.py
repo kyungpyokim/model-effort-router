@@ -131,7 +131,8 @@ class ArgvTest(unittest.TestCase):
             for bad in (boom, lambda p: "{not json", lambda p: "[]", lambda p: "null", lambda p: json.dumps({"enabledPlugins": "x"}),
                         lambda p: json.dumps({"enabledPlugins": ["a"]}), lambda p: json.dumps({})):
                 self.assertEqual(cx.plugins_off("/w", bad), {})
-            partial = lambda p: files[p] if p == "/w/.claude/settings.json" else (_ for _ in ()).throw(OSError(p))
+            def partial(p):
+                return files[p] if p == "/w/.claude/settings.json" else (_ for _ in ()).throw(OSError(p))
             self.assertEqual(cx.plugins_off("/w", partial), {"d@m": False})  # one bad/missing file does not hide the others
 
     def test_plugins_off_default_reader_uses_claude_config_dir_and_real_files(self):
@@ -243,7 +244,8 @@ class FlowTest(unittest.TestCase):
     def run_it(self, level, gates=(GATE_OK,), verdicts=(), flags=(), policy="level"):
         sp = session_plan(decision(level, flags), flags, None, policy)
         runner, queue = ClaudeRunner(verdicts), list(gates)
-        gate = lambda cwd: queue.pop(0) if len(queue) > 1 else queue[0]
+        def gate(cwd):
+            return queue.pop(0) if len(queue) > 1 else queue[0]
         events = []
         out = run_flow(REQ, sp, cwd="/w", runner=runner, env={"A": "1"}, gate_fn=gate, diff_fn=lambda c: REPO,
                        emit=events.append, host=hosts.CLAUDE)
@@ -431,8 +433,9 @@ class CliHostTest(CliCase):
             cli.main(["chat", "--cwd", str(self.cwd), "--host", "claude", "--level", "L2", "--dry-run", "x.py"],
                      env=self.env(), out=io.StringIO())
             chdir.assert_not_called()  # dry-run changes nothing
-        cli_main = lambda: cli.main(["chat", "--cwd", str(self.cwd), "--host", "claude", "Fix the bug in calc.py"],
-                                   env=self.env(), out=io.StringIO(), exec_fn=lambda f, a, e: calls.append((f, a, e)))
+        def cli_main():
+            return cli.main(["chat", "--cwd", str(self.cwd), "--host", "claude", "Fix the bug in calc.py"],
+                                           env=self.env(), out=io.StringIO(), exec_fn=lambda f, a, e: calls.append((f, a, e)))
         with mock.patch("os.chdir") as chdir:
             cli_main()
         chdir.assert_called_once_with(str(self.cwd))

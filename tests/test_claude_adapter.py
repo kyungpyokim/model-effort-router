@@ -14,7 +14,8 @@ class ResolveTest(unittest.TestCase):
 
     def test_same_resolved_shape_as_codex(self):
         from dataclasses import fields
-        names = lambda r: [f.name for f in fields(r)]
+        def names(r):
+            return [f.name for f in fields(r)]
         self.assertEqual(names(resolve(Profile("economy", "medium"))), names(codex_resolve(Profile("economy", "medium"))))
 
     def test_model_without_supported_efforts_omits_the_effort(self):

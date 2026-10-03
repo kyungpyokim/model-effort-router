@@ -1,5 +1,5 @@
 """DifficultyInput / DifficultyDecision (spec 6, 7)."""
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Mapping, Optional, Tuple
 

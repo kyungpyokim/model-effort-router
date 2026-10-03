@@ -198,7 +198,7 @@ class EscalationTest(unittest.TestCase):
     def test_calls_without_thread_id_keep_their_own_usage(self):
         def no_thread(argv, **k):
             body = stream("x", "VERDICT: approved\nFINDINGS: 0", i=60 if "read-only" in argv else 100)
-            return "\n".join(l for l in body.splitlines() if "thread.started" not in l)
+            return "\n".join(line for line in body.splitlines() if "thread.started" not in line)
         h = Harness()
         h.runner = no_thread
         r = h.run("L4")
@@ -274,7 +274,7 @@ class ReviewTest(unittest.TestCase):
     def test_no_thread_id_means_no_fix_turn(self):
         h = Harness(verdicts=[("changes_requested", 1)])
         orig = h.runner
-        h.runner = lambda argv, **k: "\n".join(l for l in orig(argv, **k).splitlines() if "thread.started" not in l)
+        h.runner = lambda argv, **k: "\n".join(line for line in orig(argv, **k).splitlines() if "thread.started" not in line)
         r = h.run("L4")
         self.assertEqual((r["status"], r["exit_code"], len(h.calls)), ("changes_requested", 1, 2))
 
@@ -355,7 +355,8 @@ class HelperTest(unittest.TestCase):
 
     def test_tracker_delta_per_thread_never_negative(self):
         t = cx.UsageTracker()
-        u = lambda i: {"input": i, "cached_input": 0, "output": 0, "reasoning_output": 0}
+        def u(i):
+            return {"input": i, "cached_input": 0, "output": 0, "reasoning_output": 0}
         self.assertEqual(t.delta("a", u(10))["input"], 10)
         self.assertEqual(t.delta("a", u(25))["input"], 15)
         self.assertEqual(t.delta("b", u(7))["input"], 7)

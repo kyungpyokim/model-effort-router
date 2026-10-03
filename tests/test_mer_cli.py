@@ -12,7 +12,7 @@ from pathlib import Path
 from model_effort_router import cli
 from model_effort_router import review as rv
 from model_effort_router.difficulty.subscription import SubscriptionBackend, default_runner
-from tests.test_mer_flow import GATE_BAD, GATE_OK, REPO, Harness
+from tests.test_mer_flow import GATE_BAD, GATE_OK, Harness
 
 PROMPT_MARKER = "ZEBRA_PROMPT_MARKER"
 
@@ -40,7 +40,7 @@ class CliCase(unittest.TestCase):
         return rc, out.getvalue()
 
     def log_events(self):
-        return [json.loads(l) for p in self.state.glob("*.log.jsonl") for l in p.read_text().splitlines()]
+        return [json.loads(line) for p in self.state.glob("*.log.jsonl") for line in p.read_text().splitlines()]
 
 
 class DryRunTest(CliCase):
@@ -223,8 +223,9 @@ class GitDiffTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             d = os.path.realpath(d)
             self.assertEqual(rv.git_diff(d), {"is_repo": False})
-            git = lambda *a: subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *a], cwd=d,
-                                            check=True, capture_output=True)
+            def git(*a):
+                return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *a], cwd=d,
+                                                        check=True, capture_output=True)
             git("init", "-q")
             Path(d, "a.py").write_text("x = 1\n")
             git("add", "a.py")

@@ -32,7 +32,8 @@ MER = {"status": "ok", "exit_code": 0, "level": "L2", "escalations": 1, "profile
 
 
 def case(id="c1", task="Fix the bug in calc.py", target="route", level="L2"):
-    lab = lambda who: {"labeler": who, "level": level, "risk_flags": [], "target": target}
+    def lab(who):
+        return {"labeler": who, "level": level, "risk_flags": [], "target": target}
     return {"id": id, "task": task, "paths": [], "status": "adjudicated", "labels": [lab("a"), lab("b")],
             "final": {"level": level, "risk_flags": [], "target": target}}
 
@@ -521,7 +522,8 @@ class ClaudeHostTest(Env):
         self.assertEqual(rec["thread_ids"], ["S1", "R1"])
 
     def test_router_cost_is_none_when_anything_lacks_it(self):
-        ok = lambda role, tid: self.call(role, tid, 0.1)
+        def ok(role, tid):
+            return self.call(role, tid, 0.1)
         cases = {"review without cost": [ok("implement", "S1"), self.call("review", "R1", None)],
                  "timed-out resume on the implement thread": [ok("implement", "S1"), self.call("escalate", "S1", None)],
                  "review call without a thread id": [ok("implement", "S1"), self.call("review", None, 0.05)],
@@ -540,8 +542,9 @@ class ClaudeHostTest(Env):
         return call
 
     def test_model_usage_last_per_thread_converted_and_summed(self):
-        opus = lambda i, r, c, o: {"claude-opus-5-5": {"inputTokens": i, "cacheReadInputTokens": r,
-                                                       "cacheCreationInputTokens": c, "outputTokens": o, "costUSD": 1}}
+        def opus(i, r, c, o):
+            return {"claude-opus-5-5": {"inputTokens": i, "cacheReadInputTokens": r,
+                                                               "cacheCreationInputTokens": c, "outputTokens": o, "costUSD": 1}}
         haiku = {"claude-haiku-4-5": {"inputTokens": 5, "outputTokens": 1}}
         self.mer = {**MER, "threads": ["S1", "R1"], "calls": [
             self.with_models(self.call("implement", "S1", 0.1), opus(1, 2, 3, 4)),
@@ -603,14 +606,14 @@ class CliTest(Env):
     def test_live_runs_only_route_cases_in_both_modes_and_appends_records(self):
         rc, _ = self.cli(*self.base_args(), "--live")
         self.assertEqual(rc, 0)
-        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        recs = [json.loads(line) for line in self.out.read_text().splitlines()]
         self.assertEqual([(r["case_id"], r["mode"]) for r in recs],
                          [("a", "baseline"), ("a", "router")])
         self.assertEqual(len(self.calls), 2)
 
     def test_repeat_runs_each_case_and_mode_n_times_with_run_numbers_and_diff_names(self):
         rc, _ = self.cli(*self.base_args(), "--live", "--repeat", "2")
-        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        recs = [json.loads(line) for line in self.out.read_text().splitlines()]
         self.assertEqual([(r["case_id"], r["mode"], r["run"]) for r in recs],
                          [("a", "baseline", 1), ("a", "router", 1), ("a", "baseline", 2), ("a", "router", 2)])
         self.assertEqual(sorted(p.name for p in self.out.with_name(self.out.stem + "-diffs").glob("*.diff")),
@@ -622,7 +625,7 @@ class CliTest(Env):
         rc, out = self.cli(*self.base_args(), "--modes", "baseline")
         self.assertIn("1 cases x 1 modes x 1 repeat(s) = 1 runs", out)
         rc, _ = self.cli(*self.base_args(), "--live", "--modes", "baseline")
-        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        recs = [json.loads(line) for line in self.out.read_text().splitlines()]
         self.assertEqual((rc, [(r["case_id"], r["mode"]) for r in recs], len(self.calls)), (0, [("a", "baseline")], 1))
         for bad in ("", "basline", "baseline,oops"):
             self.assertEqual(self.cli(*self.base_args(), "--live", "--modes", bad)[0], 1)
@@ -656,7 +659,7 @@ class CliTest(Env):
         self.cli(*self.base_args(), "--live", "--subagent-policy", "codex")
         router_call = [c for c in self.calls if c["cmd"][0] != "codex"][0]
         self.assertEqual(json.loads(router_call["config"])["session"], {"subagent_policy": "codex"})
-        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        recs = [json.loads(line) for line in self.out.read_text().splitlines()]
         self.assertEqual([r["subagent_policy"] for r in recs if r["mode"] == "router"], ["codex"])
         with self.assertRaises(SystemExit):
             self.cli(*self.base_args(), "--subagent-policy", "all")
@@ -664,7 +667,7 @@ class CliTest(Env):
     def test_host_claude_dry_run_live_run_banner_and_records(self):
         self.claude = CLAUDE_RESULT
         _, out = self.cli(*self.base_args(), "--host", "claude")
-        lines = {l.split()[0]: l for l in out.splitlines() if l.startswith(("baseline ", "router "))}
+        lines = {line.split()[0]: line for line in out.splitlines() if line.startswith(("baseline ", "router "))}
         self.assertIn("'claude', '-p'", lines["baseline"])
         self.assertIn("'--', 'Fix the bug in calc.py'", lines["baseline"])
         self.assertIn("'--host', 'claude'", lines["router"])
@@ -673,14 +676,14 @@ class CliTest(Env):
         for needle in ("claude -p", "Claude subscription usage", "No Codex trust entry", "MER_CLASSIFIER=1"):
             self.assertIn(needle, self.err)
         self.assertNotIn("trust_level", self.err)
-        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        recs = [json.loads(line) for line in self.out.read_text().splitlines()]
         self.assertEqual({r["mode"]: r["host"] for r in recs}, {"baseline": "claude", "router": "claude"})
         self.assertEqual(recs[0]["cost_usd"], 0.0123)
 
     def test_default_host_is_codex_with_the_unchanged_banner(self):
         self.cli(*self.base_args(), "--live")
         self.assertIn("trust_level", self.err)
-        self.assertEqual({json.loads(l)["host"] for l in self.out.read_text().splitlines()}, {"codex"})
+        self.assertEqual({json.loads(line)["host"] for line in self.out.read_text().splitlines()}, {"codex"})
 
     def test_live_banner_states_preconditions_and_trust_side_effect(self):
         self.cli(*self.base_args(), "--live")
@@ -692,7 +695,7 @@ class CliTest(Env):
         self.cli(*self.base_args(), "--live")
         diffs = self.out.with_name(self.out.stem + "-diffs")  # a later pilot with another --out never overwrites them
         self.assertEqual(sorted(p.name for p in diffs.glob("*.diff")), ["a.baseline.r1.diff", "a.router.r1.diff"])
-        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        recs = [json.loads(line) for line in self.out.read_text().splitlines()]
         self.assertEqual([Path(r["diff_path"]).name for r in recs], ["a.baseline.r1.diff", "a.router.r1.diff"])
 
     def test_dry_run_prints_no_banner_and_runs_nothing(self):
@@ -715,7 +718,7 @@ class CliTest(Env):
     def test_one_failing_case_does_not_stop_the_batch(self):
         self.fail_first = True
         self.assertEqual(self.cli(*self.base_args(), "--live")[0], 0)
-        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        recs = [json.loads(line) for line in self.out.read_text().splitlines()]
         self.assertEqual(len(recs), 2)
         self.assertIn("error", recs[0])
         self.assertNotIn("error", recs[1])
@@ -723,13 +726,13 @@ class CliTest(Env):
     def test_baseline_model_effort_in_plan_and_records_router_runs_mer(self):
         args = self.base_args() + ["--model", "dflt", "--baseline-model", "gpt-6-luna", "--baseline-effort", "high"]
         _, out = self.cli(*args)
-        lines = {l.split()[0]: l for l in out.splitlines() if l.startswith(("baseline ", "router "))}
+        lines = {line.split()[0]: line for line in out.splitlines() if line.startswith(("baseline ", "router "))}
         self.assertIn("'gpt-6-luna'", lines["baseline"])
         self.assertIn("model_reasoning_effort=high", lines["baseline"])
         self.assertIn("model_effort_router.cli", lines["router"])
         self.assertNotIn("dflt", lines["router"])
         self.cli(*args, "--live")
-        recs = [json.loads(l) for l in self.out.read_text().splitlines()]
+        recs = [json.loads(line) for line in self.out.read_text().splitlines()]
         got = {r["mode"]: (r["model"], r["effort"]) for r in recs}
         self.assertEqual(got, {"baseline": ("gpt-6-luna", "high"), "router": ("gpt-6-luna", "medium")})
         cmds = {c["env"].get("MER_CLASSIFIER", "router"): c["cmd"] for c in self.calls}

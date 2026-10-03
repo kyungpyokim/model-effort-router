@@ -61,7 +61,7 @@ class HookCase(unittest.TestCase):
 
     def log_events(self, sid=SID):
         p = self.log_file(sid)
-        return [json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
+        return [json.loads(line) for line in p.read_text().splitlines()] if p.exists() else []
 
 
 def decision(proc):

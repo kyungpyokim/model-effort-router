@@ -4,7 +4,7 @@ from types import MappingProxyType
 from typing import Callable, Mapping, Optional, Tuple
 
 from ..profiles.profiles import EFFORTS, TIERS, Profile
-from .codex import EFFORT_ORDER, _apply_support
+from .codex import _apply_support
 
 CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")  # `claude --effort` choices (CLI 2.1.280 --help)
 CONTEXTS = ("lean", "full")

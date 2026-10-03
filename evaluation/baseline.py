@@ -56,7 +56,7 @@ def validate_record(row):
 
 def load_records(path):
     with open(path, encoding="utf-8") as f:
-        return [validate_record(json.loads(l)) for l in f if l.strip()]
+        return [validate_record(json.loads(line)) for line in f if line.strip()]
 
 
 def save_records(path, rows):

@@ -76,9 +76,10 @@ class ManifestTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             env = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
             env.update(HOME=d, MER_STATE_DIR=d, MER_HOST="codex")
-            run = lambda *extra: subprocess.run([sys.executable, str(CLAUDE / "bin" / "mer"), "run", "--dry-run", "--level", "L2",
-                                                 "--cwd", d, *extra, "Fix the bug in calc.py"], capture_output=True, text=True,
-                                                env=env, timeout=60).stdout
+            def run(*extra):
+                return subprocess.run([sys.executable, str(CLAUDE / "bin" / "mer"), "run", "--dry-run", "--level", "L2",
+                                                             "--cwd", d, *extra, "Fix the bug in calc.py"], capture_output=True, text=True,
+                                                            env=env, timeout=60).stdout
             self.assertIn("host: claude", run())
             self.assertIn("host: codex", run("--host", "codex"))
 
@@ -130,7 +131,7 @@ class HookTest(unittest.TestCase):
                               env=base, timeout=60, cwd=str(self.root))
 
     def log(self):
-        return [json.loads(l) for p in self.state.glob("*.log.jsonl") for l in p.read_text().splitlines()]
+        return [json.loads(line) for p in self.state.glob("*.log.jsonl") for line in p.read_text().splitlines()]
 
     def test_advice_output_shape_and_claude_wording(self):
         p = self.submit()

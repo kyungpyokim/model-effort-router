@@ -59,7 +59,7 @@ def validate_case(row):
     labels = row.get("labels", [])
     if not isinstance(labels, list):
         raise CorpusError(f"{where}: labels must be a list")
-    out = {**row, "paths": list(paths), "labels": [_check_verdict(l, f"{where} label", labeler=True) for l in labels]}
+    out = {**row, "paths": list(paths), "labels": [_check_verdict(line, f"{where} label", labeler=True) for line in labels]}
     if "proposed" in row:
         out["proposed"] = _check_verdict(row["proposed"], f"{where} proposed")
     if status == "draft":
@@ -67,7 +67,7 @@ def validate_case(row):
             raise CorpusError(f"{where}: a draft must not carry labels (use `proposed`)")
     elif status == "pilot":
         pass
-    elif len({l["labeler"] for l in out["labels"]}) != len(out["labels"]):
+    elif len({line["labeler"] for line in out["labels"]}) != len(out["labels"]):
         raise CorpusError(f"{where}: labels need distinct labelers")
     elif len(labels) < 2:
         raise CorpusError(f"{where}: {status} needs labels from at least 2 labelers")
@@ -107,7 +107,7 @@ def runnable(rows):
 
 
 def _distance(labels):
-    levels = [l["level"] for l in labels]
+    levels = [line["level"] for line in labels]
     if None in levels:
         return 0 if all(v is None for v in levels) else 1  # no_route vs route is a discussion item
     idx = [LEVELS.index(v) for v in levels]
@@ -123,7 +123,7 @@ def agreement(rows):
             continue
         compared += 1
         dist = _distance(labels)
-        same_meta = len({(tuple(sorted(l["risk_flags"])), l["target"]) for l in labels}) == 1
+        same_meta = len({(tuple(sorted(line["risk_flags"])), line["target"]) for line in labels}) == 1
         if dist >= 2:
             revise.append(r["id"])
         elif dist == 1 or not same_meta:

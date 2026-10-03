@@ -214,7 +214,8 @@ def main(argv=None, registry=None):
     except (ValueError, OSError) as exc:
         print(f"invalid router config: {exc}", file=sys.stderr)
         return 2
-    opts = lambda n: {"options": nimble_options} if n == "nimble" and nimble_options and registry.get("nimble") is NimbleBackend else {}
+    def opts(n):
+        return {"options": nimble_options} if n == "nimble" and nimble_options and registry.get("nimble") is NimbleBackend else {}
     res = compare(rows, {n: create(n, registry, **opts(n)) for n in names})
     md = to_markdown(res)
     for path, text in ((args.json, json.dumps(res, ensure_ascii=False, indent=2)), (args.md, md)):
