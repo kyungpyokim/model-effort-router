@@ -726,6 +726,15 @@ class CliTest(Env):
         self.assertEqual(cmds["1"][cmds["1"].index("-m") + 1], "gpt-6-luna")
         self.assertIn("model_effort_router.cli", cmds["router"])
 
+    def test_case_selects_ids_and_rejects_unknown_or_non_route(self):
+        rc, out = self.cli(*self.base_args(), "--case", "a")
+        self.assertEqual(rc, 0)
+        self.assertIn("1 cases", out)
+        for bad in ("zz", "b"):  # b is plan_only
+            self.assertEqual(self.cli(*self.base_args(), "--live", "--case", bad)[0], 1)
+            self.assertIn(bad, self.err)
+        self.assertEqual(self.calls, [])
+
     def test_limit_and_missing_fixture(self):
         self.assertEqual(self.cli(*self.base_args(), "--live", "--limit", "0")[0], 1)
         bad = self.base_args()

@@ -430,6 +430,7 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
     ap.add_argument("--modes", default=",".join(MODES), help="comma-separated subset of: " + ", ".join(MODES)
                     + " (e.g. a new baseline against router runs already recorded)")
     ap.add_argument("--limit", type=int)
+    ap.add_argument("--case", action="append", help="run only this case id (repeatable)")
     ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     ap.add_argument("--live", action="store_true", help="actually run codex exec (consumes subscription usage)")
     args = ap.parse_args(argv)
@@ -438,6 +439,12 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
     except (corpus.CorpusError, OSError) as exc:
         print(f"invalid corpus: {exc}", file=sys.stderr)
         return 1
+    if args.case:
+        unknown = sorted(set(args.case) - {r["id"] for r in rows})
+        if unknown:
+            print(f"unknown or non-route case id: {', '.join(unknown)}", file=sys.stderr)
+            return 1
+        rows = [r for r in rows if r["id"] in args.case]
     rows = rows[: args.limit] if args.limit is not None else rows
     if args.repeat < 1:
         print("--repeat must be >= 1", file=sys.stderr)
