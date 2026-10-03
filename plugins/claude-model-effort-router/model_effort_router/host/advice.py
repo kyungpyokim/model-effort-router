@@ -11,8 +11,20 @@ def _setting(profile, host):
     return f"{r.model}, {host.effort_word} {r.applied_effort}{note}"
 
 
-def render(plan, mer_cmd, host=CODEX):
-    """Context for a routed prompt. Never mentions subagents; the user decides everything."""
+def _already(profile, host, current):
+    """The user's default session (model, effort) already is this profile: a model alias like "sonnet" counts
+    when it names the same family. Unknown effort never counts as a match."""
+    model, effort = current or (None, None)
+    r = host.resolve(profile)
+    family = r.model.split("-")[1] if r.model.count("-") >= 1 else r.model  # claude-sonnet-5-5 -> sonnet
+    same_model = bool(model) and (model == r.model or model.lower() == family)
+    return same_model and (r.applied_effort is None or effort == r.applied_effort)
+
+
+def render(plan, mer_cmd, host=CODEX, current=None):
+    """Context for a routed prompt, or None when there is nothing to advise (the user's default session, given as
+    `current` = (model, effort), already is the recommended one and no plan or review is needed).
+    Never mentions subagents; the user decides everything."""
     # the user's own interactive session keeps the host's subagents: advise as for the "codex" policy
     sp = session_plan(plan.decision, plan.risk_flags, plan.overrides, "codex")
     d = plan.decision
@@ -27,7 +39,8 @@ def render(plan, mer_cmd, host=CODEX):
     elif plan.target == "review_only":
         lines.append(f"Recommended for this review: {_setting(sp.review or REVIEW_DEFAULT, host)}; switch with {host.switch_hint} if you want.")
     else:
-        lines.append(f"Recommended session: {_setting(sp.start, host)}; switch with {host.switch_hint} if you want.")
+        if not _already(sp.start, host, current):
+            lines.append(f"Recommended session: {_setting(sp.start, host)}; switch with {host.switch_hint} if you want.")
         if sp.plan_first:
             lines.append("Plan first: write a short plan before changing code.")
         if sp.review:
@@ -36,4 +49,4 @@ def render(plan, mer_cmd, host=CODEX):
                          f"Run it with `{mer_cmd} --review-profile {rp} 'review only: check the current diff for <the task>'`, "
                          f"or run the whole task through `{mer_cmd} '<the task>'` (Test Gate, escalation and review "
                          "included). Single-quote the request (write ' as '\\'') so the shell expands nothing in it.")
-    return "\n".join(lines)
+    return "\n".join(lines) if len(lines) > 2 else None

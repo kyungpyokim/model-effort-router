@@ -72,8 +72,11 @@ def user_prompt_submit(data, env, plugin_root):
     latency_ms = (time.monotonic() - started) * 1000
     if plan.target == NO_ROUTE and plan.decision is None:  # rules said no_route: nothing was spent, nothing to log
         return None
-    out = None if plan.target == NO_ROUTE else _context_output(
-        "UserPromptSubmit", advice.render(plan, f'python3 {Path(plugin_root) / "bin" / "mer"} run', hosts.get(env=env)))
+    host = hosts.get(env=env)
+    current = host.exec.default_session(data.get("cwd")) if host.name == "claude" else None
+    text = None if plan.target == NO_ROUTE else advice.render(
+        plan, f'python3 {Path(plugin_root) / "bin" / "mer"} run', host, current)
+    out = _context_output("UserPromptSubmit", text) if text else None
     try:  # logging must never change what the hook outputs; a backend-decided no_route still logs the spend
         route_log.append(sdir, sid, route_log.route_event(
             plan, latency_ms=latency_ms, prompt=prompt, configured_backend=cfg.backend, timeout_clamped=clamped))

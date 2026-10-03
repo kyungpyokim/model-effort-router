@@ -48,20 +48,40 @@ def _user_settings_path():
     return os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude"), "settings.json")
 
 
-def plugins_off(cwd=None, read=None):
-    """{plugin id: False} for every plugin enabled (true) in the user settings and in `cwd`/.claude/settings(.local).json.
-    A missing, unreadable or invalid file contributes nothing (never an error). `read(path) -> text` is injectable."""
+def _settings(cwd=None, read=None):
+    """Parsed settings dicts in precedence order (user, then cwd/.claude/settings.json, then settings.local.json).
+    A missing, unreadable or invalid file is skipped (never an error). `read(path) -> text` is injectable."""
     read = read or (lambda p: open(p, encoding="utf-8").read())
     paths = [_user_settings_path()] + ([os.path.join(cwd, ".claude", n) for n in ("settings.json", "settings.local.json")] if cwd else [])
-    off = {}
+    out = []
     for path in paths:
         try:
-            enabled = json.loads(read(path)).get("enabledPlugins")
-        except (OSError, ValueError, TypeError, AttributeError):
+            data = json.loads(read(path))
+        except (OSError, ValueError, TypeError):
             continue
+        if isinstance(data, dict):
+            out.append(data)
+    return out
+
+
+def plugins_off(cwd=None, read=None):
+    """{plugin id: False} for every plugin enabled (true) in the user settings and in `cwd`/.claude/settings(.local).json."""
+    off = {}
+    for data in _settings(cwd, read):
+        enabled = data.get("enabledPlugins")
         if isinstance(enabled, dict):
             off.update({k: False for k, v in enabled.items() if v is True and isinstance(k, str)})
     return off
+
+
+def default_session(cwd=None, read=None):
+    """(model, effortLevel) Claude Code starts a session with, from the same settings files (later files win);
+    None where unset. A /model or /effort switch inside the running session is not visible here."""
+    model = effort = None
+    for data in _settings(cwd, read):
+        model = data["model"] if isinstance(data.get("model"), str) else model
+        effort = data["effortLevel"] if isinstance(data.get("effortLevel"), str) else effort
+    return model, effort
 
 
 def isolation(config, read_only):

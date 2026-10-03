@@ -123,7 +123,7 @@ class HookTest(unittest.TestCase):
     def submit(self, prompt=PROMPT, payload=None, **extra):
         data = payload if payload is not None else {"session_id": "s1", "cwd": str(self.repo), "prompt": prompt,
                                                     "hook_event_name": "UserPromptSubmit"}
-        base = {k: v for k, v in os.environ.items() if not k.startswith(("MER_", "XDG_"))}
+        base = {k: v for k, v in os.environ.items() if not k.startswith(("MER_", "XDG_", "CLAUDE_CONFIG_DIR"))}
         base.update(self.env(**extra))
         return subprocess.run([sys.executable, str(CLAUDE / "hooks" / "user_prompt_submit.py")],
                               input=data if isinstance(data, str) else json.dumps(data), capture_output=True, text=True,
@@ -147,6 +147,27 @@ class HookTest(unittest.TestCase):
         self.assertIn(f"python3 {CLAUDE / 'bin' / 'mer'} run --review-profile frontier:high 'review only:", c)
         for banned in ("spawn_agent", "gpt-", "reasoning effort"):
             self.assertNotIn(banned, c)
+
+    def user_default(self, model, effort):
+        (self.root / ".claude").mkdir(exist_ok=True)
+        (self.root / ".claude" / "settings.json").write_text(json.dumps({"model": model, "effortLevel": effort}))
+
+    def test_silent_when_the_default_session_already_is_the_recommended_one(self):
+        self.fake = {"level": "L2", "confidence": 0.9, "risk_flags": []}
+        self.user_default("sonnet", "medium")
+        prompt = "Rename the helper in utils.py and update its callers"  # no rule-based risk flag
+        p = self.submit(prompt)
+        self.assertEqual((p.returncode, p.stdout), (0, ""), p.stderr)
+        self.assertEqual([e["decision"]["level"] for e in self.log() if e["event"] == "route"], ["L2"])  # still logged
+        self.user_default("sonnet", "high")  # a different effort is still worth advising
+        self.assertIn("Recommended session: claude-sonnet-5-5, effort medium", self.submit(prompt).stdout)
+
+    def test_matching_default_drops_only_the_switch_line(self):
+        self.user_default("claude-opus-5-5", "high")
+        c = json.loads(self.submit().stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("Recommended session", c)
+        self.assertIn("Plan first", c)
+        self.assertIn("independent review", c)
 
     def test_log_event_without_prompt_text(self):
         self.submit()
