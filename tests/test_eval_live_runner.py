@@ -427,6 +427,16 @@ class RunCaseTest(Env):
         self.assertEqual(subprocess.run(["git", "status", "--porcelain"], cwd=outer, capture_output=True,
                                         text=True).stdout, "?? wd/\n")  # outer index untouched
 
+    def test_save_diff_never_overwrites_an_earlier_diff(self):
+        repo = self.root / "wd2"
+        repo.mkdir()
+        lr.init_git_repo(str(repo))
+        (repo / "a.txt").write_text("first")
+        first = lr.save_diff(str(repo), str(self.root / "d" / "c.router.r1.diff"))
+        second = lr.save_diff(str(repo), str(self.root / "d" / "c.router.r1.diff"))
+        self.assertEqual((first.endswith("r1.diff"), second.endswith("r1.2.diff")), (True, True))
+        self.assertIn("first", Path(first).read_text())
+
     def test_record_is_valid_for_baseline_module(self):
         from evaluation import baseline
         baseline.validate_record(self.run_case("router"))

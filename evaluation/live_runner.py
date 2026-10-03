@@ -122,6 +122,10 @@ def save_diff(repo, path):
     _git(repo, "add", "-A")
     header = "".join(f"# untracked: {name}\n" for name in untracked)
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    stem, n = path[: -len(".diff")] if path.endswith(".diff") else path, 1
+    while os.path.exists(path):  # a later batch into the same --out must not overwrite an earlier run's diff
+        n += 1
+        path = f"{stem}.{n}.diff"
     with open(path, "w", encoding="utf-8") as f:
         f.write(header + _git(repo, "diff", "--cached"))
     return path
@@ -398,7 +402,7 @@ def run_case(case, mode, fixture, *, workdir=None, runner=default_runner, sessio
         rec.update(classifier_backend=backend, classifier_fallback=fell_back, classifier_fallback_causes=causes,
                    router_active=bool(routes) and any(e.get("event") == "session_start" for e in events),
                    level=mer.get("level"), session_profile=mer.get("profile"), final_profile=mer.get("final_profile"),
-                   escalations=escalations, mer_status=mer.get("status"), subagent_policy=subagent_policy,
+                   escalations=escalations, mer_status=mer.get("status"), mer_error=mer.get("error"), subagent_policy=subagent_policy,
                    implement_subagents=(mer.get("session_plan") or {}).get("implement_subagents"),
                    model=profile.get("model"), effort=profile.get("applied_effort"))
     else:
