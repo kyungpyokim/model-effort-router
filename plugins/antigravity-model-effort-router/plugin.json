@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "model-effort-router",
+  "description": "Routes software work to a model and effort profile, with a mer chat entry point."
+}

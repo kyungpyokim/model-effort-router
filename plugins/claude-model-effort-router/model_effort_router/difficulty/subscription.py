@@ -147,6 +147,8 @@ class SubscriptionBackend:
 
     def classify(self, task: DifficultyInput, timeout_s: float) -> DifficultyDecision:
         self.last_usage = None  # never report a previous call's usage
+        if self._host not in (None, "codex", "claude"):
+            raise ValueError(f"subscription classifier is not supported for {self._host}: tool isolation is unverified")
         if self._host == "claude":
             return self._classify_claude(task, timeout_s)
         cmd = [

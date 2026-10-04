@@ -8,7 +8,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "model_effort_router"
 PLUGINS = ROOT / "plugins"
 BUNDLES = [PLUGINS / "codex-model-effort-router" / "model_effort_router",
-           PLUGINS / "claude-model-effort-router" / "model_effort_router"]  # both get an identical core copy
+           PLUGINS / "claude-model-effort-router" / "model_effort_router",
+           PLUGINS / "antigravity-model-effort-router" / "model_effort_router"]  # every host gets an identical core copy
 
 
 def _files(base):

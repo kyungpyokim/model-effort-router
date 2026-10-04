@@ -19,7 +19,7 @@ class SyncTest(unittest.TestCase):
     def test_both_bundles_in_sync_and_listed(self):
         self.assertEqual(sync_plugin.check(), [], "run: python3 scripts/sync_plugin.py")
         self.assertEqual([b.parent.name for b in sync_plugin.BUNDLES],
-                         ["codex-model-effort-router", "claude-model-effort-router"])
+                         ["codex-model-effort-router", "claude-model-effort-router", "antigravity-model-effort-router"])
 
     def test_check_reports_drift_in_each_bundle(self):
         for bundle in sync_plugin.BUNDLES:
