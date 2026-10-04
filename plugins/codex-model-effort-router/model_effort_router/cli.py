@@ -123,6 +123,10 @@ def _chat_argv(target, sp, text, cwd, host):
         profile = sp.start
         text = f"{text}\n\n{PLAN_FIRST.strip()}" if sp.plan_first else text
     r = host.resolve(profile)
+    if host.name == "antigravity":
+        if readonly:
+            raise ValueError("Antigravity plan/review chat is not supported: read-only enforcement is unverified")
+        return ["agy", "--model", r.model, "--effort", r.applied_effort, "--prompt-interactive", text], profile
     if host.name == "claude":  # no cwd flag: the caller chdirs; `plan` permission mode is read-only
         effort = ["--effort", r.applied_effort] if r.applied_effort else []
         return ["claude", "--model", r.model, *effort, *(["--permission-mode", "plan"] if readonly else []), "--", text], profile
@@ -134,7 +138,9 @@ def _chat_note(plan, sp, profile, host):
     d = plan.decision
     note = (f"mer chat: {d.level if d else 'manual'}, risk flags {', '.join(plan.risk_flags) or 'none'} -> "
             f"{_fmt(profile, host)}. No gate/escalation/review here; switch with {host.switch_hint} if the task grows.")
-    if sp.review and plan.target == "route":
+    if sp.review and plan.target == "route" and host.name == "antigravity":
+        note += "\nThis work warrants an independent review afterwards; use a host with verified read-only enforcement."
+    elif sp.review and plan.target == "route":
         note += (f"\nThis work warrants an independent review afterwards: mer run --review-profile "
                  f"{sp.review.tier}:{sp.review.effort} 'review only: check the current diff for <the task>'")
     return note
@@ -150,7 +156,7 @@ def _parser():
     common.add_argument("--level", choices=LEVELS, help="--dry-run only: use this level instead of classifying")
     common.add_argument("--classify", action="store_true",
                         help="--dry-run only: allow one classifier call (uses model quota)")
-    common.add_argument("--host", choices=sorted(hosts.HOSTS), help="codex or claude (default: $MER_HOST, else codex)")
+    common.add_argument("--host", choices=sorted(hosts.HOSTS), help="host CLI (default: $MER_HOST, else codex)")
     sub.add_parser("chat", parents=[common], help="route, then start the interactive host CLI at that model/effort")
     run = sub.add_parser("run", parents=[common], help="route and run a request")
     run.add_argument("--review-profile", type=parse_profile, metavar="TIER:EFFORT",
@@ -187,6 +193,9 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
         return 2
     cx = host.exec
     chat = args.command == "chat"
+    if host.name == "antigravity" and not chat:
+        print("mer: Antigravity run is not supported: read-only and resume contracts are unverified; use mer chat", file=sys.stderr)
+        return 2
     if not chat and args.max_escalations < 0:
         print("mer: --max-escalations must be >= 0", file=sys.stderr)
         return 2
@@ -203,6 +212,9 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
                              registry=registry)
         if args.level:
             registry = {name: (lambda **_options: _FixedLevel(args.level)) for name in registry}  # ignores factory options
+        elif host.name == "antigravity" and cfg.mode == "auto" and "subscription" in (cfg.backend, cfg.fallback):
+            raise ValueError("Antigravity subscription classification is unsupported: tool isolation is unverified; "
+                             "configure manual mode, nimble, or jev")
         elif args.dry_run and not args.classify and cfg.mode == "auto" and _calls_model(cfg, registry):
             print(f"mer: --dry-run would call the {'/'.join(_calls_model(cfg, registry))} classifier; "
                   "pass --level L1..L5, or --classify to allow one call", file=sys.stderr)
@@ -219,7 +231,9 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
     if plan.target == NO_ROUTE:
         if chat:  # the user still asked for a conversation: start one with their own defaults
             plain = parse_override(args.request)[1].strip()
-            return _exec(["claude", "--", plain] if host.name == "claude" else ["codex", "--cd", cwd, plain],
+            plain_argv = (["agy", "--prompt-interactive", plain] if host.name == "antigravity" else
+                          ["claude", "--", plain] if host.name == "claude" else ["codex", "--cd", cwd, plain])
+            return _exec(plain_argv,
                          cx.session_env(env), exec_fn, args.dry_run, out,
                          f"mer chat: routing is {plan.mode}; starting {host.name} with your defaults", cwd, host)
         print(f"mer: routing is {plan.mode}; nothing was run", file=out)
@@ -238,7 +252,11 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
     # the claude host's context mode (session.claude_context); codex keeps its own config and ignores it
     host_config = ClaudeConfig(context=cfg.claude_context, plugins_off=partial(plugins_off, cwd)) if host.name == "claude" else host.config
     if chat:
-        argv, profile = _chat_argv(plan.target, sp, text, cwd, host)
+        try:
+            argv, profile = _chat_argv(plan.target, sp, text, cwd, host)
+        except ValueError as exc:
+            print(f"mer: {exc}", file=sys.stderr)
+            return 2
         if not args.dry_run:
             try:
                 route_log.append(route_log.state_dir(env), f"mer-chat-{int(time.time())}-{uuid.uuid4().hex[:6]}",
@@ -278,11 +296,11 @@ def _exec(argv, env, exec_fn, dry_run, out, note, cwd, host):
     print(note, file=sys.stderr)
     if dry_run:
         print("command: " + shlex.join(argv), file=out)
-        if host.name == "claude":
+        if host.name in ("claude", "antigravity"):
             print(f"cwd: {cwd}", file=out)
         return 0
     try:
-        if host.name == "claude":
+        if host.name in ("claude", "antigravity"):
             os.chdir(cwd)
         exec_fn(argv[0], argv, env)
     except OSError as exc:

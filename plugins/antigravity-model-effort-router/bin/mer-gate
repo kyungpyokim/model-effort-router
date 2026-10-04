@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""The generic Test Gate does not invoke a model and is host independent."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from model_effort_router.gate.run import main
+
+sys.exit(main())
