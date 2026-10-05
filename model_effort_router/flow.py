@@ -3,6 +3,7 @@
 All I/O is injected (runner, gate_fn, diff_fn, emit) so the flow is testable without codex or git.
 The host (codex or claude, host/hosts.py) supplies the argv builders, stream parser and effort mapping.
 """
+import os
 import time
 
 from . import review as rv
@@ -41,6 +42,15 @@ def _changed_paths(diff):
     return [*(diff.get("files") or []), *(diff.get("untracked") or [])] if diff.get("is_repo") else []
 
 
+def _stamp(cwd, path):
+    """Size and mtime, to tell a file the run edited from one that merely was already changed (None: gone)."""
+    try:
+        st = os.stat(os.path.join(cwd, path))
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size
+
+
 def _change_summary(paths, flags):
     """Door and blast radius for the human reviewer (None: no repo or no change)."""
     if not paths:
@@ -63,6 +73,9 @@ class _Flow:
         self.thread, self.esc, self.profile, self.message = None, 0, sp.start, None
         self.gate = None
         self.review = {"verdict": None, "findings": None, "skipped": "not required"}
+        # path -> stamp of what was already changed before implement(); review_only keeps it empty. The reviewer still
+        # sees the full diff, the summary only this run's change.
+        self.baseline = {}
         self.review_required = bool(sp.review)
 
     def call(self, role, argv, profile, thread=None, subagents=None):
@@ -125,8 +138,8 @@ class _Flow:
                    "usage": rec["usage"]})
         return True
 
-    def _clean(self):
-        d = self.diff_fn(self.cwd)
+    def _clean(self, d=None):
+        d = d or self.diff_fn(self.cwd)
         return bool(d.get("is_repo")) and not d.get("diff") and not d.get("untracked")
 
     def nudge_if_unchanged(self, was_clean):
@@ -146,7 +159,9 @@ class _Flow:
     def implement(self):
         sp = self.sp
         n = sp.implement_subagents
-        was_clean = self._clean()
+        before = self.diff_fn(self.cwd)
+        was_clean = self._clean(before)
+        self.baseline = {p: _stamp(self.cwd, p) for p in _changed_paths(before)}
         prompt = f"{self.request}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{SELF_CHECK if n == 0 else ''}{WRAP_UP}"
         stream, rec = self.call("implement", self.cx.session_argv(sp.start, prompt, "workspace-write", self.config, n), sp.start,
                                 subagents=n)
@@ -215,7 +230,8 @@ def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="r
     except Exception as exc:  # timeout, codex crash: report, never traceback
         result = {"status": "error", "exit_code": 1, "error": f"{type(exc).__name__}: {exc}"[:300],
                   "message": flow.message}
-    paths = [] if target == "plan_only" else _changed_paths(flow.diff_fn(cwd))
+    paths = [] if target == "plan_only" else [p for p in _changed_paths(flow.diff_fn(cwd))
+                                              if p not in flow.baseline or _stamp(cwd, p) != flow.baseline[p]]
     # ponytail: path-based flags only (diff text would flag "lock"/"charge" everywhere); content scan if paths miss real cases
     flags = merge_risk_flags(risk_flags, detect_risk_flags("", paths))
     review = {**flow.review, **({"text": flow.review["text"][-rv.FINDINGS_MAX:]} if "text" in flow.review else {})}

@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 import unittest
 
 from model_effort_router import review as rv
@@ -393,3 +395,50 @@ class ChangeSummaryTest(unittest.TestCase):
         self.assertIsNone(Harness(diff={"is_repo": False}).run("L2")["change"])
         r = Harness().run("L2", target="plan_only", risk_flags=("auth",))
         self.assertEqual((r["change"], r["risk_flags"]), (None, ["auth"]))
+
+
+class BaselineTest(unittest.TestCase):
+    """The blast radius counts what this run changed, not files that were already dirty before it."""
+
+    def test_files_dirty_before_the_run_are_not_counted(self):
+        before = {"is_repo": True, "diff": "d", "files": ["old.py"], "untracked": [".omc/a", ".omc/b"]}
+        after = {**before, "files": ["old.py", "new.py"], "untracked": [".omc/a", ".omc/b", "db/migrations/0001.sql"]}
+        h = Harness()
+        h.diff_fn = lambda cwd: after if h.calls else before
+        r = h.run("L2")
+        self.assertEqual((r["change"], r["risk_flags"]), ({"files": 2, "top_dirs": 2, "door": "one-way"}, ["data_migration"]))
+
+    def test_a_dirty_file_the_run_edits_again_is_counted(self):
+        with tempfile.TemporaryDirectory() as cwd:
+            path = os.path.join(cwd, "migrations_0002_drop.sql")
+            with open(path, "w") as f:
+                f.write("draft")
+            dirty = {"is_repo": True, "diff": "", "files": [], "untracked": ["migrations_0002_drop.sql"]}
+            h = Harness(diff=dirty, changes_after=0)
+            runner = h.runner
+
+            def editing_runner(argv, **kw):
+                with open(path, "w") as f:
+                    f.write("finished and longer")
+                return runner(argv, **kw)
+
+            h.runner = editing_runner
+            r = run_flow(REQ, splan("L2"), cwd=cwd, runner=h.runner, env={}, gate_fn=h.gate, diff_fn=h.diff_fn,
+                         emit=h.events.append)
+        self.assertEqual((r["change"], r["risk_flags"]), ({"files": 1, "top_dirs": 1, "door": "one-way"}, ["data_migration"]))
+
+    def test_a_failed_run_still_ignores_files_dirty_before_it(self):
+        dirty = {"is_repo": True, "diff": "d", "files": ["old.py"], "untracked": []}
+        h = Harness(diff=dirty, changes_after=0)
+        h.fail_on = 1
+        r = h.run("L2")
+        self.assertEqual((r["status"], r["change"]), ("error", None))
+
+    def test_route_flags_keep_the_door_when_every_path_is_filtered(self):
+        dirty = {"is_repo": True, "diff": "d", "files": ["old.py"], "untracked": []}
+        r = Harness(diff=dirty, changes_after=0).run("L2", risk_flags=("data_migration",))
+        self.assertEqual((r["change"], r["risk_flags"]), (None, ["data_migration"]))
+
+    def test_review_only_counts_the_whole_diff_under_review(self):
+        r = Harness(diff=REPO).run("L2", target="review_only")
+        self.assertEqual(r["change"]["files"], 2)

@@ -193,6 +193,28 @@ class DefaultRunnerTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.run_py("import sys; sys.exit(3)")
 
+    def test_failure_message_prefers_stderr(self):
+        with self.assertRaisesRegex(RuntimeError, r"exited 3: boom"):
+            self.run_py("import sys; sys.stderr.write('boom'); sys.exit(3)")
+
+    def test_failure_message_uses_the_json_result_when_stderr_is_empty(self):
+        # claude -p --output-format json reports errors on stdout, after a long usage blob
+        code = ("import json, sys; print(json.dumps({'is_error': True, 'usage': {'pad': 'x' * 500}, "
+                "'result': 'Failed to authenticate: OAuth session expired'})); sys.exit(1)")
+        with self.assertRaisesRegex(RuntimeError, r"exited 1: Failed to authenticate"):
+            self.run_py(code)
+
+    def test_failure_message_uses_the_json_subtype_when_there_is_no_result(self):
+        code = "import json, sys; print(json.dumps({'is_error': True, 'subtype': 'error_max_turns'})); sys.exit(1)"
+        with self.assertRaisesRegex(RuntimeError, r"exited 1: error_max_turns"):
+            self.run_py(code)
+
+    def test_non_json_stdout_is_never_echoed_into_the_error(self):
+        # codex streams JSONL events that can hold file contents; only parsed JSON results are surfaced
+        with self.assertRaises(RuntimeError) as ctx:
+            self.run_py("import sys; print('SECRET=hunter2'); sys.exit(2)")
+        self.assertEqual(str(ctx.exception), "classifier exited 2: (no stderr)")
+
     def test_cwd_is_honored(self):
         with tempfile.TemporaryDirectory() as d:
             out = self.run_py("import os; print(os.getcwd())", cwd=d).strip()
