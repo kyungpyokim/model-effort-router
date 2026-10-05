@@ -33,15 +33,16 @@ class BackendOutputError(ValueError):
 
 
 def _failure_detail(stdout, stderr):
-    """Why a child failed: stderr, else the `result` of a JSON stdout (claude -p reports errors there), else stdout."""
+    """Why a child failed: stderr, else the result/subtype of a JSON stdout (claude -p reports errors there).
+    Other stdout is not echoed: codex streams events that can hold file contents."""
     if stderr.strip():
         return stderr[-200:]
     try:
         data = json.loads(stdout)
     except ValueError:
         data = None
-    text = data.get("result") if isinstance(data, dict) else None
-    return (text if isinstance(text, str) and text else stdout)[-200:]
+    text = (data.get("result") or data.get("subtype")) if isinstance(data, dict) else None
+    return text[:200] if isinstance(text, str) and text else "(no stderr)"
 
 
 def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace_s=1):  # hook budget: short grace

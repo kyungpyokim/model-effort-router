@@ -204,9 +204,16 @@ class DefaultRunnerTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, r"exited 1: Failed to authenticate"):
             self.run_py(code)
 
-    def test_failure_message_falls_back_to_plain_stdout(self):
-        with self.assertRaisesRegex(RuntimeError, r"exited 2: plain failure"):
-            self.run_py("import sys; print('plain failure'); sys.exit(2)")
+    def test_failure_message_uses_the_json_subtype_when_there_is_no_result(self):
+        code = "import json, sys; print(json.dumps({'is_error': True, 'subtype': 'error_max_turns'})); sys.exit(1)"
+        with self.assertRaisesRegex(RuntimeError, r"exited 1: error_max_turns"):
+            self.run_py(code)
+
+    def test_non_json_stdout_is_never_echoed_into_the_error(self):
+        # codex streams JSONL events that can hold file contents; only parsed JSON results are surfaced
+        with self.assertRaises(RuntimeError) as ctx:
+            self.run_py("import sys; print('SECRET=hunter2'); sys.exit(2)")
+        self.assertEqual(str(ctx.exception), "classifier exited 2: (no stderr)")
 
     def test_cwd_is_honored(self):
         with tempfile.TemporaryDirectory() as d:
