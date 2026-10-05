@@ -32,6 +32,18 @@ class BackendOutputError(ValueError):
     """Backend output could not be turned into a DifficultyDecision."""
 
 
+def _failure_detail(stdout, stderr):
+    """Why a child failed: stderr, else the `result` of a JSON stdout (claude -p reports errors there), else stdout."""
+    if stderr.strip():
+        return stderr[-200:]
+    try:
+        data = json.loads(stdout)
+    except ValueError:
+        data = None
+    text = data.get("result") if isinstance(data, dict) else None
+    return (text if isinstance(text, str) and text else stdout)[-200:]
+
+
 def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace_s=1):  # hook budget: short grace
     """Runs `cmd` in its own process group. On timeout or any interruption the group gets SIGTERM, then SIGKILL
     after `grace_s`, so a child that cleans up its own children on SIGTERM (mer) gets the chance to."""
@@ -47,7 +59,7 @@ def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace
         if proc.poll() is None:
             _stop_group(proc, grace_s)
     if proc.returncode != 0:
-        raise RuntimeError(f"{label} exited {proc.returncode}: {stderr[-200:]}")
+        raise RuntimeError(f"{label} exited {proc.returncode}: {_failure_detail(stdout, stderr)}")
     return stdout
 
 

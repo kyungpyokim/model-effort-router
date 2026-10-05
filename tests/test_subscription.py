@@ -193,6 +193,21 @@ class DefaultRunnerTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.run_py("import sys; sys.exit(3)")
 
+    def test_failure_message_prefers_stderr(self):
+        with self.assertRaisesRegex(RuntimeError, r"exited 3: boom"):
+            self.run_py("import sys; sys.stderr.write('boom'); sys.exit(3)")
+
+    def test_failure_message_uses_the_json_result_when_stderr_is_empty(self):
+        # claude -p --output-format json reports errors on stdout, after a long usage blob
+        code = ("import json, sys; print(json.dumps({'is_error': True, 'usage': {'pad': 'x' * 500}, "
+                "'result': 'Failed to authenticate: OAuth session expired'})); sys.exit(1)")
+        with self.assertRaisesRegex(RuntimeError, r"exited 1: Failed to authenticate"):
+            self.run_py(code)
+
+    def test_failure_message_falls_back_to_plain_stdout(self):
+        with self.assertRaisesRegex(RuntimeError, r"exited 2: plain failure"):
+            self.run_py("import sys; print('plain failure'); sys.exit(2)")
+
     def test_cwd_is_honored(self):
         with tempfile.TemporaryDirectory() as d:
             out = self.run_py("import os; print(os.getcwd())", cwd=d).strip()
