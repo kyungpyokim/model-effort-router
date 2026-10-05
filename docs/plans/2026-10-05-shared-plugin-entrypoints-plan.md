@@ -1,6 +1,6 @@
 # Shared Plugin Entrypoints Implementation Plan
 
-> **For agentic workers:** 구현 시 `superpowers:executing-plans` 또는 `superpowers:subagent-driven-development`를 적용하고 아래 체크박스를 순서대로 완료한다. 이 문서는 계획이며, 현재 제품 코드 변경은 없다.
+> **For agentic workers:** 구현 시 `superpowers:executing-plans` 또는 `superpowers:subagent-driven-development`를 적용하고 아래 체크박스를 순서대로 완료한다. 2026-10-06 구현·검증을 완료했으며 결과는 문서 끝에 기록했다.
 
 **Goal:** 세 플러그인의 공통 실행 준비·호출 로직을 원본 `model_effort_router/`로 모으고 플러그인은 최소 로더로 유지한다.
 
@@ -43,7 +43,7 @@ Antigravity manifest에는 version 필드가 없으므로 임의로 추가하지
 
 **Interfaces:** `cli(host: str) -> int`, `gate(host: str | None = None) -> int`, `hook(host: str, plugin_root: Path) -> int`.
 
-- [ ] `tests/test_entrypoints.py`에 테스트를 먼저 작성한다. CLI/gate 종료 코드 전달, 대상 호출 시 호스트 값, gate의 생략된 호스트, hook event와 경로 전달 및 실패 처리를 검증한다.
+- [x] `tests/test_entrypoints.py`에 테스트를 먼저 작성한다. CLI/gate 종료 코드 전달, 대상 호출 시 호스트 값, gate의 생략된 호스트, hook event와 경로 전달 및 실패 처리를 검증한다.
 
 ```python
 import os
@@ -79,9 +79,9 @@ class EntrypointsTest(unittest.TestCase):
                 self.assertEqual(entrypoints.hook("claude", Path("/tmp/plugin")), 0)
 ```
 
-- [ ] 위 예제에 gate의 명시적 호스트 지정, CLI/gate 예외 전파, hook의 일반 예외 검증을 추가한다. 테스트는 `patch.dict`로 프로세스 환경을 복원한다.
-- [ ] `python3 -m unittest tests.test_entrypoints`를 실행해 새 모듈이 없어서 실패하는지 확인한다.
-- [ ] 다음 최소 구현을 추가한다. 대상 모듈은 함수 안에서 import한다.
+- [x] 위 예제에 gate의 명시적 호스트 지정, CLI/gate 예외 전파, hook의 일반 예외 검증을 추가한다. 테스트는 `patch.dict`로 프로세스 환경을 복원한다.
+- [x] `python3 -m unittest tests.test_entrypoints`를 실행해 새 모듈이 없어서 실패하는지 확인한다.
+- [x] 다음 최소 구현을 추가한다. 대상 모듈은 함수 안에서 import한다.
 
 ```python
 """Shared process entrypoints for self-contained plugin bundles."""
@@ -109,17 +109,17 @@ def hook(host, plugin_root):
 
 프로세스 환경 지정은 기존 로더의 동작을 그대로 옮기는 경계 작업이다. `SubscriptionBackend`가 자식 환경을 `os.environ`에서 만들기 때문에 CLI에 환경 사본만 전달하면 기존과 달라진다. 일반 비즈니스 데이터의 불변성 원칙은 유지한다. hook의 `BaseException` 보호는 기존 실패 동작을 보존하기 위한 것이며 CLI/gate에는 적용하지 않는다.
 
-- [ ] 같은 테스트가 통과하는지 확인한다.
+- [x] 같은 테스트가 통과하는지 확인한다.
 
 ## 2. 플러그인 로더 연결 변경 및 번들 동기화
 
 **Consumes:** 위 세 공통 함수. **Produces:** 기존 경로에서 그대로 실행되는 플러그인 진입점.
 
-- [ ] `tests/test_claude_plugin.py`의 `os.environ` 대입 문자열 검사를 제거한다. 실행 권한 검사와 기존 subprocess 호스트 선택 테스트는 유지한다. 이는 삭제되는 구현 표현을 검사하던 테스트이며 사용자 동작 검증은 계속 남는다.
-- [ ] Codex와 Claude의 missing-core 테스트를 각각 실행한다. 임시 디렉터리에 hook 파일만 복사하고 `python3 -I <copied-hook>`를 실행한다. 격리 옵션과 임시 cwd로 원본 코어가 우연히 import되는 것을 막는다. 결과는 종료 코드 0, stdout/stderr 모두 빈 문자열이어야 한다.
-- [ ] 설치 번들 테스트는 원본 저장소에 의존하지 않도록 각 플러그인 전체를 임시 디렉터리로 복사한다. `sys.executable -I`로 CLI dry-run과 gate를 실행한다. 두 CLI 호스트의 기본 선택·명시 override, Antigravity chat dry-run 및 지원하지 않는 run의 종료 코드 2를 확인한다.
-- [ ] 기존 로더에서 새 함수 호출을 기대하는 연결 테스트가 실패하는 것을 확인한다.
-- [ ] 세 CLI 로더를 다음 형식으로 바꾼다. `HOST` 대신 각각 `codex`, `claude`, `antigravity`를 문자열로 명시한다.
+- [x] `tests/test_claude_plugin.py`의 `os.environ` 대입 문자열 검사를 제거한다. 실행 권한 검사와 기존 subprocess 호스트 선택 테스트는 유지한다. 이는 삭제되는 구현 표현을 검사하던 테스트이며 사용자 동작 검증은 계속 남는다.
+- [x] Codex와 Claude의 missing-core 테스트를 각각 실행한다. 임시 디렉터리에 hook 파일만 복사하고 `python3 -I <copied-hook>`를 실행한다. 격리 옵션과 임시 cwd로 원본 코어가 우연히 import되는 것을 막는다. 결과는 종료 코드 0, stdout/stderr 모두 빈 문자열이어야 한다.
+- [x] 설치 번들 테스트는 원본 저장소에 의존하지 않도록 각 플러그인 전체를 임시 디렉터리로 복사한다. `sys.executable -I`로 CLI dry-run과 gate를 실행한다. 두 CLI 호스트의 기본 선택·명시 override, Antigravity chat dry-run 및 지원하지 않는 run의 종료 코드 2를 확인한다.
+- [x] 기존 로더에서 새 함수 호출을 기대하는 연결 테스트가 실패하는 것을 확인한다.
+- [x] 세 CLI 로더를 다음 형식으로 바꾼다. `HOST` 대신 각각 `codex`, `claude`, `antigravity`를 문자열로 명시한다.
 
 ```python
 #!/usr/bin/env python3
@@ -130,8 +130,8 @@ from model_effort_router.entrypoints import cli
 sys.exit(cli("codex"))
 ```
 
-- [ ] gate 로더도 `entrypoints.gate`를 import하고 Codex는 `gate("codex")`, Claude는 `gate("claude")`, Antigravity는 `gate()`를 호출한다.
-- [ ] 두 hook 로더를 다음 형식으로 바꾼다. Claude에는 `claude`를 전달한다. 코어가 import되지 않을 때의 보호는 로더에 남겨야 한다.
+- [x] gate 로더도 `entrypoints.gate`를 import하고 Codex는 `gate("codex")`, Claude는 `gate("claude")`, Antigravity는 `gate()`를 호출한다.
+- [x] 두 hook 로더를 다음 형식으로 바꾼다. Claude에는 `claude`를 전달한다. 코어가 import되지 않을 때의 보호는 로더에 남겨야 한다.
 
 ```python
 #!/usr/bin/env python3
@@ -147,8 +147,8 @@ except BaseException:
 sys.exit(code)
 ```
 
-- [ ] `python3 scripts/sync_plugin.py`를 실행한 다음 `python3 scripts/sync_plugin.py --check`가 `in sync`인지 확인한다.
-- [ ] 아래 관련 테스트를 실행한다. API 변경에 맞추기 위해 사용자 동작의 기대값을 바꾸지 않는다.
+- [x] `python3 scripts/sync_plugin.py`를 실행한 다음 `python3 scripts/sync_plugin.py --check`가 `in sync`인지 확인한다.
+- [x] 아래 관련 테스트를 실행한다. API 변경에 맞추기 위해 사용자 동작의 기대값을 바꾸지 않는다.
 
 ```bash
 python3 -m unittest tests.test_entrypoints tests.test_plugin_bundle tests.test_claude_plugin tests.test_antigravity_plugin tests.test_gate_cli tests.test_user_prompt_submit
@@ -156,23 +156,45 @@ python3 -m unittest tests.test_entrypoints tests.test_plugin_bundle tests.test_c
 
 ## 3. 문서·버전·최종 검증
 
-- [ ] `README.md`의 저장소 구조에 `entrypoints.py` 역할을 설명하고, 기존의 “두 플러그인” 표현을 세 번들에 맞춘다. 별도 문서를 추가하지 않는다.
-- [ ] Codex `.codex-plugin/plugin.json`과 Claude `.claude-plugin/plugin.json`의 version을 `0.4.1`로 올린다. marketplace와 hook command는 변경하지 않는다.
-- [ ] `python3 -m unittest discover -s tests`와 `python3 scripts/sync_plugin.py --check`를 실행한다.
-- [ ] 변경 모듈의 coverage 80% 이상을 측정한다. 현재 `python3`에는 `coverage`가 없으므로 실행 전에 기존 개발 환경의 도구 가용성을 확인한다. 도구가 없다면 측정 불가를 명시하고 80%를 충족했다고 주장하지 않는다. 테스트 도구가 준비되면 아래 명령을 사용하며 제품 의존성에는 추가하지 않는다.
+- [x] `README.md`의 저장소 구조에 `entrypoints.py` 역할을 설명하고, 기존의 “두 플러그인” 표현을 세 번들에 맞춘다. 별도 문서를 추가하지 않는다.
+- [x] Codex `.codex-plugin/plugin.json`과 Claude `.claude-plugin/plugin.json`의 version을 `0.4.1`로 올린다. marketplace와 hook command는 변경하지 않는다.
+- [x] `python3 -m unittest discover -s tests`와 `python3 scripts/sync_plugin.py --check`를 실행한다.
+- [x] 변경 모듈의 coverage 80% 이상을 측정한다. 현재 `python3`에는 `coverage`가 없으므로 실행 전에 기존 개발 환경의 도구 가용성을 확인한다. 도구가 없다면 측정 불가를 명시하고 80%를 충족했다고 주장하지 않는다. 테스트 도구가 준비되면 아래 명령을 사용하며 제품 의존성에는 추가하지 않는다.
 
 ```bash
 python3 -m coverage run --source=model_effort_router.entrypoints -m unittest tests.test_entrypoints
 python3 -m coverage report --fail-under=80
 ```
 
-- [ ] code-reviewer와 python-reviewer에게 변경 diff의 동작 보존, import 실패 처리, 호스트 우선순위와 테스트 누락을 리뷰받고 CRITICAL/HIGH 지적을 해결한다.
-- [ ] `git diff --check`와 `git diff`로 원본·세 번들 일치, 실행 권한, 범위 밖 변경 여부를 확인한다. 실제 모델 호출, 설치, push, PR 생성은 이 계획의 검증에 필요하지 않다.
+- [x] code-reviewer와 python-reviewer에게 변경 diff의 동작 보존, import 실패 처리, 호스트 우선순위와 테스트 누락을 리뷰받고 CRITICAL/HIGH 지적을 해결한다.
+- [x] `git diff --check`와 `git diff`로 원본·세 번들 일치, 실행 권한, 범위 밖 변경 여부를 확인한다. 실제 모델 호출, 설치, push, PR 생성은 이 계획의 검증에 필요하지 않다.
 
 ## 완료 조건과 현재 확인 결과
 
 - 공통 실행 동작은 원본 `entrypoints.py`가 소유하고 로더에는 경로 설정·호스트 이름·hook import 실패 보호만 남는다.
 - 세 번들만 별도로 복사해도 정상 실행되며 원본 경로·전역 패키지 설치가 필요하지 않다.
 - 호스트 선택, gate 결과, hook 출력·오류·재귀 방지와 Antigravity 지원 제한이 이전과 같다.
-- 브랜치 생성 전 작업 트리는 깨끗했고 현재 HEAD는 기준 main과 같다.
+- 브랜치 생성 당시 작업 트리는 깨끗했고 HEAD는 기준 main과 같았다.
 - 계획 작성 기준으로 번들은 `in sync`; 기존 관련 테스트 69개가 통과했다. 신규 진입점·전체 테스트·coverage는 구현 후 검증한다.
+
+## 구현·TDD 검증 기록 (2026-10-06)
+
+| 보장 | 검증 | 결과 |
+|---|---|---|
+| 공통 진입점의 호스트·종료 코드 전달, 예외 동작, gate 환경 보존 | `python3 -m unittest tests.test_entrypoints` | RED: 모듈 부재 ImportError → GREEN: 8개 통과 |
+| 8개 로더가 공통 진입점에 위임 | `tests.test_plugin_bundle.PluginBundleTest.test_loaders_delegate_to_shared_entrypoints` | RED: 8개 경로 실패 → GREEN: 모두 통과 |
+| 코어 사본만으로 실행, 호스트 override, hook import 실패 보호, 기존 출력 | 계획의 관련 unittest 명령 | 79개 통과 |
+| 기존 전체 동작 | `python3 -m unittest discover -s tests` | 675개 통과, 26.339초 |
+| 코어와 세 번들 일치 | `python3 scripts/sync_plugin.py --check` | `in sync` |
+| 공통 모듈 줄 커버리지 | 아래 표준 라이브러리 `trace` 명령 | 실행 가능 18줄, 100% |
+| 코드·Python 독립 리뷰 | code-reviewer 및 python-reviewer | 지적 없음 |
+
+```bash
+python3 -m trace --count --missing --summary --coverdir .superpowers/sdd/2026-10-05-shared-plugin-entrypoints-plan/coverage --ignore-dir /Users/kimkyungpyo/.pyenv/versions/3.11.15/lib --module unittest tests.test_entrypoints
+```
+
+실행 결정: `coverage` 패키지가 없어 기존 표준 라이브러리 `trace`로 줄 커버리지를 측정했다. 새 모듈의 줄 커버리지 수치이며 전체 저장소나 분기 커버리지 수치로 해석하지 않는다. 제품·테스트 의존성은 추가하지 않았다.
+
+새 격리 테스트의 두 가정을 교정했다. macOS 임시 경로는 로더의 `resolve()`에 맞춰 비교하고, Antigravity chat dry-run은 기존의 `command: agy` 출력을 검증한다. 제품 동작은 변경하지 않았다.
+
+기존 `host/claude_exec.py` 파일 읽기의 ResourceWarning이 테스트에서 관찰됐다. 이번 변경과 무관하며 테스트 실패는 없다. 모델 호출·플러그인 설치·배포는 실행하지 않았다.

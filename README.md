@@ -110,10 +110,11 @@ Claude Code 파일럿 13건(c3, 2026-10-04)의 결과입니다.
 
 ```
 model_effort_router/   Router Core: difficulty backend, policy, host adapter/exec, gate, CLI
-plugins/               Codex·Claude Code 플러그인 (core 사본 번들, bin/mer, hooks, skills)
+  entrypoints.py      플러그인 공통 진입점: 호스트 지정, CLI·gate·hook 호출
+plugins/               Codex·Claude Code·Antigravity 플러그인 (core 사본 번들, bin/mer, skills, 지원 호스트의 hooks)
 evaluation/            코퍼스, backend 비교, 비용 기준선, 파일럿 (플러그인에 미포함)
 docs/                  기획서, 평가 사용법, 호스트 spike 기록
-scripts/sync_plugin.py core를 두 플러그인 번들로 동기화
+scripts/sync_plugin.py core를 세 플러그인 번들로 동기화
 tests/                 unittest
 ```
 
@@ -128,6 +129,7 @@ python3 scripts/sync_plugin.py
 ```
 
 - `model_effort_router/`를 고친 뒤에는 `sync_plugin.py`를 실행해야 합니다. 번들이 어긋나면 테스트가 실패합니다.
+- 플러그인의 `bin/`·hook은 번들 안의 `entrypoints.py`를 import합니다. 공통 실행 코드는 원본에서 수정하고 로더에는 import 경로, 호스트 이름, hook import 실패 보호만 둡니다.
 - 플러그인을 바꿀 때마다 `plugin.json`의 `version`을 올리세요. 같은 버전이면 업데이트가 건너뜁니다.
 - 평가 도구 중 모델을 호출하는 경로는 `--live`를 붙여야만 실행됩니다. 사용법은 [docs/evaluation/README.md](docs/evaluation/README.md)에 있습니다.
 

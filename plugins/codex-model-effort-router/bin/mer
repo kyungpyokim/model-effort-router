@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """mer: route a request. `mer run "<request>"`: one Codex session with gate, escalation and review.
 `mer chat "<request>"`: interactive codex at the routed model/effort."""
-import os
 import sys
 from pathlib import Path
 
-os.environ["MER_HOST"] = "codex"  # pinned: an exported MER_HOST=claude must not move Codex users (the --host flag still wins)
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from model_effort_router.cli import main
+from model_effort_router.entrypoints import cli
 
-sys.exit(main())
+sys.exit(cli("codex"))

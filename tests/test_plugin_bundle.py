@@ -53,7 +53,7 @@ def hook(host, root):
                 entries = [("bin/mer", ["cli", host]),
                            ("bin/mer-gate", ["gate", None if host == "antigravity" else host])]
                 if host != "antigravity":
-                    entries.append(("hooks/user_prompt_submit.py", ["hook", host, str(plugin)]))
+                    entries.append(("hooks/user_prompt_submit.py", ["hook", host, str(plugin.resolve())]))
                 for script, expected in entries:
                     with self.subTest(host=host, script=script):
                         result = subprocess.run([sys.executable, "-I", str(plugin / script)],
@@ -79,7 +79,8 @@ def hook(host, root):
                     args = ["--dry-run", "--level", "L2", "--cwd", str(workdir), "Fix parser.py"]
                     result = run("bin/mer", command, *args)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn(f"host: {host}", result.stdout)
+                    expected = "command: agy " if host == "antigravity" else f"host: {host}"
+                    self.assertIn(expected, result.stdout)
                     other = "claude" if host == "codex" else "codex"
                     result = run("bin/mer", "run", "--host", other, *args)
                     self.assertEqual(result.returncode, 0, result.stderr)
