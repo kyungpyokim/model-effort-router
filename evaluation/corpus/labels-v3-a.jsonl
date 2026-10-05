@@ -1,0 +1,300 @@
+{"id": "fresh-001", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Exact fixture header reorder."}
+{"id": "fresh-002", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "review_only", "note": "Supplied documentation literal only."}
+{"id": "fresh-003", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Specified configuration string."}
+{"id": "fresh-004", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "plan_only", "note": "Exact comment removal checklist."}
+{"id": "fresh-005", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Documentation MIME typo."}
+{"id": "fresh-006", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Specified seed literal; no migration."}
+{"id": "fresh-007", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "review_only", "note": "Exact documentation sample substitution."}
+{"id": "fresh-008", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Mechanical markdown formatting."}
+{"id": "fresh-009", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "plan_only", "note": "Specified banner append."}
+{"id": "fresh-010", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Inert fixture literal."}
+{"id": "fresh-011", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local Decimal serialization and type handling."}
+{"id": "fresh-012", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One URL encoder preserves interface."}
+{"id": "fresh-013", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Single query distinct-article counting."}
+{"id": "fresh-014", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local None/zero semantics and negative validation."}
+{"id": "fresh-015", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Single parser preserves trailing empty fields and spaces."}
+{"id": "fresh-016", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["concurrency"], "target": "route", "note": "Local optimistic-update predicate protects stale revisions."}
+{"id": "fresh-017", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "External header validation prevents injection."}
+{"id": "fresh-018", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local strict BOM-compatible decoding."}
+{"id": "fresh-019", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Basename guard at download path trust boundary."}
+{"id": "fresh-020", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local bool versus integer success mapping."}
+{"id": "fresh-021", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "CLI parsing delegates to existing inspector."}
+{"id": "fresh-022", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local optional serializer field."}
+{"id": "fresh-023", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Endpoint parsing forwards to existing repository contract."}
+{"id": "fresh-024", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One converter header mode and row validation."}
+{"id": "fresh-025", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local metadata normalization and collisions."}
+{"id": "fresh-026", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One health handler HEAD behavior."}
+{"id": "fresh-027", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Credential header masking protects secret exposure."}
+{"id": "fresh-028", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local retry date parsing with existing clock."}
+{"id": "fresh-029", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local JSONL finite-number validation and existing error contract."}
+{"id": "fresh-030", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["payment"], "target": "route", "note": "Local payout amount formatting; transfer unchanged."}
+{"id": "fresh-031", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One HTTP matching helper contract."}
+{"id": "fresh-032", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "User export formula-injection defense."}
+{"id": "fresh-033", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "review_only", "note": "Local timestamp conversion controls destructive pruning."}
+{"id": "fresh-034", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local compressed-stream lifecycle and footer."}
+{"id": "fresh-035", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "SQL identifier allowlist prevents injection."}
+{"id": "fresh-036", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local SQL NULL mapping; parameterization unchanged."}
+{"id": "fresh-037", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One cache codec marker/corruption behavior."}
+{"id": "fresh-038", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Single query UTC hour buckets."}
+{"id": "fresh-039", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local physical-line error counting."}
+{"id": "fresh-040", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "Display credential masking protects secrets."}
+{"id": "fresh-041", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One converter boolean contract."}
+{"id": "fresh-042", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One generator cursor cleanup."}
+{"id": "fresh-043", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local arithmetic; scheduling unchanged."}
+{"id": "fresh-044", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local merge-patch semantics under existing contract."}
+{"id": "fresh-045", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One decimal converter's blanks and errors."}
+{"id": "fresh-046", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["concurrency"], "target": "review_only", "note": "Local atomic mutex lookup/removal."}
+{"id": "fresh-047", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One formatter's header ordering."}
+{"id": "fresh-048", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "External filename escaping at response-header boundary."}
+{"id": "fresh-049", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local units conversion."}
+{"id": "fresh-050", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["auth", "security"], "target": "review_only", "note": "Principal-derived account prevents authorization bypass."}
+{"id": "fresh-051", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "CLI JSON output with existing timing."}
+{"id": "fresh-052", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "One range parser additional syntax."}
+{"id": "fresh-053", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Correlation-ID length fallback; no security use."}
+{"id": "fresh-054", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "One parser comment/line-number rules."}
+{"id": "fresh-055", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Local formatter mode and CLI option."}
+{"id": "fresh-056", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Forward SDK content type; signing/authentication delegated unchanged."}
+{"id": "fresh-057", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Projection configuration collision guard."}
+{"id": "fresh-058", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "plan_only", "note": "Existing atomic writer must preserve prior file on failure."}
+{"id": "fresh-059", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Local port validation; no access policy specified."}
+{"id": "fresh-060", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "CLI argument and existing iterator termination."}
+{"id": "fresh-061", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["concurrency"], "target": "route", "note": "API/service/transaction contracts and simultaneous cancel idempotence."}
+{"id": "fresh-062", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "review_only", "note": "Repository/service/serializer feature using existing transaction API."}
+{"id": "fresh-063", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "plan_only", "note": "Importer, report storage and status API contracts."}
+{"id": "fresh-064", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "route", "note": "API validation, service ordering and repository batch integration."}
+{"id": "fresh-065", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["auth", "security"], "target": "route", "note": "Key permissions across schema, storage and mutation middleware."}
+{"id": "fresh-066", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["security"], "target": "review_only", "note": "Tenant cache namespace isolates previews; ownership enforcement unchanged."}
+{"id": "fresh-067", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "plan_only", "note": "Schedule DB, endpoint and planner integration; running jobs untouched."}
+{"id": "fresh-068", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["security"], "target": "route", "note": "Feed integration with archive traversal and expansion defenses."}
+{"id": "fresh-069", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "route", "note": "Locale crosses API/service/export contracts."}
+{"id": "fresh-070", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["payment", "auth", "security"], "target": "review_only", "note": "Invoice lifecycle across layers with capture and authorization checks."}
+{"id": "fresh-071", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["concurrency"], "target": "plan_only", "note": "Execution model becomes staged streaming with backpressure/cancellation."}
+{"id": "fresh-072", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "route", "note": "New recurrence representation/evaluator and client contracts; dev data regenerable."}
+{"id": "fresh-073", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "review_only", "note": "Storage architecture changes to manifests and immutable partitions."}
+{"id": "fresh-074", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["concurrency"], "target": "plan_only", "note": "Library ownership moves into shared worker process; IPC/job lifecycle and competing API submissions."}
+{"id": "fresh-075", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "route", "note": "Consolidates cache ownership and cross-service contracts."}
+{"id": "fresh-076", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["concurrency"], "target": "review_only", "note": "Queue architecture and multiworker fairness coordination."}
+{"id": "fresh-077", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "plan_only", "note": "Public streaming schema/compatibility contracts need architectural design."}
+{"id": "fresh-078", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "route", "note": "New staging/restart protocol; overlapping execution not explicitly established."}
+{"id": "fresh-079", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "route", "note": "Adapter separation and explicit service consistency contracts."}
+{"id": "fresh-080", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["auth", "security"], "target": "review_only", "note": "Recovery delivery communication protocol changes and callback source verification."}
+{"id": "fresh-081", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_loss", "concurrency"], "target": "route", "note": "Unclear CDC corruption under overlapping failover/schema changes."}
+{"id": "fresh-082", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["auth", "security", "data_migration", "data_loss"], "target": "review_only", "note": "Irreversible production grant migration requires authorization-equivalence proof."}
+{"id": "fresh-083", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "plan_only", "note": "Ambiguous production epoch/key conversion and source deletion."}
+{"id": "fresh-084", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route", "note": "Unclear visibility race across pinning and reclamation."}
+{"id": "fresh-085", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["payment"], "target": "route", "note": "Intermittent settlement mismatch and paid-item reconciliation; overlap unstated."}
+{"id": "fresh-086", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["auth", "security"], "target": "review_only", "note": "Custom untrusted policy verifier protects tenant authorization."}
+{"id": "fresh-087", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "plan_only", "note": "Ambiguous duplicate-field semantics with irreversible original removal."}
+{"id": "fresh-088", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["auth", "security", "concurrency"], "target": "route", "note": "Race transfers uncommitted transactions across tenant ownership."}
+{"id": "fresh-089", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_loss", "concurrency"], "target": "route", "note": "Distributed attempt/recovery corruption loses and duplicates rows."}
+{"id": "fresh-090", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "review_only", "note": "Destructive precision conversion needs numerical and recovery proof."}
+{"id": "fresh-091", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Conceptual SQL explanation only."}
+{"id": "fresh-092", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Format comparison for study text."}
+{"id": "fresh-093", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Terminology prose only."}
+{"id": "fresh-094", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Teaching explanation only."}
+{"id": "fresh-095", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Nontechnical wording; no migration."}
+{"id": "fresh-096", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "No identifiable code/error/database context."}
+{"id": "fresh-097", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Conceptual analogy only."}
+{"id": "fresh-098", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Glossary prose only."}
+{"id": "fresh-099", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Pronunciation guidance only."}
+{"id": "fresh-100", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Customer sentence rephrasing only."}
+{"id": "fresh-101", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Exact manifest string substitution."}
+{"id": "fresh-102", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "review_only", "note": "Verify supplied literal replacement only."}
+{"id": "fresh-103", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Specified color resource value."}
+{"id": "fresh-104", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "plan_only", "note": "Exact public URL substitution checklist."}
+{"id": "fresh-105", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Specified permission-description prose; permission logic unchanged."}
+{"id": "fresh-106", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Exact approved viewport meta value."}
+{"id": "fresh-107", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "review_only", "note": "Supplied attribute replacement only."}
+{"id": "fresh-108", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Specified menu shortcut literal."}
+{"id": "fresh-109", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "plan_only", "note": "Exact same-file ID and anchor substitution."}
+{"id": "fresh-110", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Exact CSS declaration removal; inherited value already approved."}
+{"id": "fresh-111", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local key handler adds composition-state guard."}
+{"id": "fresh-112", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One component object-URL lifetime and cleanup."}
+{"id": "fresh-113", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["auth"], "target": "route", "note": "Local OTP representation fixes leading-zero authentication code."}
+{"id": "fresh-114", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["payment"], "target": "route", "note": "Local charge amount finite-number validation; payment workflow unchanged."}
+{"id": "fresh-115", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "route", "note": "Local boolean confirmation guard prevents unintended deletion."}
+{"id": "fresh-116", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Existing origin and parent checks applied at message trust boundary."}
+{"id": "fresh-117", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local rectangle coordinate normalization."}
+{"id": "fresh-118", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One progress renderer's zero-byte completion branch."}
+{"id": "fresh-119", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["concurrency"], "target": "route", "note": "Local promise return keeps cross-tab draft lock through write completion."}
+{"id": "fresh-120", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local avatar presentation reacts to null auth state; credential/session logic unchanged."}
+{"id": "fresh-121", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One modal's focus capture and connected-element restoration."}
+{"id": "fresh-122", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local null-decoder fallback uses existing drawable."}
+{"id": "fresh-123", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local cyclic keyboard selection bounds."}
+{"id": "fresh-124", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["auth", "security"], "target": "route", "note": "Local PIN cleanup prevents credential exposure/reuse after navigation."}
+{"id": "fresh-125", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Existing sanitizer inserted at SVG HTML injection boundary."}
+{"id": "fresh-126", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local history-index button guard."}
+{"id": "fresh-127", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "route", "note": "Local stop ordering preserves recording on cancelled navigation."}
+{"id": "fresh-128", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["payment"], "target": "route", "note": "Local refund amount selection conditional; API/rounding unchanged."}
+{"id": "fresh-129", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One slider's conversion and range bounds."}
+{"id": "fresh-130", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local live-stream duration visibility predicate."}
+{"id": "fresh-131", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "External URL scheme validation prevents executable user links."}
+{"id": "fresh-132", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One keyboard handler's default scroll behavior."}
+{"id": "fresh-133", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Picker cancellation preserves selected URL; file deletion not specified."}
+{"id": "fresh-134", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "One sanitizer option permits user SVG embedded HTML contrary to inert-image security boundary; architecture unchanged."}
+{"id": "fresh-135", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One observer/component lifecycle across changed image prop."}
+{"id": "fresh-136", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local permission-rationale presentation branch; access enforcement unchanged."}
+{"id": "fresh-137", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["payment"], "target": "review_only", "note": "One coupon component's stale payment request value."}
+{"id": "fresh-138", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One connection badge's event subscription lifecycle."}
+{"id": "fresh-139", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["auth"], "target": "review_only", "note": "Local authentication QR expiration predicate; negative timer values."}
+{"id": "fresh-140", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One drag handler's pointer-cancel state cleanup."}
+{"id": "fresh-141", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local live-region update granularity and repeated announcement behavior."}
+{"id": "fresh-142", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "review_only", "note": "Origin-wide clear can erase unrelated offline notes."}
+{"id": "fresh-143", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local recycled-row listener binding; stale display alone does not establish execution race."}
+{"id": "fresh-144", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Single numerical contrast helper must apply sRGB gamma conversion."}
+{"id": "fresh-145", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "Missing memo identity dependency exposes previous account's private email; credential flow unchanged."}
+{"id": "fresh-146", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One range component validates both edit paths."}
+{"id": "fresh-147", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["concurrency"], "target": "review_only", "note": "Running worker completion overlaps cancellation; local job identity guard."}
+{"id": "fresh-148", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["concurrency"], "target": "review_only", "note": "Local cancelled mutex-acquire ownership bug releases another concurrent save lock; no transaction redesign."}
+{"id": "fresh-149", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One selected-ID predicate for exclusive aria radio selection."}
+{"id": "fresh-150", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["payment"], "target": "review_only", "note": "Local tip percentage/cents units mismatch."}
+{"id": "fresh-151", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Local label linkage uses existing generated IDs."}
+{"id": "fresh-152", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "plan_only", "note": "One serializer filters existing private visibility markers from public export, protecting confidentiality without changing access controls, storage or format."}
+{"id": "fresh-153", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "One popover key handler delegates to existing close action."}
+{"id": "fresh-154", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["auth"], "target": "plan_only", "note": "Local expired-session fetch handling uses existing status/UI contract."}
+{"id": "fresh-155", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "One component's inert state follows existing face state."}
+{"id": "fresh-156", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "plan_only", "note": "Local draft deletion must await successful save and respect cancellation."}
+{"id": "fresh-157", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Existing share helper needs proper Activity context."}
+{"id": "fresh-158", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["payment"], "target": "plan_only", "note": "Local payment-method expiration month validation; charging unchanged."}
+{"id": "fresh-159", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "One install component's consumed-event lifetime."}
+{"id": "fresh-160", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Local list reorder destination offset."}
+{"id": "fresh-161", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "route", "note": "Sidebar, selection controller and document offsets must share selection contract."}
+{"id": "fresh-162", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["payment"], "target": "review_only", "note": "Card list/dialog/client integrate cancellation and API-success state updates."}
+{"id": "fresh-163", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "plan_only", "note": "Existing permission state propagates to camera/gallery and app-resume UI; enforcement not redesigned."}
+{"id": "fresh-164", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["data_loss"], "target": "route", "note": "Editor, route and window exit contracts must preserve unsaved annotations on failure."}
+{"id": "fresh-165", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "route", "note": "Version identity must align across survey state, display and submission client."}
+{"id": "fresh-166", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["auth", "security"], "target": "review_only", "note": "WebAuthn settings/adapter/client integrate challenge and account binding; server crypto unchanged."}
+{"id": "fresh-167", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "plan_only", "note": "List/marker/store identity and bidirectional focus integration."}
+{"id": "fresh-168", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["security"], "target": "route", "note": "Existing decrypt worker and preview contracts integrate sensitive temporary-data cleanup."}
+{"id": "fresh-169", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["auth", "security", "concurrency"], "target": "review_only", "note": "Account identity across store/guard/client rejects overlapping old-account replies."}
+{"id": "fresh-170", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "route", "note": "Existing focus registry integrates navigation/return contracts across three screens."}
+{"id": "fresh-171", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["concurrency"], "target": "route", "note": "Synchronous video work becomes worker pipeline with frame ownership/backpressure/cancellation."}
+{"id": "fresh-172", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "plan_only", "note": "Workspace pane/document ownership and tool/navigation architecture redesigned."}
+{"id": "fresh-173", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["auth", "security"], "target": "review_only", "note": "Plugin sandbox/capability boundary replaces direct user-file access with scoped grants."}
+{"id": "fresh-174", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "route", "note": "Global navigation ownership becomes per-window with restoration/deep-link contracts."}
+{"id": "fresh-175", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["auth", "security"], "target": "plan_only", "note": "Authentication token ownership moves to secure-storage broker across screens."}
+{"id": "fresh-176", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "review_only", "note": "Headless command engine and platform rendering adapters replace DOM-dependent architecture."}
+{"id": "fresh-177", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["payment", "auth"], "target": "route", "note": "Subscription entitlements gain coordinated ownership/cache/lifecycle and screen contracts."}
+{"id": "fresh-178", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["concurrency"], "target": "plan_only", "note": "Storage concurrency ownership changes from one writer thread to independent WAL connections; transaction/busy/shutdown contracts need redesign, no migration."}
+{"id": "fresh-179", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "review_only", "note": "Versioned service-worker tile resolution changes cache/client ownership contracts; recoverable tiles."}
+{"id": "fresh-180", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "route", "note": "Explicit nested focus-scope ownership replaces render-time DOM querying across overlays."}
+{"id": "fresh-181", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_loss", "concurrency"], "target": "route", "note": "Unknown multi-tab suspend/resume write corruption threatens sole handwriting copy."}
+{"id": "fresh-182", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "review_only", "note": "Only production recordings migrate to packed storage with destructive source cleanup."}
+{"id": "fresh-183", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["payment", "concurrency"], "target": "plan_only", "note": "Unknown overlapping restore/purchase callback order misbinds payment token to order."}
+{"id": "fresh-184", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["auth", "security", "concurrency"], "target": "route", "note": "Unknown stale worker/cache/history identity exposes decrypted cross-account documents under timing."}
+{"id": "fresh-185", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "review_only", "note": "Irreversible sole-attachment relation/key conversion requires preservation proof."}
+{"id": "fresh-186", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route", "note": "Unknown multithread lock-order deadlock on cancellation/permission overlap."}
+{"id": "fresh-187", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_loss", "concurrency"], "target": "plan_only", "note": "Unknown GPU fence/pool/worker corruption can overwrite existing image; overlapping resource use plausible."}
+{"id": "fresh-188", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["auth", "security"], "target": "review_only", "note": "Custom signature parsing/account-device binding verifier is authentication security core."}
+{"id": "fresh-189", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route", "note": "Unreproduced native provider/range lifetime failure across pane reopen; overlapping provider calls inferred."}
+{"id": "fresh-190", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "route", "note": "Ambiguous sole PDF fragment reconstruction before destructive storage migration."}
+{"id": "fresh-191", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Focus/selection explanation only."}
+{"id": "fresh-192", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Accessibility terminology explanation only."}
+{"id": "fresh-193", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Chat-only permission prompt prose."}
+{"id": "fresh-194", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Browser lifecycle explanation only."}
+{"id": "fresh-195", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "No identifiable UI target/context."}
+{"id": "fresh-196", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Chat-only translation."}
+{"id": "fresh-197", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Orientation terminology only."}
+{"id": "fresh-198", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Caption/subtitle concept comparison."}
+{"id": "fresh-199", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Chat-only sentence editing."}
+{"id": "fresh-200", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "No identifiable app/screen/behavior to route."}
+{"id": "fresh-201", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Specified CMake version; compatibility confirmed."}
+{"id": "fresh-202", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Exact attributes rule insertion."}
+{"id": "fresh-203", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Specified configuration string."}
+{"id": "fresh-204", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "review_only", "note": "Exact classifier replacement verification."}
+{"id": "fresh-205", "labeler": "v3-ai-a", "level": "L1", "risk_flags": ["security"], "target": "plan_only", "note": "Specified privilege UID changes security context mechanically."}
+{"id": "fresh-206", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Documentation filename replacement."}
+{"id": "fresh-207", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Comment typo correction."}
+{"id": "fresh-208", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "plan_only", "note": "Specified existing pytest option value."}
+{"id": "fresh-209", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "review_only", "note": "Supplied issue-template label replacement."}
+{"id": "fresh-210", "labeler": "v3-ai-a", "level": "L1", "risk_flags": [], "target": "route", "note": "Markdown alt-text typo."}
+{"id": "fresh-211", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local package-name normalization and test."}
+{"id": "fresh-212", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One depfile parser distinguishes drive and separator colons."}
+{"id": "fresh-213", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "route", "note": "Empty-path guard prevents current directory deletion."}
+{"id": "fresh-214", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Literal subprocess arguments prevent shell injection."}
+{"id": "fresh-215", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One function's input-compatible FFT bins."}
+{"id": "fresh-216", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Archive-declared allocation length validated at boundary."}
+{"id": "fresh-217", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local collator defaults under existing loss contract."}
+{"id": "fresh-218", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Normalize dictionary key preserving case/order."}
+{"id": "fresh-219", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local subprocess failure code propagation."}
+{"id": "fresh-220", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "CLI warmup option feeds existing loop."}
+{"id": "fresh-221", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Diagnostic token masking preserves execution credentials."}
+{"id": "fresh-222", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "Local caret renderer uses existing tab width."}
+{"id": "fresh-223", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Disable pickle on external array input to prevent execution."}
+{"id": "fresh-224", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Local integrity-digest validation; cryptography unchanged."}
+{"id": "fresh-225", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One record finite-number validation."}
+{"id": "fresh-226", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "route", "note": "Literal filename prevents rsync option injection."}
+{"id": "fresh-227", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "route", "note": "Local no-overwrite guard protects existing artifact."}
+{"id": "fresh-228", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One response-file expansion base directory."}
+{"id": "fresh-229", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One CSV reader preserves quoted multiline/newline semantics without schema change."}
+{"id": "fresh-230", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "route", "note": "One status parser translates documented status/signal pair."}
+{"id": "fresh-231", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local positive worker-count contract; semaphore model unchanged."}
+{"id": "fresh-232", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "review_only", "note": "Path ancestry check protects sibling directories from deletion."}
+{"id": "fresh-233", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "External archive traversal and escaping-symlink defenses."}
+{"id": "fresh-234", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One integer literal parser grammar mismatch."}
+{"id": "fresh-235", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Single derivative helper short-array boundaries."}
+{"id": "fresh-236", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["concurrency"], "target": "review_only", "note": "One shared-lock section needs exception-safe release."}
+{"id": "fresh-237", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local prerelease predicate with existing library."}
+{"id": "fresh-238", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Single numeric regex acceptance boundaries."}
+{"id": "fresh-239", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local CSV header identification preserves actual data."}
+{"id": "fresh-240", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["auth"], "target": "review_only", "note": "Certificate expiry state predicate; certificate authentication use inferred."}
+{"id": "fresh-241", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local loader option under already supported variable batch sizes."}
+{"id": "fresh-242", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One CLI action's early exit behavior."}
+{"id": "fresh-243", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "Pidfile ownership/symlink defense at filesystem boundary."}
+{"id": "fresh-244", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "Remote size validation before bounded buffer copy."}
+{"id": "fresh-245", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local CSI/OSC filtering; no attack context explicitly established."}
+{"id": "fresh-246", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One serializer order and existing validation sequence."}
+{"id": "fresh-247", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local numerical integration preserves input orientation."}
+{"id": "fresh-248", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "review_only", "note": "Credential error must avoid secret disclosure."}
+{"id": "fresh-249", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "Local gradient boundary within unchanged training step."}
+{"id": "fresh-250", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "review_only", "note": "One wrapper's index-base bounds contract."}
+{"id": "fresh-251", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Local compilation placement with existing matcher."}
+{"id": "fresh-252", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Standard subprocess timeout and exception mapping."}
+{"id": "fresh-253", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Local bool versus positive int validation."}
+{"id": "fresh-254", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "plan_only", "note": "Archive basename validation prevents cache traversal."}
+{"id": "fresh-255", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["data_loss"], "target": "plan_only", "note": "Local checkpoint read mode/order must avoid truncating existing resume data."}
+{"id": "fresh-256", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "One CLI predicate and help text."}
+{"id": "fresh-257", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Single comparator numeric/stable ordering."}
+{"id": "fresh-258", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "Local finite selection under specified formula/dtype."}
+{"id": "fresh-259", "labeler": "v3-ai-a", "level": "L2", "risk_flags": ["security"], "target": "plan_only", "note": "One writer creates private secret permissions without overwrite."}
+{"id": "fresh-260", "labeler": "v3-ai-a", "level": "L2", "risk_flags": [], "target": "plan_only", "note": "One selector's empty-filter semantics."}
+{"id": "fresh-261", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "route", "note": "Lexer/parser/export source-position contracts align."}
+{"id": "fresh-262", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "plan_only", "note": "Provenance propagates through ingestion/training/reports."}
+{"id": "fresh-263", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["auth", "security"], "target": "review_only", "note": "Credential-backed registry integration and token confinement."}
+{"id": "fresh-264", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "route", "note": "Existing engine/summary/renderer interfaces integrate."}
+{"id": "fresh-265", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["auth", "security"], "target": "route", "note": "Network/environment integration includes scoped IAM authorization."}
+{"id": "fresh-266", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "review_only", "note": "Reader/fit/command units and coefficient interfaces align."}
+{"id": "fresh-267", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "plan_only", "note": "Compatible optional catalog field across metadata/persistence/CLI."}
+{"id": "fresh-268", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["concurrency"], "target": "route", "note": "Cancellation and subprocess ownership across existing worker pool."}
+{"id": "fresh-269", "labeler": "v3-ai-a", "level": "L3", "risk_flags": [], "target": "route", "note": "Existing scanner/verifier/report integration; no destructive writes."}
+{"id": "fresh-270", "labeler": "v3-ai-a", "level": "L3", "risk_flags": ["security"], "target": "plan_only", "note": "Build isolation setting propagates through config/planner/sandbox."}
+{"id": "fresh-271", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "route", "note": "Typed IR introduces separate compiler optimization/emission architecture."}
+{"id": "fresh-272", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "plan_only", "note": "Execution ownership moves to cluster batch job lifecycle contracts."}
+{"id": "fresh-273", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["auth", "security"], "target": "review_only", "note": "Privileged broker/client split adds peer authorization/device ownership boundaries."}
+{"id": "fresh-274", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "route", "note": "Pipeline handoffs become versioned immutable object-store artifacts."}
+{"id": "fresh-275", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "plan_only", "note": "Resolver algorithm and dependency/lockfile contracts redesigned."}
+{"id": "fresh-276", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["concurrency"], "target": "review_only", "note": "Sequential assembly becomes partitioned workers and deterministic reductions."}
+{"id": "fresh-277", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["security"], "target": "route", "note": "Trust policy/key distribution architecture; crypto library reused."}
+{"id": "fresh-278", "labeler": "v3-ai-a", "level": "L4", "risk_flags": [], "target": "plan_only", "note": "Capability descriptors replace language discovery and define cache identity."}
+{"id": "fresh-279", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["concurrency"], "target": "route", "note": "Shared GPU admission/reservation/cancellation ownership redesigned."}
+{"id": "fresh-280", "labeler": "v3-ai-a", "level": "L4", "risk_flags": ["auth", "security"], "target": "review_only", "note": "Capability privilege/revocation contracts replace inherited credentials."}
+{"id": "fresh-281", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route", "note": "Intermittent multistream pinned-buffer lifetime corruption needs event tracing."}
+{"id": "fresh-282", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "plan_only", "note": "Sole archive ambiguous time/IDs before source reclamation."}
+{"id": "fresh-283", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["security"], "target": "review_only", "note": "Custom ELF relocation security rewrite needs deep memory/overflow proof."}
+{"id": "fresh-284", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route", "note": "Intermittent distributed restart corruption needs epoch/collective tracing."}
+{"id": "fresh-285", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "plan_only", "note": "Production key merge risks irreplaceable annotation/calibration links."}
+{"id": "fresh-286", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["security", "concurrency"], "target": "review_only", "note": "Sandbox exploit review includes shared-memory TOCTOU and descriptor boundaries."}
+{"id": "fresh-287", "labeler": "v3-ai-a", "level": "L5", "risk_flags": [], "target": "route", "note": "Unclear physical sample identity failure across ACK/reconnect/state; reordered messages alone do not establish concurrency."}
+{"id": "fresh-288", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_loss"], "target": "route", "note": "Power-loss snapshot corruption needs ordering/restorability proof; no race stated."}
+{"id": "fresh-289", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["security"], "target": "review_only", "note": "Custom Merkle security proof verifier rewrite requires domain/size correctness."}
+{"id": "fresh-290", "labeler": "v3-ai-a", "level": "L5", "risk_flags": ["data_loss", "concurrency"], "target": "plan_only", "note": "Competing failover agents issue destructive commands; fencing across restarts/epochs."}
+{"id": "fresh-291", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "CMake concept explanation only."}
+{"id": "fresh-292", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Notebook execution-order explanation only."}
+{"id": "fresh-293", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Compiler terminology only."}
+{"id": "fresh-294", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "ELF terminology only."}
+{"id": "fresh-295", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Batch-system concept comparison only."}
+{"id": "fresh-296", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Numerical concept explanation only."}
+{"id": "fresh-297", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Presentation title translation only."}
+{"id": "fresh-298", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Packaging terminology only."}
+{"id": "fresh-299", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "No identifiable project, command or error."}
+{"id": "fresh-300", "labeler": "v3-ai-a", "level": null, "risk_flags": [], "target": "no_route", "note": "Notation question only."}

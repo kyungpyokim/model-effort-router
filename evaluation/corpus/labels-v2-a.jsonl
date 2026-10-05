@@ -1,0 +1,150 @@
+{"id": "add-001", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-002", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-003", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-004", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-005", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-006", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-007", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-008", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-009", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-010", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-011", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-012", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "review_only"}
+{"id": "add-013", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "plan_only"}
+{"id": "add-014", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-015", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-016", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-017", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-018", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "review_only"}
+{"id": "add-019", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-020", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-021", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-022", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-023", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "plan_only"}
+{"id": "add-024", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-025", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "add-026", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "add-027", "labeler": "codex-a", "level": "L2", "risk_flags": ["security"], "target": "route"}
+{"id": "add-028", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "review_only"}
+{"id": "add-029", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "add-030", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "add-031", "labeler": "codex-a", "level": "L2", "risk_flags": ["auth", "security"], "target": "plan_only"}
+{"id": "add-032", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "add-033", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "add-034", "labeler": "codex-a", "level": "L2", "risk_flags": ["payment"], "target": "review_only"}
+{"id": "add-035", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "add-036", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "add-037", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "route"}
+{"id": "add-038", "labeler": "codex-a", "level": "L2", "risk_flags": ["auth", "security"], "target": "route"}
+{"id": "add-039", "labeler": "codex-a", "level": "L1", "risk_flags": [], "target": "route"}
+{"id": "add-040", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "plan_only"}
+{"id": "add-041", "labeler": "codex-a", "level": "L2", "risk_flags": ["security"], "target": "route"}
+{"id": "add-042", "labeler": "codex-a", "level": "L2", "risk_flags": [], "target": "review_only"}
+{"id": "add-043", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "add-044", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "plan_only"}
+{"id": "add-045", "labeler": "codex-a", "level": "L3", "risk_flags": ["auth", "security"], "target": "review_only"}
+{"id": "add-046", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "add-047", "labeler": "codex-a", "level": "L3", "risk_flags": ["data_migration"], "target": "route"}
+{"id": "add-048", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "add-049", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "plan_only"}
+{"id": "add-050", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "add-051", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "add-052", "labeler": "codex-a", "level": "L3", "risk_flags": ["auth"], "target": "review_only"}
+{"id": "add-053", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "add-054", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "plan_only"}
+{"id": "add-055", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "add-056", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "add-057", "labeler": "codex-a", "level": "L3", "risk_flags": [], "target": "route"}
+{"id": "add-058", "labeler": "codex-a", "level": "L3", "risk_flags": ["auth", "security"], "target": "review_only"}
+{"id": "add-059", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "plan_only"}
+{"id": "add-060", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "add-061", "labeler": "codex-a", "level": "L4", "risk_flags": ["data_migration"], "target": "route"}
+{"id": "add-062", "labeler": "codex-a", "level": "L4", "risk_flags": ["concurrency"], "target": "plan_only"}
+{"id": "add-063", "labeler": "codex-a", "level": "L4", "risk_flags": ["concurrency"], "target": "review_only"}
+{"id": "add-064", "labeler": "codex-a", "level": "L4", "risk_flags": ["security"], "target": "route"}
+{"id": "add-065", "labeler": "codex-a", "level": "L4", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-066", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "add-067", "labeler": "codex-a", "level": "L4", "risk_flags": ["data_migration"], "target": "plan_only"}
+{"id": "add-068", "labeler": "codex-a", "level": "L4", "risk_flags": ["auth"], "target": "review_only"}
+{"id": "add-069", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "add-070", "labeler": "codex-a", "level": "L4", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-071", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "plan_only"}
+{"id": "add-072", "labeler": "codex-a", "level": "L4", "risk_flags": ["data_migration", "data_loss"], "target": "route"}
+{"id": "add-073", "labeler": "codex-a", "level": "L4", "risk_flags": ["data_migration"], "target": "review_only"}
+{"id": "add-074", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "add-075", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "add-076", "labeler": "codex-a", "level": "L4", "risk_flags": ["auth"], "target": "plan_only"}
+{"id": "add-077", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "review_only"}
+{"id": "add-078", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "route"}
+{"id": "add-079", "labeler": "codex-a", "level": "L4", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-080", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "plan_only"}
+{"id": "add-081", "labeler": "codex-a", "level": "L4", "risk_flags": [], "target": "review_only"}
+{"id": "add-082", "labeler": "codex-a", "level": "L4", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-083", "labeler": "codex-a", "level": "L4", "risk_flags": ["security"], "target": "route"}
+{"id": "add-084", "labeler": "codex-a", "level": "L4", "risk_flags": ["payment"], "target": "route"}
+{"id": "add-085", "labeler": "codex-a", "level": "L4", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-086", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_loss", "concurrency"], "target": "route"}
+{"id": "add-087", "labeler": "codex-a", "level": "L5", "risk_flags": ["security", "data_migration", "data_loss"], "target": "route"}
+{"id": "add-088", "labeler": "codex-a", "level": "L5", "risk_flags": ["auth", "security"], "target": "review_only"}
+{"id": "add-089", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "plan_only"}
+{"id": "add-090", "labeler": "codex-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-091", "labeler": "codex-a", "level": "L5", "risk_flags": ["payment", "concurrency"], "target": "route"}
+{"id": "add-092", "labeler": "codex-a", "level": "L5", "risk_flags": ["security", "data_migration", "data_loss"], "target": "review_only"}
+{"id": "add-093", "labeler": "codex-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-094", "labeler": "codex-a", "level": "L5", "risk_flags": ["auth", "security"], "target": "plan_only"}
+{"id": "add-095", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_loss"], "target": "route"}
+{"id": "add-096", "labeler": "codex-a", "level": "L5", "risk_flags": ["payment"], "target": "route"}
+{"id": "add-097", "labeler": "codex-a", "level": "L5", "risk_flags": ["auth", "security"], "target": "route"}
+{"id": "add-098", "labeler": "codex-a", "level": "L5", "risk_flags": ["concurrency"], "target": "review_only"}
+{"id": "add-099", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "plan_only"}
+{"id": "add-100", "labeler": "codex-a", "level": "L5", "risk_flags": ["payment", "data_loss"], "target": "route"}
+{"id": "add-101", "labeler": "codex-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-102", "labeler": "codex-a", "level": "L5", "risk_flags": ["auth", "security"], "target": "route"}
+{"id": "add-103", "labeler": "codex-a", "level": "L5", "risk_flags": ["payment", "data_migration", "data_loss"], "target": "review_only"}
+{"id": "add-104", "labeler": "codex-a", "level": "L5", "risk_flags": ["security"], "target": "plan_only"}
+{"id": "add-105", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_loss", "concurrency"], "target": "route"}
+{"id": "add-106", "labeler": "codex-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-107", "labeler": "codex-a", "level": "L5", "risk_flags": ["auth", "security"], "target": "route"}
+{"id": "add-108", "labeler": "codex-a", "level": "L5", "risk_flags": ["concurrency"], "target": "review_only"}
+{"id": "add-109", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "plan_only"}
+{"id": "add-110", "labeler": "codex-a", "level": "L5", "risk_flags": ["payment", "concurrency"], "target": "route"}
+{"id": "add-111", "labeler": "codex-a", "level": "L5", "risk_flags": ["auth", "security"], "target": "route"}
+{"id": "add-112", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_migration", "data_loss", "concurrency"], "target": "review_only"}
+{"id": "add-113", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_loss", "concurrency"], "target": "plan_only"}
+{"id": "add-114", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_loss"], "target": "route"}
+{"id": "add-115", "labeler": "codex-a", "level": "L5", "risk_flags": ["security", "concurrency"], "target": "route"}
+{"id": "add-116", "labeler": "codex-a", "level": "L5", "risk_flags": ["auth", "security"], "target": "route"}
+{"id": "add-117", "labeler": "codex-a", "level": "L5", "risk_flags": ["concurrency"], "target": "review_only"}
+{"id": "add-118", "labeler": "codex-a", "level": "L5", "risk_flags": ["payment", "data_migration", "data_loss"], "target": "plan_only"}
+{"id": "add-119", "labeler": "codex-a", "level": "L5", "risk_flags": ["concurrency"], "target": "route"}
+{"id": "add-120", "labeler": "codex-a", "level": "L5", "risk_flags": ["data_migration", "data_loss"], "target": "route"}
+{"id": "add-121", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-122", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-123", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-124", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-125", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-126", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-127", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-128", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-129", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-130", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-131", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-132", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-133", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-134", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-135", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-136", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-137", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-138", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-139", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-140", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-141", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-142", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-143", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-144", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-145", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-146", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-147", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-148", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-149", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}
+{"id": "add-150", "labeler": "codex-a", "level": null, "risk_flags": [], "target": "no_route"}

@@ -1,0 +1,41 @@
+id	task	paths	labeler	level	risk_flags	target	note
+add-007	Storybook의 EmptyInbox story 제목을 States/Empty Inbox로 바꿔줘.						
+add-012	Review only: this patch changes the literal CSS gap from 12px to the approved 16px in BadgeRow.css. Check that exact edit.						
+add-013	계획만 작성해줘: docs/faq.md의 모든 H2 제목 끝에 붙은 콜론을 제거한다. 문장 내용은 손대지 않는다.						
+add-018	Review only: check that the NOTICE file includes the exact supplied license attribution sentence, with no implementation changes.						
+add-019	Make the existing img in AboutCard.html have alt='Company symbol', exactly as specified.						
+add-028	Review only: the one Go handler now rejects negative document limits before calling its unchanged service. Check boundary values.						
+add-030	Add gzip decompression to the existing read_fixture(path) helper, selected by .gz suffix; its callers stay unchanged.						
+add-032	Correct a shell completion function that emits directory names containing spaces as two candidates. Limit the change to that function.						
+add-034	Review only: a patch swaps two arguments to the existing payment SDK refund call in refunds.py. The approved SDK contract is attached and no workflow changes are intended.						
+add-035	이미 soft-delete 필터가 있는 repository에서 count() 한 메서드만 필터를 누락했다. 다른 조회들과 같은 조건을 적용해줘.						
+add-038	The request signature comparison helper returns early on unequal lengths. Use the already available constant-time comparison API and preserve its boolean interface.						
+add-041	Remove password values from this single debug log statement, retaining the user ID and error code; the log schema is already fixed.						
+add-042	Review only: check this SQL query's LEFT JOIN predicate placement against the attached requirement to retain zero-match suppliers. No schema changes.						
+add-045	Review only: this diff adds signed download links through the existing file service, expiry validator and React download button. Check the feature contract without editing.						
+add-054	Plan only: support cancellation of a long-running export through the existing cancellation token path, API status and UI button. Do not replace the worker execution model.						
+exp-007	Airflow DAG에 증분 로딩 추가해줘. 먼저 어떻게 할지 계획을 보여주고 내가 OK 하기 전에는 코드 건드리지 마.	dags/events_load.py					
+exp-009	UserTable doesn't reset to page 1 when the filter changes. Fix.	src/components/UserTable.vue					
+exp-011	회원가입 API에 이메일 형식이랑 비밀번호 최소 길이 검증 추가한 diff야. 리뷰만 해줘, 코드는 건드리지 말고.	api/signup.py					
+exp-012	Add a nightly worker that emails digests via the queue. Two workers must never send the same digest.	workers/digest.py,queue/client.py					
+exp-014	Review this profile image upload code (type sniffing, 5MB cap, S3 storage) for problems. Don't change anything.	api/profile_upload.py,storage/s3.py					
+exp-018	화면 회전하면 ViewModel에서 목록이 두 번 로드돼. 한 번만 로드되게 고쳐줘.	app/ui/FeedViewModel.kt					
+exp-019	개발용 Docker Compose에 Postgres, Redis, 마이그레이션 컨테이너 추가하고 헬스체크 기준으로 기동 순서 맞춰줘.	docker-compose.yml,scripts/migrate.sh					
+exp-031	The password reset email template says 'pasword'. Fix the spelling.	templates/email/reset.html					
+exp-039	장바구니랑 위시리스트 상태를 Redux에서 Zustand로 바꿔줘. 컴포넌트 여러 개 걸려 있어.	src/store/,src/components/Cart/,src/components/Wishlist/					
+exp-050	주문 목록 조회에서 상태 필터가 null이면 500 나는 거 고쳐줘.	orders/views.py					
+exp-051	Check this diff adding TOTP enrollment and verification endpoints to the auth service. Review only, don't change anything.	auth/totp.py,auth/routes.py					
+exp-062	Check reports/monthly.sql: customers with no refunds seem to vanish. Review only, tell me what's wrong and don't edit.	reports/monthly.sql					
+exp-064	Set up a GitHub Actions matrix for Python 3.10-3.12 with a shared cached venv and a separate lint job, and make release.yml depend on both.	.github/workflows/					
+exp-066	eslint 설정에서 no-console 규칙을 error에서 warn으로만 바꿔줘.	.eslintrc.json					
+exp-070	Review only: look over my typo-fix PR in docs/ and tell me if anything is off. Don't edit.	docs/usage.md					
+exp-086	Settings.swift 안에서 상수 이름 maxRetryCnt를 maxRetryCount로 바꿔줘. 같은 파일만.	App/Settings.swift					
+exp-087	Move our CI from Jenkins to GitHub Actions: build, test, deploy stages with environment secrets and approval gates.	Jenkinsfile,.github/workflows/					
+exp-092	GitHub Actions에 pip 캐시 단계 넣어서 CI 시간 줄여줘.	.github/workflows/test.yml					
+exp-109	paginate() returns an extra empty last page when total is an exact multiple of page size. Fix it and add a test.	api/pagination.py					
+seed-011	utils/format.py의 currency 포맷 함수가 음수에서 괄호를 쓰도록 수정해줘	utils/format.py					
+seed-012	Bump the retry count in the HTTP client wrapper from 3 to 5 and adjust its unit test	http/client.py,tests/test_client.py					
+seed-033	계획만 세워줘: 테스트 스위트를 병렬 실행으로 바꾸는 방법	tests/					
+seed-034	Draft a plan for adding OAuth login to the web app, then wait for my approval	auth/					
+seed-035	Review only: look at the changes in api/upload.py for bugs, do not modify anything	api/upload.py					
+seed-036	리뷰만 해줘. 방금 바꾼 결제 모듈 코드에 문제가 없는지 검토해줘	billing/					

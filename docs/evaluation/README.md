@@ -71,6 +71,17 @@ python3 -m evaluation.live_runner --cases evaluation/pilot/cases.jsonl --fixture
 - 합치기: `python3 -m evaluation.labels merge evaluation/corpus/seed.jsonl OUT.jsonl evaluation/corpus/labels-claude.jsonl evaluation/corpus/labels-user.tsv`. 라벨 2개가 모인 케이스는 `labeled`가 되고 `proposed`는 빠진다. 일치 보고(discuss / revise_guide)를 출력한다.
 - 시드 40건: `labels-claude.jsonl`(메인 세션), `labels-opus.jsonl`(라벨을 보지 않은 별도 Opus 에이전트), 합의 결과 `seed-labeled.jsonl`(40건 adjudicated, 35건 일치, 2026-10-01). 사람 라벨러는 아직 없다.
 - 확장 110건: `expansion.jsonl`(초안), `labels-exp-opus.jsonl`·`labels-exp-sonnet.jsonl`(독립 라벨), `expansion-labeled.jsonl`(100건 일치, 10건 합의). 시드와 합친 150건: `corpus-v1.jsonl`(L1 26, L2 32, L3 34, L4 23, L5 15, no_route 20; 위험 신호 47건; plan_only 11, review_only 10). 라벨러는 모두 AI 에이전트이고 사람 라벨은 아직 없다.
+- **v2 합본 300건:** `evaluation/corpus/corpus-v2.jsonl`. 기존 v1 150건을 보존하고 새 `add-001`~`add-150`을 추가했다. L1 51, L2 49, L3 50, L4 50, L5 50, no_route 50; 난이도 평가 250건, target 평가 300건. route 189, plan_only 31, review_only 30, no_route 50; 위험 신호 사례 104건(34.7%).
+- v2 추가분 provenance (2026-10-04): `expansion-v2.jsonl`은 작성자의 `proposed`를 가진 draft, `labels-v2-a.jsonl`·`labels-v2-b.jsonl`은 서로 다른 Codex 에이전트의 독립 라벨이다. 라벨러에게는 id/task/paths/status만 제공하고 proposed·note·서로의 라벨·backend 예측을 숨겼다. 139/150건 완전 일치(92.7%), 나머지 11건은 가이드에 따라 두 라벨러와 메인 세션이 합의했고 이유를 `expansion-v2-labeled.jsonl`의 note에 기록했다. 2단계 이상 난이도 차이는 없었다. AI 라벨이며 사람의 독립 검증은 아직 없다.
+- v2는 레벨 균형을 목표로 만든 합성 표본이며 실제 사용자 요청 빈도를 나타내지 않는다. 기존 v1은 질문·임계값 조정에 사용됐으므로 300건 전체를 독립 holdout으로 부르지 않는다. 새 150건의 결과와 합본 결과를 따로 보고해야 한다. v1의 기존 live 점수는 v2 점수가 아니다. 확장 후 1,200회 새 live 호출을 수행한 결과는 [v2 live 비교](live-router-comparison-v2-20261004.md)에 있다(기존/보강 질문 × Jev/Nimble; 네 조건 모두 fallback 0).
+
+v2 합본 검증 및 비교 준비(모델 호출 없음):
+
+```sh
+python3 -m evaluation.cases evaluation/corpus/corpus-v2.jsonl
+python3 -m evaluation.compare --corpus evaluation/corpus/corpus-v2.jsonl --backends jev,nimble --dry-run
+```
+
 - 2026-10-01부터 `compare`는 no_route 케이스도 분류기를 돌려 target을 채점한다. 그래서 `tokens`, 지연, `fallback_count`에 no_route 케이스가 포함되며 이전 보고서와 직접 비교할 수 없다.
 - 파일럿 세트 v2 (`evaluation/pilot/cases-v2.jsonl`, 13건, 같은 fixture): 기존 4건 + 9건. L1 2, L2 4, L3 4, L4 2, L5 1. 위험 신호 6건(auth, data_loss, payment, data_migration, concurrency, security+auth). 작성자 단일 라벨(`pilot`).
 
@@ -79,3 +90,57 @@ python3 -m evaluation.live_runner --cases evaluation/pilot/cases.jsonl --fixture
 `live_runner --host claude` compares `mer --host claude` with stock Claude Code: the baseline is `claude -p --output-format json --permission-mode auto [--model M] [--effort E] -- PROMPT` (no `--model` = Claude Code's default; the Agent tool stays allowed). No rollouts are read (`~/.codex/sessions` is untouched): usage comes from the `claude -p` results (baseline) or mer's `calls[].usage` (router). Records carry `host` and `cost_usd`: the baseline's `total_cost_usd`, or for the router the sum over sessions of the LAST reported `total_cost_usd` of each session (it is cumulative per session, and includes a small side call that `usage` omits); `None` if any call or the run lacks it (an errored run, a timed-out resume, a thread-less call). `model_usage` (per-model input/cached/cache-write/output from the last `modelUsage` per session, same None rule) is the fuller token count since `usage` likely omits Agent-subagent tokens; `evaluation.cost` takes tokens from it when present. Classifier spend (Jev or the Haiku classifier) is not in `cost_usd`; its tokens are reported separately, as for Codex. Both modes load the user's global Claude settings and plugins and every CLAUDE.md up the workdir's parent chain, so absolute numbers carry that overhead while the A/B stays fair. `evaluation.cost` uses that `cost_usd` for claude records (`claude:no_cost` when unreported) and rollouts for codex records.
 
 Lean context (`session.claude_context`, default `lean`): mer's claude implement/resume sessions load all settings and instructions (CLAUDE.md, `~/.claude/rules`, user permissions and hooks) but turn the enabled plugins off (`--settings` `enabledPlugins: false`, read from the user and workdir settings) and MCP servers off. Lean read-only (review/plan) sessions load only user settings with all hooks disabled. `claude_context: full` keeps everything. The stock Claude baseline always runs full, so a lean router run is cheaper in fixed context by design; record which context a pilot used.
+
+## L2 경계 단독 실험과 조건부 Jev 재판정 (2026-10-04)
+
+[600회 live 실험과 혼합 재생 보고서](l2-boundary-experiment-20261004.md). 새 L2 질문은 Nimble에서 회귀하여 기각했다. 이전 보강 질문 + 위험/불확실/계획·리뷰 요청의 Jev 재판정은 재생에서 94.8%, Jev 호출 56.0%였다. 제품에는 적용하지 않았다. [실제 연쇄 호출 검증](conditional-chain-live-20261005.md)은 완료됐으며 독립 holdout 검증은 남아 있다. [40건 사람 검토 시트](../../evaluation/corpus/human-review-v2-boundaries.tsv)는 기존 라벨·예측을 숨긴 빈 시트이며 아직 사람 검토 전이다.
+
+## 경계 라벨 40건 검토 (2026-10-05)
+
+[독립 AI 검토와 점수 민감도](boundary-label-review-20261005.md): 두 검토자 39/40 일치, 기존 라벨에 레벨 6건·위험 플래그 3건의 공통 이견이 있었다. 공식 정답과 빈 사람 검토 시트는 보존했다. L2 점수는 라벨 경계에 민감하지만 새 L2 질문 기각은 민감도 계산에서도 유지된다.
+
+## L2 구현·리뷰 의도와 코드/diff 진단 (2026-10-05)
+
+[192회 paired live 진단](intent-context-ablation-20261005.md): 새로운 합성 예제 12개를 두 의도·두 정보 조건·두 반복으로 비교했다. Nimble L2는 구현 75.0%/62.5%, 리뷰 25.0%/0.0%; Jev는 모두 100%. 코드/diff만 더 주어서는 리뷰 하락이 해결되지 않았고, 콜백 예제 1개에서 별도 후처리 승격 오류가 있었다. AI 정답의 소규모 진단이며 제품과 기존 300건 코퍼스는 보존했다.
+
+## 조건부 Jev 실제 연쇄 호출 (2026-10-05)
+
+[551회 live 호출 검증](conditional-chain-live-20261005.md): Nimble 348회 후 조건에 맞는 203건만 같은 입력으로 Jev를 이어 호출했다. 기존 300건의 난이도 정확도 95.2%, critical miss 1건, Jev API 호출 44.0% 절감으로 사전 기준을 통과했다. 진단 리뷰 L2는 두 조건 모두 8/8로 회복했고 구현+코드에는 미선택 오답 1건이 남았다. 실측 코퍼스 연쇄 p50/p95는 1,165.5/1,415.8ms다. 제품과 코퍼스는 유지했으며 사람 라벨·실제 요청 holdout·live 장애 검증은 남아 있다.
+
+## 합성 진단 300건 추가: v3 (2026-10-05)
+
+사용자 승인에 따라 실제 요청 holdout과 구분한 **합성 진단**을 추가했다. 현재 합본은 [corpus-v3.jsonl](../../evaluation/corpus/corpus-v3.jsonl) 600건이다. v2 300건은 바이트 그대로 앞부분에 보존했다. 새 300건은 [expansion-v3-labeled.jsonl](../../evaluation/corpus/expansion-v3-labeled.jsonl)로 별도 평가한다. 기존 live 점수는 v3 점수가 아니다.
+
+| 최종 라벨 | 추가 300건 | 합본 600건 |
+| --- | ---: | ---: |
+| L1 | 30 | 81 |
+| L2 | 150 | 199 |
+| L3 | 30 | 80 |
+| L4 | 30 | 80 |
+| L5 | 30 | 80 |
+| no_route | 30 | 80 |
+
+추가 L2는 구현 60·리뷰 60·계획 30건이다. L2를 집중 진단하기 위해 추가분의 50%로 구성했으며, 합본에서는 199/600(33.2%)이다. 추가분 target은 route 119, review_only 92, plan_only 59, no_route 30; 위험 신호 사례 109건(36.3%)이며 6종 모두 포함한다. 백엔드/데이터, 클라이언트/모바일, 도구/인프라 영역과 한국어·영어 요청을 포함한다.
+
+초안 [expansion-v3.jsonl](../../evaluation/corpus/expansion-v3.jsonl)의 proposed는 정답이 아니다. 두 별도 AI 에이전트에 id/task/paths와 고정 가이드만 전달하고 작성자 제안·메모·상대 라벨·백엔드 예측을 숨겼다. 독립 판정은 [labels-v3-a.jsonl](../../evaluation/corpus/labels-v3-a.jsonl), [labels-v3-b.jsonl](../../evaluation/corpus/labels-v3-b.jsonl)에 보존한다. 난이도와 target은 300/300 일치, 위험 플래그를 포함한 완전 일치는 290/300(96.7%)였다. 플래그 차이 10건은 두 라벨러가 기존 가이드로 논의해 합의했고 사유를 최종 파일 note에 남겼다. 2단계 이상 차이는 없었으며 가이드는 변경하지 않았다. 의미가 겹친 작업은 별도 품질 검토 후 교체하고 다시 독립 라벨링했다. 정규화한 요청 문장의 정확 중복은 기존분·추가분 사이에 없다.
+
+AI 라벨이며 사람 검증은 아직 없다. 실제 사용자 빈도를 나타내거나 실제 요청 holdout을 대체하지 않는다. 제품·설정·기존 코퍼스는 변경하지 않았고 새 live 분류 호출은 0회다. 두 파일의 스키마 검증과 아래 dry-run을 통과했다(난이도 평가 대상 추가 270건, 합본 520건; target은 전부 평가).
+
+```sh
+python3 -m evaluation.cases evaluation/corpus/expansion-v3-labeled.jsonl
+python3 -m evaluation.cases evaluation/corpus/corpus-v3.jsonl
+python3 -m evaluation.compare --corpus evaluation/corpus/expansion-v3-labeled.jsonl --backends jev,nimble --dry-run
+python3 -m evaluation.compare --corpus evaluation/corpus/corpus-v3.jsonl --backends jev,nimble --dry-run
+```
+
+## v3 600건 live 평가 (2026-10-05)
+
+[2,400회 새 live 성능 평가](live-router-comparison-v3-20261005.md)를 완료했다(기존/보강 질문 × Jev/Nimble). 전송 오류·fallback은 0건이다. 새 표본의 난이도 정확도는 Jev 97.4%/96.3%, Nimble 78.5%/76.7%; 새 L2 리뷰 60건의 Nimble 정확도는 56.7%/23.3%다. 두 backend 모두 보강 질문의 합본 점수는 올랐지만 새 표본 전체 점수는 낮아졌다. 합성 AI 라벨 평가이며 제품·질문·임계값·코퍼스는 보존했다.
+
+## v3 개선 후보 검증 (2026-10-05)
+
+[696회 새 live 개선 후보 검증](improvement-validation-v3-20261005.md)을 완료했다. 고정 조건부 Jev는 같은 실행의 Nimble 207/270에서 260/270(96.3%)으로 개선됐고 L2 리뷰는 60/60이었다. Jev 추가 호출은 212/300(70.7%)이므로 비용·속도 우위는 입증하지 않았다. 구현 접두어 후보는 새 원문 쌍 비교에서 L2 리뷰 33/60→29/60으로 하락해 탈락했다. 호출 오류는 없고 제품·설정·코퍼스는 보존했다. 이미 평가한 합성 표본의 후보 검증이며 실제 요청 holdout을 대체하지 않는다.
+
+## 실제 요청 평가 준비 (2026-10-05)
+
+[Codex 대화 수집·사람 검수 준비](real-holdout-preparation-20261005.md)를 진행했다. 고유 후보 132개에서 독립 입력 후보 25개를 선별하고 빈 검수 시트를 만들었다. 나머지는 선행 맥락 필요 83개, 자동 주입·보고문 24개다. 목표 100~200개에는 미달하며 라우터 프로젝트에 편중됐다. 사용자가 25개를 직접 검수하기로 했으며 현재 사람 정답 0개·새 분류 호출 0회로 실제 요청 성능 비교는 미실행이다.
