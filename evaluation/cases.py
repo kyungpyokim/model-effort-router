@@ -8,8 +8,11 @@ Usage: python3 -m evaluation.cases FILE   (validate + agreement report)
 import json
 import sys
 
-from model_effort_router.difficulty.decision import LEVELS, RISK_FLAGS
-from model_effort_router.policy.targeting import NO_ROUTE, PLAN_ONLY, REVIEW_ONLY, ROUTE
+from model_effort_router.difficulty.decision import RISK_FLAGS
+
+# Retained solely to read the frozen historical L1-L5 corpus; the active router has no level API.
+LEVELS = ("L1", "L2", "L3", "L4", "L5")
+NO_ROUTE, ROUTE, PLAN_ONLY, REVIEW_ONLY = "no_route", "route", "plan_only", "review_only"
 
 TARGETS = (ROUTE, PLAN_ONLY, REVIEW_ONLY, NO_ROUTE)
 STATUSES = ("draft", "labeled", "adjudicated", "pilot")  # pilot: author-set `final`, run-only, never scored as corpus

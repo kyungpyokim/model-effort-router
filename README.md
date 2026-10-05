@@ -1,165 +1,50 @@
-# model-effort-router
+# Model Effort Router
 
-개발 요청의 난이도(L1~L5)와 위험 신호를 판정하고, 그에 맞는 모델과 reasoning effort로 작업을 실행하는 도구입니다. Codex와 Claude Code에서 동작합니다.
+MER classifies a development request as a **role + effort**, maps that pair to a host model, and can run one external worker request. Main remains responsible for conversation context, deciding which steps are needed, and invoking host-native Subagents. MER does not change the current Codex turn or orchestrate an automatic plan/test/escalation/review workflow.
 
-- **`mer` CLI (주 경로)**: 요청을 분류합니다. 고른 모델·effort로 세션 하나를 실행하고 Test Gate를 돌립니다. 실패하면 같은 세션을 다음 프로필로 이어서 승격하고, 위험한 작업에는 독립 읽기 전용 Review를 붙입니다.
-- **UserPromptSubmit hook (보조)**: 일반 세션에서 난이도, 위험 플래그, 추천 모델·effort, 계획 먼저·리뷰 권고를 짧게 덧붙입니다. 권고만 하고 아무것도 막거나 강제하지 않습니다.
+## Routing contract
 
-Python 3 표준 라이브러리만 씁니다(외부 의존성 없음). 런타임 코드는
-`model_effort_router/`에 한 번 설치하고, 세 플러그인은 그 런타임을 import합니다.
+The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, or `xhigh`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
 
-## 난이도와 세션 프로필
+Defaults are Codex execution `gpt-6-luna`, reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5`, reasoning `claude-opus-5-5`. Each host/lane has configurable primary, fallback, and supported efforts. MER never infers execution fallback from stderr or retries after a worker may have started; only an explicit pre-execution-unavailable signal permits it. Classifier providers may fall through to the configured next classifier. If all fail, CLI routing returns an error; hooks fail open and leave the user request unblocked.
 
-| Level | 의미 | 시작 프로필 | 승격 1 | 승격 2 | 독립 Review |
-|---|---|---|---|---|---|
-| L1 | 기계적 변경 | economy / medium | economy / high | balanced / high | 없음 |
-| L2 | 국소 변경 | economy / medium | balanced / high | frontier / high | 없음 |
-| L3 | 여러 파일, 설계 판단 | balanced / high | frontier / high | frontier / xhigh | 없음 |
-| L4 | 구조 변경 | frontier / high | frontier / xhigh | 중단 후 보고 | frontier / high |
-| L5 | 고난도·고위험 | frontier / xhigh | 중단 후 보고 | — | frontier / xhigh |
+## Use
 
-- 승격 조건은 Test Gate `failed`뿐입니다. Review가 `changes_requested`를 내면 승격하지 않고, 같은 세션에서 한 턴 동안 지적을 반영한 뒤 Gate만 다시 돕니다.
-- `auth`·`security` 신호가 있으면 L1~L3에도 독립 Review가 붙습니다. 위험 신호가 있으면 계획 먼저 쓰기도 붙습니다.
-- 추상 프로필은 호스트 adapter가 실제 모델로 바꿉니다.
-
-| tier | Codex | Claude Code |
-|---|---|---|
-| economy, balanced | gpt-6-luna | claude-sonnet-5-5 |
-| frontier | gpt-6.1-sol | claude-opus-5-5 |
-
-Claude Code에서는 `xhigh`가 `high`로 매핑됩니다. 파일럿에서 Opus xhigh가 비용만 크게 늘렸기 때문입니다.
-
-## 설치
-
-플러그인에는 `mer` CLI, host별 manifest, skill, hook만 들어 있습니다. 공통
-런타임은 플러그인 설치와 별도로 한 번 설치해야 합니다. 먼저 저장소를 clone한
-뒤 같은 checkout에서 설치하세요.
-
-```bash
-git clone https://github.com/kyungpyokim/model-effort-router-next.git
-cd model-effort-router-next
-python3 scripts/install_core.py
-python3 scripts/install_core.py --check
+```sh
+python3 <plugin>/bin/mer route --host codex --json 'Review the authentication changes'
+python3 <plugin>/bin/mer route --host codex --role implementation --effort high --json 'Implement the approved design'
+python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and fix the focused tests'
 ```
 
-기본 설치 위치는 `${XDG_DATA_HOME:-~/.local/share}/model-effort-router/runtime`입니다.
-`MER_CORE_PATH`를 절대 경로로 지정하면 개발 checkout을 런타임으로 사용할 수 있습니다.
+`mer route` classifies/maps only. `mer run` executes exactly one worker request. Reasoning roles run read-only. Antigravity can classify and provide advice, but worker execution is unsupported because Subagent isolation is unverified. `mer chat` was removed; use the route result to ask Main to invoke the selected Subagent. Explicit `--role` and `--effort` bypass automatic hook eligibility and must be provided together.
 
-```bash
-claude plugin marketplace add kyungpyokim/model-effort-router-next
-claude plugin install model-effort-router@model-effort-router
-```
+Main should pass a compact Context Packet (`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`). For review, pass only `goal`, `decisions`, `constraints`, `diff`, and `verification`; do not forward another agent's private reasoning or the full conversation by default. Hooks only provide this guidance and do not create native Subagents themselves.
 
-```bash
-codex plugin marketplace add kyungpyokim/model-effort-router-next
-codex plugin add model-effort-router@model-effort-router
-```
+## Configuration
 
-설치하거나 업데이트한 뒤 호스트를 재시작하고 `/hooks`에서 hook을 신뢰해야 합니다. 신뢰하기 전까지 hook은 아무 출력도 내지 않습니다. 업데이트 방법과 세부 동작은 [Claude Code 플러그인 README](plugins/claude-model-effort-router/README.md)와 [Codex 플러그인 README](plugins/codex-model-effort-router/README.md)에 있습니다.
-
-## 사용
-
-```bash
-python3 <plugin>/bin/mer run --dry-run --level L3 'add pagination to the orders API'
-```
-
-```bash
-python3 <plugin>/bin/mer run 'add pagination to the orders API'
-```
-
-```bash
-python3 <plugin>/bin/mer chat 'add pagination to the orders API'
-```
-
-- `run`: 분류 → 세션 실행 → Test Gate → 승격 → Review까지 한 번에 진행합니다. 종료 코드 0은 Gate가 실패하지 않았고, 필요한 Review가 승인되었거나 지적이 반영되었다는 뜻입니다. 깨끗한 작업 트리에서 실행하세요(Review는 HEAD 기준 diff를 봅니다).
-- `run` 결과의 `probe` 필드: Gate가 실패하지 않았고 `test` 검사가 통과했으며(lint 등이 `not_run`이라 `incomplete`여도 됩니다) 이번 실행이 테스트 파일을 바꿨다면, 같은 `test` 명령을 변경 이전 코드(HEAD + 이번 실행이 바꾼 테스트 쪽 파일: 테스트 파일, `conftest.py`, `tests/`·`__tests__/` 아래 코드, 테스트 데이터·snapshot 같은 비코드 파일)에서 한 번 더 돌려 그 테스트가 변경을 지키는지 봅니다. `spec/`·`test/`·`fixtures/` 아래라도 `tests/`·`__tests__/`가 아닌 코드는 제품 소스로 보고 HEAD 그대로 둡니다. 결과의 `tests`는 덮어쓴 테스트 파일, `overlay`는 덮어쓴 모든 경로입니다. 스냅샷은 임시 디렉터리에서만 만들고 작업 트리와 `.git`은 건드리지 않습니다. 모델 호출은 없습니다.
-  - `fails_without_change`: 새 테스트가 옛 코드에서 실패합니다(정상). 실패 출력 끝부분(최대 500자)이 `output_tail`에 남고 Review 프롬프트에도 실려, 단언 실패인지 ImportError인지 볼 수 있습니다.
-  - `passes_without_change`: 테스트가 옛 코드에서도 통과합니다. 변경을 지키지 못한다는 경고지만 항상 버그는 아닙니다(기존 동작에 테스트만 추가한 경우도 걸립니다. Review 프롬프트에도 이 단서가 붙습니다). `cd`로 다른 곳을 도는 설정 test 명령이나 작업 트리를 가리키는 editable install은 스냅샷이 아니라 작업 트리를 테스트하므로 항상 이 값이 나옵니다(잘못된 경고일 뿐 잘못된 안심은 아닙니다).
-  - `inconclusive`: 환경 문제 등으로 판단할 수 없습니다(변경 이전 코드 그대로도 실패하면 여기로 내려갑니다). HEAD에 커밋된 절대 경로·저장소 밖을 가리키는 symlink가 있으면 스냅샷을 풀 수 없어 이 값이 됩니다.
-  - `skipped`: 실행 전 트리가 깨끗하지 않았거나, Gate가 실패했거나 `test` 검사가 통과하지 않았거나, 바뀐 테스트 파일이 없거나(또는 테스트 쪽 파일과 `.md`만 바뀌었거나), test 명령이 없거나, 저장소·HEAD가 없거나, cwd가 저장소 루트가 아니거나, 실행 중 HEAD가 바뀌었을 때입니다. `review_only`·`plan_only`·`no_changes`·`error` 결과에는 `probe`가 `null`일 수 있습니다.
-  - 보고만 합니다. `status`와 종료 코드는 바뀌지 않고, Review 프롬프트와 사람용 출력에만 실립니다. Review 지적을 고친 뒤에는 다시 돌리지 않습니다.
-  - `gate.probe_nudge: true`(repo·user 설정, repo가 우선, 기본값 꺼짐)를 켜면 `passes_without_change`일 때 같은 구현 세션을 **한 번만** 되돌려 새 테스트가 옛 코드에서 실패하게 만들거나, 의도한 것이라면 아무것도 바꾸지 말고 한 문장으로 답하라고 요청합니다(`probe_nudge` 호출, 서브에이전트 없음). 추가 호출은 verdict가 `passes_without_change`일 때만 생기고(1회), 그 턴 뒤 Gate가 실패해 승격이 일어나면 호출이 더 늘 수 있습니다. 그 턴이 파일을 바꿨을 때만 Gate와 probe를 다시 돌리고, `probe`는 최종 결과가 됩니다. 아무것도 바꾸지 않았으면 재실행 없이 그 답을 기록합니다. 값이 `true`/`false`가 아니면 설정 오류로 종료 코드 2입니다.
-  - nudge를 한 실행의 `probe`에는 `nudge` 키가 붙습니다: `first`(되돌리기 전 verdict), `reply`(에이전트 답변, 최대 300자), `changed`(그 턴이 파일을 바꿨는가), `product_paths_added`(그 턴과 그 뒤 승격이 바꾼, 테스트 쪽도 문서(`.md` 등)도 아닌 경로, 삭제 포함). 호출이 실패하면 `{"first", "error"}`만 남고(그 턴이 파일을 바꿨을 수 있어 Gate와 probe는 승격 없이 다시 돕니다) 실행 결과는 Gate가 정합니다. `product_paths_added`가 비어 있지 않으면 사람용 출력에 `warning: probe nudge changed product code: ...`가 붙습니다. 되돌림은 한 번뿐이고, nudge 뒤에도 `passes_without_change`가 남아도 `status`·종료 코드는 바뀌지 않습니다(그 턴 뒤 Gate가 실패하면 기존 Gate 규칙대로 승격·`gate_failed`가 됩니다).
-- `chat`: 분류만 하고, 고른 모델·effort로 대화형 세션을 엽니다.
-- `--dry-run`: 결정, 사다리, 첫 명령만 출력하고 세션을 시작하지 않습니다. 모델을 호출하는 분류기도 부르지 않으며, `--level`로 레벨을 정하거나 `--classify`로 분류 호출 1회를 허용합니다.
-- 요청 첫 줄 override: `/router off`, `/router session=frontier:high`. override로도 위험 신호의 Review 하한은 없앨 수 없습니다.
-- 안전 우회 플래그(`--dangerously-*`, bypassPermissions)는 어디서도 쓰지 않습니다. Review 세션은 Read/Grep/Glob만 씁니다.
-
-## 설정
-
-설정 파일은 두 곳에 둘 수 있고, repo 설정이 user 설정보다 우선합니다.
-
-- repo: `.model-effort-router.json`
-- user: `${XDG_CONFIG_HOME:-~/.config}/model-effort-router/config.json`
+Configuration uses JSON in `.model-effort-router.json` at the repository root or `~/.config/model-effort-router/config.json`; repository values override user values. Existing user files are not rewritten. Example:
 
 ```json
 {
   "router": {"mode": "auto"},
-  "difficulty": {"backend": "jev", "fallback": "nimble", "timeout_s": 10},
-  "gate": {"checks": {"test": "python3 -m unittest"}, "probe_nudge": false},
-  "session": {"subagent_policy": "level", "claude_context": "lean"}
+  "difficulty": {"backend": "subscription", "fallback": "jev", "timeout_s": 10},
+  "models": {
+    "codex": {
+      "execution": {"primary": "gpt-6-luna", "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "gpt-6.1-sol", "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
+    }
+  }
 }
 ```
 
-난이도 Backend는 넷 중에서 고릅니다.
+Legacy L1-L5, tier/profile, session, escalation, and `nimble_jev` settings are rejected with migration guidance. Replace tier overrides with `/router role=<role> effort=<effort>`; replace an old Main-session routing workflow with `mer route` plus a Main-selected Subagent. `nimble_jev` is removed; configure `nimble` and a separate classifier fallback such as `jev`.
 
-| Backend | 위치 | 비용 | corpus-v1 exact / under / critical miss |
-|---|---|---|---|
-| `subscription` (기본) | 호스트 구독 모델 1회 호출 | 구독 사용량 | — |
-| `jev` | TypeSafe API (`TYPESAFE_API_KEY` 필요, 요청 텍스트 전송) | 호출당 과금 | 82% / 5 / 0 |
-| `nimble` | 로컬 Ollama (`ollama pull nimble`, loopback 주소만 허용) | 무료 | 78% / 21 / 1 |
-| `nimble_jev` | Nimble 먼저, 불확실·범위 한정·위험 신호일 때만 Jev (`ollama pull nimble`과 `TYPESAFE_API_KEY` 둘 다 필요; Ollama가 꺼져 있거나 nimble을 받지 않았으면 모든 프롬프트가 TypeSafe로 간다; 선택된 경우(그 300건에서 약 71%)만 텍스트가 TypeSafe로 전송) | Jev 호출 수만큼 | corpus-v3의 새 케이스 300건(레벨 있는 270건, 합성 AI 라벨) 260/270 exact, critical miss 1/127 (Jev 단독 같은 270건에서 263/270; 비용·지연 우위는 미입증) |
+## Runtime development
 
-권장 조합은 Jev를 기본으로 두고 Nimble을 fallback으로 쓰는 것입니다.
+`model_effort_router/` is the shared runtime source. Plugins contain host integration only. Use `MER_CORE_PATH="$PWD"` for development. Install and verify with:
 
-- **Test Gate 명령**: 설정에 없으면 AGENTS.md·CLAUDE.md, CI 파일, `package.json`·`pyproject.toml`·`Makefile` 순서로 찾습니다. 찾지 못한 검사는 통과가 아니라 `not_run`으로 보고합니다.
-- **로그**: `${XDG_STATE_HOME:-~/.local/state}/model-effort-router/`에 남습니다. 프롬프트 원문은 남기지 않고 해시와 길이만 기록합니다.
-
-## 측정 결과 (요약)
-
-Claude Code 파일럿 13건(c3, 2026-10-04)의 결과입니다.
-
-- 13건 모두 정상 종료했고, 저장된 diff를 다시 적용하면 전부 테스트를 통과했습니다.
-- 비용은 $3.28입니다.
-  - Sonnet 고정 기준선 $3.13보다 5% 많습니다.
-  - Opus 고정 기준선 $5.72보다 43% 적습니다.
-- Review가 없는 9건만 보면 Sonnet 기준선보다 28% 적습니다.
-
-수치와 방법은 [기획서](docs/plans/model-effort-router-pluggable-difficulty-plan.md)의 §22와 Phase 5·6에 있습니다.
-
-## 저장소 구조
-
-```
-model_effort_router/   공유 Router Core: difficulty backend, policy, host adapter/exec, gate, CLI
-  entrypoints.py      함수 API와 호환되는 `ModelEffortRouter` 진입점 facade
-plugins/               Codex·Claude Code·Antigravity 플러그인 (bin/mer, skills, 지원 호스트의 hooks)
-  */router.py         설치된 facade를 상속하고 host 값만 선언
-evaluation/            코퍼스, backend 비교, 비용 기준선, 파일럿 (플러그인에 미포함)
-docs/                  기획서, 평가 사용법, 호스트 spike 기록
-scripts/install_core.py 공유 core 설치 및 `--check`
-tests/                 unittest
-```
-
-## 개발
-
-```bash
-python3 -m unittest discover -s tests
-```
-
-```bash
+```sh
+python3 scripts/install_core.py
 python3 scripts/install_core.py --check
+MER_CORE_PATH="$PWD" python3 -m unittest discover -s tests
 ```
-
-- `model_effort_router/`를 고친 뒤에는 `python3 scripts/install_core.py`로 공유 런타임을 갱신하고 `--check`로 확인합니다.
-- 플러그인의 `bin/`·hook은 설치된 공유 런타임의 `entrypoints.py`를 import합니다. CLI와 gate는 런타임 누락·손상·API 불일치를 stderr에 안내하고 종료 코드 2를 반환하며, hook은 조용히 종료 코드 0을 반환합니다.
-- `RUNTIME_API`가 바뀌는 호환성 변경은 플러그인과 런타임을 함께 업데이트해야 합니다. 플러그인 업데이트만으로는 공유 런타임이 갱신되지 않습니다.
-- 플러그인을 바꿀 때마다 `plugin.json`의 `version`을 올리세요. 같은 버전이면 업데이트가 건너뜁니다.
-- 평가 도구 중 모델을 호출하는 경로는 `--live`를 붙여야만 실행됩니다. 사용법은 [docs/evaluation/README.md](docs/evaluation/README.md)에 있습니다.
-
-## 알려진 한계
-
-- hook은 fail-open입니다. 오류, 타임아웃, 미신뢰 상태에서는 권고가 나오지 않습니다.
-- 다음 항목은 아직 live로 확인하지 못했습니다.
-  - Claude Code 승격 경로(파일럿에서 승격이 일어난 적이 없음)
-  - L5 subagent 토큰이 usage에 집계되는지
-- 보정값(Jev 0.6/0.8, Nimble 0.2)은 corpus-v1에서 정했으므로 과적합 위험이 있습니다. 사람 라벨과 별도 코퍼스로 다시 확인해야 합니다.

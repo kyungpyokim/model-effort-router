@@ -49,6 +49,20 @@ class PluginBundleTest(unittest.TestCase):
         self.assertTrue(all("${CLAUDE_PLUGIN_ROOT}/hooks/" in c for c in cmds))
         self.assertGreaterEqual(hooks["UserPromptSubmit"][0]["hooks"][0]["timeout"], 20)
         self.assertFalse((PLUGIN / "hooks" / "pre_tool_use.py").exists())
+        for plugin in PLUGINS:
+            with self.subTest(plugin=plugin.name):
+                if plugin.name.startswith("claude"):
+                    path = plugin / ".claude-plugin" / "plugin.json"
+                elif plugin.name.startswith("codex"):
+                    path = plugin / ".codex-plugin" / "plugin.json"
+                else:
+                    path = plugin / "plugin.json"
+                metadata = json.loads(path.read_text())
+                self.assertEqual(metadata["name"], "model-effort-router")
+                self.assertTrue(metadata["description"])
+                self.assertNotRegex(metadata["description"], r"L1.?L5|escalation|independent review")
+                if plugin.name.startswith(("claude", "codex")):
+                    self.assertEqual(metadata["version"], "0.6.0")
 
     def test_skill_has_frontmatter(self):
         text = (PLUGIN / "skills" / "model-effort-router" / "SKILL.md").read_text()
@@ -140,22 +154,16 @@ def hook(host, root, *, runtime_api=1): return 0
         for source in PLUGINS:
             plugin = shutil.copytree(source, self.root / source.name)
             host = source.name.split("-")[0]
-            args = ["--dry-run", "--level", "L2", "--cwd", str(self.root), "Fix parser.py"]
+            args = ["--role", "fix", "--effort", "medium", "--json", "--cwd", str(self.root), "Fix parser.py"]
             with self.subTest(host=host):
-                result = self.run_loader(plugin, "bin/mer", "chat" if host == "antigravity" else "run", *args)
+                result = self.run_loader(plugin, "bin/mer", "route", *args)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn("command: agy " if host == "antigravity" else f"host: {host}", result.stdout)
-                other = "claude" if host == "codex" else "codex"
-                result = self.run_loader(plugin, "bin/mer", "run", "--host", other, *args)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn(f"host: {other}", result.stdout)
-                result = self.run_loader(plugin, "bin/mer-gate", "--cwd", str(self.root))
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(json.loads(result.stdout)["overall"], "incomplete")
+                self.assertEqual(json.loads(result.stdout)["role"], "fix")
                 if host == "antigravity":
-                    result = self.run_loader(plugin, "bin/mer", "run", "--cwd", str(self.root), "Fix parser.py")
+                    result = self.run_loader(plugin, "bin/mer", "run", *args)
                     self.assertEqual(result.returncode, 2, result.stderr)
-                else:
+                    self.assertIn("execution isolation is unverified", result.stderr)
+                if host != "antigravity":
                     result = self.run_loader(plugin, "hooks/user_prompt_submit.py")
                     self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 

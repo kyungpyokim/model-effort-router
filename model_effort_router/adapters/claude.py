@@ -28,8 +28,8 @@ _TIERS = MappingProxyType(
         "frontier": "claude-opus-5-5",
     }
 )
-# xhigh -> high: pilot-c1 (2026-10-03) L5 at Opus xhigh + review cost 3.7x a stock Opus run that also passed;
-# an escalation step from high to xhigh is then a plain retry at the same profile
+# Claude effort support is configured explicitly; unsupported effort values
+# are rejected or mapped only through a configured compatible fallback.
 _EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "high"})
 
 

@@ -11,19 +11,12 @@ import signal
 import subprocess
 import tempfile
 
-from .decision import LEVELS, RISK_FLAGS, DifficultyDecision, DifficultyInput
+from .decision import DifficultyDecision, DifficultyInput, EFFORTS, ROLES
 from ..events import iter_events
 
 GUARD_ENV = "MER_CLASSIFIER"  # child env guard: the Router's own hook must no-op when set
 MAX_TASK_CHARS = 4000
 MAX_PATHS = 50
-LEVEL_DESCRIPTIONS = (  # shared with the Jev backend's score criteria
-    "mechanical (rename, typo, trivial config)",
-    "local change (single function, small bug fix)",
-    "multi-file, moderate design judgment",
-    "architectural (structure, persistence, concurrency design, API contract)",
-    "critical/deep (security core, data-loss migration, complex concurrency, unknown root cause)",
-)
 DEFAULT_MODEL = "gpt-6-luna"  # default to confirm
 CLAUDE_MODEL = "claude-haiku-4-5"  # the classifier model under host claude (plan Phase 5)
 
@@ -80,11 +73,10 @@ def _stop_group(proc, grace_s):
 def build_prompt(task: DifficultyInput) -> str:
     paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
     return (
-        "Classify the difficulty of this software task as one of:\n"
-        + "".join(f"{lv} {d}\n" for lv, d in zip(LEVELS, LEVEL_DESCRIPTIONS)) +
-        'Reply with ONLY a JSON object: {"level": "L1".."L5", "confidence": 0..1, '
-        '"reason_codes": [short_snake_case], "risk_flags": subset of '
-        '[security, auth, payment, data_migration, data_loss, concurrency]}.\n'
+        "Classify the requested work. Role must be one of " + ", ".join(ROLES) + ". Effort must be one of "
+        + ", ".join(EFFORTS) + ".\n"
+        'Reply with ONLY JSON: {"role":"implementation","effort":"medium","confidence":0.8, '
+        '"reason_code":"short_snake_case"}. Only role and effort are required.\n'
         "Do not run commands or edit files.\n\n"
         f"Task:\n{task.task[:MAX_TASK_CHARS]}\n\nChanged/expected paths:\n{paths}\n\n"
         f"Repo summary:\n{task.repo_summary[:MAX_TASK_CHARS] or '(none)'}\n"
@@ -114,11 +106,6 @@ def parse_usage(stdout: str):
     return usage
 
 
-def _as_list(value):
-    """Only real lists count; a string is an invalid field, not a sequence of characters."""
-    return value if isinstance(value, list) else []
-
-
 def parse_output(stdout: str, backend_name: str) -> DifficultyDecision:
     return decision_from_text(_agent_text(stdout), backend_name)
 
@@ -131,14 +118,8 @@ def decision_from_text(text: str, backend_name: str) -> DifficultyDecision:
         data = None
     if not isinstance(data, dict):
         raise BackendOutputError("agent message is not a JSON object")
-    # DifficultyDecision validates level / confidence; ValueError -> fallback applies.
-    return DifficultyDecision(
-        level=data.get("level"),
-        backend=backend_name,
-        confidence=data.get("confidence"),
-        reason_codes=tuple(c for c in _as_list(data.get("reason_codes")) if isinstance(c, str)),
-        risk_flags=tuple(f for f in _as_list(data.get("risk_flags")) if f in RISK_FLAGS),
-    )
+    from .jev import parse_decision
+    return parse_decision(data, backend_name)
 
 
 class SubscriptionBackend:

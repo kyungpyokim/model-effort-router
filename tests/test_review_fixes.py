@@ -10,14 +10,14 @@ class TimeoutClampTest(HookCase):
         self.submit()
         ev = [e for e in self.log_events() if e["event"] == "route"][0]
         self.assertTrue(ev["timeout_clamped"])
-        self.assertEqual(ev["decision"]["reason_codes"], ["timeout_12"])
+        self.assertEqual(ev["decision"]["reason_code"], "timeout_12")
 
     def test_small_timeout_untouched(self):
         self.write_repo_config({"difficulty": {"backend": "fake", "timeout_s": 5}})
         self.submit()
         ev = [e for e in self.log_events() if e["event"] == "route"][0]
         self.assertNotIn("timeout_clamped", ev)
-        self.assertEqual(ev["decision"]["reason_codes"], ["timeout_5"])
+        self.assertEqual(ev["decision"]["reason_code"], "timeout_5")
 
 
 class MiscTest(HookCase):

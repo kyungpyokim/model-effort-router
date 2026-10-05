@@ -1,23 +1,14 @@
 ---
 name: model-effort-router
-description: Select a model and effort profile for software work in Antigravity. Use when the user asks for routing advice or provides a [model-effort-router] recommendation.
+description: Classify an Antigravity development request and provide role/effort advice to Main.
 ---
 
-# Model-Effort Router (Antigravity)
+# Model Effort Router for Antigravity
 
-The plugin imports the shared runtime from
-`${XDG_DATA_HOME:-~/.local/share}/model-effort-router/runtime`. If it is
-missing, install it from a matching repository checkout with
-`python3 scripts/install_core.py`. For a checkout, use
-`MER_CORE_PATH="$PWD"`.
+The plugin imports the shared runtime from `${XDG_DATA_HOME:-~/.local/share}/model-effort-router/runtime`. Install a matching checkout with `python3 scripts/install_core.py`; for development set `MER_CORE_PATH="$PWD"`.
 
-For a new task, classify its difficulty and risk, then use the matching model and effort. The existing router core can produce a recommendation with `mer chat`; it does not intercept later prompts.
+The hook may classify eligible requests into role and effort and provide a route note to Main. It does not change Main's model, create a Subagent, or execute routed work. Antigravity worker execution remains unsupported because the host's Subagent execution isolation is unverified; use `mer route` for classification and follow only host-supported execution paths.
 
-- Start an interactive Antigravity session at a routed profile with `python3 "$HOME/.gemini/antigravity-cli/plugins/model-effort-router/bin/mer" chat '<task>'` (CLI install). For an IDE workspace install, use `python3 .agents/plugins/model-effort-router/bin/mer chat '<task>'` from the workspace root.
-- For a manual session, set `{"router":{"mode":"manual"}}` in `.model-effort-router.json`, then put a `/router session=balanced:medium` line first in the request.
-- For an offline preview, use `mer chat --dry-run --level L1..L5 '<task>'`.
-- Automatic classification through the subscription backend is unavailable because a read-only isolated classifier has not been verified. Use configured `nimble` (loopback Ollama) or `jev` if automatic routing is desired.
-- `mer run`, escalation/resume, independent automated review, and plan/review-only chat are unavailable until execution isolation is verified. Do not use plan mode as a security boundary.
-- The Test Gate alone is `python3 "$HOME/.gemini/antigravity-cli/plugins/model-effort-router/bin/mer-gate"` (CLI install).
+Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. Execution roles map to the configured execution lane; reasoning roles map to reasoning. Efforts are `low`, `medium`, `high`, and `xhigh`; Antigravity's default configured supported range is `medium` and `high`, so an unsupported mapping returns a routing error rather than silently lowering effort.
 
-Profiles map economy to Gemini 3.8 Flash, balanced to Claude Sonnet 5.5, and frontier to Claude Opus 5.5. The selected effort is encoded in Antigravity's model slug. Abstract `xhigh` maps to the available `high` effort.
+Main retains context and decides which phases to delegate. Pass a concise Context Packet (task, context, decisions, constraints, relevant files, expected result); review should receive only goal, decisions, constraints, diff, and verification. The removed `mer chat`, L1-L5 tiers, automatic escalation, Gate, and review workflow have migrated to `mer route` and explicit Main orchestration. Classifier exhaustion fails open in hooks.

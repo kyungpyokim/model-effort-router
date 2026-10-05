@@ -21,6 +21,7 @@ import subprocess
 from collections import namedtuple
 
 from ..adapters.claude import ClaudeConfig, resolve
+from ..adapters.common import ResolvedProfile
 from ..difficulty.subscription import default_runner
 from . import session_env as session_env
 
@@ -105,7 +106,7 @@ def _prompted(cmd, prompt):
 def session_argv(profile, prompt, sandbox, config=ClaudeConfig(), subagents=None):
     """sandbox "workspace-write" = an implement session (permission mode auto); anything else is read-only:
     dontAsk with Read/Grep/Glob only and the Agent tool always denied."""
-    resolved = resolve(profile, config)
+    resolved = profile if isinstance(profile, ResolvedProfile) else resolve(profile, config)
     if sandbox == "workspace-write":
         extra = ["--permission-mode", "auto"] + agents_flags(subagents) + isolation(config, False)
     else:
@@ -118,7 +119,8 @@ def session_argv(profile, prompt, sandbox, config=ClaudeConfig(), subagents=None
 
 def resume_argv(profile, session_id, prompt, config=ClaudeConfig(), subagents=None):
     extra = ["--permission-mode", "auto"] + agents_flags(subagents) + isolation(config, False) + ["--resume", session_id]
-    return _prompted(_base(resolve(profile, config), extra), prompt)
+    resolved = profile if isinstance(profile, ResolvedProfile) else resolve(profile, config)
+    return _prompted(_base(resolved, extra), prompt)
 
 
 def run_subprocess(argv, *, cwd, env, timeout_s):
