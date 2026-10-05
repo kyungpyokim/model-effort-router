@@ -366,6 +366,17 @@ Output: L3 + L1~L5 확률 → DifficultyDecision
 - **옵션** (모두 선택, 설정 > 환경 변수 > 기본값, 키 단위): `difficulty.nimble` = `{"model": "nimble", "url": "http://127.0.0.1:11434/v1/systemone", "risk_thresholds": {플래그: p}, "l4_min_prob": 0.6, "l4_min_prob_by_flag": {"concurrency": 0.8}}`; 환경 변수 `MER_NIMBLE_MODEL`, `MER_NIMBLE_URL`. 알 수 없는 키·플래그와 0..1 밖 확률은 설정 오류다(`policy/config.py`). 위험 임계값 기본값은 Jev의 값이고, L4/L5 규칙 기본값은 아래 측정과 보정을 따른다(`l4_promote_prob`도 `difficulty.nimble`의 키다).
 - **측정과 보정 (2026-10-04, corpus-v1 150건, live)**: 대상 정확도 97%, 위험 플래그 recall 96% / precision 67%(양호). 레벨은 130건 중 exact 84, ±1 88%, under 40, critical miss 4/58, p50 852 ms(Jev 265 ms), 로컬이라 과금 없음, 입력 약 0.9M 토큰. Nimble은 L4/L5에 **자신감이 낮다**(Jev와 반대): 라벨 레벨별 P(L4)+P(L5)는 L1/L2 최대 0.01, L3 최대 0.17, L4 중앙값 0.31, L5 중앙값 0.56이다. 그래서 Jev의 L4 강등(`l4_min_prob` 0.6)은 Nimble에서 under-routing(라벨 L4를 L3으로 14번, L5를 L3으로 8번)을 키웠다. 기본값을 바꿨다: 강등 끄기(`l4_min_prob` 0.0, `l4_min_prob_by_flag` {}), 새 옵션 `l4_promote_prob`(0..1 또는 null; 공용 `SystemOneBackend`에 있고 Jev 기본값은 없음 = 동작 불변)을 Nimble 기본 0.2로: argmax가 L4 미만이어도 P(L4)+P(L5) >= 0.2면 L4/L5(질량이 더 큰 쪽, 동률이면 L5)로 올리고 reason code `nimble_l4_promoted`를 남긴다. 오프라인 격자(raw argmax + 승격)에서 t=0.2는 exact 82→88/109, under 23→16, critical miss 2→0이고 라벨 L1~L3이 L4로 올라간 경우는 없었다. **같은 표본으로 고른 값이라 과적합 위험이 있고**, L3 최대 0.17과 임계값 0.2의 간격이 얇다. 위험 임계값은 Jev 값 그대로다.
 - **보정 후 재측정 (2026-10-04, live, `runs/compare-v1-nimble2.*`)**: 130건 중 exact 101(78%), ±1 96%, over 8, under 21, critical miss 1/58, p50 861 ms. 보정 전(exact 65%, under 40, critical miss 4)보다 크게 좋아졌지만 Jev(exact 82%, ±1 98%, under 5, critical miss 0)보다는 낮다. 남은 과소는 라벨 L4→L3 5건, L5→L3 2건, L5→L4 3건, L2→L1 5건. 로컬·무과금이므로 Jev의 fallback(구독 분류기 대신)이나 비용 0이 중요한 환경의 primary로 쓸 수 있다.
+- **corpus-v3 재비교 (2026-10-05, live, `runs/compare-v3-jev-nimble.*`)**: 600건(v1 150 + v2 추가 150 + v3 추가 300, 레벨 있는 520건), 오류·fallback 0. 전체: Jev exact 95%, ±1 99%, over 20, under 8, critical miss 0/255, target 98%, p50 243 ms. Nimble exact 79%, ±1 96%, over 41, under 67, critical miss 4/255, target 90%, p50 1112 ms. 구간별(exact / under / critical miss):
+
+  | 구간 | Jev | Nimble |
+  |---|---|---|
+  | v1 (보정에 쓴 표본, 130) | 86% / 5 / 0 | 78% / 21 / 1 |
+  | v2 추가 (120) | 98% / 2 / 0 | 82% / 15 / 1 |
+  | v3 추가 (270) | 97% / 1 / 0 | 79% / 31 / 2 |
+
+  - Nimble은 새 케이스에서도 78~82%로 v1과 같다. `l4_promote_prob` 0.2의 과적합 신호는 없다. 과소 경향은 남았고, v3 추가분 target은 251/300(84%)이다.
+  - Jev의 새 케이스 97~98%는 그대로 믿지 않는다. v2/v3 추가분은 AI 라벨러 두 명(`v3-ai-a/b`)이 붙인 합성 케이스라 경계가 분명하거나 라벨러 판단이 Jev와 비슷할 수 있다. 사람 라벨로 확인하기 전까지 Jev 정확도의 근거는 v1 값이다. v1에서도 82% → 86%로 바뀌어 Jev 응답이 실행마다 같지 않거나 모델이 갱신된 것으로 보인다.
+  - 결론 유지: Jev primary + Nimble fallback. Nimble 단독은 critical miss가 남는다.
 - **안전**: URL은 http(s)이고 호스트가 loopback(localhost, 127.0.0.1, ::1)이어야 한다. 아니면 보내기 전에 예외를 올려 fallback 체인이 처리한다(오타로 작업 텍스트가 기기를 떠나지 않게). 리다이렉트는 따르지 않고, 환경의 프록시도 쓰지 않는다. 설정의 `url`은 설정 검증에서도 검사하고(잘못된 URL은 시작 때 설정 오류), 환경 변수와 기본값은 전송 시점에 검사한다. loopback이면 포트는 아무거나 허용한다. `evaluation.compare`는 작업 디렉터리의 저장소·사용자 설정에서 mer와 같은 방식으로 `difficulty.nimble`을 읽는다.
 - 비용: 로컬이라 과금이 없고 호출당 지연은 하드웨어에 달렸다. 평가(`compare`, `live_runner --router-backend nimble`)는 `--live`가 필요하다.
 
