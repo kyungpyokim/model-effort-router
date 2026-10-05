@@ -1,7 +1,7 @@
 {
   "name": "model-effort-router",
-  "version": "0.5.1",
-  "description": "Advises a model and reasoning effort per request and ships the mer CLI (same-session escalation, Test Gate, independent review).",
+  "version": "0.5.2",
+  "description": "Routes active Codex turns by model and reasoning effort, with the mer CLI (same-session escalation, Test Gate, independent review).",
   "license": "MIT",
   "keywords": [
     "router",

@@ -1,11 +1,12 @@
 # Model-Effort Router (Codex plugin)
 
-Two parts. The **`mer` CLI is the main path**: it classifies a request, runs it as one Codex session with the model and
-reasoning effort the Router chose, gates it, escalates the same session on failure, and adds an independent review for
-high-risk work (see "mer CLI"). The **UserPromptSubmit hook is advisory only**: inside a normal Codex session it adds
-a short note (difficulty, risk flags, recommended model/effort, plan-first and review advice). It never blocks, denies
-or enforces anything and never asks the model to spawn subagents. (The earlier subagent orchestration and its
-PreToolUse enforcement were removed in Phase 7.)
+Two parts. The **`mer` CLI is the full workflow**: it classifies a request, runs it as one Codex session with the model
+and reasoning effort the Router chose, gates it, escalates the same session on failure, and adds an independent review
+for high-risk work (see "mer CLI"). The **UserPromptSubmit hook routes the current turn** when Codex's experimental
+`step_model_switching` feature is enabled: it applies the selected model and effort to the active turn, then adds a
+short note with difficulty, risk flags, plan-first and review advice. If the app-server cannot apply the change, the
+hook keeps the recommendation as advisory text. It never blocks or denies a prompt and never asks the model to spawn
+subagents. (The earlier subagent orchestration and its PreToolUse enforcement were removed in Phase 7.)
 
 ## Install (run these yourself)
 
@@ -38,6 +39,11 @@ shared runtime; run `python3 scripts/install_core.py` after core changes.
 Then start a Codex session and open `/hooks`: review and trust the hook (UserPromptSubmit).
 **Untrusted hooks are skipped silently**, so until you trust it there is no advice. **After updating the plugin the hook set has changed (PreToolUse is gone): re-trust the hooks in `/hooks`.** The `mer` CLI needs no hook.
 
+Automatic per-turn routing requires a Codex build that supports `step_model_switching` and that experimental feature
+enabled in Codex configuration. Restart Codex after changing the feature setting. Routing affects only the current
+turn; it does not change thread defaults or future turns. Without support, with the feature disabled, or when the
+current turn is no longer updateable, the hook falls back to its model/effort recommendation.
+
 ## Configuration (JSON; YAML is deferred)
 
 - Repo: `.model-effort-router.json` in the working directory. User: `$MER_USER_CONFIG`, else
@@ -55,17 +61,16 @@ Then start a Codex session and open `/hooks`: review and trust the hook (UserPro
 
 ## Advisory hook
 
-For a routed prompt (a code-change, plan-only or review-only request; not questions, not `/router off`) the hook classifies it with the configured backend (jev or subscription) and adds only `additionalContext`, e.g.:
+For a routed prompt (a code-change, plan-only or review-only request; not questions, not `/router off`) the hook classifies it with the configured backend (jev or subscription), applies the selected model and effort to the current Codex turn when available, and adds only `additionalContext`, e.g.:
 
 ```
-[model-effort-router] Advisory only: nothing is enforced and no subagents are needed. ...
+[model-effort-router] Applied to this turn: gpt-6.1-sol, reasoning effort high.
 Difficulty: L4 (confidence 0.62). Risk flags: auth.
-Recommended session: gpt-6.1-sol, reasoning effort high; switch with /model if you want.
 Plan first: write a short plan before changing code.
 This work warrants an independent review (gpt-6.1-sol, reasoning effort high) after the change. Run it with `python3 <plugin>/bin/mer run --review-profile frontier:high 'review only: check the current diff for <the task>'`, or run the whole task through `python3 <plugin>/bin/mer run '<the task>'` (Test Gate, escalation and review included). Single-quote the request (write ' as '\'') so the shell expands nothing in it.
 ```
 
-Non-routed prompts and `/router off` get no context at all. The hook is fail-open (any error, timeout or untrusted hook = no output), logs a `route` event, and no-ops when `MER_CLASSIFIER=1` (set inside mer-driven and classifier sessions).
+Non-routed prompts and `/router off` get no context at all. If the app-server update fails, the hook returns the prior advisory recommendation. The hook is fail-open (any error, timeout or untrusted hook = no output), logs the apply status and selected profile without prompt text, and no-ops when `MER_CLASSIFIER=1` (set inside mer-driven and classifier sessions).
 
 ## Gate CLI
 
@@ -101,5 +106,5 @@ with code 2. Hooks fail open and remain silent.
 
 - Codex reads `.codex-plugin/plugin.json`. A root `plugin.json` with the Agent Plugins `$schema` made Codex ignore hooks/skills (observed in logs), so it was removed.
 - `.agents/plugins/marketplace.json` field names (`source.source`, `source.path`) and the `codex plugin add <plugin>@<marketplace>` syntax.
-- Plugin-delivered UserPromptSubmit actually firing, and the `MER_CLASSIFIER` guard stopping recursion from the nested classifier.
+- Plugin-delivered UserPromptSubmit actually firing, the `MER_CLASSIFIER` guard stopping recursion from the nested classifier, and active-turn changes taking effect in the current Codex UI turn.
 - Whether the main model surfaces the advice to the user.

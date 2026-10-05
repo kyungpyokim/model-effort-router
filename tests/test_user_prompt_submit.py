@@ -1,6 +1,8 @@
 import json
 import unittest
+from unittest.mock import patch
 
+from model_effort_router.host import codex_hooks
 from tests.hook_helpers import DEV, HookCase, run_script
 
 
@@ -209,6 +211,54 @@ class UserPromptSubmitTest(HookCase):
 
     def test_unicode_prompt(self):
         self.assertIn("Recommended session", self.ctx(self.submit("파일 parser.py 버그 수정 🚀")))
+
+    def direct_submit(self, prompt=DEV, payload=None, applied=True):
+        data = payload or {"session_id": "thread-1", "turn_id": "turn-1", "cwd": str(self.repo), "prompt": prompt}
+        with patch.object(codex_hooks, "apply_turn_settings", return_value=applied) as update:
+            output = codex_hooks.user_prompt_submit(data, self.env(), str(self.plugin_root()))
+        return output, update
+
+    def test_routed_targets_apply_their_selected_codex_profile(self):
+        for prompt, expected in (
+            (DEV, ("gpt-6-luna", "high")),
+            ("Write a plan to refactor parser.py, plan only", ("gpt-6.1-sol", "high")),
+            ("review only: check parser.py", ("gpt-6.1-sol", "high")),
+        ):
+            with self.subTest(prompt=prompt):
+                output, update = self.direct_submit(prompt)
+                update.assert_called_once_with("thread-1", "turn-1", *expected)
+                context = json.loads(output)["hookSpecificOutput"]["additionalContext"]
+                self.assertIn("Applied to this turn", context)
+                self.assertNotIn("Advisory only", context)
+                event = self.log_events("thread-1")[-1]
+                self.assertEqual(event["turn_settings"], {"status": "applied", "model": expected[0], "effort": expected[1]})
+
+    def test_manual_mode_applies_only_an_explicit_session_override(self):
+        self.write_repo_config({"router": {"mode": "manual"}, "difficulty": {"backend": "fake"}})
+        _, update = self.direct_submit("/router session=frontier:xhigh\n" + DEV)
+        update.assert_called_once_with("thread-1", "turn-1", "gpt-6.1-sol", "xhigh")
+        _, update = self.direct_submit(DEV)
+        update.assert_not_called()
+
+    def test_no_route_off_and_missing_turn_ids_do_not_update(self):
+        for prompt, config, payload in (
+            ("What is the capital of France?", None, None),
+            ("/router off\n" + DEV, None, None),
+            (DEV, None, {"session_id": "thread-1", "cwd": str(self.repo), "prompt": DEV}),
+        ):
+            with self.subTest(prompt=prompt):
+                if config:
+                    self.write_repo_config(config)
+                _, update = self.direct_submit(prompt, payload=payload)
+                update.assert_not_called()
+
+    def test_failed_update_keeps_advisory_context_and_logs_only_profile_status(self):
+        output, _ = self.direct_submit(applied=False)
+        context = json.loads(output)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Advisory only", context)
+        self.assertIn("Recommended session: gpt-6-luna, reasoning effort high", context)
+        event = self.log_events("thread-1")[-1]
+        self.assertEqual(event["turn_settings"], {"status": "unavailable", "model": "gpt-6-luna", "effort": "high"})
 
 
 if __name__ == "__main__":
