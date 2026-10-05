@@ -5,6 +5,12 @@ description: Advisory notes and the mer CLI for routing a development request to
 
 # Model-Effort Router (Claude Code)
 
+The plugin imports the shared runtime from
+`${XDG_DATA_HOME:-~/.local/share}/model-effort-router/runtime`. If it is
+missing, install it from a matching repository checkout with
+`python3 scripts/install_core.py`. For a checkout, use
+`MER_CORE_PATH="$PWD"`.
+
 The UserPromptSubmit hook may add a `[model-effort-router]` note: difficulty level, risk flags, a recommended model and effort, plan-first advice and, for high-risk work, a recommendation for an independent review. It is advice only: nothing is enforced and you do not spawn subagents for it.
 
 - Mention the recommendation to the user briefly when it differs from the current model/effort; they switch with `/model` and `/effort`.

@@ -31,7 +31,7 @@ class AntigravityBundleTest(unittest.TestCase):
             agy.chmod(0o755)
             (root / '.model-effort-router.json').write_text('{"router":{"mode":"manual"}}')
             env = {k: v for k, v in os.environ.items() if not k.startswith('MER_')}
-            env.update(PATH=str(fake) + os.pathsep + os.environ['PATH'], HOME=str(root), MER_HOST='codex', RECORD=str(record))
+            env.update(MER_CORE_PATH=str(ROOT), PATH=str(fake) + os.pathsep + os.environ['PATH'], HOME=str(root), MER_HOST='codex', RECORD=str(record))
             result = subprocess.run([sys.executable, str(PLUGIN / 'bin' / 'mer'), 'chat', '--cwd', str(root),
                                      '/router session=balanced:medium\nFix parser.py'],
                                     capture_output=True, text=True, env=env, timeout=30)
@@ -48,12 +48,12 @@ class AntigravityBundleTest(unittest.TestCase):
             p = subprocess.run([sys.executable, str(PLUGIN / 'bin' / 'mer'), 'run', '--host', 'codex', '--dry-run',
                                 '--level', 'L2', '--cwd', str(root), 'Fix parser.py'],
                                capture_output=True, text=True, timeout=30,
-                               env={**os.environ, 'HOME': str(root), 'MER_STATE_DIR': str(root / 'state')})
+                               env={**os.environ, 'MER_CORE_PATH': str(ROOT), 'HOME': str(root), 'MER_STATE_DIR': str(root / 'state')})
             self.assertEqual(p.returncode, 0, p.stderr)
             self.assertIn('host: codex', p.stdout)
             p = subprocess.run([sys.executable, str(PLUGIN / 'bin' / 'mer'), 'run', '--cwd', str(root), 'Fix parser.py'],
                                capture_output=True, text=True, timeout=30,
-                               env={**os.environ, 'HOME': str(root), 'MER_STATE_DIR': str(root / 'state')})
+                               env={**os.environ, 'MER_CORE_PATH': str(ROOT), 'HOME': str(root), 'MER_STATE_DIR': str(root / 'state')})
             self.assertEqual(p.returncode, 2)
             self.assertIn('read-only and resume contracts are unverified', p.stderr)
 

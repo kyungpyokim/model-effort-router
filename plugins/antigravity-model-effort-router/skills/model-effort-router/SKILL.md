@@ -5,6 +5,12 @@ description: Select a model and effort profile for software work in Antigravity.
 
 # Model-Effort Router (Antigravity)
 
+The plugin imports the shared runtime from
+`${XDG_DATA_HOME:-~/.local/share}/model-effort-router/runtime`. If it is
+missing, install it from a matching repository checkout with
+`python3 scripts/install_core.py`. For a checkout, use
+`MER_CORE_PATH="$PWD"`.
+
 For a new task, classify its difficulty and risk, then use the matching model and effort. The existing router core can produce a recommendation with `mer chat`; it does not intercept later prompts.
 
 - Start an interactive Antigravity session at a routed profile with `python3 "$HOME/.gemini/antigravity-cli/plugins/model-effort-router/bin/mer" chat '<task>'` (CLI install). For an IDE workspace install, use `python3 .agents/plugins/model-effort-router/bin/mer chat '<task>'` from the workspace root.

@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
-"""mer entry point for Antigravity CLI. Automated run remains disabled until execution isolation is verified."""
+"""Import the shared router core for antigravity."""
 import os
 import sys
 from pathlib import Path
 
-os.environ["MER_HOST"] = "antigravity"
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from model_effort_router.cli import main
+try:
+    home = Path.home()
+    xdg = Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share")
+    base = xdg if xdg.is_absolute() else home / ".local/share"
+    runtime = Path(os.environ.get("MER_CORE_PATH") or base / "model-effort-router/runtime")
+    package = runtime / "model_effort_router"
+    if not runtime.is_absolute() or package.is_symlink() or not all((package / name).is_file() and not (package / name).is_symlink()
+                                           for name in ("__init__.py", "entrypoints.py")):
+        raise ImportError("shared core missing")
+    sys.path.insert(0, str(runtime))
+    from model_effort_router import entrypoints
+    if entrypoints.RUNTIME_API != 1:
+        raise RuntimeError("shared core API mismatch")
+except Exception:
+    print("Shared core unavailable or incompatible; run python3 scripts/install_core.py from a matching checkout (see README installation).", file=sys.stderr)
+    sys.exit(2)
 
-sys.exit(main())
+sys.exit(entrypoints.cli("antigravity", runtime_api=1))

@@ -1,10 +1,11 @@
 """`codex exec` command lines and `--json` stream parsing for mer-driven sessions (spec 3.4)."""
-import json
 import subprocess
 from collections import namedtuple
 
 from ..adapters.codex import CodexConfig, resolve
-from ..difficulty.subscription import GUARD_ENV, default_runner
+from ..difficulty.subscription import default_runner
+from . import session_env as session_env
+from ..events import iter_events as _events
 
 KEYS = {"input_tokens": "input", "cached_input_tokens": "cached_input",
         "output_tokens": "output", "reasoning_output_tokens": "reasoning_output"}
@@ -37,23 +38,9 @@ def resume_argv(profile, thread_id, prompt, config=CodexConfig(), subagents=None
     return cmd + ["-c", 'sandbox_mode="workspace-write"', thread_id, prompt]
 
 
-def session_env(base):
-    return {**base, GUARD_ENV: "1"}  # the installed plugin's hooks no-op inside mer-driven sessions
-
-
 def run_subprocess(argv, *, cwd, env, timeout_s):
     return default_runner(argv, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd, label="codex exec",
                           grace_s=5)
-
-
-def _events(text):
-    for line in text.splitlines():
-        try:
-            ev = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(ev, dict):
-            yield ev
 
 
 def parse_stream(text) -> Stream:
