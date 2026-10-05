@@ -166,3 +166,22 @@ def hook(host, root, *, runtime_api):
                     self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
                 else:
                     self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+
+    def test_symlink_bootstrap_files_are_rejected(self):
+        install(ROOT / "model_effort_router", self.runtime)
+        for name in ("__init__.py", "entrypoints.py"):
+            external = self.root / name
+            bootstrap = self.runtime / "model_effort_router" / name
+            external.write_bytes(bootstrap.read_bytes())
+            bootstrap.unlink()
+            bootstrap.symlink_to(external)
+            for plugin in PLUGINS:
+                for script in self.scripts(plugin):
+                    with self.subTest(name=name, plugin=plugin.name, script=script):
+                        result = self.run_loader(plugin, script, "--help")
+                        if script.startswith("hooks/"):
+                            self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+                        else:
+                            self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+            bootstrap.unlink()
+            bootstrap.write_bytes(external.read_bytes())

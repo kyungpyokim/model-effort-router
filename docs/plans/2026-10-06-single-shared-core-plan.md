@@ -190,12 +190,12 @@ def session_env(base):
 
 ## 구현·검증 결과 — 2026-10-06
 
-- 계획 커밋: `8b06231`; 구현은 기존 main 기반 `codex/shared-plugin-entrypoints`에서 계속했다. 작업별 중간 커밋·임시 번들 재생성 대신 최종 동작을 하나의 구현 커밋으로 묶었다.
+- 계획 커밋: `8b06231`; 구현은 기존 main 기반 `codex/shared-plugin-entrypoints`에서 계속했다. 작업별 중간 커밋·임시 번들 재생성 대신 최종 동작을 `30cb3d8` 구현 커밋으로 묶었다. 최종 보안 재검사에서 발견한 필수 파일 symlink 거절은 별도 fix 커밋으로 추가했다.
 - `plugins/*/model_effort_router/`의 120개 파일·8,337줄을 삭제했다. `cli.py`, `entrypoints.py`, `flow.py`, `review.py`를 비롯한 코어는 저장소 루트에만 있다. 세 플러그인 폴더·manifest 실행 경로는 유지한다.
 - 신규 공통 코드: `events.py` 13줄, `adapters/common.py` 20줄, 기존 빈 `host/__init__.py`에 6줄. JSONL 파싱, 불변 프로필 결과·effort fallback, 세션 환경 guard를 재사용하고 hook 테스트 준비도 합쳤다.
-- RED: installer/API 테스트의 미구현 import·속성 실패, plugin 새 계약의 34개 실패, 공통 parser 미구현 실패, adapter·session identity 실패를 확인했다. GREEN: 전체 `python3 -m unittest discover -s tests` 695개 통과. `ruff check model_effort_router scripts tests evaluation`, `git diff --check` 통과.
+- RED: installer/API 테스트의 미구현 import·속성 실패, plugin 새 계약의 34개 실패, 공통 parser 미구현 실패, adapter·session identity 실패를 확인했다. GREEN: 전체 `python3 -m unittest discover -s tests` 696개 통과. `ruff check model_effort_router scripts tests evaluation`, `git diff --check` 통과.
 - stdlib trace 실행 줄 커버리지(줄 0 메타데이터 제외): installer 72/74=97.3%, entrypoints 25/25=100%, events 9/9=100%, adapters/common 13/13=100%, host/__init__ 3/3=100%. 이는 위 모듈 대상 값이며 전체 저장소·분기 커버리지 수치가 아니다.
-- code-reviewer·python-reviewer·security-reviewer 독립 리뷰 완료. 불필요한 Path import를 제거했고, package symlink를 installer와 8개 loader에서 거절하며 회귀 테스트로 고정했다. 외부 의존성이 없는 제품 코드의 빈 requirements로 `pip_audit --disable-pip --no-deps` 실행: 알려진 취약점 없음.
+- code-reviewer·python-reviewer·security-reviewer 독립 리뷰 완료. 불필요한 Path import를 제거했고, package symlink를 installer와 8개 loader에서 거절하고 loader는 필수 진입점 파일 symlink도 거절하며 회귀 테스트로 고정했다. 외부 의존성이 없는 제품 코드의 빈 requirements로 `pip_audit --disable-pip --no-deps` 실행: 알려진 취약점 없음.
 - 파일 SHA-256, 5줄 이상 함수 AST, 8줄 연속 블록을 제품·평가·설치 파일에서 재검사했다. 비어 있지 않은 동일 파일·동일 함수 AST는 없으며 연속 블록은 8개 loader의 bootstrap에만 남는다. 공유 코어를 import하기 전에 필요한 경로 계산·실패 처리는 이 짧은 연결 코드로 유지한다. 호스트별 validation·명령·usage 차이와 evaluation의 작은 결과 쓰기 반복도 일반화하지 않았다.
 - 설치 계약은 `python3 scripts/install_core.py`로 사용자당 runtime 한 개를 미리 준비하는 방식이다. 별도 checkout이 필요하며 marketplace plugin 설치만으로는 준비되지 않는다. 개발용 `MER_CORE_PATH`는 절대 checkout 경로를 허용한다. plugin 변경만으로 runtime이 갱신되지 않으며 API 변경 시 세 plugin과 runtime을 함께 갱신한다.
 - 명시한 core 경로가 없을 때 cwd/PYTHONPATH/site-packages의 동명 core로 fallback하지 않는다. 이를 일반 Python 실행에서도 검증했다. Python 자체의 site 초기화·sitecustomize 격리는 이 로더 계약의 범위가 아니다.
