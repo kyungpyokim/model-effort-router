@@ -18,6 +18,10 @@ URL = "https://api.typesafe.ai/v1/systemone"
 KEY_ENV = "TYPESAFE_API_KEY"
 MODEL_ENV = "MER_JEV_MODEL"
 DEFAULT_MODEL = "jev-latest"
+class MissingKeyError(RuntimeError):
+    """The route log keeps only the exception type, so a missing key needs a name of its own."""
+
+
 RISK_THRESHOLD = 0.5  # noul probability at or above this sets the flag (per-flag values: RISK_THRESHOLDS)
 # flag -> threshold, calibrated on corpus-v1 (150 cases, plan 22.2, 2026-10-01), recall first: with the rule-based
 # detector merged, 68/70 labeled flags kept (97%) at 59% precision. The seed-only values (40 cases) held out on the
@@ -231,7 +235,7 @@ class JevBackend(SystemOneBackend):
     def _endpoint(self, env):
         key = env.get(KEY_ENV)
         if not key:
-            raise RuntimeError(f"{KEY_ENV} is not set")
+            raise MissingKeyError(f"{KEY_ENV} is not set")
         return (URL, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 self._model or env.get(MODEL_ENV) or DEFAULT_MODEL)
 

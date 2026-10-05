@@ -5,7 +5,7 @@ from unittest import mock
 
 from model_effort_router.difficulty.decision import RISK_FLAGS, DifficultyDecision, DifficultyInput
 from model_effort_router.difficulty import jev
-from model_effort_router.difficulty.jev import KEY_ENV, MODEL_ENV, URL, JevBackend
+from model_effort_router.difficulty.jev import KEY_ENV, MODEL_ENV, URL, JevBackend, MissingKeyError
 from model_effort_router.difficulty.registry import BACKENDS
 from model_effort_router.difficulty.subscription import MAX_PATHS, MAX_TASK_CHARS, SubscriptionBackend
 from model_effort_router.policy.router import route
@@ -240,6 +240,12 @@ class FailureTest(unittest.TestCase):
         exc = self.assertFails(t, env={})
         self.assertIn(KEY_ENV, str(exc))
         self.assertEqual(t.calls, [])
+
+    def test_missing_key_has_its_own_error_type(self):
+        """The route log keeps only the exception type: a missing key must not read like any other RuntimeError."""
+        exc = self.assertFails(FakeTransport(), env={})
+        self.assertIsInstance(exc, MissingKeyError)
+        self.assertIsInstance(exc, RuntimeError)
 
     def test_non_2xx(self):
         for status in (401, 429, 500):

@@ -104,8 +104,10 @@ def route(message, *, paths=(), repo_config=None, user_config=None, registry=Non
 
     if decision is None:
         decision = classify_with_fallback(task, rest, config.timeout_s) if rest else default_decision(causes)
-        if causes and decision.backend != "default":  # keep the failed primary visible in the log
-            decision = replace(decision, reason_codes=decision.reason_codes + tuple(f"fallback_cause:{c}" for c in causes))
+        if causes:  # keep the failed primary visible in the log, also when the fallback fails too
+            codes = (tuple(causes) + decision.reason_codes if decision.backend == "default"
+                     else decision.reason_codes + tuple(f"fallback_cause:{c}" for c in causes))
+            decision = replace(decision, reason_codes=codes)
     decision = decision.with_risk_flags(flags)
     usage, usage_missing = _classifier_usage(backends, decision)
     return RoutePlan(
