@@ -23,6 +23,12 @@ PLAN_FIRST = "First write a short plan, then implement it. "
 WRAP_UP = "When finished, end with a short summary of the changes."
 SUBAGENT_HINT = ("Use a subagent only when independent exploration materially improves the result; never to "
                  "parallelise code search, test runs or repeated checks. ")  # when subagents are enabled (L5)
+PROBE_NUDGE = ("The Test Gate passed, but the tests you added or changed also pass on the code before your change, so "
+               "they do not guard it. If the request is a behaviour change or a bug fix, make each new test fail on "
+               "the old code (force the failure it guards against) without changing product behaviour beyond the "
+               "request. If the tests intentionally cover behaviour that already worked, change nothing and say so "
+               "in one sentence. Then stop.")
+NUDGE_REPLY_MAX = 300
 # when subagents are disabled, the session checks its own work (measurement B, plan 22.3)
 SELF_CHECK = ("Make every new test fail on the code before your change (force the race or failure it guards "
               "against), and validate inputs before changing any state. ")
@@ -54,6 +60,11 @@ def _stamp(cwd, path):
     except OSError:
         return None
     return st.st_mtime_ns, st.st_size
+
+
+def _changed_since(before, after):
+    """Paths whose stamp differs between two snapshots; a path gone from either side has stamp None."""
+    return sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p))
 
 
 def _added_text(cwd, diff, paths):
@@ -88,8 +99,9 @@ def _profile(call):
 
 
 class _Flow:
-    def __init__(self, request, sp, cwd, runner, env, gate_fn, diff_fn, emit, max_esc, timeout_s, config, clock, host):
-        self.host, self.cx = host, host.exec
+    def __init__(self, request, sp, cwd, runner, env, gate_fn, diff_fn, emit, max_esc, timeout_s, config, clock, host,
+                 probe_nudge=False):
+        self.host, self.cx, self.probe_nudge_on = host, host.exec, probe_nudge
         self.request, self.sp, self.cwd, self.runner = request, sp, cwd, runner
         self.env, self.gate_fn, self.diff_fn, self.emit = self.cx.session_env(env), gate_fn, diff_fn, emit
         self.max_esc, self.timeout_s, self.config, self.clock = max_esc, timeout_s, config, clock
@@ -173,6 +185,41 @@ class _Flow:
         except Exception as exc:  # like a broken gate: inconclusive, never a failed run
             return pb.result("inconclusive", f"{type(exc).__name__}: {exc}"[:300])
 
+    def probe_nudge(self):
+        """The probe says the tests pass on the old code: one turn in the implement session. A turn that changed no
+        file is the agent saying the tests are intended; only a change re-runs the gate and the probe. Report-only:
+        status and exit code stay with the gate, and a failing nudge is recorded, never an error for the run."""
+        first = self.probe["verdict"]
+        try:
+            nudge = self._nudge_turn(first)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"[:300]
+            self.emit({"event": "probe_nudge", "error": error})
+            self.run_gate()  # the failed turn may have edited files: the gate must describe the final tree
+            self.run_probe()  # no escalation: the session is not reliable after a failed turn
+            nudge = {"first": first, "error": error}
+        self.probe = {**self.probe, "nudge": nudge}
+
+    def _nudge_turn(self, first):
+        before = self._stamps()
+        n = None if self.sp.implement_subagents is None else 0  # one turn: no subagents, as in apply_review
+        stream, rec = self.call("probe_nudge", self.cx.resume_argv(self.profile, self.thread, PROBE_NUDGE, self.config, n),
+                                self.profile, self.thread, n)
+        self.emit({"event": "probe_nudge", **rec})
+        turn_changed = _changed_since(before, self._stamps())
+        product = []
+        if turn_changed:
+            self.gate_loop()
+            self.run_probe()
+            # against the final tree: an escalation after the nudge may rewrite product code too; docs are neutral
+            product = [p for p in _changed_since(before, self._stamps())
+                       if not pb.is_test_side(p) and not p.endswith(PROSE_SUFFIXES)]
+        return {"first": first, "reply": (stream.text or "")[:NUDGE_REPLY_MAX], "changed": bool(turn_changed),
+                "product_paths_added": product}
+
+    def _stamps(self):
+        return {p: _stamp(self.cwd, p) for p in _changed_paths(self.diff_fn(self.cwd))}
+
     def run_review(self, profile):
         diff = self.diff_fn(self.cwd)
         if not diff.get("is_repo"):
@@ -220,9 +267,11 @@ class _Flow:
         self.emit({"event": "session_start", **rec})
         if not self.nudge_if_unchanged(was_clean):
             return {"status": "no_changes", "exit_code": 1, "message": self.message}
-        gate = self.gate_loop()
+        self.gate_loop()
         self.run_probe()
-        if sp.review and gate["overall"] == "failed":
+        if self.probe_nudge_on and self.thread and self.probe["verdict"] == "passes_without_change":
+            self.probe_nudge()
+        if sp.review and self.gate["overall"] == "failed":
             self.review["skipped"] = "gate failed"
         elif sp.review and self.run_review(sp.review) and self.review["verdict"] == "changes_requested" and self.thread:
             self.apply_review()
@@ -272,10 +321,10 @@ class _Flow:
 
 
 def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="route", max_escalations=2,
-             timeout_s=1200, config=None, clock=time.monotonic, host=CODEX, risk_flags=()):
-    """`risk_flags`: the route's flags; the result adds those of the final diff's paths."""
+             timeout_s=1200, config=None, clock=time.monotonic, host=CODEX, risk_flags=(), probe_nudge=False):
+    """`risk_flags`: the route's flags; the result adds those of the final diff's paths. `probe_nudge`: gate.probe_nudge."""
     flow = _Flow(request, sp, cwd, runner, env, gate_fn, diff_fn, emit, max_escalations, timeout_s,
-                 config or host.config, clock, host)
+                 config or host.config, clock, host, probe_nudge)
     t0 = clock()
     try:
         result = getattr(flow, {"plan_only": "plan_only", "review_only": "review_only"}.get(target, "implement"))()

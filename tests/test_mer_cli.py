@@ -1,3 +1,4 @@
+import contextlib
 import io
 import json
 import os
@@ -13,7 +14,7 @@ from model_effort_router import cli
 from model_effort_router import review as rv
 from model_effort_router.difficulty.subscription import SubscriptionBackend, default_runner
 from model_effort_router.gate import probe as pb
-from tests.test_mer_flow import GATE_BAD, GATE_CMD, GATE_OK, PASSES, WITH_TESTS, Harness
+from tests.test_mer_flow import FAILS, GATE_BAD, GATE_CMD, GATE_OK, PASSES, WITH_TESTS, Harness
 
 PROMPT_MARKER = "ZEBRA_PROMPT_MARKER"
 
@@ -210,6 +211,115 @@ class RunTest(CliCase):
 
     def test_negative_max_escalations_rejected(self):
         self.assertEqual(self.mer("Fix the bug in calc.py", "--max-escalations", "-1")[0], 2)
+
+
+class ProbeNudgeConfigTest(CliCase):
+    """gate.probe_nudge: off unless a config layer says true; repo over user; a wrong type is a config error."""
+
+    def write(self, repo=None, user=None):
+        base = {"difficulty": {"backend": "fake"}}
+        (self.cwd / ".model-effort-router.json").write_text(json.dumps({**base, **({"gate": repo} if repo is not None else {})}))
+        if user is not None:
+            path = self.root / ".config" / "model-effort-router" / "config.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"gate": user}))
+
+    def nudge_flag(self):
+        with mock.patch.object(cli, "run_flow", wraps=cli.run_flow) as run_flow:
+            rc, _ = self.mer("Fix the bug in calc.py")
+        self.assertEqual(rc, 0)
+        return run_flow.call_args.kwargs["probe_nudge"]
+
+    def test_off_when_unset_or_not_true(self):
+        self.assertIs(self.nudge_flag(), False)
+        self.write(repo={"checks": {}})
+        self.assertIs(self.nudge_flag(), False)
+        self.write(repo={"probe_nudge": False})
+        self.assertIs(self.nudge_flag(), False)
+
+    def test_repo_and_user_layers_turn_it_on_and_repo_wins(self):
+        self.write(repo={"probe_nudge": True})
+        self.assertIs(self.nudge_flag(), True)
+        self.write(user={"probe_nudge": True})
+        self.assertIs(self.nudge_flag(), True)  # repo layer has no gate key now: the user layer applies
+        self.write(repo={"probe_nudge": False}, user={"probe_nudge": True})
+        self.assertIs(self.nudge_flag(), False)
+        self.write(repo={"probe_nudge": True}, user={"probe_nudge": False})
+        self.assertIs(self.nudge_flag(), True)
+
+    def test_a_wrong_type_is_a_configuration_error_before_any_classification(self):
+        for bad in ("yes", "true", 1, None, [True]):
+            self.write(repo={"probe_nudge": bad})
+            err, h = io.StringIO(), Harness()
+            with contextlib.redirect_stderr(err), mock.patch.object(cli, "route") as route:
+                rc, out = self.mer("Fix the bug in calc.py", h=h)
+            self.assertEqual((rc, out, h.calls, route.call_count), (2, "", [], 0), repr(bad))
+            self.assertIn("gate.probe_nudge must be true or false", err.getvalue())
+        self.write(user={"probe_nudge": "yes"})  # the user layer is validated too
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.mer("Fix the bug in calc.py")[0], 2)
+
+    def test_dry_run_does_not_read_it(self):
+        self.write(repo={"probe_nudge": "yes"})
+        self.assertEqual(self.mer("Fix the bug in calc.py", "--dry-run", "--level", "L2")[0], 0)
+
+    def test_end_to_end_one_nudge_turn_when_on_and_none_when_off(self):
+        for on, roles in ((True, ["implement", "probe_nudge"]), (False, ["implement"])):
+            self.write(repo={"probe_nudge": on})
+            h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+            with mock.patch.object(pb, "probe_without_change", return_value=PASSES):
+                rc, out = self.mer("Fix the bug in calc.py", "--json", h=h)
+            res = json.loads(out)
+            self.assertEqual(([c["role"] for c in res["calls"]], rc, "nudge" in res["probe"]), (roles, 0, on))
+
+
+class ProbeNudgeOutputTest(unittest.TestCase):
+    def human(self, probe):
+        return cli._human({"status": "ok", "level": "L2", "target": "route", "gate": "passed", "usage": {
+            "total": 0, "input": 0, "output": 0}, "calls": [], "review": {"verdict": None, "skipped": None}, "probe": probe})
+
+    def nudge(self, **kw):
+        return {"first": "passes_without_change", "reply": "intended", "changed": True, "product_paths_added": [], **kw}
+
+    def test_a_nudged_probe_names_the_verdict_it_started_from(self):
+        out = self.human({**FAILS, "nudge": self.nudge()})
+        self.assertIn("probe: fails_without_change (nudged from passes_without_change)", out.splitlines())
+        self.assertNotIn("warning", out)
+        out = self.human({**PASSES, "nudge": self.nudge(changed=False)})
+        self.assertIn("probe: passes_without_change (nudged from passes_without_change)", out)
+        self.assertIn("warning: changed tests also pass without the change; they may not guard it", out)
+
+    def test_product_code_changed_by_the_nudge_is_a_warning_line(self):
+        out = self.human({**FAILS, "nudge": self.nudge(product_paths_added=["app/x.py", "app/y.py"])})
+        self.assertIn("warning: probe nudge changed product code: app/x.py, app/y.py", out.splitlines())
+        skipped = self.human({**FAILS, "verdict": "skipped", "nudge": self.nudge(product_paths_added=["app/x.py"])})
+        self.assertIn("warning: probe nudge changed product code: app/x.py", skipped)  # even when the gate then failed
+        self.assertNotIn("probe:", skipped)
+
+    def test_a_suppressed_probe_line_still_tells_that_a_nudge_ran(self):
+        skipped = {**FAILS, "verdict": "skipped"}
+        out = self.human({**skipped, "nudge": self.nudge()})
+        self.assertIn("probe nudge: changed=true, final probe skipped", out.splitlines())
+        self.assertNotIn("probe nudge reply", out)  # it changed files: the reply is not the news
+        out = self.human({**skipped, "nudge": self.nudge(changed=False)})
+        self.assertIn("probe nudge: changed=false, final probe skipped", out.splitlines())
+
+    def test_the_reply_of_a_nudge_that_changed_nothing_is_shown(self):
+        out = self.human({**PASSES, "nudge": self.nudge(changed=False, reply="  The tests\ncover old behaviour.  ")})
+        self.assertIn("probe nudge reply: The tests cover old behaviour.", out.splitlines())
+        self.assertNotIn("final probe skipped", out)
+        self.assertNotIn("probe nudge reply", self.human({**FAILS, "nudge": self.nudge(reply="forced it")}))
+
+    def test_a_failed_nudge_is_not_silent(self):
+        out = self.human({**PASSES, "nudge": {"first": "passes_without_change", "error": "TimeoutError: slow"}})
+        self.assertIn("probe: passes_without_change (nudged from passes_without_change)", out)
+        self.assertIn("warning: probe nudge failed: TimeoutError: slow", out.splitlines())
+
+    def test_no_nudge_no_extra_lines(self):
+        for probe in (PASSES, FAILS):
+            out = self.human(probe)
+            self.assertNotIn("nudge", out)
+            self.assertIn(f"probe: {probe['verdict']}\n", out)
 
 
 class TerminateTest(CliCase):

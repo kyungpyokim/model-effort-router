@@ -29,7 +29,7 @@ from .cli_display import (
 )
 from .difficulty.subscription import SubscriptionBackend
 from .flow import PLAN_FIRST, run_flow
-from .gate.run import DEFAULT_TIMEOUT_S, load_gate_checks, run_gate
+from .gate.run import DEFAULT_TIMEOUT_S, load_gate_checks, probe_nudge_setting, run_gate
 from .host import hosts
 from .host.claude_exec import plugins_off
 from .host.codex_hooks import _registry, load_configs
@@ -229,6 +229,13 @@ def _main(
     cwd = os.path.realpath(args.cwd)
     try:
         repo_cfg, user_cfg = load_configs(cwd, env)
+        probe_nudge = False
+        if not chat and not args.dry_run:  # a wrong type is a config error before any model call, never guessed
+            try:
+                probe_nudge = probe_nudge_setting(repo_cfg, user_cfg)
+            except ValueError as exc:
+                print(f"mer: invalid gate configuration: {exc}", file=sys.stderr)
+                return 2
         registry = _registry(env)
         if (
             registry.get("subscription") is SubscriptionBackend
@@ -416,6 +423,7 @@ def _main(
         timeout_s=args.timeout,
         config=host_config,
         risk_flags=plan.risk_flags,
+        probe_nudge=probe_nudge,
     )
     d = plan.decision
     result.update(

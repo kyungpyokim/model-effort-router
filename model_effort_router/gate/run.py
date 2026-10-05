@@ -79,6 +79,21 @@ def load_gate_checks(cwd, env):
     return {**_gate_checks(user), **_gate_checks(repo)}
 
 
+def _probe_nudge(layer):
+    gate = (layer or {}).get("gate")
+    if not isinstance(gate, dict) or "probe_nudge" not in gate:
+        return None
+    if not isinstance(gate["probe_nudge"], bool):
+        raise ValueError("gate.probe_nudge must be true or false")
+    return gate["probe_nudge"]
+
+
+def probe_nudge_setting(repo, user):
+    """gate.probe_nudge of the loaded config layers: repo over user, off when neither sets it. Both are validated."""
+    repo, user = _probe_nudge(repo), _probe_nudge(user)
+    return next((v for v in (repo, user) if v is not None), False)
+
+
 def main(argv=None, env=None):
     env = os.environ if env is None else env
     ap = argparse.ArgumentParser(prog="mer-gate", description="Deterministic Test Gate")

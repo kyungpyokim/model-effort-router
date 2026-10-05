@@ -6,7 +6,7 @@ from unittest import mock
 
 from model_effort_router import review as rv
 from model_effort_router.difficulty.decision import DifficultyDecision
-from model_effort_router.flow import run_flow
+from model_effort_router.flow import PROBE_NUDGE, run_flow
 from model_effort_router.gate import probe as pb
 from model_effort_router.host import codex_exec as cx
 from model_effort_router.policy.session import session_plan
@@ -623,6 +623,228 @@ class ProbeFlowTest(unittest.TestCase):
         self.assertEqual((r["status"], r["exit_code"], r["probe"]["verdict"]), ("ok", 0, "inconclusive"))
         self.assertIn("kaboom", r["probe"]["reason"])
         self.assertEqual(h.kinds(), ["session_start", "gate", "probe", "done"])
+
+
+class ProbeNudgeTest(unittest.TestCase):
+    """gate.probe_nudge: one extra turn in the implement session when the probe says passes_without_change."""
+
+    def run_nudge(self, probes, gates=(GATE_CMD,), on_nudge=None, reply="kept as is", nudge=True, level="L2",
+                  diff=WITH_TESTS, on_escalate=None, new_after_nudge=(), **kw):
+        with tempfile.TemporaryDirectory() as cwd:
+            for rel in (*diff["files"], *diff["untracked"]):
+                os.makedirs(os.path.dirname(os.path.join(cwd, rel)), exist_ok=True)
+                with open(os.path.join(cwd, rel), "w") as f:
+                    f.write("x = 1\n")
+            h = Harness(gates=gates, diff=diff)
+            orig, orig_diff = h.runner, h.diff_fn
+
+            def runner(argv, **k):
+                if argv[-1] == PROBE_NUDGE:
+                    h.impl_text = reply
+                    if on_nudge:
+                        on_nudge(cwd)
+                elif "The Test Gate failed" in argv[-1] and on_escalate:
+                    on_escalate(cwd)
+                return orig(argv, **k)
+
+            def diff_fn(c):  # a file the nudge turn created shows up in the tree afterwards
+                d = orig_diff(c)
+                return {**d, "untracked": [*d["untracked"], *new_after_nudge]} if d is not CLEAN and any(
+                    x["argv"][-1] == PROBE_NUDGE for x in h.calls) else d
+
+            h.runner, h.diff_fn = runner, diff_fn
+            with mock.patch.object(rv, "git_head", return_value="aaa"), patch_probe(side_effect=list(probes)) as probe:
+                r = run_flow(REQ, splan(level), cwd=cwd, runner=h.runner, env={}, gate_fn=h.gate, diff_fn=h.diff_fn,
+                             emit=h.events.append, probe_nudge=nudge, **kw)
+        return h, r, probe
+
+    @staticmethod
+    def edit(*rels, content="x = 1\nx = 2  # longer\n"):
+        def do(cwd):
+            for rel in rels:
+                with open(os.path.join(cwd, rel), "w") as f:
+                    f.write(content)
+        return do
+
+    @staticmethod
+    def roles(r):
+        return [c["role"] for c in r["calls"]]
+
+    def test_off_by_default_changes_nothing(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+        with patch_probe(return_value=PASSES) as probe:
+            r = h.run("L2")
+        self.assertEqual((probe.call_count, [c["role"] for c in r["calls"]], r["probe"]), (1, ["implement"], PASSES))
+        self.assertEqual(h.kinds(), ["session_start", "gate", "probe", "done"])
+        h, r, _ = self.run_nudge([PASSES], nudge=False)
+        self.assertEqual((self.roles(r), r["probe"]), (["implement"], PASSES))
+
+    def test_passes_without_change_resumes_the_implement_session_exactly_once(self):
+        h, r, probe = self.run_nudge([PASSES])
+        self.assertEqual(self.roles(r), ["implement", "probe_nudge"])
+        argv = h.calls[1]["argv"]
+        self.assertEqual((argv[-1], argv[-2], "resume" in argv), (PROBE_NUDGE, "T-impl", True))
+        self.assertIn("agents.enabled=false", argv)  # no subagents, like the review fix turn
+        self.assertEqual(probe.call_count, 1)  # nothing changed: no second probe
+        self.assertEqual(r["probe"]["nudge"]["first"], "passes_without_change")
+        self.assertEqual(r["threads"], ["T-impl"])
+
+    def test_the_nudge_turn_uses_the_session_profile_and_the_subagent_rule_of_the_review_fix(self):
+        h, r, _ = self.run_nudge([PASSES], level="L5")  # L5 starts with subagents on; the one-turn nudge must not
+        argv = h.calls[1]["argv"]
+        self.assertEqual(argv[argv.index("-m") + 1], h.calls[0]["argv"][h.calls[0]["argv"].index("-m") + 1])
+        self.assertEqual([c["subagents"] for c in r["calls"] if c["role"] == "probe_nudge"], [0])
+
+    def test_other_verdicts_and_a_missing_probe_never_nudge(self):
+        for probe in (FAILS, {**PASSES, "verdict": "skipped"}, {**PASSES, "verdict": "inconclusive", "reason": "env"}):
+            h, r, _ = self.run_nudge([probe])
+            self.assertEqual((self.roles(r), "nudge" in r["probe"]), (["implement"], False), probe["verdict"])
+        for target in ("review_only", "plan_only"):
+            h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+            with patch_probe(return_value=PASSES):
+                r = h.run("L2", target=target, probe_nudge=True)
+            self.assertIsNone(r["probe"])
+            self.assertNotIn("probe_nudge", [c["role"] for c in r["calls"]])
+
+    def test_no_session_no_nudge(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+        h.runner = lambda argv, **k: "{}"
+        with patch_probe(return_value=PASSES):
+            r = h.run("L2", probe_nudge=True)
+        self.assertEqual(([c["role"] for c in r["calls"]], "nudge" in r["probe"]), (["implement"], False))
+
+    def test_a_nudge_turn_that_changed_nothing_is_a_reply_with_no_rerun(self):
+        h, r, probe = self.run_nudge([PASSES], reply="x" * 400)
+        self.assertEqual(r["probe"], {**PASSES, "nudge": {"first": "passes_without_change", "reply": "x" * 300,
+                                                          "changed": False, "product_paths_added": []}})
+        self.assertEqual((probe.call_count, h.kinds().count("gate")), (1, 1))
+        self.assertEqual(h.kinds(), ["session_start", "gate", "probe", "probe_nudge", "done"])
+        self.assertEqual((r["status"], r["exit_code"]), ("ok", 0))
+
+    def test_a_nudge_turn_that_edited_a_test_reruns_the_gate_and_the_probe(self):
+        second = {**FAILS, "output_tail": "boom"}
+        h, r, probe = self.run_nudge([PASSES, second], on_nudge=self.edit("tests/test_pricing.py"), reply="forced it")
+        self.assertEqual((probe.call_count, h.kinds().count("gate")), (2, 2))
+        self.assertEqual((r["probe"]["verdict"], r["probe"]["output_tail"]), ("fails_without_change", "boom"))
+        self.assertEqual(r["probe"]["nudge"], {"first": "passes_without_change", "reply": "forced it", "changed": True,
+                                               "product_paths_added": []})
+        self.assertEqual(h.kinds(), ["session_start", "gate", "probe", "probe_nudge", "gate", "probe", "done"])
+        self.assertNotIn("boom", json.dumps(h.events))  # test output stays out of the log
+        self.assertEqual((r["status"], r["exit_code"]), ("ok", 0))
+
+    def test_product_code_the_nudge_turn_changed_is_listed_and_test_side_files_are_not(self):
+        both = self.edit("shop/pricing.py", "tests/test_pricing.py")
+        for on_nudge, expected in ((self.edit("tests/test_pricing.py"), []), (self.edit("shop/pricing.py"), ["shop/pricing.py"]),
+                                   (both, ["shop/pricing.py"])):
+            h, r, _ = self.run_nudge([PASSES, FAILS], on_nudge=on_nudge)
+            self.assertEqual(r["probe"]["nudge"]["product_paths_added"], expected)
+
+    def test_a_deleted_file_counts_as_changed(self):
+        h, r, probe = self.run_nudge([PASSES, PASSES], on_nudge=lambda cwd: os.remove(os.path.join(cwd, "shop/pricing.py")))
+        self.assertEqual((probe.call_count, r["probe"]["nudge"]["changed"], r["probe"]["nudge"]["product_paths_added"]),
+                         (2, True, ["shop/pricing.py"]))
+
+    def test_a_still_passing_probe_is_not_nudged_again(self):
+        h, r, probe = self.run_nudge([PASSES, PASSES], on_nudge=self.edit("tests/test_pricing.py"))
+        self.assertEqual((self.roles(r), probe.call_count, r["probe"]["verdict"]), (["implement", "probe_nudge"], 2, "passes_without_change"))
+        self.assertEqual(r["probe"]["nudge"]["first"], "passes_without_change")
+
+    def test_the_review_sees_the_final_probe(self):
+        h, r, _ = self.run_nudge([PASSES, FAILS], on_nudge=self.edit("tests/test_pricing.py"), level="L4")
+        self.assertEqual(self.roles(r), ["implement", "probe_nudge", "review"])
+        self.assertIn("Probe: the changed tests failed on the pre-change code.", h.calls[-1]["argv"][-1])
+
+    def test_a_gate_that_fails_after_the_nudge_uses_the_existing_escalation_and_skips_the_probe(self):
+        h, r, probe = self.run_nudge([PASSES], gates=(GATE_CMD, GATE_CMD_BAD), on_nudge=self.edit("shop/pricing.py"), level="L4")
+        self.assertEqual(self.roles(r), ["implement", "probe_nudge", "escalate"])
+        self.assertEqual((r["status"], r["exit_code"], r["review"]["skipped"]), ("gate_failed", 1, "gate failed"))
+        self.assertEqual((probe.call_count, r["probe"]["verdict"], r["probe"]["nudge"]["changed"]), (1, "skipped", True))
+        self.assertEqual(r["probe"]["nudge"]["product_paths_added"], ["shop/pricing.py"])
+        self.assertNotIn("review", self.roles(r))
+
+    def test_a_failing_nudge_call_is_recorded_and_never_turns_the_run_into_an_error(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+        h.fail_on = 2
+        with patch_probe(return_value=PASSES):
+            r = h.run("L2", probe_nudge=True)
+        self.assertEqual((r["status"], r["exit_code"], "error" in r), ("ok", 0, False))
+        self.assertEqual(r["probe"]["verdict"], "passes_without_change")
+        self.assertEqual(set(r["probe"]["nudge"]), {"first", "error"})
+        self.assertIn("TimeoutError", r["probe"]["nudge"]["error"])
+        self.assertEqual([(c["role"], c["usage"]) for c in r["calls"] if c["role"] == "probe_nudge"], [("probe_nudge", None)])
+        self.assertEqual(r["usage"]["missing"], 1)
+
+    def test_an_exception_after_the_turn_is_recorded_too(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+        diff_fn, raised = h.diff_fn, []
+
+        def diff(cwd):
+            if any(c["argv"][-1] == PROBE_NUDGE for c in h.calls) and not raised:
+                raised.append(1)  # the first look at the tree after the nudge turn
+                raise RuntimeError("git gone")
+            return diff_fn(cwd)
+
+        h.diff_fn = diff
+        with patch_probe(return_value=PASSES):
+            r = h.run("L2", probe_nudge=True)
+        self.assertEqual((r["status"], r["exit_code"]), ("ok", 0))
+        self.assertIn("git gone", r["probe"]["nudge"]["error"])
+        self.assertEqual(h.kinds().count("gate"), 2)  # the gate is run again: it must describe the final tree
+
+    def test_a_nudge_turn_that_fails_after_editing_files_still_gets_a_fresh_gate(self):
+        def edit_then_time_out(cwd):
+            self.edit("shop/pricing.py")(cwd)
+            raise TimeoutError("slow")
+
+        h, r, probe = self.run_nudge([PASSES], gates=(GATE_CMD, GATE_CMD_BAD), on_nudge=edit_then_time_out)
+        self.assertEqual((r["status"], r["exit_code"], r["gate"]), ("gate_failed", 1, "failed"))
+        self.assertEqual((h.kinds().count("gate"), self.roles(r)), (2, ["implement", "probe_nudge"]))  # no escalation
+        self.assertEqual((r["probe"]["verdict"], set(r["probe"]["nudge"])), ("skipped", {"first", "error"}))
+        self.assertIn("TimeoutError", r["probe"]["nudge"]["error"])
+        failed = [e for e in h.events if e["event"] == "probe_nudge"]
+        self.assertEqual(failed, [{"event": "probe_nudge", "error": r["probe"]["nudge"]["error"]}])
+
+    def test_a_failed_nudge_turn_reruns_the_probe_on_a_passing_gate(self):
+        def edit_then_time_out(cwd):
+            self.edit("tests/test_pricing.py")(cwd)
+            raise TimeoutError("slow")
+
+        h, r, probe = self.run_nudge([PASSES, FAILS], on_nudge=edit_then_time_out)
+        self.assertEqual((r["status"], probe.call_count, r["probe"]["verdict"]), ("ok", 2, "fails_without_change"))
+        self.assertIn("TimeoutError", r["probe"]["nudge"]["error"])
+
+    def test_product_code_an_escalation_after_the_nudge_rewrote_is_counted(self):
+        h, r, probe = self.run_nudge([PASSES, FAILS], gates=(GATE_CMD, GATE_CMD_BAD, GATE_CMD),
+                                     on_nudge=self.edit("tests/test_pricing.py"),
+                                     on_escalate=self.edit("shop/pricing.py", content="x = 3  # fixed by the escalation\n"))
+        self.assertEqual(self.roles(r), ["implement", "probe_nudge", "escalate"])
+        self.assertEqual((r["probe"]["verdict"], r["probe"]["nudge"]["changed"]), ("fails_without_change", True))
+        self.assertEqual(r["probe"]["nudge"]["product_paths_added"], ["shop/pricing.py"])
+
+    def test_a_file_created_by_the_nudge_turn_is_a_change(self):
+        def create(cwd):
+            with open(os.path.join(cwd, "shop/extra.py"), "w") as f:
+                f.write("y = 1\n")
+
+        h, r, probe = self.run_nudge([PASSES, FAILS], on_nudge=create, new_after_nudge=["shop/extra.py"])
+        self.assertEqual((probe.call_count, r["probe"]["nudge"]["changed"], r["probe"]["nudge"]["product_paths_added"]),
+                         (2, True, ["shop/extra.py"]))
+
+    def test_test_side_helpers_and_prose_are_not_product_code(self):
+        diff = {**WITH_TESTS, "untracked": ["tests/test_pricing.py", "tests/helpers.py", "tests/fixtures/x.json", "README.md"]}
+        side = ("tests/helpers.py", "tests/fixtures/x.json", "tests/test_pricing.py")
+        h, r, _ = self.run_nudge([PASSES, FAILS], diff=diff, on_nudge=self.edit(*side, "README.md"))
+        self.assertEqual((r["probe"]["nudge"]["changed"], r["probe"]["nudge"]["product_paths_added"]), (True, []))
+        h, r, _ = self.run_nudge([PASSES, FAILS], diff=diff, on_nudge=self.edit(*side, "README.md", "shop/pricing.py"))
+        self.assertEqual(r["probe"]["nudge"]["product_paths_added"], ["shop/pricing.py"])
+
+    def test_the_nudge_call_is_counted_in_calls_and_usage(self):
+        h, r, _ = self.run_nudge([PASSES])
+        self.assertEqual(self.roles(r), ["implement", "probe_nudge"])
+        self.assertEqual([c["usage"]["input"] for c in r["calls"]], [100, 300])  # cumulative 100, 400 -> deltas
+        self.assertEqual(r["usage"]["input"], 400)
+        self.assertEqual([e for e in h.events if e["event"] == "probe_nudge"][0]["role"], "probe_nudge")
+        self.assertEqual(h.kinds().count("probe_nudge"), 1)
 
 
 class ReviewPromptProbeTest(unittest.TestCase):

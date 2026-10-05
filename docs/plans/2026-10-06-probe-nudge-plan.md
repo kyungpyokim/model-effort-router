@@ -162,3 +162,15 @@ def run_flow(..., probe_nudge=False): ...
 2. **한 번뿐:** 두 번째 nudge는 하지 않는다. `review_fix`가 재리뷰 없이 한 턴인 것과 같은 이유(비용 두 배, 루프 위험).
 3. **`status` 불변:** `passes_without_change`가 남아도 실패로 만들지 않는다. 정상적인 "테스트만 추가" 요청이 막힐 수 있다.
 4. **레벨별 차등 없음:** v2는 모든 레벨에 같은 규칙이다. 측정에서 L1 작업의 nudge 비용이 과하면 레벨 하한(`L2` 이상)을 추가한다.
+
+## 결과 (구현)
+
+- 구현: `flow.py`(`PROBE_NUDGE`, `_Flow.probe_nudge`/`_nudge_turn`/`_stamps`, `run_flow(..., probe_nudge=False)`), `gate/run.py`(`probe_nudge_setting`), `cli.py`, `cli_display.py`, 테스트 `test_mer_flow.py`(`ProbeNudgeTest`)·`test_mer_cli.py`(`ProbeNudgeConfigTest`, `ProbeNudgeOutputTest`), `README.md`. Task 4(live 측정)는 하지 않았다. 플러그인 manifest·버전은 건드리지 않았다.
+- 조건: `gate.probe_nudge: true`, 세션 있음, 최종 probe verdict가 정확히 `passes_without_change`일 때만 한 번. 꺼져 있으면 호출 수·결과·출력이 이전과 같다(`probe`에 `nudge` 키 없음).
+- 흐름: 변경 경로별 `_stamp` 전후 비교(삭제는 stamp `None`이라 변경) → 같으면 재실행 없이 `reply`만 기록, 다르면 `gate_loop()`와 `run_probe()` 재실행. `product_paths_added`는 바뀐 경로 중 `pb.is_test_side`가 아닌 것(삭제 포함). 서브에이전트 정책은 `apply_review`와 같다.
+- 예외: nudge 안에서 모두 잡아 `probe.nudge = {"first", "error"}`로 기록하고 `{"event": "probe_nudge", "error": ...}`를 남긴다. 실패한 턴이 파일을 바꿨을 수 있으므로 `run_gate()`와 `run_probe()`를 다시 돌려 Gate가 최종 트리를 설명하게 한다(승격 없음). 구현 결과가 `error`로 바뀌지는 않는다(Gate가 실패하면 `gate_failed`). `Terminated`(BaseException)는 삼키지 않는다.
+- `product_paths_added`는 nudge 턴 전 stamp와 gate_loop·probe 이후 최종 stamp를 비교한다(nudge 뒤 승격이 제품 코드를 고친 경우 포함). 테스트 쪽(`pb.is_test_side`)과 문서(`.md` 등 `PROSE_SUFFIXES`)는 제외한다. `changed`는 nudge 턴만 본다(재실행 여부 기준).
+- 이벤트: `probe_nudge`(호출 기록). 재실행된 probe는 기존 규칙대로 이벤트를 남기고 `output_tail`은 싣지 않는다. 최종 gate가 `failed`면 probe는 `skipped`(이벤트 없음)이고 nudge 기록만 남는다.
+- 설정 오류: `gate.probe_nudge`가 bool이 아니면(repo·user 모두 검사) `mer: invalid gate configuration: gate.probe_nudge must be true or false`, 종료 코드 2. 이미 읽은 설정으로 분류기 호출 전에 검사하며, 실제 `run`에서만 한다(`--dry-run`·`chat`은 읽지 않는다). 대상(route/review_only/plan_only)을 알기 전에 검사하므로 review·plan 전용 실행도 잘못된 값이면 실패한다.
+- 출력: nudge가 있는데 최종 probe가 `skipped`라 `probe:` 줄이 없으면 `probe nudge: changed=<bool>, final probe skipped`를 낸다. `changed`가 false이면 `probe nudge reply: <답변>`도 낸다.
+- 계획 대비 차이: (1) `implement()`의 지역 변수 `gate`를 `self.gate`로 바꿨다. nudge가 gate를 다시 돌리면 지역 변수가 낡기 때문이다(nudge가 없으면 동작 동일). (2) 최종 `message`는 nudge 답변으로 덮어쓰지 않는다. 한 문장 답변이 구현 요약을 가리기 때문이다(답변은 `probe.nudge.reply`에 있다). (3) nudge 호출 실패는 사람용 출력에 `warning: probe nudge failed: ...` 한 줄이 나온다(조용히 삼키지 않기 위해).
