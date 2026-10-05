@@ -14,6 +14,12 @@ _PATTERNS = {
     r"|\bthreads?\b|\bthread-safe|동시성|경쟁 상태",
 }
 _COMPILED = {flag: re.compile(p, re.IGNORECASE) for flag, p in _PATTERNS.items()}
+# Statements in code a run added. Only those: the request words above ("lock", "charge") are everywhere in code.
+_CONTENT_PATTERNS = {
+    "data_migration": r"\balter\s+table\b",
+    "data_loss": r"\bdrop\s+(?:table|column|database|schema)\b|\btruncate\s+table\b|\brm\s+-rf\b",
+}
+_CONTENT_COMPILED = {flag: re.compile(p, re.IGNORECASE) for flag, p in _CONTENT_PATTERNS.items()}
 _PATH_SEPARATORS = re.compile(r"[_\-./\\]+")
 
 
@@ -21,3 +27,7 @@ def detect_risk_flags(text, paths=()):
     # Path separators become spaces so "user_auth.py" and "db/migrations/" match word rules.
     haystack = " ".join([text or "", *(_PATH_SEPARATORS.sub(" ", p) for p in paths or ())])
     return tuple(flag for flag in RISK_FLAGS if _COMPILED[flag].search(haystack))
+
+
+def detect_content_flags(text):
+    return tuple(flag for flag in RISK_FLAGS if flag in _CONTENT_COMPILED and _CONTENT_COMPILED[flag].search(text))

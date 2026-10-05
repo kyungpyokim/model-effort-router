@@ -1,6 +1,6 @@
 import unittest
 
-from model_effort_router.difficulty.risk import detect_risk_flags
+from model_effort_router.difficulty.risk import detect_content_flags, detect_risk_flags
 
 
 class RiskDetectionTest(unittest.TestCase):
@@ -41,6 +41,28 @@ class RiskDetectionTest(unittest.TestCase):
     def test_empty_inputs(self):
         self.assertEqual(detect_risk_flags(""), ())
         self.assertEqual(detect_risk_flags(None), ())
+
+
+class ContentRiskTest(unittest.TestCase):
+    """Added code lines only: destructive SQL and shell, not the natural-language words the request rules use."""
+
+    def test_destructive_statements(self):
+        cases = {
+            "data_loss": ["DROP TABLE users;", "alter table t drop column x", "TRUNCATE TABLE logs", "rm -rf /var/data"],
+            "data_migration": ["ALTER TABLE users ADD COLUMN age int;"],
+        }
+        for flag, lines in cases.items():
+            for line in lines:
+                with self.subTest(line=line):
+                    self.assertIn(flag, detect_content_flags(line))
+
+    def test_both_flags_come_back_in_canonical_order(self):
+        self.assertEqual(detect_content_flags("ALTER TABLE a ADD b int;\nDROP TABLE c;"), ("data_migration", "data_loss"))
+
+    def test_words_that_flag_a_request_do_not_flag_content(self):
+        for text in ("with self.lock:", "charge = price * qty", "thread = Thread()", "migrate_users()", "login(user)"):
+            with self.subTest(text=text):
+                self.assertEqual(detect_content_flags(text), ())
 
 
 if __name__ == "__main__":
