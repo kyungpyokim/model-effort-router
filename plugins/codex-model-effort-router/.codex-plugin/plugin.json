@@ -1,6 +1,6 @@
 {
   "name": "model-effort-router",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Advises a model and reasoning effort per request and ships the mer CLI (same-session escalation, Test Gate, independent review).",
   "license": "MIT",
   "keywords": [

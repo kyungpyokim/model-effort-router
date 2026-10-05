@@ -155,8 +155,9 @@ Preconditions (yours, this tool does not do them):
   - The workdir is turned into a git repo (fixed identity, one commit); diffs are saved next to --out.
 {extra}"""
 JEV_NOTICE = """\
-  - --router-backend jev: the TASK TEXT of every router run is sent to TypeSafe (an external API, billed separately
+  - --router-backend jev (nimble_jev: only the cases Nimble hands over): the TASK TEXT of every router run is sent to TypeSafe (an external API, billed separately
     from your subscription; needs TYPESAFE_API_KEY in the environment). Fallback on failure: {fallback}.
+    For nimble_jev: if Ollama is not running or nimble is not pulled, EVERY task goes to TypeSafe.
 """
 
 
@@ -484,7 +485,7 @@ def main(argv=None, *, runner=default_runner, sessions_dir=DEFAULT_SESSIONS, gat
                 print(mode, r["id"], build_mer_command(r["task"], real_workdir, host=args.host) if mode == "router"
                       else build_command(r["task"], real_workdir, *settings[mode], host=args.host))
         return 0
-    extra = JEV_NOTICE.format(fallback=fallback) if backend == "jev" else ""
+    extra = JEV_NOTICE.format(fallback=fallback) if backend in ("jev", "nimble_jev") else ""
     print((BANNER_CLAUDE if args.host == "claude" else BANNER).format(workdir=real_workdir, extra=extra), file=sys.stderr)
     out_dir = os.path.splitext(os.path.abspath(args.out))[0] + "-diffs"  # per output file: pilots never overwrite each other
     os.makedirs(out_dir, exist_ok=True)

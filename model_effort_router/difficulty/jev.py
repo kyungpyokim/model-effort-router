@@ -65,6 +65,21 @@ QUESTIONS = {
 }
 
 
+# The "guide" level question (live-validated 2026-10-04/05, plan 8.3): scope-aware instructions and anchored criteria.
+# Used by NimbleJevBackend for both stages; the plain backends keep QUESTIONS["level"] unless a question is passed in.
+GUIDE_LEVEL_QUESTION = {
+    "type": "score",
+    "instructions": "Rate the implementation difficulty of this software task from easiest to hardest. For plan-only and review-only requests, rate the difficulty of implementing the underlying change, not merely writing a plan or reading a diff. Judge the amount of code understanding, design reasoning and verification, not the number of files or edits. Risk flags describe domains and do not automatically raise the difficulty level. Adding a feature within the existing architecture differs from changing the architecture itself. For L4 versus L5, distinguish designing a known solution from investigating an unclear root cause or changes requiring deep verification to avoid irreversible data, money or security loss. Rewriting core cryptographic authentication logic is L5 even when standard solutions exist. If scope is unclear but software context exists, choose a reasonable middle estimate supported by the visible scope; do not speculate about hidden complexity.",
+    "criteria": [
+        "L1 mechanical: the result is determined from the request without understanding code; typos, specified names, text or single config values. Many identical edits do not increase difficulty.",
+        "L2 local change: limited code understanding and judgment in one feature or a small set of files; a local bug fix, CLI option, input validation within existing structure. Replacing logger calls with already-defined field mappings remains a local change even across many callers.",
+        "L3 multi-file/moderate: coordinate multiple modules or layers with moderate design judgment while keeping the existing architecture; a new API across service and repository, component state changes, cache invalidation, or role-based access control across routes.",
+        "L4 architectural: change structure, persistence, communication or a public API contract with compatibility; split a monolith, move an in-memory session store to external storage, design a scheduler safe across instances. A key/schema migration is at least architectural; compatible column additions alone are not.",
+        "L5 critical/deep: substantial reasoning and verification; rewrite core token signing/verification or password hashing, investigate unclear compound failures such as intermittent double charges under load, production data migrations where errors can irreversibly lose rows, or hard-to-reproduce concurrency bugs."
+    ]
+}
+
+
 class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
     """The API is never redirected: a 30x becomes an HTTP error status (and the chain falls back)."""
 
@@ -154,8 +169,9 @@ class SystemOneBackend:
     calls_model = True  # route events log its usage
     provides_target = True  # its decision carries the routing target; the router classifies before the rule check
 
-    def __init__(self, transport=default_transport, model=None, env=None):
+    def __init__(self, transport=default_transport, model=None, env=None, level_question=None):
         self._transport, self._model, self._env = transport, model, env
+        self._questions = QUESTIONS if level_question is None else {**QUESTIONS, "level": level_question}
         self.last_usage = None  # {"input_tokens", "output_tokens"} of the latest call
         self.last_risk_scores = None  # raw noul per flag of the latest call (evaluation: threshold calibration)
 
@@ -172,7 +188,7 @@ class SystemOneBackend:
         paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
         body = json.dumps({
             "state": f"Task:\n{task.task[:MAX_TASK_CHARS]}\n\nChanged/expected paths:\n{paths}",
-            "model": model, "questions": QUESTIONS,
+            "model": model, "questions": self._questions,
         }).encode("utf-8")
         status, text = self._transport(url, headers, body, timeout_s)
         if not 200 <= status < 300:

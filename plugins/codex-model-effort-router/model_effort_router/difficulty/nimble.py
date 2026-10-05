@@ -92,8 +92,8 @@ def validate_options(raw):
 class NimbleBackend(SystemOneBackend):
     name = "nimble"
 
-    def __init__(self, transport=local_transport, model=None, env=None, options=None):
-        super().__init__(transport, model, env)
+    def __init__(self, transport=local_transport, model=None, env=None, options=None, level_question=None):
+        super().__init__(transport, model, env, level_question)
         self._options = validate_options(options or {})
 
     def _endpoint(self, env):

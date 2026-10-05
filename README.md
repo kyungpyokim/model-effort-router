@@ -80,13 +80,14 @@ python3 <plugin>/bin/mer chat 'add pagination to the orders API'
 }
 ```
 
-난이도 Backend는 셋 중에서 고릅니다.
+난이도 Backend는 넷 중에서 고릅니다.
 
 | Backend | 위치 | 비용 | corpus-v1 exact / under / critical miss |
 |---|---|---|---|
 | `subscription` (기본) | 호스트 구독 모델 1회 호출 | 구독 사용량 | — |
 | `jev` | TypeSafe API (`TYPESAFE_API_KEY` 필요, 요청 텍스트 전송) | 호출당 과금 | 82% / 5 / 0 |
 | `nimble` | 로컬 Ollama (`ollama pull nimble`, loopback 주소만 허용) | 무료 | 78% / 21 / 1 |
+| `nimble_jev` | Nimble 먼저, 불확실·범위 한정·위험 신호일 때만 Jev (`ollama pull nimble`과 `TYPESAFE_API_KEY` 둘 다 필요; Ollama가 꺼져 있거나 nimble을 받지 않았으면 모든 프롬프트가 TypeSafe로 간다; 선택된 경우(그 300건에서 약 71%)만 텍스트가 TypeSafe로 전송) | Jev 호출 수만큼 | corpus-v3의 새 케이스 300건(레벨 있는 270건, 합성 AI 라벨) 260/270 exact, critical miss 1/127 (Jev 단독 같은 270건에서 263/270; 비용·지연 우위는 미입증) |
 
 권장 조합은 Jev를 기본으로 두고 Nimble을 fallback으로 쓰는 것입니다.
 
