@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Advisory hook using the shared core; failures never block the prompt."""
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -17,7 +18,17 @@ try:
     from model_effort_router import entrypoints
     if entrypoints.RUNTIME_API != 1:
         raise RuntimeError("shared core API mismatch")
-    code = entrypoints.hook("codex", Path(__file__).resolve().parent.parent, runtime_api=1)
+    plugin_root = Path(__file__).resolve().parent.parent
+    router_path = plugin_root / "router.py"
+    if router_path.is_symlink() or not router_path.is_file():
+        raise ImportError("plugin router missing")
+    spec = importlib.util.spec_from_file_location("_mer_codex_router", router_path)
+    if spec is None or spec.loader is None:
+        raise ImportError("plugin router unavailable")
+    plugin_router = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(plugin_router)
+    CodexRouter = plugin_router.CodexRouter
+    code = CodexRouter.run_hook(plugin_root)
 except BaseException:
     code = 0
 sys.exit(code)

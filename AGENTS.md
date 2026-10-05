@@ -10,6 +10,8 @@ set `MER_CORE_PATH` to the repository root.
 Navigation pointers:
 
 - Execution flow: `model_effort_router/flow.py`
+- Plugin entrypoint facade: `model_effort_router/entrypoints.py`
+- Host declarations: `plugins/*-model-effort-router/router.py`
 - Review prompts and verdict parsing: `model_effort_router/review.py`
 - Test-without-change probe: `model_effort_router/gate/probe.py`
 - Session review policy: `model_effort_router/policy/session.py`

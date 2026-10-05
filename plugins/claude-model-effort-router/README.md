@@ -16,6 +16,8 @@ python3 scripts/install_core.py
 python3 scripts/install_core.py --check
 ```
 
+The plugin's `router.py` inherits the installed core's `ModelEffortRouter` and selects the Claude host.
+
 ```bash
 claude plugin marketplace add kyungpyokim/model-effort-router-next
 claude plugin install model-effort-router@model-effort-router

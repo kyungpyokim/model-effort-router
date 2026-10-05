@@ -52,3 +52,23 @@ def hook(host, plugin_root, *, runtime_api=1):
         return main("UserPromptSubmit", plugin_root)
     except BaseException:  # hook failures must never block the user's prompt
         return 0
+
+
+class ModelEffortRouter:
+    """Plugin host settings over the stable function entrypoints."""
+
+    host = None
+    gate_host = None
+    runtime_api = None
+
+    @classmethod
+    def run_cli(cls):
+        return cli(cls.host, runtime_api=cls.runtime_api)
+
+    @classmethod
+    def run_gate(cls):
+        return gate(cls.gate_host, runtime_api=cls.runtime_api)
+
+    @classmethod
+    def run_hook(cls, plugin_root):
+        return hook(cls.host, plugin_root, runtime_api=cls.runtime_api)
