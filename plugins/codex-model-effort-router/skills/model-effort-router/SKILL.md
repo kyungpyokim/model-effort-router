@@ -1,6 +1,6 @@
 ---
 name: model-effort-router
-description: Advisory notes and the mer CLI for routing a development request to a model and reasoning effort. Use when a [model-effort-router] note was injected or the user asks which model/effort to use.
+description: Automatic per-turn model routing and the mer CLI for development requests. Use when a [model-effort-router] note was injected or the user asks which model/effort to use.
 ---
 
 # Model-Effort Router
@@ -11,7 +11,9 @@ missing, install it from a matching repository checkout with
 `python3 scripts/install_core.py`. For a checkout, use
 `MER_CORE_PATH="$PWD"`.
 
-The UserPromptSubmit hook may add a `[model-effort-router]` note: difficulty level, risk flags, a recommended model and reasoning effort, plan-first advice and, for high-risk work, a recommendation for an independent review. It is advice only: nothing is enforced and you do not spawn subagents for it.
+The UserPromptSubmit hook classifies routed requests and, when Codex's experimental `step_model_switching` feature is enabled, applies Jev's selected model and reasoning effort to the current turn. The hook adds a `[model-effort-router]` note with difficulty, risk flags, plan-first advice and, for high-risk work, a recommendation for an independent review. If the active-turn update is unavailable, the note gives an advisory model/effort recommendation instead. This changes only the current turn, never future thread defaults. The hook never blocks requests or asks you to spawn subagents.
+
+Automatic turn updates require a Codex build with `step_model_switching` support, the feature enabled in Codex configuration, and a Codex restart after changing that setting.
 
 - Mention the recommendation to the user briefly when it differs from the current model/effort; they switch with `/model`.
 - Follow plan-first advice by writing a short plan before changing code.

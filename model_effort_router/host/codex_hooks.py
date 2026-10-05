@@ -14,6 +14,7 @@ from ..policy.config import resolve_config
 from ..policy.router import route
 from ..policy.targeting import NO_ROUTE
 from . import advice, hosts
+from .codex_app_server import apply_turn_settings
 
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
 USER_CONFIG_ENV = "MER_USER_CONFIG"
@@ -81,12 +82,27 @@ def user_prompt_submit(data, env, plugin_root):
         return None
     host = hosts.get(env=env)
     current = host.exec.default_session(data.get("cwd")) if host.name == "claude" else None
+    selected = advice.selected_profile(plan)
+    turn_settings = None
+    applied_profile = None
+    if selected and host.name == "codex" and data.get("session_id") and data.get("turn_id"):
+        resolved = host.resolve(selected)
+        applied = False
+        try:
+            applied = apply_turn_settings(data["session_id"], data["turn_id"], resolved.model, resolved.applied_effort)
+        except Exception:
+            pass  # app-server routing must never block the submitted prompt
+        turn_settings = {"status": "applied" if applied else "unavailable",
+                         "model": resolved.model, "effort": resolved.applied_effort}
+        if applied:
+            applied_profile = selected
     text = None if plan.target == NO_ROUTE else advice.render(
-        plan, f'python3 {Path(plugin_root) / "bin" / "mer"} run', host, current)
+        plan, f'python3 {Path(plugin_root) / "bin" / "mer"} run', host, current, applied_profile)
     out = _context_output("UserPromptSubmit", text) if text else None
     try:  # logging must never change what the hook outputs; a backend-decided no_route still logs the spend
         route_log.append(sdir, sid, route_log.route_event(
-            plan, latency_ms=latency_ms, prompt=prompt, configured_backend=cfg.backend, timeout_clamped=clamped))
+            plan, latency_ms=latency_ms, prompt=prompt, configured_backend=cfg.backend, timeout_clamped=clamped,
+            turn_settings=turn_settings))
     except Exception as exc:
         _log_error(env, data, exc, "UserPromptSubmit")
     return out

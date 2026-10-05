@@ -33,13 +33,15 @@ def prompt_fingerprint(prompt):
     return {"prompt_sha": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12], "prompt_len": len(prompt)}
 
 
-def route_event(plan, *, latency_ms, prompt, configured_backend, timeout_clamped=False):
+def route_event(plan, *, latency_ms, prompt, configured_backend, timeout_clamped=False, turn_settings=None):
     decision = plan.decision
     ev = {"event": "route", "target": plan.target, "mode": plan.mode,
           "target_source": plan.target_source, "override_rejected": plan.override_rejected, "latency_ms": round(latency_ms, 1),
           **prompt_fingerprint(prompt)}
     if timeout_clamped:
         ev["timeout_clamped"] = True
+    if turn_settings:
+        ev["turn_settings"] = dict(turn_settings)
     if plan.classifier_usage_missing:
         ev["classifier_usage"] = None  # a model was called but its usage is unknown (absent key = no model call)
     elif plan.classifier_usage:

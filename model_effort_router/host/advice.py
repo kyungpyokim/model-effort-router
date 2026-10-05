@@ -23,7 +23,19 @@ def _already(profile, host, current):
     return same_model and (r.applied_effort is None or effort == r.applied_effort)
 
 
-def render(plan, mer_cmd, host=CODEX, current=None):
+def selected_profile(plan):
+    """Profile for this request's routed target, or None when it has no session profile."""
+    if plan.target == "no_route":
+        return None
+    sp = session_plan(plan.decision, plan.risk_flags, plan.overrides, "codex")
+    if plan.target == "plan_only":
+        return sp.plan_profile
+    if plan.target == "review_only":
+        return sp.review or REVIEW_DEFAULT
+    return sp.start
+
+
+def render(plan, mer_cmd, host=CODEX, current=None, applied_profile=None):
     """Context for a routed prompt, or None when there is nothing to advise (the user's default session, given as
     `current` = (model, effort), already is the recommended one and no plan or review is needed).
     Never mentions subagents; the user decides everything."""
@@ -32,16 +44,21 @@ def render(plan, mer_cmd, host=CODEX, current=None):
     d = plan.decision
     head = "Difficulty: " + (f"{d.level}" + (f" (confidence {d.confidence:.2f})" if d.confidence is not None else "")
                              if d else "not classified (manual mode)")
-    lines = ["[model-effort-router] Advisory only: nothing is enforced and no subagents are needed. "
-             "Mention this to the user only if it helps them.", head + f". Risk flags: {format_risk_flags(plan.risk_flags)}."]
+    intro = (f"[model-effort-router] Applied to this turn: {_setting(applied_profile, host)}."
+             if applied_profile else
+             "[model-effort-router] Advisory only: nothing is enforced and no subagents are needed. "
+             "Mention this to the user only if it helps them.")
+    lines = [intro, head + f". Risk flags: {format_risk_flags(plan.risk_flags)}."]
     if plan.override_rejected:
         lines.append("Note: the /router override line was not understood and was ignored.")
     if plan.target == "plan_only":
-        lines.append(f"Recommended for planning: {_setting(sp.plan_profile, host)}; switch with {host.switch_hint} if you want.")
+        if not applied_profile:
+            lines.append(f"Recommended for planning: {_setting(sp.plan_profile, host)}; switch with {host.switch_hint} if you want.")
     elif plan.target == "review_only":
-        lines.append(f"Recommended for this review: {_setting(sp.review or REVIEW_DEFAULT, host)}; switch with {host.switch_hint} if you want.")
+        if not applied_profile:
+            lines.append(f"Recommended for this review: {_setting(sp.review or REVIEW_DEFAULT, host)}; switch with {host.switch_hint} if you want.")
     else:
-        if not _already(sp.start, host, current):
+        if not applied_profile and not _already(sp.start, host, current):
             lines.append(f"Recommended session: {_setting(sp.start, host)}; switch with {host.switch_hint} if you want.")
         if sp.plan_first:
             lines.append("Plan first: write a short plan before changing code.")
@@ -51,4 +68,4 @@ def render(plan, mer_cmd, host=CODEX, current=None):
                          f"Run it with `{mer_cmd} --review-profile {rp} 'review only: check the current diff for <the task>'`, "
                          f"or run the whole task through `{mer_cmd} '<the task>'` (Test Gate, escalation and review "
                          "included). Single-quote the request (write ' as '\\'') so the shell expands nothing in it.")
-    return "\n".join(lines) if len(lines) > 2 else None
+    return "\n".join(lines) if len(lines) > 2 or applied_profile else None
