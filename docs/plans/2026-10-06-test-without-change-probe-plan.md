@@ -154,3 +154,14 @@ def review_prompt(request, diff, gate, probe=None): ...
 1. **보고만 vs 차단:** 기본은 보고만. `passes_without_change`일 때 구현 세션에 한 번 되돌리는 nudge(`nudge_if_unchanged`와 같은 형태)는 v2로 미룬다. 정상적인 "테스트만 추가" PR을 막을 수 있어서다.
 2. **끄는 방법:** 기본은 테스트 파일이 바뀐 실행에서만 동작하므로 비용이 이미 제한된다. `--no-probe` 플래그는 만들지 않는다. 느린 스위트에서 불만이 생기면 추가한다.
 3. **dirty 트리:** v1은 건너뛴다. 이후 기존 dirty 파일을 스냅샷에 함께 덮어쓰는 방식으로 확장할 수 있다.
+
+## 결과 (구현)
+
+- 구현: `gate/probe.py`(신규), `flow.py`(`run_probe`), `review.py`(`review_prompt(..., probe=None)`, `git_head`, `git_diff` 경로 보정), `cli_display.py`, `cli.py`(`GATE_TIMEOUT_S`가 `gate.run.DEFAULT_TIMEOUT_S`를 재사용), 테스트 `tests/test_gate_probe.py`·`test_mer_flow.py`·`test_mer_cli.py`.
+- 실행 조건: `checks["test"]["status"] == "passed"`이고 Gate `overall`이 `failed`가 아니며, 실행 전 트리가 깨끗했고, 실행 중 HEAD가 바뀌지 않았을 때. lint·typecheck·build가 `not_run`이라 `incomplete`여도 돈다.
+- 판별 분리: `is_test_path`는 probe 여부를 정하고, `is_test_side`는 스냅샷에 덮어쓸 집합을 정한다. 코드 확장자(py, js/ts 계열, go, rb)는 `is_test_path`이거나 `conftest.py`이거나 `tests/`·`__tests__/` 아래일 때만 테스트 쪽이다(`app/spec/schema.py` 같은 코드는 제품 소스). 비코드 파일(데이터, snapshot, json 등)은 `tests/`·`test/`·`spec/`·`__tests__/`·`testdata/`·`fixtures/`·`__snapshots__/` 아래면 테스트 쪽이다. 바뀐 경로가 전부 테스트 쪽이거나 `.md`면 `skipped`(`only tests changed`)다. 결과의 `overlay`는 덮어쓴 모든 경로, `tests`는 그 중 `is_test_path`인 것이다.
+- 결과에는 첫 실행의 `output_tail`(최대 500자)이 `fails_without_change`·`inconclusive`에 실린다. `fails_without_change`의 Review 프롬프트 문장에는 이 꼬리가 붙고, `passes_without_change` 문장에는 "요청이 기존 동작의 테스트만 추가하는 경우는 예외"라는 단서가 붙는다. 로그 이벤트에는 싣지 않는다.
+- 안전: 작업 트리의 테스트 파일이 symlink면 `inconclusive`. 스냅샷 밖으로 나가는 경로, HEAD의 절대·바깥 symlink는 거절한다.
+- `git_diff`는 `core.quotePath=false`와 `--no-renames`로 경로를 문자 그대로, rename은 옛 경로와 새 경로 모두 낸다.
+- 한계: Review 지적 수정(`review_fix`) 이후에는 다시 실행하지 않는다. cwd가 저장소 루트가 아니면 `skipped`다. `.gitattributes`의 `export-ignore`는 `git archive`에도 적용되므로, 그 영향으로 실패하면 대조 실행도 실패해 `inconclusive`가 된다. 설정 test 명령이 작업 트리를 직접 가리키면(`cd`, editable install) 항상 `passes_without_change`다(거짓 경고, 거짓 안심은 아님).
+- `skipped` probe는 이벤트를 남기지 않는다(기존 이벤트 순서 보존). 실행된 probe만 `probe` 이벤트를 남긴다.

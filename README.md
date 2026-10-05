@@ -72,6 +72,12 @@ python3 <plugin>/bin/mer chat 'add pagination to the orders API'
 ```
 
 - `run`: 분류 → 세션 실행 → Test Gate → 승격 → Review까지 한 번에 진행합니다. 종료 코드 0은 Gate가 실패하지 않았고, 필요한 Review가 승인되었거나 지적이 반영되었다는 뜻입니다. 깨끗한 작업 트리에서 실행하세요(Review는 HEAD 기준 diff를 봅니다).
+- `run` 결과의 `probe` 필드: Gate가 실패하지 않았고 `test` 검사가 통과했으며(lint 등이 `not_run`이라 `incomplete`여도 됩니다) 이번 실행이 테스트 파일을 바꿨다면, 같은 `test` 명령을 변경 이전 코드(HEAD + 이번 실행이 바꾼 테스트 쪽 파일: 테스트 파일, `conftest.py`, `tests/`·`__tests__/` 아래 코드, 테스트 데이터·snapshot 같은 비코드 파일)에서 한 번 더 돌려 그 테스트가 변경을 지키는지 봅니다. `spec/`·`test/`·`fixtures/` 아래라도 `tests/`·`__tests__/`가 아닌 코드는 제품 소스로 보고 HEAD 그대로 둡니다. 결과의 `tests`는 덮어쓴 테스트 파일, `overlay`는 덮어쓴 모든 경로입니다. 스냅샷은 임시 디렉터리에서만 만들고 작업 트리와 `.git`은 건드리지 않습니다. 모델 호출은 없습니다.
+  - `fails_without_change`: 새 테스트가 옛 코드에서 실패합니다(정상). 실패 출력 끝부분(최대 500자)이 `output_tail`에 남고 Review 프롬프트에도 실려, 단언 실패인지 ImportError인지 볼 수 있습니다.
+  - `passes_without_change`: 테스트가 옛 코드에서도 통과합니다. 변경을 지키지 못한다는 경고지만 항상 버그는 아닙니다(기존 동작에 테스트만 추가한 경우도 걸립니다. Review 프롬프트에도 이 단서가 붙습니다). `cd`로 다른 곳을 도는 설정 test 명령이나 작업 트리를 가리키는 editable install은 스냅샷이 아니라 작업 트리를 테스트하므로 항상 이 값이 나옵니다(잘못된 경고일 뿐 잘못된 안심은 아닙니다).
+  - `inconclusive`: 환경 문제 등으로 판단할 수 없습니다(변경 이전 코드 그대로도 실패하면 여기로 내려갑니다). HEAD에 커밋된 절대 경로·저장소 밖을 가리키는 symlink가 있으면 스냅샷을 풀 수 없어 이 값이 됩니다.
+  - `skipped`: 실행 전 트리가 깨끗하지 않았거나, Gate가 실패했거나 `test` 검사가 통과하지 않았거나, 바뀐 테스트 파일이 없거나(또는 테스트 쪽 파일과 `.md`만 바뀌었거나), test 명령이 없거나, 저장소·HEAD가 없거나, cwd가 저장소 루트가 아니거나, 실행 중 HEAD가 바뀌었을 때입니다. `review_only`·`plan_only`·`no_changes`·`error` 결과에는 `probe`가 `null`일 수 있습니다.
+  - 보고만 합니다. `status`와 종료 코드는 바뀌지 않고, Review 프롬프트와 사람용 출력에만 실립니다. Review 지적을 고친 뒤에는 다시 돌리지 않습니다.
 - `chat`: 분류만 하고, 고른 모델·effort로 대화형 세션을 엽니다.
 - `--dry-run`: 결정, 사다리, 첫 명령만 출력하고 세션을 시작하지 않습니다. 모델을 호출하는 분류기도 부르지 않으며, `--level`로 레벨을 정하거나 `--classify`로 분류 호출 1회를 허용합니다.
 - 요청 첫 줄 override: `/router off`, `/router session=frontier:high`. override로도 위험 신호의 Review 하한은 없앨 수 없습니다.

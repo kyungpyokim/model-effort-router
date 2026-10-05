@@ -12,7 +12,8 @@ from pathlib import Path
 from model_effort_router import cli
 from model_effort_router import review as rv
 from model_effort_router.difficulty.subscription import SubscriptionBackend, default_runner
-from tests.test_mer_flow import GATE_BAD, GATE_OK, Harness
+from model_effort_router.gate import probe as pb
+from tests.test_mer_flow import GATE_BAD, GATE_CMD, GATE_OK, PASSES, WITH_TESTS, Harness
 
 PROMPT_MARKER = "ZEBRA_PROMPT_MARKER"
 
@@ -156,6 +157,28 @@ class RunTest(CliCase):
         rc, out = self.mer("Fix the login auth check in auth.py", spec={"level": "L4"}, h=h)
         self.assertIn("door: two-way; risk flags: auth; blast radius: 2 file(s) in 2 top-level dir(s)", out)
         self.assertIn("review fix applied but not re-reviewed", out)
+
+    def test_human_summary_shows_the_probe_and_warns_when_tests_pass_without_the_change(self):
+        for verdict, warned in (("passes_without_change", True), ("fails_without_change", False)):
+            h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+            with mock.patch.object(pb, "probe_without_change", return_value={**PASSES, "verdict": verdict}):
+                rc, out = self.mer("Fix the bug in calc.py", h=h)
+            self.assertIn(f"probe: {verdict}", out)
+            self.assertEqual("warning: changed tests also pass without the change; they may not guard it" in out, warned)
+
+    def test_human_summary_names_why_a_probe_was_inconclusive(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+        with mock.patch.object(pb, "probe_without_change", return_value={**PASSES, "verdict": "inconclusive", "reason": "env broke"}):
+            rc, out = self.mer("Fix the bug in calc.py", h=h)
+        self.assertIn("probe: inconclusive (env broke)", out)
+
+    def test_human_summary_omits_the_probe_line_when_skipped_or_absent(self):
+        rc, out = self.mer("Fix the bug in calc.py")  # no test file changed: skipped
+        self.assertNotIn("probe", out)
+        rc, out = self.mer("review only: check the parser module changes")  # review_only: probe is None
+        self.assertNotIn("probe", out)
+        self.assertNotIn("probe:", cli._human({"status": "ok", "level": "L2", "target": "route", "gate": None, "usage": {
+            "total": 0, "input": 0, "output": 0}, "calls": [], "review": {"verdict": None, "skipped": None}}))
 
     def test_explicit_invocation_routes_non_dev_text(self):
         rc, out = self.mer("hello there", "--json")

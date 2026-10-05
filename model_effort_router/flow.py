@@ -9,6 +9,9 @@ import time
 from . import review as rv
 from .difficulty.decision import merge_risk_flags
 from .difficulty.risk import detect_risk_flags
+from .gate import probe as pb
+from .gate.discovery import Check
+from .gate.run import DEFAULT_TIMEOUT_S as PROBE_TIMEOUT_S  # the probe runs the gate's test command: same limit
 from .host.hosts import CODEX
 from .policy.session import ONE_WAY_FLAGS, REVIEW_DEFAULT
 
@@ -72,10 +75,12 @@ class _Flow:
         self.calls, self.tracker = [], self.cx.UsageTracker()
         self.thread, self.esc, self.profile, self.message = None, 0, sp.start, None
         self.gate = None
+        self.probe = None  # test-without-change probe result; None until implement() has a passing gate
         self.review = {"verdict": None, "findings": None, "skipped": "not required"}
         # path -> stamp of what was already changed before implement(); review_only keeps it empty. The reviewer still
         # sees the full diff, the summary only this run's change.
         self.baseline = {}
+        self.head = None
         self.review_required = bool(sp.review)
 
     def call(self, role, argv, profile, thread=None, subagents=None):
@@ -123,12 +128,36 @@ class _Flow:
             gate = self.run_gate()
         return gate
 
+    def run_probe(self):
+        """Report whether the tests this run changed also pass on the pre-change code. Never changes the outcome."""
+        self.probe = self._probe()
+        if self.probe["verdict"] != "skipped":  # a skipped probe ran nothing: no event
+            self.emit({"event": "probe", **{k: v for k, v in self.probe.items() if k != "output_tail"}})  # test output stays out of the log
+
+    def _probe(self):
+        test = (self.gate.get("checks") or {}).get("test") or {}
+        if self.baseline:  # HEAD would wipe the user's earlier uncommitted work and fail for the wrong reason
+            return pb.result("skipped", "the tree was not clean before the run")
+        if self.gate["overall"] == "failed" or test.get("status") != "passed":  # lint etc. not_run is fine
+            return pb.result("skipped", "the test gate did not pass")
+        try:
+            if rv.git_head(self.cwd) != self.head:  # read-only git call, deliberately not routed through diff_fn
+                return pb.result("skipped", "HEAD moved during the run")
+            diff = self.diff_fn(self.cwd)
+            if not diff.get("is_repo"):
+                return pb.result("skipped", "not a git repository")
+            command, source = test.get("command"), test.get("source")
+            check = Check("test", command, source, source == "config") if command else None
+            return pb.probe_without_change(self.cwd, _changed_paths(diff), check, PROBE_TIMEOUT_S)
+        except Exception as exc:  # like a broken gate: inconclusive, never a failed run
+            return pb.result("inconclusive", f"{type(exc).__name__}: {exc}"[:300])
+
     def run_review(self, profile):
         diff = self.diff_fn(self.cwd)
         if not diff.get("is_repo"):
             self.review = {"verdict": None, "findings": None, "skipped": "not a git repository"}
             return False
-        prompt = rv.review_prompt(self.request, diff, self.gate)
+        prompt = rv.review_prompt(self.request, diff, self.gate, self.probe)
         n = self.sp.review_subagents
         stream, rec = self.call("review", self.cx.session_argv(profile, prompt, "read-only", self.config, n), profile, subagents=n)
         self.emit({"event": "session_start", **rec})
@@ -162,6 +191,7 @@ class _Flow:
         before = self.diff_fn(self.cwd)
         was_clean = self._clean(before)
         self.baseline = {p: _stamp(self.cwd, p) for p in _changed_paths(before)}
+        self.head = rv.git_head(self.cwd)  # the probe snapshots HEAD: a commit during the run invalidates it
         prompt = f"{self.request}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{SELF_CHECK if n == 0 else ''}{WRAP_UP}"
         stream, rec = self.call("implement", self.cx.session_argv(sp.start, prompt, "workspace-write", self.config, n), sp.start,
                                 subagents=n)
@@ -170,6 +200,7 @@ class _Flow:
         if not self.nudge_if_unchanged(was_clean):
             return {"status": "no_changes", "exit_code": 1, "message": self.message}
         gate = self.gate_loop()
+        self.run_probe()
         if sp.review and gate["overall"] == "failed":
             self.review["skipped"] = "gate failed"
         elif sp.review and self.run_review(sp.review) and self.review["verdict"] == "changes_requested" and self.thread:
@@ -236,7 +267,7 @@ def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="r
     flags = merge_risk_flags(risk_flags, detect_risk_flags("", paths))
     review = {**flow.review, **({"text": flow.review["text"][-rv.FINDINGS_MAX:]} if "text" in flow.review else {})}
     out = {**result, "level": sp.level, "target": target, "escalations": flow.esc, "gate": (flow.gate or {}).get("overall"),
-           "review": review, "risk_flags": list(flags),
+           "review": review, "probe": flow.probe, "risk_flags": list(flags),
            "change": _change_summary(paths, flags), "calls": flow.calls, "usage": _sum_usage(flow.calls),
            "threads": list(dict.fromkeys(c["thread_id"] for c in flow.calls if c["thread_id"])),
            "profile": _profile(flow.calls[0]) if flow.calls else None,

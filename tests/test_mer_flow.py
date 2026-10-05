@@ -2,10 +2,12 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from model_effort_router import review as rv
 from model_effort_router.difficulty.decision import DifficultyDecision
 from model_effort_router.flow import run_flow
+from model_effort_router.gate import probe as pb
 from model_effort_router.host import codex_exec as cx
 from model_effort_router.policy.session import session_plan
 
@@ -442,3 +444,168 @@ class BaselineTest(unittest.TestCase):
     def test_review_only_counts_the_whole_diff_under_review(self):
         r = Harness(diff=REPO).run("L2", target="review_only")
         self.assertEqual(r["change"]["files"], 2)
+
+
+GATE_CMD = {"overall": "passed", "checks": {"test": {"status": "passed", "command": "python3 -m unittest",
+                                                    "source": "AGENTS.md"}}}
+GATE_CMD_BAD = {"overall": "failed", "checks": {"test": {"status": "failed", "command": "python3 -m unittest",
+                                                        "source": "AGENTS.md", "output_tail": "boom"}}}
+GATE_CMD_INCOMPLETE = {"overall": "incomplete", "checks": {"test": {"status": "passed", "command": "python3 -m unittest",
+                                                                   "source": "AGENTS.md"},
+                                                          "lint": {"status": "not_run", "reason": "none"}}}
+WITH_TESTS = {**REPO, "files": ["shop/pricing.py"], "untracked": ["tests/test_pricing.py"]}
+DIRTY_BEFORE = {"is_repo": True, "diff": "d", "files": ["old.py"], "untracked": []}
+PASSES = {"verdict": "passes_without_change", "reason": None, "tests": ["tests/test_pricing.py"], "duration_s": 0.1}
+FAILS = {**PASSES, "verdict": "fails_without_change"}
+
+
+def patch_probe(**kw):
+    return mock.patch.object(pb, "probe_without_change", **kw)
+
+
+class ProbeFlowTest(unittest.TestCase):
+    """The test-without-change probe is reported, never decisive: status and exit_code stay what they were."""
+
+    def test_passed_gate_with_changed_tests_probes_once_and_reports(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+        with patch_probe(return_value=PASSES) as probe:
+            r = h.run("L2")
+        probe.assert_called_once()
+        cwd, paths, check, timeout_s = probe.call_args.args
+        self.assertEqual((cwd, paths, timeout_s), ("/w", ["shop/pricing.py", "tests/test_pricing.py"], 300))
+        self.assertEqual((check.kind, check.command, check.source, check.shell), ("test", "python3 -m unittest", "AGENTS.md", False))
+        self.assertEqual((r["probe"], r["status"], r["exit_code"]), (PASSES, "ok", 0))
+        self.assertEqual(h.kinds(), ["session_start", "gate", "probe", "done"])
+        self.assertEqual(h.events[2], {"event": "probe", **PASSES})
+
+    def test_a_config_test_command_keeps_its_shell_flag(self):
+        gate = {"overall": "passed", "checks": {"test": {"status": "passed", "command": "make test && true", "source": "config"}}}
+        with patch_probe(return_value=FAILS) as probe:
+            Harness(gates=(gate,), diff=WITH_TESTS).run("L2")
+        self.assertTrue(probe.call_args.args[2].shell)
+
+    def test_probe_verdict_never_changes_status_or_exit_code(self):
+        for verdict in (PASSES, FAILS, {**PASSES, "verdict": "inconclusive", "reason": "env"}):
+            with patch_probe(return_value=verdict):
+                r = Harness(gates=(GATE_CMD,), diff=WITH_TESTS).run("L2")
+            self.assertEqual((r["status"], r["exit_code"]), ("ok", 0), verdict["verdict"])
+
+    def test_probe_runs_after_the_gate_loop_and_before_the_review(self):
+        h = Harness(gates=(GATE_CMD_BAD, GATE_CMD), diff=WITH_TESTS)
+        with patch_probe(return_value=PASSES) as probe:
+            h.run("L4")
+        self.assertEqual(probe.call_count, 1)
+        self.assertEqual(h.kinds(), ["session_start", "gate", "escalate", "gate", "probe", "session_start", "review", "done"])
+        self.assertIn("PASS on the pre-change code", h.calls[-1]["argv"][-1])  # the reviewer gets the fact
+
+    def test_review_fix_does_not_probe_again(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS, verdicts=[("changes_requested", 1)])
+        with patch_probe(return_value=PASSES) as probe:
+            r = h.run("L4")
+        self.assertEqual((probe.call_count, r["status"], h.kinds().count("probe")), (1, "review_fixed", 1))
+
+    def test_no_probe_when_the_gate_did_not_pass(self):
+        for gate in (GATE_CMD_BAD, GATE_NR):
+            h = Harness(gates=(gate,), diff=WITH_TESTS)
+            with patch_probe(return_value=PASSES) as probe:
+                r = h.run("L2")
+            self.assertEqual(probe.call_count, 0, gate["overall"])
+            self.assertEqual(r["probe"]["verdict"], "skipped")
+            self.assertNotIn("probe", h.kinds())
+
+    def test_an_incomplete_gate_with_a_passing_test_check_still_probes(self):
+        # lint/typecheck/build not discovered make overall "incomplete"; the test check itself passed
+        gate = {"overall": "incomplete", "checks": {**GATE_CMD_INCOMPLETE["checks"], "lint": {"status": "not_run"}}}
+        h = Harness(gates=(gate,), diff=WITH_TESTS)
+        with patch_probe(return_value=PASSES) as probe:
+            r = h.run("L2")
+        self.assertEqual((probe.call_count, r["probe"], r["status"]), (1, PASSES, "ok"))
+
+    def test_a_failed_gate_or_a_not_run_test_check_is_skipped(self):
+        failed = {"overall": "failed", "checks": {"test": {"status": "passed", "command": "x"}, "lint": {"status": "failed"}}}
+        not_run = {"overall": "incomplete", "checks": {"test": {"status": "not_run"}, "lint": {"status": "passed"}}}
+        for gate in (failed, not_run):
+            with patch_probe(return_value=PASSES) as probe:
+                r = Harness(gates=(gate,), diff=WITH_TESTS).run("L2")
+            self.assertEqual((probe.call_count, r["probe"]["verdict"]), (0, "skipped"), gate["overall"])
+
+    def test_no_probe_when_the_tree_was_dirty_before_the_run(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+        h.diff_fn = lambda cwd: WITH_TESTS if h.calls else DIRTY_BEFORE
+        with patch_probe(return_value=PASSES) as probe:
+            r = h.run("L2")
+        self.assertEqual((probe.call_count, r["probe"]["verdict"]), (0, "skipped"))
+        self.assertIn("not clean", r["probe"]["reason"])
+
+    def test_no_probe_when_head_moved_during_the_run(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+        with mock.patch.object(rv, "git_head", side_effect=["aaa", "bbb"]), patch_probe(return_value=PASSES) as probe:
+            r = h.run("L2")
+        self.assertEqual((probe.call_count, r["probe"]["verdict"], r["probe"]["reason"]),
+                         (0, "skipped", "HEAD moved during the run"))
+
+    def test_probe_runs_when_head_is_unchanged(self):
+        with mock.patch.object(rv, "git_head", return_value="aaa"), patch_probe(return_value=PASSES) as probe:
+            Harness(gates=(GATE_CMD,), diff=WITH_TESTS).run("L2")
+        self.assertEqual(probe.call_count, 1)
+
+    def test_no_probe_outside_a_repository(self):
+        h = Harness(gates=(GATE_CMD,), diff={"is_repo": False})
+        with patch_probe(return_value=PASSES) as probe:
+            r = h.run("L2")
+        self.assertEqual((probe.call_count, r["probe"]["verdict"]), (0, "skipped"))
+
+    def test_review_only_and_plan_only_have_no_probe(self):
+        for target in ("review_only", "plan_only"):
+            h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+            with patch_probe(return_value=PASSES) as probe:
+                r = h.run("L2", target=target)
+            self.assertEqual((probe.call_count, r["probe"], "probe" in h.kinds()), (0, None, False), target)
+
+    def test_no_changes_run_has_no_probe(self):
+        r = Harness(changes_after=None).run("L2")
+        self.assertIsNone(r["probe"])
+
+    def test_without_test_files_the_real_probe_skips_silently(self):
+        r = Harness(gates=(GATE_CMD,)).run("L2")  # REPO changes no test file; cwd /w does not exist: nothing may run
+        self.assertEqual((r["probe"]["verdict"], r["probe"]["reason"]), ("skipped", "no test files changed"))
+
+    def test_a_raising_probe_is_recorded_as_inconclusive_and_the_run_is_unchanged(self):
+        h = Harness(gates=(GATE_CMD,), diff=WITH_TESTS)
+        with patch_probe(side_effect=RuntimeError("kaboom")):
+            r = h.run("L2")
+        self.assertEqual((r["status"], r["exit_code"], r["probe"]["verdict"]), ("ok", 0, "inconclusive"))
+        self.assertIn("kaboom", r["probe"]["reason"])
+        self.assertEqual(h.kinds(), ["session_start", "gate", "probe", "done"])
+
+
+class ReviewPromptProbeTest(unittest.TestCase):
+    BASE = rv.review_prompt("req", REPO, GATE_OK)
+
+    def test_unchanged_for_none_skipped_and_inconclusive(self):
+        for probe in (None, {}, {"verdict": "skipped", "reason": "x"}, {"verdict": "inconclusive", "reason": "y"}):
+            self.assertEqual(rv.review_prompt("req", REPO, GATE_OK, probe=probe), self.BASE)
+
+    def test_passes_without_change_is_stated_as_a_fact(self):
+        text = rv.review_prompt("req", REPO, GATE_OK, probe=PASSES)
+        self.assertIn("Probe: the tests changed in this run PASS on the pre-change code, so they do not guard the change, "
+                      "unless the request only adds tests for existing behaviour.", text)
+        self.assertTrue(text.endswith("VERDICT: approved|changes_requested\nFINDINGS: <n>"))
+
+    def test_fails_without_change_is_confirmed(self):
+        text = rv.review_prompt("req", REPO, GATE_OK, probe=FAILS)
+        self.assertIn("Probe: the changed tests failed on the pre-change code.", text)
+        self.assertNotIn("PASS on the pre-change", text)
+        self.assertNotIn("Last output", text)  # no tail, no extra block
+
+    def test_fails_without_change_carries_a_truncated_output_tail(self):
+        tail = "x" * 900 + "ImportError: no module named newmod"
+        text = rv.review_prompt("req", REPO, GATE_OK, probe={**FAILS, "output_tail": tail})
+        self.assertIn("Probe: the changed tests failed on the pre-change code.", text)
+        self.assertIn("ImportError: no module named newmod", text)
+        self.assertNotIn("x" * 600, text)  # at most 500 chars of it
+        self.assertTrue(text.endswith("VERDICT: approved|changes_requested\nFINDINGS: <n>"))
+
+    def test_other_verdicts_ignore_an_output_tail(self):
+        for verdict in ("skipped", "inconclusive"):
+            self.assertEqual(rv.review_prompt("req", REPO, GATE_OK, probe={"verdict": verdict, "output_tail": "boom"}), self.BASE)

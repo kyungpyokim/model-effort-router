@@ -29,7 +29,7 @@ from .cli_display import (
 )
 from .difficulty.subscription import SubscriptionBackend
 from .flow import PLAN_FIRST, run_flow
-from .gate.run import load_gate_checks, run_gate
+from .gate.run import DEFAULT_TIMEOUT_S, load_gate_checks, run_gate
 from .host import hosts
 from .host.claude_exec import plugins_off
 from .host.codex_hooks import _registry, load_configs
@@ -41,7 +41,7 @@ from .policy.session import REVIEW_DEFAULT, session_plan
 from .policy.targeting import NO_ROUTE
 from .profiles.profiles import parse_profile
 
-GATE_TIMEOUT_S = 300
+GATE_TIMEOUT_S = DEFAULT_TIMEOUT_S  # one limit for the gate and flow's probe
 
 
 class Terminated(BaseException):
