@@ -11,6 +11,7 @@ Navigation pointers:
 
 - Execution flow: `model_effort_router/flow.py`
 - Review prompts and verdict parsing: `model_effort_router/review.py`
+- Test-without-change probe: `model_effort_router/gate/probe.py`
 - Session review policy: `model_effort_router/policy/session.py`
 - Risk patterns: `model_effort_router/difficulty/risk.py`
 

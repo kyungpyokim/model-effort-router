@@ -85,6 +85,11 @@ def human_output(out):
             f"door: {c['door']}; risk flags: {format_risk_flags(out['risk_flags'])}; "
             f"blast radius: {c['files']} file(s) in {c['top_dirs']} top-level dir(s)"
         )
+    p = out.get("probe")
+    if p and p["verdict"] != "skipped":
+        lines.append(f"probe: {p['verdict']}" + (f" ({p['reason']})" if p.get("reason") else ""))
+        if p["verdict"] == "passes_without_change":
+            lines.append("warning: changed tests also pass without the change; they may not guard it")
     if out["status"] == "review_fixed":
         lines.append(
             "note: review fix applied but not re-reviewed; check the findings below"
