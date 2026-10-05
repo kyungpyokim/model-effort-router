@@ -62,17 +62,22 @@ class PluginBundleTest(unittest.TestCase):
         (package / "entrypoints.py").write_text('''import json
 from pathlib import Path
 RUNTIME_API = 1
-class RuntimeCompatibilityError(RuntimeError):
-    pass
 def report(args):
     print(json.dumps([str(Path(__file__).resolve()), args]))
     return 13
-def cli(host, *, runtime_api):
-    return report(["cli", host, runtime_api])
-def gate(host=None, *, runtime_api):
-    return report(["gate", host, runtime_api])
-def hook(host, root, *, runtime_api):
-    return report(["hook", host, str(root), runtime_api])
+class ModelEffortRouter:
+    host = None
+    gate_host = None
+    runtime_api = None
+    @classmethod
+    def run_cli(cls):
+        return report(["cli", cls.host, cls.runtime_api])
+    @classmethod
+    def run_gate(cls):
+        return report(["gate", cls.gate_host, cls.runtime_api])
+    @classmethod
+    def run_hook(cls, root):
+        return report(["hook", cls.host, str(root), cls.runtime_api])
 ''')
         for source in PLUGINS:
             plugin = shutil.copytree(source, self.root / source.name)
@@ -84,6 +89,51 @@ def hook(host, root, *, runtime_api):
                     result = self.run_loader(plugin, script)
                     self.assertEqual(result.returncode, 13, result.stderr)
                     self.assertEqual(json.loads(result.stdout), [str(package / "entrypoints.py"), expected[script]])
+
+    def test_old_core_without_facade_and_invalid_plugin_routers_fail_safely(self):
+        package = self.runtime / "model_effort_router"
+        install(ROOT / "model_effort_router", self.runtime)
+        entrypoints = package / "entrypoints.py"
+        entrypoints.write_text('''RUNTIME_API = 1
+def cli(host, *, runtime_api=1): return 0
+def gate(host=None, *, runtime_api=1): return 0
+def hook(host, root, *, runtime_api=1): return 0
+''')
+        for source in PLUGINS:
+            plugin = shutil.copytree(source, self.root / source.name)
+            for script in self.scripts(plugin):
+                result = self.run_loader(plugin, script)
+                if script.startswith("hooks/"):
+                    self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+                else:
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertIn("shared core unavailable or incompatible", result.stderr.lower())
+                    self.assertNotIn("Traceback", result.stderr)
+
+        install(ROOT / "model_effort_router", self.runtime)
+        for source in PLUGINS:
+            plugin = self.root / source.name
+            original = (source / "router.py").read_bytes()
+            router = plugin / "router.py"
+            for mode in ("missing", "corrupt", "symlink"):
+                router.unlink(missing_ok=True)
+                if mode == "corrupt":
+                    router.write_text("broken syntax!\n")
+                elif mode == "symlink":
+                    target = self.root / f"{plugin.name}-external-router.py"
+                    target.write_bytes(original)
+                    router.symlink_to(target)
+                for script in self.scripts(plugin):
+                    with self.subTest(plugin=plugin.name, mode=mode, script=script):
+                        result = self.run_loader(plugin, script)
+                        if script.startswith("hooks/"):
+                            self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+                        else:
+                            self.assertEqual(result.returncode, 2, result.stderr)
+                            self.assertIn("shared core unavailable or incompatible", result.stderr.lower())
+                            self.assertNotIn("Traceback", result.stderr)
+                router.unlink(missing_ok=True)
+                router.write_bytes(original)
 
     def test_installed_core_runs_copied_plugins_without_checkout_access(self):
         install(ROOT / "model_effort_router", self.runtime)

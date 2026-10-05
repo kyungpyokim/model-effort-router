@@ -7,6 +7,33 @@ from model_effort_router import entrypoints
 
 
 class EntrypointsTest(unittest.TestCase):
+    def test_model_effort_router_forwards_to_function_entrypoints(self):
+        class ExampleRouter(entrypoints.ModelEffortRouter):
+            host = "claude"
+            gate_host = "claude"
+            runtime_api = 1
+
+        with patch.object(entrypoints, "cli", return_value=7) as call:
+            self.assertEqual(ExampleRouter.run_cli(), 7)
+            call.assert_called_once_with("claude", runtime_api=1)
+        with patch.object(entrypoints, "gate", return_value=3) as call:
+            self.assertEqual(ExampleRouter.run_gate(), 3)
+            call.assert_called_once_with("claude", runtime_api=1)
+        root = Path("/tmp/plugin")
+        with patch.object(entrypoints, "hook", return_value=5) as call:
+            self.assertEqual(ExampleRouter.run_hook(root), 5)
+            call.assert_called_once_with("claude", root, runtime_api=1)
+
+    def test_model_effort_router_preserves_antigravity_gate_environment(self):
+        class AntigravityRouter(entrypoints.ModelEffortRouter):
+            host = "antigravity"
+            gate_host = None
+            runtime_api = 1
+
+        with patch.object(entrypoints, "gate", return_value=4) as call:
+            self.assertEqual(AntigravityRouter.run_gate(), 4)
+            call.assert_called_once_with(None, runtime_api=1)
+
     def test_runtime_api_mismatch_does_not_start_cli_or_change_host(self):
         with patch.dict(os.environ, {"MER_HOST": "claude"}):
             with self.assertRaises(entrypoints.RuntimeCompatibilityError):

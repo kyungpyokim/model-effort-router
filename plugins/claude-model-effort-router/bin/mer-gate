@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Import the shared router core for claude."""
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -17,8 +18,18 @@ try:
     from model_effort_router import entrypoints
     if entrypoints.RUNTIME_API != 1:
         raise RuntimeError("shared core API mismatch")
+    plugin_root = Path(__file__).resolve().parent.parent
+    router_path = plugin_root / "router.py"
+    if router_path.is_symlink() or not router_path.is_file():
+        raise ImportError("plugin router missing")
+    spec = importlib.util.spec_from_file_location("_mer_claude_router", router_path)
+    if spec is None or spec.loader is None:
+        raise ImportError("plugin router unavailable")
+    plugin_router = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(plugin_router)
+    ClaudeRouter = plugin_router.ClaudeRouter
 except Exception:
     print("Shared core unavailable or incompatible; run python3 scripts/install_core.py from a matching checkout (see README installation).", file=sys.stderr)
     sys.exit(2)
 
-sys.exit(entrypoints.gate('claude', runtime_api=1))
+sys.exit(ClaudeRouter.run_gate())

@@ -20,6 +20,8 @@ python3 scripts/install_core.py
 python3 scripts/install_core.py --check
 ```
 
+The plugin's `router.py` inherits the installed core's `ModelEffortRouter` and selects the Codex host.
+
 The manifest must declare `skills` and `hooks`. Hook commands use
 `${CLAUDE_PLUGIN_ROOT}` because that variable is verified working in Codex
 0.159.2.

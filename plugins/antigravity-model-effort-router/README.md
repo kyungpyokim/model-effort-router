@@ -38,4 +38,6 @@ python3 scripts/install_core.py
 python3 scripts/install_core.py --check
 ```
 
+The plugin's `router.py` inherits the installed core's `ModelEffortRouter` and selects the Antigravity host.
+
 Validate locally with `agy plugin validate plugins/antigravity-model-effort-router`. After review, install from the repository using `agy plugin install ./plugins/antigravity-model-effort-router`. The plugin update does not update the shared runtime; run the installer after core changes.

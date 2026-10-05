@@ -131,8 +131,9 @@ Claude Code 파일럿 13건(c3, 2026-10-04)의 결과입니다.
 
 ```
 model_effort_router/   공유 Router Core: difficulty backend, policy, host adapter/exec, gate, CLI
-  entrypoints.py      플러그인 공통 진입점과 RUNTIME_API 호환성 검사
+  entrypoints.py      함수 API와 호환되는 `ModelEffortRouter` 진입점 facade
 plugins/               Codex·Claude Code·Antigravity 플러그인 (bin/mer, skills, 지원 호스트의 hooks)
+  */router.py         설치된 facade를 상속하고 host 값만 선언
 evaluation/            코퍼스, backend 비교, 비용 기준선, 파일럿 (플러그인에 미포함)
 docs/                  기획서, 평가 사용법, 호스트 spike 기록
 scripts/install_core.py 공유 core 설치 및 `--check`
