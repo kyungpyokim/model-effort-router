@@ -2,8 +2,6 @@ import unittest
 
 from model_effort_router.policy.targeting import (
     NO_ROUTE,
-    PLAN_ONLY,
-    REVIEW_ONLY,
     ROUTE,
     classify_target,
 )
@@ -35,22 +33,22 @@ class TargetingTest(unittest.TestCase):
             ]
         )
 
-    def test_plan_only(self):
+    def test_planning_is_eligible_for_role_effort_classification(self):
         self.check(
             [
-                ("Write an implementation plan for the new API endpoint", PLAN_ONLY),
-                ("Make a plan to add caching to the API", PLAN_ONLY),
-                ("Plan only: refactor the auth module", PLAN_ONLY),
-                ("이 API 모듈 리팩터링 계획만 세워줘", PLAN_ONLY),
+                ("Write an implementation plan for the new API endpoint", ROUTE),
+                ("Make a plan to add caching to the API", ROUTE),
+                ("Plan only: refactor the auth module", ROUTE),
+                ("이 API 모듈 리팩터링 계획만 세워줘", ROUTE),
             ]
         )
 
-    def test_review_only(self):
+    def test_review_is_eligible_for_role_effort_classification(self):
         self.check(
             [
-                ("Review this diff for bugs in src/app.py", REVIEW_ONLY),
-                ("Please review my code", REVIEW_ONLY),
-                ("이 코드 리뷰해줘", REVIEW_ONLY),
+                ("Review this diff for bugs in src/app.py", ROUTE),
+                ("Please review my code", ROUTE),
+                ("이 코드 리뷰해줘", ROUTE),
             ]
         )
 
@@ -62,8 +60,8 @@ class TargetingTest(unittest.TestCase):
                 ("hello", NO_ROUTE),
                 ("Thanks!", NO_ROUTE),
                 ("What does this function do?", NO_ROUTE),
-                ("Explain the auth module", NO_ROUTE),
-                ("How do I fix this bug?", NO_ROUTE),
+                ("Explain the auth module", ROUTE),
+                ("How do I fix this bug?", ROUTE),
                 ("Show git status", NO_ROUTE),
                 ("Show the code in foo.py", NO_ROUTE),
                 ("Show a loading spinner in App.tsx", NO_ROUTE),  # ambiguous -> no_route

@@ -1,7 +1,7 @@
 {
   "name": "model-effort-router",
-  "version": "0.5.1",
-  "description": "Advises a model and effort per request and ships the mer CLI for Claude Code (same-session escalation, Test Gate, independent review).",
+  "version": "0.6.0",
+  "description": "Routes each request to a configured role, model, and effort; provides a single-worker CLI and advisory hook for Claude Code.",
   "license": "MIT",
   "keywords": ["router", "cascade", "effort"]
 }

@@ -26,7 +26,7 @@ def agent_message(text):
 
 
 GOOD = json.dumps(
-    {"level": "L3", "confidence": 0.9, "reason_codes": ["multi_file"], "risk_flags": ["auth"]}
+    {"role": "implementation", "effort": "high", "confidence": 0.9, "reason_code": "multi_file"}
 )
 
 
@@ -55,30 +55,27 @@ def classify(stdout="", exc=None, task=None):
 class ParsingTest(unittest.TestCase):
     def test_valid_output(self):
         d, _ = classify("\n".join([event({"type": "thread.started"}), agent_message(GOOD)]))
-        self.assertEqual(d.level, "L3")
+        self.assertEqual((d.role, d.effort), ("implementation", "high"))
         self.assertEqual(d.backend, "subscription")
         self.assertEqual(d.confidence, 0.9)
-        self.assertEqual(d.reason_codes, ("multi_file",))
-        self.assertEqual(d.risk_flags, ("auth",))
+        self.assertEqual(d.reason_code, "multi_file")
 
     def test_error_events_are_skipped(self):
-        noise = event(
-            {"type": "error", "message": 'persistent_instructions ignored {"level": "L5"}'}
-        )
+        noise = event({"type": "error", "message": 'persistent_instructions ignored {"role": "review"}'})
         d, _ = classify("\n".join([noise, agent_message(GOOD), noise]))
-        self.assertEqual(d.level, "L3")
+        self.assertEqual(d.role, "implementation")
 
     def test_non_json_lines_are_skipped(self):
         d, _ = classify("WARNING: something\n" + agent_message(GOOD))
-        self.assertEqual(d.level, "L3")
+        self.assertEqual(d.role, "implementation")
 
     def test_fenced_json_accepted(self):
         d, _ = classify(agent_message("```json\n" + GOOD + "\n```"))
-        self.assertEqual(d.level, "L3")
+        self.assertEqual((d.role, d.effort), ("implementation", "high"))
 
-    def test_minimal_output_only_level(self):
-        d, _ = classify(agent_message('{"level": "L1"}'))
-        self.assertEqual((d.level, d.confidence, d.risk_flags), ("L1", None, ()))
+    def test_minimal_output_requires_role_and_effort(self):
+        d, _ = classify(agent_message('{"role": "fix", "effort": "low"}'))
+        self.assertEqual((d.role, d.effort, d.confidence), ("fix", "low", None))
 
     def test_garbage_raises(self):
         for out in ("", "not json at all", agent_message("I think it is hard"), agent_message("{")):
@@ -91,28 +88,24 @@ class ParsingTest(unittest.TestCase):
 
     def test_invalid_fields_raise(self):
         for payload in (
-            '{"level": "L9"}',
-            '{"confidence": 0.5}',
-            '{"level": "L2", "confidence": 7}',
-            '{"level": "L2", "confidence": true}',
+            '{"role": "bogus", "effort": "low"}',
+            '{"role": "implementation"}',
+            '{"role": "review", "effort": "xhigh", "confidence": 7}',
+            '{"role": "review", "effort": "xhigh", "confidence": true}',
             "[1, 2]",
         ):
             with self.subTest(payload=payload), self.assertRaises(ValueError):
                 classify(agent_message(payload))
 
-    def test_unknown_risk_flags_are_ignored_known_kept(self):
-        d, _ = classify(agent_message('{"level": "L2", "risk_flags": ["bogus", "auth"]}'))
-        self.assertEqual(d.risk_flags, ("auth",))
-
-    def test_non_list_fields_are_dropped_not_split(self):
-        d, _ = classify(agent_message('{"level": "L2", "risk_flags": "auth", "reason_codes": "abc"}'))
-        self.assertEqual((d.risk_flags, d.reason_codes), ((), ()))
+    def test_legacy_level_output_is_rejected(self):
+        with self.assertRaises(BackendOutputError):
+            classify(agent_message('{"level": "L2"}'))
 
     def test_only_completed_events_count(self):
-        started = event({"type": "item.started", "item": {"type": "agent_message", "text": '{"level": "L5"}'}})
-        updated = event({"type": "item.updated", "item": {"type": "agent_message", "text": '{"level": "L5"}'}})
+        started = event({"type": "item.started", "item": {"type": "agent_message", "text": '{"role": "review", "effort": "xhigh"}'}})
+        updated = event({"type": "item.updated", "item": {"type": "agent_message", "text": '{"role": "review", "effort": "xhigh"}'}})
         d, _ = classify("\n".join([started, updated, agent_message(GOOD)]))
-        self.assertEqual(d.level, "L3")
+        self.assertEqual(d.effort, "high")
         with self.assertRaises(BackendOutputError):
             classify("\n".join([started, updated]))
 
@@ -162,7 +155,7 @@ class RunnerContractTest(unittest.TestCase):
 class PromptTest(unittest.TestCase):
     def test_contains_task_paths_and_levels(self):
         p = build_prompt(DifficultyInput(task="Add X", paths=("a.py", "b.py"), repo_summary="small"))
-        for needle in ("Add X", "a.py", "b.py", "small", "L1", "L5", "JSON"):
+        for needle in ("Add X", "a.py", "b.py", "small", "implementation", "xhigh", "JSON"):
             self.assertIn(needle, p)
 
     def test_task_is_truncated(self):

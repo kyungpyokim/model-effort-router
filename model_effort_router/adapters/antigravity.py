@@ -72,3 +72,10 @@ def resolve(
     model = config.tiers[profile.tier]
     applied = apply_support(config.efforts[profile.effort], config.model_efforts[model])
     return ResolvedProfile(profile.tier, f"{model}-{applied}", profile.effort, applied)
+
+
+def resolve_model(model: str, effort: str, supported=ANTIGRAVITY_EFFORTS) -> ResolvedProfile:
+    """Resolve a configured routed model to Antigravity's model-effort slug."""
+    if effort not in ANTIGRAVITY_EFFORTS or effort not in supported:
+        raise ValueError(f"Antigravity does not support effort {effort!r} for model {model!r}")
+    return ResolvedProfile("configured", f"{model}-{effort}", effort, effort)

@@ -7,7 +7,7 @@ from model_effort_router.logging import route_log
 from model_effort_router.policy.router import route
 
 STREAM = "\n".join([
-    json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": '{"level":"L2"}'}}),
+    json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": '{"role":"implementation","effort":"medium"}'}}),
     json.dumps({"type": "turn.completed", "usage": {"input_tokens": 29757, "cached_input_tokens": 6912,
                                                       "cache_write_input_tokens": 0, "output_tokens": 20,
                                                       "reasoning_output_tokens": 0}}),
@@ -22,7 +22,7 @@ class ClassifierUsageInRouteTest(unittest.TestCase):
         def classify(self, task, timeout_s):
             if self.exc:
                 raise self.exc
-            return DifficultyDecision("L2", self.name)
+            return DifficultyDecision("implementation", "medium", self.name)
 
     def route(self, *backends):
         registry = {b.name: (lambda b=b: b) for b in backends}

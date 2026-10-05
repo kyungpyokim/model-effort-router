@@ -10,24 +10,13 @@ validated). Any loopback port is accepted. Options: config `difficulty.nimble` b
 import urllib.parse
 import urllib.request
 
-from .decision import RISK_FLAGS
-from .jev import RISK_THRESHOLD, RISK_THRESHOLDS, SystemOneBackend, _RefuseRedirect, default_transport
+from .jev import SystemOneBackend, _RefuseRedirect, default_transport
 
 DEFAULT_URL = "http://127.0.0.1:11434/v1/systemone"  # the address, not the name: no resolver dependence
 DEFAULT_MODEL = "nimble"  # ollama tag `nimble` = nimble:9b
 MODEL_ENV, URL_ENV = "MER_NIMBLE_MODEL", "MER_NIMBLE_URL"
 LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
-OPTION_KEYS = ("model", "url", "risk_thresholds", "l4_min_prob", "l4_min_prob_by_flag", "l4_promote_prob")
-# Risk thresholds: still Jev's (calibrated on corpus-v1; the live Nimble compare of 2026-10-04 gave risk recall 96% /
-# precision 67%, fine). L4/L5: Nimble is UNDERconfident there (compare-v1-nimble: P(L4)+P(L5) by gold level, L1/L2 max
-# 0.01, L3 max 0.17, L4 median 0.31, L5 median 0.56), the opposite of Jev, so Jev's demotion (l4_min_prob 0.6) is off and
-# argmax levels below L4 are promoted when P(L4)+P(L5) >= 0.2. Tuned on the same 150 cases it is evaluated on (offline
-# grid: exact 82 -> 88 of 109, under 23 -> 16, critical miss 2 -> 0, no gold L1-L3 promoted): overfit risk, and the
-# margin to the L3 maximum (0.17 vs 0.2) is thin. Re-tune through `difficulty.nimble`.
-NIMBLE_RISK_THRESHOLDS = dict(RISK_THRESHOLDS)
-NIMBLE_L4_MIN_PROB = 0.0
-NIMBLE_L4_MIN_PROB_BY_FLAG = {}
-NIMBLE_L4_PROMOTE_PROB = 0.2
+OPTION_KEYS = ("model", "url")
 
 # No proxies (an http_proxy in the environment must not carry local task text elsewhere) and no redirects.
 _LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _RefuseRedirect)
@@ -49,21 +38,6 @@ def check_local_url(url):
     return url
 
 
-def _prob(v, what):
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 1:
-        raise ValueError(f"difficulty.nimble.{what} must be a number in [0, 1], got {v!r}")
-    return v
-
-
-def _by_flag(raw, what):
-    if not isinstance(raw, dict):
-        raise ValueError(f"difficulty.nimble.{what} must be an object of risk flag -> probability")
-    unknown = sorted(set(raw) - set(RISK_FLAGS))
-    if unknown:
-        raise ValueError(f"difficulty.nimble.{what}: unknown risk flags {unknown}")
-    return {f: _prob(v, f"{what}.{f}") for f, v in raw.items()}
-
-
 def validate_options(raw):
     """The `difficulty.nimble` config object -> a clean dict. Unknown keys/flags and bad probabilities raise ValueError."""
     if not isinstance(raw, dict):
@@ -79,30 +53,17 @@ def validate_options(raw):
             out[key] = raw[key]
     if "url" in out:
         check_local_url(out["url"])  # a bad url is a config error up front (checked again at send time: env, defaults)
-    if "l4_min_prob" in raw:
-        out["l4_min_prob"] = _prob(raw["l4_min_prob"], "l4_min_prob")
-    if "l4_promote_prob" in raw:  # null switches the promotion off
-        out["l4_promote_prob"] = None if raw["l4_promote_prob"] is None else _prob(raw["l4_promote_prob"], "l4_promote_prob")
-    for key in ("risk_thresholds", "l4_min_prob_by_flag"):
-        if key in raw:
-            out[key] = _by_flag(raw[key], key)
     return out
 
 
 class NimbleBackend(SystemOneBackend):
     name = "nimble"
 
-    def __init__(self, transport=local_transport, model=None, env=None, options=None, level_question=None):
-        super().__init__(transport, model, env, level_question)
+    def __init__(self, transport=local_transport, model=None, env=None, options=None):
+        super().__init__(transport, model, env)
         self._options = validate_options(options or {})
 
     def _endpoint(self, env):
         o = self._options
         url = check_local_url(o.get("url") or env.get(URL_ENV) or DEFAULT_URL)
         return url, {"Content-Type": "application/json"}, self._model or o.get("model") or env.get(MODEL_ENV) or DEFAULT_MODEL
-
-    def _tuning(self):
-        o = self._options
-        return ({**NIMBLE_RISK_THRESHOLDS, **o.get("risk_thresholds", {})}, RISK_THRESHOLD,
-                o.get("l4_min_prob", NIMBLE_L4_MIN_PROB), {**NIMBLE_L4_MIN_PROB_BY_FLAG, **o.get("l4_min_prob_by_flag", {})},
-                o["l4_promote_prob"] if "l4_promote_prob" in o else NIMBLE_L4_PROMOTE_PROB)

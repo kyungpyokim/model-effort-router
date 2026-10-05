@@ -1,25 +1,21 @@
-"""Fallback chain: primary -> fallback -> default L3 (spec 9)."""
-from dataclasses import replace
+"""Classifier fallback chain. Exhaustion is an error; never guess an execution role."""
 
 from .decision import DifficultyDecision
 
 
-def default_decision(causes=()) -> DifficultyDecision:
-    return DifficultyDecision(
-        level="L3", backend="default", reason_codes=tuple(causes) or ("no_backend",)
-    )
+class ClassificationError(RuntimeError):
+    pass
 
 
-def classify_with_fallback(task, backends, timeout_s) -> DifficultyDecision:
+def classify_with_fallback(task, backends, timeout_s):
     causes = []
     for backend in backends:
         name = getattr(backend, "name", "?")
         try:
             result = backend.classify(task, timeout_s)
-        except Exception as exc:  # timeout, bad output, crash: all mean "try the next one"
+            if isinstance(result, DifficultyDecision):
+                return result, tuple(causes)
+            causes.append(f"{name}:InvalidResult")
+        except Exception as exc:
             causes.append(f"{name}:{type(exc).__name__}")
-            continue
-        if isinstance(result, DifficultyDecision):  # earlier backends' failures stay visible in the log
-            return replace(result, reason_codes=result.reason_codes + tuple(f"fallback_cause:{c}" for c in causes))
-        causes.append(f"{name}:InvalidResult")
-    return default_decision(causes)
+    raise ClassificationError("all classifiers failed: " + (", ".join(causes) or "no classifier configured"))
