@@ -6,12 +6,30 @@ Status: installed and measured live on Claude Code 2.1.285 (2026-10-03/04, see "
 
 ## Install (run these yourself)
 
+Install the shared runtime from a matching repository checkout before
+installing the marketplace plugin:
+
+```bash
+git clone https://github.com/kyungpyokim/model-effort-router-next.git
+cd model-effort-router-next
+python3 scripts/install_core.py
+python3 scripts/install_core.py --check
+```
+
 ```bash
 claude plugin marketplace add kyungpyokim/model-effort-router-next
 claude plugin install model-effort-router@model-effort-router
 ```
 
-Update later with `claude plugin marketplace update model-effort-router` then `claude plugin update model-effort-router@model-effort-router` (bump `version` in `.claude-plugin/plugin.json` on every change, or the update is skipped). For development from a checkout use `claude plugin marketplace add ./` instead (run `python3 scripts/sync_plugin.py` first if you changed model_effort_router/). The marketplace file is `.claude-plugin/marketplace.json` at the repo root. Claude Code asks you to trust plugin hooks; until you do there is no advice. After updating the plugin, re-check the hook in `/hooks`.
+Update later with `claude plugin marketplace update model-effort-router` then
+`claude plugin update model-effort-router@model-effort-router` (bump `version`
+in `.claude-plugin/plugin.json` on every plugin change, or the update is
+skipped). For development from a checkout use `claude plugin marketplace add
+./` and set `MER_CORE_PATH="$PWD"` while testing. The marketplace file is
+`.claude-plugin/marketplace.json` at the repo root. The plugin update does not
+update the shared runtime; run `python3 scripts/install_core.py` after core
+changes. Claude Code asks you to trust plugin hooks; until you do there is no
+advice. After updating the plugin, re-check the hook in `/hooks`.
 
 ## Models and effort
 
@@ -24,7 +42,7 @@ A model with no supported efforts (claude-haiku-4-5, choose it through `ClaudeCo
 
 ## mer CLI
 
-`python3 <plugin>/bin/mer run [--cwd DIR] [--dry-run [--level L1..L5 | --classify]] [--max-escalations N] [--json] '<request>'` (the wrapper defaults to `--host claude`; `--host codex` or `MER_HOST=codex` selects the Codex host).
+`python3 <plugin>/bin/mer run [--cwd DIR] [--dry-run [--level L1..L5 | --classify]] [--max-escalations N] [--json] '<request>'` (the wrapper pins `--host claude`; an explicit `--host` remains an intentional override).
 
 - Implement sessions: `claude -p --output-format json --model M [--effort E] --permission-mode auto`. Resumes add `--resume <session_id>`. No bypass flags are used anywhere.
 - Independent review (L4/L5, auth/security) and plan-only sessions: `--permission-mode dontAsk --tools Read,Grep,Glob --allowedTools Read,Grep,Glob --disallowedTools Agent --strict-mcp-config --setting-sources user`. `--tools` limits the tool set itself (`--allowedTools` only pre-approves, so project settings or MCP could otherwise grant Edit/Bash); project/local settings and MCP servers are not loaded.
@@ -42,7 +60,11 @@ Same output as the Codex hook (`hookSpecificOutput.additionalContext`), fail-ope
 
 ## Maintenance
 
-The plugin bundles a copy of `model_effort_router/`. After editing core: `python3 scripts/sync_plugin.py` (it syncs BOTH plugin bundles; a unit test fails if either drifts).
+`model_effort_router/` is installed once as the shared runtime. After editing
+core, run `python3 scripts/install_core.py` and verify with
+`python3 scripts/install_core.py --check`. The plugin launcher checks
+`RUNTIME_API`; incompatible or missing runtimes print setup advice and exit
+with code 2. Hooks fail open and remain silent.
 
 ## Verified live (Claude Code 2.1.285, 2026-10-03, `evaluation/probes/claude_live_probe.sh`)
 

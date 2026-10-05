@@ -6,6 +6,7 @@ never calls a model-calling classifier unless --classify is given; --level Lx fi
 `mer chat "<request>"` classifies the same way, then replaces itself with an interactive `codex` session started
 at the routed model/effort (no gate, escalation or review: the conversation is yours from there).
 """
+
 import argparse
 import json
 import os
@@ -19,13 +20,18 @@ from functools import partial
 
 from . import review as rv
 from .adapters.claude import ClaudeConfig
-from .difficulty.decision import LEVELS, DifficultyDecision, format_risk_flags
+from .difficulty.decision import LEVELS, DifficultyDecision
 from .difficulty.registry import create
-from .host.claude_exec import plugins_off
-from .flow import PLAN_FIRST, SUBAGENT_HINT, WRAP_UP, run_flow
-from .gate.run import load_gate_checks, run_gate
+from .cli_display import (
+    chat_note as _chat_note,
+    dry_run_text as _dry_run_text,
+    human_output as _human,
+)
 from .difficulty.subscription import SubscriptionBackend
+from .flow import PLAN_FIRST, run_flow
+from .gate.run import load_gate_checks, run_gate
 from .host import hosts
+from .host.claude_exec import plugins_off
 from .host.codex_hooks import _registry, load_configs
 from .logging import route_log
 from .policy.config import resolve_config
@@ -49,6 +55,7 @@ def _raise_terminated(signum, frame):
 
 class _FixedLevel:
     """Stands in for every backend in a --dry-run --level run: no classifier call."""
+
     name = "dry-run"
 
     def __init__(self, level):
@@ -62,59 +69,11 @@ def _calls_model(cfg, registry):
     """Backends in the chain that may call a model. Fail closed: only an explicit `calls_model = False` counts
     as offline (checked on an instance, so function/partial factories are covered too; creating one calls nothing)."""
     names = [cfg.backend] + ([cfg.fallback] if cfg.fallback != "none" else [])
-    return [n for n in names if getattr(create(n, registry), "calls_model", True) is not False]
-
-
-def _fmt(p, host):
-    r = host.resolve(p)
-    return f"{p.tier}:{p.effort} -> {r.model}/{r.applied_effort or 'no effort flag'}" + (
-        f" (requested {r.requested_effort})" if r.requested_effort != r.applied_effort else "")
-
-
-def _first_argv(target, sp, text, host, config):
-    cx = host.exec
-    if target == "plan_only":
-        return cx.session_argv(sp.plan_profile, f"{text}\n\nWrite an implementation plan only. Do not modify any files.", "read-only", config)
-    if target == "review_only":
-        return cx.session_argv(sp.review or REVIEW_DEFAULT, "<review prompt: request + git diff + gate JSON>", "read-only", config,
-                               subagents=sp.review_subagents)
-    n = sp.implement_subagents
-    return cx.session_argv(sp.start, f"{text}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{WRAP_UP}",
-                           "workspace-write", config, subagents=n)
-
-
-def _dry_run_text(plan, sp, text, host, config):
-    d = plan.decision
-    ladder = "; ".join(f"{i}. {_fmt(p, host)}" for i, p in enumerate(sp.ladder, 1)) or "none"
-    lines = [f"host: {host.name}", f"level: {sp.level or 'manual'}" + (f" (backend {d.backend})" if d else ""),
-             f"target: {plan.target}", f"risk flags: {format_risk_flags(plan.risk_flags)}",
-             f"session: {_fmt(sp.start, host)}", f"plan first: {'yes' if sp.plan_first else 'no'}",
-             f"review: {_fmt(sp.review, host) if sp.review else 'none'}",
-             f"ladder: {ladder} (then stop and report)", f"rules: {', '.join(sp.applied_rules)}",
-             "first command: " + shlex.join(_first_argv(plan.target, sp, text, host, config))]
-    return "\n".join(lines)
-
-
-def _human(out):
-    r = out["review"]
-    lines = [f"mer: {out['status']} (level {out['level'] or '-'}, target {out['target']})"]
-    if out.get("profile"):
-        lines.append(f"session: {out['profile']['model']}/{out['profile']['applied_effort']}, escalations {out['escalations']}")
-    lines.append(f"gate: {out['gate'] or 'not run'}; review: {r['verdict'] or r['skipped'] or '-'}")
-    c = out.get("change")
-    if c:
-        lines.append(f"door: {c['door']}; risk flags: {format_risk_flags(out['risk_flags'])}; blast radius: {c['files']} file(s) in {c['top_dirs']} top-level dir(s)")
-    if out["status"] == "review_fixed":
-        lines.append("note: review fix applied but not re-reviewed; check the findings below")
-    u = out["usage"]
-    lines.append(f"usage: {u['total']} tokens (in {u['input']}, out {u['output']}) over {len(out['calls'])} call(s)")
-    if out.get("error"):
-        lines.append(f"error: {out['error']}")
-    if out["status"] in ("changes_requested", "review_fixed") and r.get("text"):
-        lines += ["", "review findings:", r["text"]]
-    if out.get("message"):
-        lines += ["", out["message"]]
-    return "\n".join(lines)
+    return [
+        n
+        for n in names
+        if getattr(create(n, registry), "calls_model", True) is not False
+    ]
 
 
 def _chat_argv(target, sp, text, cwd, host):
@@ -130,25 +89,42 @@ def _chat_argv(target, sp, text, cwd, host):
     r = host.resolve(profile)
     if host.name == "antigravity":
         if readonly:
-            raise ValueError("Antigravity plan/review chat is not supported: read-only enforcement is unverified")
-        return ["agy", "--model", r.model, "--effort", r.applied_effort, "--prompt-interactive", text], profile
-    if host.name == "claude":  # no cwd flag: the caller chdirs; `plan` permission mode is read-only
+            raise ValueError(
+                "Antigravity plan/review chat is not supported: read-only enforcement is unverified"
+            )
+        return [
+            "agy",
+            "--model",
+            r.model,
+            "--effort",
+            r.applied_effort,
+            "--prompt-interactive",
+            text,
+        ], profile
+    if (
+        host.name == "claude"
+    ):  # no cwd flag: the caller chdirs; `plan` permission mode is read-only
         effort = ["--effort", r.applied_effort] if r.applied_effort else []
-        return ["claude", "--model", r.model, *effort, *(["--permission-mode", "plan"] if readonly else []), "--", text], profile
-    return ["codex", "--cd", cwd, "-m", r.model, "-c", f"model_reasoning_effort={r.applied_effort}",
-            *(["-s", "read-only"] if readonly else []), text], profile
-
-
-def _chat_note(plan, sp, profile, host):
-    d = plan.decision
-    note = (f"mer chat: {d.level if d else 'manual'}, risk flags {format_risk_flags(plan.risk_flags)} -> "
-            f"{_fmt(profile, host)}. No gate/escalation/review here; switch with {host.switch_hint} if the task grows.")
-    if sp.review and plan.target == "route" and host.name == "antigravity":
-        note += "\nThis work warrants an independent review afterwards; use a host with verified read-only enforcement."
-    elif sp.review and plan.target == "route":
-        note += (f"\nThis work warrants an independent review afterwards: mer run --review-profile "
-                 f"{sp.review.tier}:{sp.review.effort} 'review only: check the current diff for <the task>'")
-    return note
+        return [
+            "claude",
+            "--model",
+            r.model,
+            *effort,
+            *(["--permission-mode", "plan"] if readonly else []),
+            "--",
+            text,
+        ], profile
+    return [
+        "codex",
+        "--cd",
+        cwd,
+        "-m",
+        r.model,
+        "-c",
+        f"model_reasoning_effort={r.applied_effort}",
+        *(["-s", "read-only"] if readonly else []),
+        text,
+    ], profile
 
 
 def _parser():
@@ -157,19 +133,48 @@ def _parser():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("request")
     common.add_argument("--cwd", default=os.getcwd())
-    common.add_argument("--dry-run", action="store_true", help="print decision and the first command only")
-    common.add_argument("--level", choices=LEVELS, help="--dry-run only: use this level instead of classifying")
-    common.add_argument("--classify", action="store_true",
-                        help="--dry-run only: allow one classifier call (uses model quota)")
-    common.add_argument("--host", choices=sorted(hosts.HOSTS), help="host CLI (default: $MER_HOST, else codex)")
-    sub.add_parser("chat", parents=[common], help="route, then start the interactive host CLI at that model/effort")
+    common.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print decision and the first command only",
+    )
+    common.add_argument(
+        "--level",
+        choices=LEVELS,
+        help="--dry-run only: use this level instead of classifying",
+    )
+    common.add_argument(
+        "--classify",
+        action="store_true",
+        help="--dry-run only: allow one classifier call (uses model quota)",
+    )
+    common.add_argument(
+        "--host",
+        choices=sorted(hosts.HOSTS),
+        help="host CLI (default: $MER_HOST, else codex)",
+    )
+    sub.add_parser(
+        "chat",
+        parents=[common],
+        help="route, then start the interactive host CLI at that model/effort",
+    )
     run = sub.add_parser("run", parents=[common], help="route and run a request")
-    run.add_argument("--review-profile", type=parse_profile, metavar="TIER:EFFORT",
-                     help="minimum profile of the independent review (never lowers the computed one)")
+    run.add_argument(
+        "--review-profile",
+        type=parse_profile,
+        metavar="TIER:EFFORT",
+        help="minimum profile of the independent review (never lowers the computed one)",
+    )
     run.add_argument("--max-escalations", type=int, default=2)
-    run.add_argument("--timeout", type=float, default=1200.0, help="seconds per codex call")
+    run.add_argument(
+        "--timeout", type=float, default=1200.0, help="seconds per codex call"
+    )
     run.add_argument("--json", action="store_true", help="machine-readable output")
-    run.add_argument("--exit-zero", action="store_true", help="exit 0 after any completed run (outcome stays in the output)")
+    run.add_argument(
+        "--exit-zero",
+        action="store_true",
+        help="exit 0 after any completed run (outcome stays in the output)",
+    )
     return ap
 
 
@@ -180,14 +185,25 @@ def main(argv=None, **kw):
     try:
         return _main(argv, **kw)
     except Terminated:
-        print("mer: terminated (SIGTERM); the running codex call was stopped", file=sys.stderr)
+        print(
+            "mer: terminated (SIGTERM); the running codex call was stopped",
+            file=sys.stderr,
+        )
         return 143
     finally:
         signal.signal(signal.SIGTERM, previous)
 
 
-def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff, out=None,
-          exec_fn=os.execvpe):
+def _main(
+    argv=None,
+    *,
+    env=None,
+    runner=None,
+    gate_fn=None,
+    diff_fn=rv.git_diff,
+    out=None,
+    exec_fn=os.execvpe,
+):
     out = out or sys.stdout
     env = dict(os.environ) if env is None else env
     args = _parser().parse_args(argv)
@@ -199,7 +215,10 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
     cx = host.exec
     chat = args.command == "chat"
     if host.name == "antigravity" and not chat:
-        print("mer: Antigravity run is not supported: read-only and resume contracts are unverified; use mer chat", file=sys.stderr)
+        print(
+            "mer: Antigravity run is not supported: read-only and resume contracts are unverified; use mer chat",
+            file=sys.stderr,
+        )
         return 2
     if not chat and args.max_escalations < 0:
         print("mer: --max-escalations must be >= 0", file=sys.stderr)
@@ -211,51 +230,113 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
     try:
         repo_cfg, user_cfg = load_configs(cwd, env)
         registry = _registry(env)
-        if registry.get("subscription") is SubscriptionBackend:  # its CLI follows the host (claude -p on Haiku vs codex exec)
-            registry = {**registry, "subscription": lambda: SubscriptionBackend(host=host.name)}
-        cfg = resolve_config(task=parse_override(args.request)[0].as_config(), repo=repo_cfg, user=user_cfg,
-                             registry=registry)
+        if (
+            registry.get("subscription") is SubscriptionBackend
+        ):  # its CLI follows the host (claude -p on Haiku vs codex exec)
+            registry = {
+                **registry,
+                "subscription": lambda: SubscriptionBackend(host=host.name),
+            }
+        cfg = resolve_config(
+            task=parse_override(args.request)[0].as_config(),
+            repo=repo_cfg,
+            user=user_cfg,
+            registry=registry,
+        )
         if args.level:
-            registry = {name: (lambda **_options: _FixedLevel(args.level)) for name in registry}  # ignores factory options
-        elif host.name == "antigravity" and cfg.mode == "auto" and "subscription" in (cfg.backend, cfg.fallback):
-            raise ValueError("Antigravity subscription classification is unsupported: tool isolation is unverified; "
-                             "configure manual mode, nimble, or jev")
-        elif args.dry_run and not args.classify and cfg.mode == "auto" and _calls_model(cfg, registry):
-            print(f"mer: --dry-run would call the {'/'.join(_calls_model(cfg, registry))} classifier; "
-                  "pass --level L1..L5, or --classify to allow one call", file=sys.stderr)
+            registry = {
+                name: (lambda **_options: _FixedLevel(args.level)) for name in registry
+            }  # ignores factory options
+        elif (
+            host.name == "antigravity"
+            and cfg.mode == "auto"
+            and "subscription" in (cfg.backend, cfg.fallback)
+        ):
+            raise ValueError(
+                "Antigravity subscription classification is unsupported: tool isolation is unverified; "
+                "configure manual mode, nimble, or jev"
+            )
+        elif (
+            args.dry_run
+            and not args.classify
+            and cfg.mode == "auto"
+            and _calls_model(cfg, registry)
+        ):
+            print(
+                f"mer: --dry-run would call the {'/'.join(_calls_model(cfg, registry))} classifier; "
+                "pass --level L1..L5, or --classify to allow one call",
+                file=sys.stderr,
+            )
             return 2
         started = time.monotonic()
-        plan = route(args.request, repo_config=repo_cfg, user_config=user_cfg, registry=registry, explicit=True)
+        plan = route(
+            args.request,
+            repo_config=repo_cfg,
+            user_config=user_cfg,
+            registry=registry,
+            explicit=True,
+        )
         latency_ms = (time.monotonic() - started) * 1000
     except Exception as exc:
         print(f"mer: could not route: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     if plan.override_rejected:
-        print("mer: the /router line was not understood; nothing was run", file=sys.stderr)
+        print(
+            "mer: the /router line was not understood; nothing was run", file=sys.stderr
+        )
         return 2
     if plan.target == NO_ROUTE:
-        if chat:  # the user still asked for a conversation: start one with their own defaults
+        if (
+            chat
+        ):  # the user still asked for a conversation: start one with their own defaults
             plain = parse_override(args.request)[1].strip()
-            plain_argv = (["agy", "--prompt-interactive", plain] if host.name == "antigravity" else
-                          ["claude", "--", plain] if host.name == "claude" else ["codex", "--cd", cwd, plain])
-            return _exec(plain_argv,
-                         cx.session_env(env), exec_fn, args.dry_run, out,
-                         f"mer chat: routing is {plan.mode}; starting {host.name} with your defaults", cwd, host)
+            plain_argv = (
+                ["agy", "--prompt-interactive", plain]
+                if host.name == "antigravity"
+                else ["claude", "--", plain]
+                if host.name == "claude"
+                else ["codex", "--cd", cwd, plain]
+            )
+            return _exec(
+                plain_argv,
+                cx.session_env(env),
+                exec_fn,
+                args.dry_run,
+                out,
+                f"mer chat: routing is {plan.mode}; starting {host.name} with your defaults",
+                cwd,
+                host,
+            )
         print(f"mer: routing is {plan.mode}; nothing was run", file=out)
         return 0
 
     _, text = parse_override(args.request)
     text = text.strip()
     try:
-        sp = session_plan(plan.decision, plan.risk_flags, plan.overrides, cfg.subagent_policy)
-        if getattr(args, "review_profile", None):  # carried from hook advice: a re-classified review request must not drop the floor
-            base = sp.review or (REVIEW_DEFAULT if plan.target == "review_only" else None)
-            sp = replace(sp, review=args.review_profile.at_least(base) if base else args.review_profile)
+        sp = session_plan(
+            plan.decision, plan.risk_flags, plan.overrides, cfg.subagent_policy
+        )
+        if getattr(
+            args, "review_profile", None
+        ):  # carried from hook advice: a re-classified review request must not drop the floor
+            base = sp.review or (
+                REVIEW_DEFAULT if plan.target == "review_only" else None
+            )
+            sp = replace(
+                sp,
+                review=args.review_profile.at_least(base)
+                if base
+                else args.review_profile,
+            )
     except ValueError as exc:  # manual mode without a session profile
         print(f"mer: {exc}", file=sys.stderr)
         return 2
     # the claude host's context mode (session.claude_context); codex keeps its own config and ignores it
-    host_config = ClaudeConfig(context=cfg.claude_context, plugins_off=partial(plugins_off, cwd)) if host.name == "claude" else host.config
+    host_config = (
+        ClaudeConfig(context=cfg.claude_context, plugins_off=partial(plugins_off, cwd))
+        if host.name == "claude"
+        else host.config
+    )
     if chat:
         try:
             argv, profile = _chat_argv(plan.target, sp, text, cwd, host)
@@ -264,18 +345,40 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
             return 2
         if not args.dry_run:
             try:
-                route_log.append(route_log.state_dir(env), f"mer-chat-{int(time.time())}-{uuid.uuid4().hex[:6]}",
-                                 {**route_log.route_event(plan, latency_ms=latency_ms, prompt=args.request,
-                                                          configured_backend=cfg.backend),
-                                  "session_plan": sp.to_dict(), "source": "mer chat"})
+                route_log.append(
+                    route_log.state_dir(env),
+                    f"mer-chat-{int(time.time())}-{uuid.uuid4().hex[:6]}",
+                    {
+                        **route_log.route_event(
+                            plan,
+                            latency_ms=latency_ms,
+                            prompt=args.request,
+                            configured_backend=cfg.backend,
+                        ),
+                        "session_plan": sp.to_dict(),
+                        "source": "mer chat",
+                    },
+                )
             except OSError:
                 pass  # logging must never decide the outcome
-        return _exec(argv, cx.session_env(env), exec_fn, args.dry_run, out, _chat_note(plan, sp, profile, host), cwd, host)
+        return _exec(
+            argv,
+            cx.session_env(env),
+            exec_fn,
+            args.dry_run,
+            out,
+            _chat_note(plan, sp, profile, host),
+            cwd,
+            host,
+        )
     if args.dry_run:
         print(_dry_run_text(plan, sp, text, host, host_config), file=out)
         return 0
 
-    sdir, sid = route_log.state_dir(env), f"mer-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+    sdir, sid = (
+        route_log.state_dir(env),
+        f"mer-{int(time.time())}-{uuid.uuid4().hex[:6]}",
+    )
 
     def emit(event):
         try:
@@ -283,15 +386,47 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
         except OSError:
             pass  # logging must never decide the outcome
 
-    emit({**route_log.route_event(plan, latency_ms=latency_ms, prompt=args.request,
-                                  configured_backend=cfg.backend), "session_plan": sp.to_dict(), "source": "mer"})
-    gate_fn = gate_fn or (lambda c: run_gate(c, load_gate_checks(c, env), GATE_TIMEOUT_S))
-    result = run_flow(text, sp, cwd=cwd, runner=runner or cx.run_subprocess, env=env, host=host, gate_fn=gate_fn, diff_fn=diff_fn, emit=emit,
-                      target=plan.target, max_escalations=args.max_escalations, timeout_s=args.timeout, config=host_config, risk_flags=plan.risk_flags)
+    emit(
+        {
+            **route_log.route_event(
+                plan,
+                latency_ms=latency_ms,
+                prompt=args.request,
+                configured_backend=cfg.backend,
+            ),
+            "session_plan": sp.to_dict(),
+            "source": "mer",
+        }
+    )
+    gate_fn = gate_fn or (
+        lambda c: run_gate(c, load_gate_checks(c, env), GATE_TIMEOUT_S)
+    )
+    result = run_flow(
+        text,
+        sp,
+        cwd=cwd,
+        runner=runner or cx.run_subprocess,
+        env=env,
+        host=host,
+        gate_fn=gate_fn,
+        diff_fn=diff_fn,
+        emit=emit,
+        target=plan.target,
+        max_escalations=args.max_escalations,
+        timeout_s=args.timeout,
+        config=host_config,
+        risk_flags=plan.risk_flags,
+    )
     d = plan.decision
-    result.update(session_id=sid, backend=d.backend if d else None,
-                  session_plan=sp.to_dict())
-    print(json.dumps(result, ensure_ascii=False) if args.json else _human(result), file=out)
+    result.update(
+        session_id=sid,
+        backend=d.backend if d else None,
+        session_plan=sp.to_dict(),
+    )
+    print(
+        json.dumps(result, ensure_ascii=False) if args.json else _human(result),
+        file=out,
+    )
     return 0 if args.exit_zero else result["exit_code"]
 
 

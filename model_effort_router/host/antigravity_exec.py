@@ -3,7 +3,7 @@ import json
 from collections import namedtuple
 
 from ..adapters.antigravity import AntigravityConfig
-from .codex_exec import session_env as session_env
+from . import session_env as session_env
 
 Stream = namedtuple("Stream", "thread_id usage text")
 

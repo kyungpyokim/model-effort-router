@@ -21,7 +21,8 @@ import subprocess
 from collections import namedtuple
 
 from ..adapters.claude import ClaudeConfig, resolve
-from ..difficulty.subscription import GUARD_ENV, default_runner
+from ..difficulty.subscription import default_runner
+from . import session_env as session_env
 
 Stream = namedtuple("Stream", "thread_id usage text extra", defaults=(None,))  # usage: THIS invocation's, short keys, or None
 READ_ONLY_TOOLS = "Read,Grep,Glob"
@@ -118,10 +119,6 @@ def session_argv(profile, prompt, sandbox, config=ClaudeConfig(), subagents=None
 def resume_argv(profile, session_id, prompt, config=ClaudeConfig(), subagents=None):
     extra = ["--permission-mode", "auto"] + agents_flags(subagents) + isolation(config, False) + ["--resume", session_id]
     return _prompted(_base(resolve(profile, config), extra), prompt)
-
-
-def session_env(base):
-    return {**base, GUARD_ENV: "1"}  # the installed plugin's hook stays quiet inside mer-driven sessions
 
 
 def run_subprocess(argv, *, cwd, env, timeout_s):

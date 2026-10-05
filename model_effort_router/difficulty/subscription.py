@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 
 from .decision import LEVELS, RISK_FLAGS, DifficultyDecision, DifficultyInput
+from ..events import iter_events
 
 GUARD_ENV = "MER_CLASSIFIER"  # child env guard: the Router's own hook must no-op when set
 MAX_TASK_CHARS = 4000
@@ -80,12 +81,8 @@ def build_prompt(task: DifficultyInput) -> str:
 def _agent_text(stdout: str) -> str:
     """Last agent message in the `codex exec --json` stream; error events and non-JSON lines skipped."""
     text = None
-    for line in stdout.splitlines():
-        try:
-            ev = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(ev, dict) or ev.get("type") != "item.completed":
+    for ev in iter_events(stdout):
+        if ev.get("type") != "item.completed":
             continue
         item = ev.get("item")
         if isinstance(item, dict) and item.get("type") == "agent_message" and isinstance(item.get("text"), str):
@@ -98,12 +95,8 @@ def _agent_text(stdout: str) -> str:
 def parse_usage(stdout: str):
     """Token usage of the last `turn.completed` event in the exec stream, or None if absent."""
     usage = None
-    for line in stdout.splitlines():
-        try:
-            ev = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(ev, dict) and ev.get("type") == "turn.completed" and isinstance(ev.get("usage"), dict):
+    for ev in iter_events(stdout):
+        if ev.get("type") == "turn.completed" and isinstance(ev.get("usage"), dict):
             usage = ev["usage"]
     return usage
 

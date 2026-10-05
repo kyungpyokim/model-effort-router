@@ -247,8 +247,9 @@ class GitDiffTest(unittest.TestCase):
 
 class WrapperTest(unittest.TestCase):
     def test_bin_mer_wrapper_help(self):
-        from tests.hook_helpers import PLUGIN
-        p = subprocess.run(["python3", str(PLUGIN / "bin" / "mer"), "run", "--help"], capture_output=True, text=True, timeout=30)
+        from tests.hook_helpers import PLUGIN, ROOT
+        p = subprocess.run(["python3", str(PLUGIN / "bin" / "mer"), "run", "--help"], capture_output=True, text=True, timeout=30,
+                           env={**os.environ, "MER_CORE_PATH": str(ROOT)})
         self.assertEqual(p.returncode, 0)
         self.assertIn("--dry-run", p.stdout)
         self.assertTrue(os.access(PLUGIN / "bin" / "mer", os.X_OK))

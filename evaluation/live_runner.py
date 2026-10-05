@@ -29,6 +29,7 @@ from model_effort_router.difficulty.subscription import default_runner
 from model_effort_router.policy.config import SUBAGENT_POLICIES
 from model_effort_router.difficulty.usage import sum_usage
 from model_effort_router.logging.route_log import state_dir
+from model_effort_router.events import iter_events
 
 from . import baseline, usage
 from . import cases as corpus
@@ -165,18 +166,10 @@ def read_events(path):
     """All parseable events of one route-log file; a missing file is an empty log, bad lines are skipped."""
     try:
         with open(path, encoding="utf-8") as f:
-            lines = f.read().splitlines()
+            text = f.read()
     except FileNotFoundError:
         return []
-    out = []
-    for line in lines:
-        try:
-            ev = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(ev, dict):
-            out.append(ev)
-    return out
+    return list(iter_events(text))
 
 
 MARKER = ".mer-eval-workdir"

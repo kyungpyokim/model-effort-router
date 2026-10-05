@@ -5,7 +5,8 @@
 - **`mer` CLI (주 경로)**: 요청을 분류합니다. 고른 모델·effort로 세션 하나를 실행하고 Test Gate를 돌립니다. 실패하면 같은 세션을 다음 프로필로 이어서 승격하고, 위험한 작업에는 독립 읽기 전용 Review를 붙입니다.
 - **UserPromptSubmit hook (보조)**: 일반 세션에서 난이도, 위험 플래그, 추천 모델·effort, 계획 먼저·리뷰 권고를 짧게 덧붙입니다. 권고만 하고 아무것도 막거나 강제하지 않습니다.
 
-Python 3 표준 라이브러리만 씁니다(외부 의존성 없음).
+Python 3 표준 라이브러리만 씁니다(외부 의존성 없음). 런타임 코드는
+`model_effort_router/`에 한 번 설치하고, 세 플러그인은 그 런타임을 import합니다.
 
 ## 난이도와 세션 프로필
 
@@ -30,7 +31,19 @@ Claude Code에서는 `xhigh`가 `high`로 매핑됩니다. 파일럿에서 Opus 
 
 ## 설치
 
-플러그인에 `mer` CLI와 hook이 함께 들어 있습니다.
+플러그인에는 `mer` CLI, host별 manifest, skill, hook만 들어 있습니다. 공통
+런타임은 플러그인 설치와 별도로 한 번 설치해야 합니다. 먼저 저장소를 clone한
+뒤 같은 checkout에서 설치하세요.
+
+```bash
+git clone https://github.com/kyungpyokim/model-effort-router-next.git
+cd model-effort-router-next
+python3 scripts/install_core.py
+python3 scripts/install_core.py --check
+```
+
+기본 설치 위치는 `${XDG_DATA_HOME:-~/.local/share}/model-effort-router/runtime`입니다.
+`MER_CORE_PATH`를 절대 경로로 지정하면 개발 checkout을 런타임으로 사용할 수 있습니다.
 
 ```bash
 claude plugin marketplace add kyungpyokim/model-effort-router-next
@@ -109,11 +122,12 @@ Claude Code 파일럿 13건(c3, 2026-10-04)의 결과입니다.
 ## 저장소 구조
 
 ```
-model_effort_router/   Router Core: difficulty backend, policy, host adapter/exec, gate, CLI
-plugins/               Codex·Claude Code 플러그인 (core 사본 번들, bin/mer, hooks, skills)
+model_effort_router/   공유 Router Core: difficulty backend, policy, host adapter/exec, gate, CLI
+  entrypoints.py      플러그인 공통 진입점과 RUNTIME_API 호환성 검사
+plugins/               Codex·Claude Code·Antigravity 플러그인 (bin/mer, skills, 지원 호스트의 hooks)
 evaluation/            코퍼스, backend 비교, 비용 기준선, 파일럿 (플러그인에 미포함)
 docs/                  기획서, 평가 사용법, 호스트 spike 기록
-scripts/sync_plugin.py core를 두 플러그인 번들로 동기화
+scripts/install_core.py 공유 core 설치 및 `--check`
 tests/                 unittest
 ```
 
@@ -124,10 +138,12 @@ python3 -m unittest discover -s tests
 ```
 
 ```bash
-python3 scripts/sync_plugin.py
+python3 scripts/install_core.py --check
 ```
 
-- `model_effort_router/`를 고친 뒤에는 `sync_plugin.py`를 실행해야 합니다. 번들이 어긋나면 테스트가 실패합니다.
+- `model_effort_router/`를 고친 뒤에는 `python3 scripts/install_core.py`로 공유 런타임을 갱신하고 `--check`로 확인합니다.
+- 플러그인의 `bin/`·hook은 설치된 공유 런타임의 `entrypoints.py`를 import합니다. CLI와 gate는 런타임 누락·손상·API 불일치를 stderr에 안내하고 종료 코드 2를 반환하며, hook은 조용히 종료 코드 0을 반환합니다.
+- `RUNTIME_API`가 바뀌는 호환성 변경은 플러그인과 런타임을 함께 업데이트해야 합니다. 플러그인 업데이트만으로는 공유 런타임이 갱신되지 않습니다.
 - 플러그인을 바꿀 때마다 `plugin.json`의 `version`을 올리세요. 같은 버전이면 업데이트가 건너뜁니다.
 - 평가 도구 중 모델을 호출하는 경로는 `--live`를 붙여야만 실행됩니다. 사용법은 [docs/evaluation/README.md](docs/evaluation/README.md)에 있습니다.
 
