@@ -60,7 +60,6 @@ class ManifestTest(unittest.TestCase):
         for name in ("mer", "mer-gate"):
             wrapper = CLAUDE / "bin" / name
             self.assertTrue(os.access(wrapper, os.X_OK), name)
-            self.assertIn('os.environ["MER_HOST"] = "claude"', wrapper.read_text())
 
     def test_wrapper_defaults_to_the_claude_host(self):
         with tempfile.TemporaryDirectory() as d:
@@ -205,13 +204,16 @@ class HookTest(unittest.TestCase):
         self.assertTrue(any(e["event"] == "error" for e in self.log()))
 
     def test_fail_open_when_the_core_cannot_be_imported(self):
-        broken = self.root / "plugin"
-        (broken / "hooks").mkdir(parents=True)
-        (broken / "hooks" / "user_prompt_submit.py").write_text((CLAUDE / "hooks" / "user_prompt_submit.py").read_text())
         base = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
-        p = subprocess.run([sys.executable, str(broken / "hooks" / "user_prompt_submit.py")], input="{}", capture_output=True,
-                           text=True, env=base, timeout=60)
-        self.assertEqual((p.returncode, p.stdout), (0, ""))
+        for plugin in (CLAUDE, PLUGIN):
+            with self.subTest(plugin=plugin.name):
+                broken = self.root / plugin.name
+                (broken / "hooks").mkdir(parents=True)
+                script = broken / "hooks" / "user_prompt_submit.py"
+                script.write_text((plugin / "hooks" / script.name).read_text())
+                p = subprocess.run([sys.executable, "-I", str(script)], input="{}", capture_output=True,
+                                   text=True, env=base, cwd=self.root, timeout=60)
+                self.assertEqual((p.returncode, p.stdout, p.stderr), (0, "", ""))
 
     def test_main_in_process_fails_open_when_handler_raises(self):
         out = io.StringIO()
