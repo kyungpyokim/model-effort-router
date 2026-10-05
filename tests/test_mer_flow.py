@@ -369,22 +369,27 @@ if __name__ == "__main__":
 
 
 class ChangeSummaryTest(unittest.TestCase):
-    """Door / blast radius for the human reviewer (PR skill fields), judged from the final diff's paths."""
+    """Door / blast radius for the human reviewer (PR skill fields): request flags plus the final diff's path flags."""
 
     def test_plain_change_is_a_two_way_door(self):
         r = Harness().run("L2")
-        self.assertEqual(r["change"], {"files": 2, "top_dirs": 2, "risk_flags": [], "door": "two-way"})
+        self.assertEqual((r["risk_flags"], r["change"]), ([], {"files": 2, "top_dirs": 2, "door": "two-way"}))
 
     def test_migration_path_makes_a_one_way_door(self):
         diff = {**REPO, "files": ["app/db/migrations/0003_drop.sql", "app/models.py"], "untracked": []}
         r = Harness(diff=diff).run("L2")
-        self.assertEqual(r["change"], {"files": 2, "top_dirs": 1, "risk_flags": ["data_migration"], "door": "one-way"})
+        self.assertEqual((r["risk_flags"], r["change"]), (["data_migration"], {"files": 2, "top_dirs": 1, "door": "one-way"}))
 
-    def test_auth_path_is_flagged_but_stays_two_way(self):
+    def test_request_flag_counts_even_when_paths_do_not_show_it(self):
+        r = Harness().run("L2", risk_flags=("data_loss",))
+        self.assertEqual((r["risk_flags"], r["change"]["door"]), (["data_loss"], "one-way"))
+
+    def test_request_and_path_flags_merge_in_canonical_order(self):
         diff = {**REPO, "files": ["src/auth/login.py"], "untracked": []}
-        r = Harness(diff=diff).run("L2")
-        self.assertEqual((r["change"]["risk_flags"], r["change"]["door"]), (["auth"], "two-way"))
+        r = Harness(diff=diff).run("L2", risk_flags=("concurrency",))
+        self.assertEqual((r["risk_flags"], r["change"]["door"]), (["auth", "concurrency"], "two-way"))
 
     def test_no_change_summary_without_a_repo_or_for_plan_only(self):
         self.assertIsNone(Harness(diff={"is_repo": False}).run("L2")["change"])
-        self.assertIsNone(Harness().run("L2", target="plan_only")["change"])
+        r = Harness().run("L2", target="plan_only", risk_flags=("auth",))
+        self.assertEqual((r["change"], r["risk_flags"]), (None, ["auth"]))

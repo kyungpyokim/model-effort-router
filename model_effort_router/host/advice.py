@@ -1,4 +1,5 @@
 """Advisory text for the UserPromptSubmit hook (spec 3.7): what the Router would pick; nothing is enforced."""
+from ..difficulty.decision import format_risk_flags
 from ..policy.session import REVIEW_DEFAULT, session_plan
 from .hosts import CODEX
 
@@ -32,7 +33,7 @@ def render(plan, mer_cmd, host=CODEX, current=None):
     head = "Difficulty: " + (f"{d.level}" + (f" (confidence {d.confidence:.2f})" if d.confidence is not None else "")
                              if d else "not classified (manual mode)")
     lines = ["[model-effort-router] Advisory only: nothing is enforced and no subagents are needed. "
-             "Mention this to the user only if it helps them.", head + f". Risk flags: {', '.join(plan.risk_flags) or 'none'}."]
+             "Mention this to the user only if it helps them.", head + f". Risk flags: {format_risk_flags(plan.risk_flags)}."]
     if plan.override_rejected:
         lines.append("Note: the /router override line was not understood and was ignored.")
     if plan.target == "plan_only":

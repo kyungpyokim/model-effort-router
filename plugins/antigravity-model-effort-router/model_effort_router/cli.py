@@ -19,7 +19,7 @@ from functools import partial
 
 from . import review as rv
 from .adapters.claude import ClaudeConfig
-from .difficulty.decision import LEVELS, DifficultyDecision
+from .difficulty.decision import LEVELS, DifficultyDecision, format_risk_flags
 from .difficulty.registry import create
 from .host.claude_exec import plugins_off
 from .flow import PLAN_FIRST, SUBAGENT_HINT, WRAP_UP, run_flow
@@ -87,7 +87,7 @@ def _dry_run_text(plan, sp, text, host, config):
     d = plan.decision
     ladder = "; ".join(f"{i}. {_fmt(p, host)}" for i, p in enumerate(sp.ladder, 1)) or "none"
     lines = [f"host: {host.name}", f"level: {sp.level or 'manual'}" + (f" (backend {d.backend})" if d else ""),
-             f"target: {plan.target}", f"risk flags: {', '.join(plan.risk_flags) or 'none'}",
+             f"target: {plan.target}", f"risk flags: {format_risk_flags(plan.risk_flags)}",
              f"session: {_fmt(sp.start, host)}", f"plan first: {'yes' if sp.plan_first else 'no'}",
              f"review: {_fmt(sp.review, host) if sp.review else 'none'}",
              f"ladder: {ladder} (then stop and report)", f"rules: {', '.join(sp.applied_rules)}",
@@ -103,8 +103,7 @@ def _human(out):
     lines.append(f"gate: {out['gate'] or 'not run'}; review: {r['verdict'] or r['skipped'] or '-'}")
     c = out.get("change")
     if c:
-        flags = f" ({', '.join(c['risk_flags'])})" if c["risk_flags"] else ""
-        lines.append(f"door: {c['door']}{flags}; blast radius: {c['files']} file(s) in {c['top_dirs']} top-level dir(s)")
+        lines.append(f"door: {c['door']}; risk flags: {format_risk_flags(out['risk_flags'])}; blast radius: {c['files']} file(s) in {c['top_dirs']} top-level dir(s)")
     if out["status"] == "review_fixed":
         lines.append("note: review fix applied but not re-reviewed; check the findings below")
     u = out["usage"]
@@ -142,7 +141,7 @@ def _chat_argv(target, sp, text, cwd, host):
 
 def _chat_note(plan, sp, profile, host):
     d = plan.decision
-    note = (f"mer chat: {d.level if d else 'manual'}, risk flags {', '.join(plan.risk_flags) or 'none'} -> "
+    note = (f"mer chat: {d.level if d else 'manual'}, risk flags {format_risk_flags(plan.risk_flags)} -> "
             f"{_fmt(profile, host)}. No gate/escalation/review here; switch with {host.switch_hint} if the task grows.")
     if sp.review and plan.target == "route" and host.name == "antigravity":
         note += "\nThis work warrants an independent review afterwards; use a host with verified read-only enforcement."
@@ -288,9 +287,9 @@ def _main(argv=None, *, env=None, runner=None, gate_fn=None, diff_fn=rv.git_diff
                                   configured_backend=cfg.backend), "session_plan": sp.to_dict(), "source": "mer"})
     gate_fn = gate_fn or (lambda c: run_gate(c, load_gate_checks(c, env), GATE_TIMEOUT_S))
     result = run_flow(text, sp, cwd=cwd, runner=runner or cx.run_subprocess, env=env, host=host, gate_fn=gate_fn, diff_fn=diff_fn, emit=emit,
-                      target=plan.target, max_escalations=args.max_escalations, timeout_s=args.timeout, config=host_config)
+                      target=plan.target, max_escalations=args.max_escalations, timeout_s=args.timeout, config=host_config, risk_flags=plan.risk_flags)
     d = plan.decision
-    result.update(session_id=sid, risk_flags=list(plan.risk_flags), backend=d.backend if d else None,
+    result.update(session_id=sid, backend=d.backend if d else None,
                   session_plan=sp.to_dict())
     print(json.dumps(result, ensure_ascii=False) if args.json else _human(result), file=out)
     return 0 if args.exit_zero else result["exit_code"]

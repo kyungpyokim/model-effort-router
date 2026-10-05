@@ -38,6 +38,7 @@ REVIEW_FLAGS = ("auth", "security")  # these still get an independent review bel
 # With the implement session's subagents off, nothing else checks this work (measurement B, plan 22.3: an L3
 # concurrency test that could not fail), so these flags also get the independent review below L4.
 REVIEW_FLAGS_WITHOUT_SUBAGENTS = ("concurrency", "data_loss")
+ONE_WAY_FLAGS = ("data_migration", "data_loss", "payment")  # a code revert does not undo their effects
 
 
 @dataclass(frozen=True)

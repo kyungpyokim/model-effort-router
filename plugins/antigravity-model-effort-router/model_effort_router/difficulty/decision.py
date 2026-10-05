@@ -9,6 +9,16 @@ TARGETS = ("route", "plan_only", "review_only", "no_route")  # same values as po
 DISTRIBUTION_TOLERANCE = 0.05
 
 
+def merge_risk_flags(*groups):
+    """Union of flag groups, in canonical order."""
+    merged = set().union(*groups)
+    return tuple(f for f in RISK_FLAGS if f in merged)
+
+
+def format_risk_flags(flags):
+    return ", ".join(flags) or "none"
+
+
 @dataclass(frozen=True)
 class DifficultyInput:
     task: str
@@ -53,6 +63,4 @@ class DifficultyDecision:
             object.__setattr__(self, "distribution", MappingProxyType(dist))
 
     def with_risk_flags(self, extra) -> "DifficultyDecision":
-        """Union of existing and extra flags, in canonical order."""
-        merged = set(self.risk_flags) | set(extra)
-        return replace(self, risk_flags=tuple(f for f in RISK_FLAGS if f in merged))
+        return replace(self, risk_flags=merge_risk_flags(self.risk_flags, extra))
