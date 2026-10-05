@@ -101,6 +101,12 @@ def _human(out):
     if out.get("profile"):
         lines.append(f"session: {out['profile']['model']}/{out['profile']['applied_effort']}, escalations {out['escalations']}")
     lines.append(f"gate: {out['gate'] or 'not run'}; review: {r['verdict'] or r['skipped'] or '-'}")
+    c = out.get("change")
+    if c:
+        flags = f" ({', '.join(c['risk_flags'])})" if c["risk_flags"] else ""
+        lines.append(f"door: {c['door']}{flags}; blast radius: {c['files']} file(s) in {c['top_dirs']} top-level dir(s)")
+    if out["status"] == "review_fixed":
+        lines.append("note: review fix applied but not re-reviewed; check the findings below")
     u = out["usage"]
     lines.append(f"usage: {u['total']} tokens (in {u['input']}, out {u['output']}) over {len(out['calls'])} call(s)")
     if out.get("error"):

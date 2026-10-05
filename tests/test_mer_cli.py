@@ -151,6 +151,12 @@ class RunTest(CliCase):
         rc, out = self.mer("Fix the login auth check in auth.py", "--json", spec={"level": "L4"}, h=h)
         self.assertEqual((rc, json.loads(out)["status"]), (0, "review_fixed"))
 
+    def test_human_summary_shows_door_and_unreviewed_fix(self):
+        h = Harness(verdicts=[("changes_requested", 2)])
+        rc, out = self.mer("Fix the login auth check in auth.py", spec={"level": "L4"}, h=h)
+        self.assertIn("door: two-way; blast radius: 2 file(s) in 2 top-level dir(s)", out)
+        self.assertIn("review fix applied but not re-reviewed", out)
+
     def test_explicit_invocation_routes_non_dev_text(self):
         rc, out = self.mer("hello there", "--json")
         self.assertEqual((rc, json.loads(out)["level"]), (0, "L2"))

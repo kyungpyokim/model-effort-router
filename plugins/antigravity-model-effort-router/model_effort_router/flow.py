@@ -6,10 +6,12 @@ The host (codex or claude, host/hosts.py) supplies the argv builders, stream par
 import time
 
 from . import review as rv
+from .difficulty.risk import detect_risk_flags
 from .host.hosts import CODEX
 from .policy.session import REVIEW_DEFAULT
 
 GATE_TEXT_MAX = 2000
+ONE_WAY_FLAGS = ("data_migration", "data_loss", "payment")  # a code revert does not undo their effects
 USAGE_KEYS = ("input", "cached_input", "output", "reasoning_output")
 PLAN_FIRST = "First write a short plan, then implement it. "
 WRAP_UP = "When finished, end with a short summary of the changes."
@@ -33,6 +35,17 @@ def _sum_usage(calls):
             total[k] += (c["usage"] or {}).get(k, 0)
     return {**total, "total": total["input"] + total["output"],
             "missing": sum(c["usage"] is None for c in calls)}
+
+
+def _change_summary(diff):
+    """Door and blast radius for the human reviewer, from the final diff's paths (None: no repo or no change)."""
+    # ponytail: path-based flags only (diff text would flag "lock"/"charge" everywhere); content scan if paths miss real cases
+    paths = [*(diff.get("files") or []), *(diff.get("untracked") or [])] if diff.get("is_repo") else []
+    if not paths:
+        return None
+    flags = detect_risk_flags("", paths)
+    return {"files": len(paths), "top_dirs": len({p.split("/", 1)[0] for p in paths}), "risk_flags": list(flags),
+            "door": "one-way" if set(flags) & set(ONE_WAY_FLAGS) else "two-way"}
 
 
 def _profile(call):
@@ -200,9 +213,10 @@ def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="r
     except Exception as exc:  # timeout, codex crash: report, never traceback
         result = {"status": "error", "exit_code": 1, "error": f"{type(exc).__name__}: {exc}"[:300],
                   "message": flow.message}
+    change = None if target == "plan_only" else _change_summary(flow.diff_fn(cwd))
     review = {**flow.review, **({"text": flow.review["text"][-rv.FINDINGS_MAX:]} if "text" in flow.review else {})}
     out = {**result, "level": sp.level, "target": target, "escalations": flow.esc, "gate": (flow.gate or {}).get("overall"),
-           "review": review, "calls": flow.calls, "usage": _sum_usage(flow.calls),
+           "review": review, "change": change, "calls": flow.calls, "usage": _sum_usage(flow.calls),
            "threads": list(dict.fromkeys(c["thread_id"] for c in flow.calls if c["thread_id"])),
            "profile": _profile(flow.calls[0]) if flow.calls else None,
            "final_profile": _profile(next((c for c in reversed(flow.calls) if c["role"] != "review"), None)),
