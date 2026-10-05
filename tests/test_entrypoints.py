@@ -53,6 +53,17 @@ class EntrypointsTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "boom"):
                     entrypoints.gate("claude")
 
+    def test_missing_cli_or_gate_module_returns_install_hint(self):
+        import io
+        from contextlib import redirect_stderr
+
+        errors = io.StringIO()
+        with patch("model_effort_router.entrypoints.importlib.import_module", side_effect=ModuleNotFoundError("missing")):
+            with redirect_stderr(errors):
+                self.assertEqual(entrypoints.cli("codex"), 2)
+                self.assertEqual(entrypoints.gate("codex"), 2)
+        self.assertIn("install_core.py", errors.getvalue())
+
     def test_hook_forwards_host_event_and_plugin_root(self):
         root = Path("/tmp/plugin")
         with patch.dict(os.environ, {}, clear=True):

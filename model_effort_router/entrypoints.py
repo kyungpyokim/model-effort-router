@@ -1,5 +1,7 @@
 """Shared process entrypoints for plugins sharing one installed core."""
+import importlib
 import os
+import sys
 
 
 RUNTIME_API = 1
@@ -14,10 +16,21 @@ def _check_api(runtime_api):
         raise RuntimeCompatibilityError("Plugin and shared core APIs differ; update all plugins and the shared core together")
 
 
+def _load_main(module):
+    try:
+        return importlib.import_module(module, __package__).main
+    except ImportError:
+        print("Shared core is incomplete; reinstall it with python3 scripts/install_core.py from a matching checkout.",
+              file=sys.stderr)
+        return None
+
+
 def cli(host, *, runtime_api=1):
     _check_api(runtime_api)
     os.environ["MER_HOST"] = host
-    from .cli import main
+    main = _load_main(".cli")
+    if main is None:
+        return 2
     return main()
 
 
@@ -25,7 +38,9 @@ def gate(host=None, *, runtime_api=1):
     _check_api(runtime_api)
     if host is not None:
         os.environ["MER_HOST"] = host
-    from .gate.run import main
+    main = _load_main(".gate.run")
+    if main is None:
+        return 2
     return main()
 
 

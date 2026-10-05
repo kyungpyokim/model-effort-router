@@ -143,6 +143,24 @@ def hook(host, root, *, runtime_api):
                             self.assertIn("shared core", result.stderr.lower())
                             self.assertNotIn("Traceback", result.stderr)
 
+    def test_incomplete_cli_or_gate_module_reports_reinstall_without_traceback(self):
+        package = self.runtime / "model_effort_router"
+        install(ROOT / "model_effort_router", self.runtime)
+        (package / "cli.py").unlink()
+        for plugin in PLUGINS:
+            result = self.run_loader(plugin, "bin/mer", "run", "--help")
+            self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+            self.assertIn("scripts/install_core.py", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
+        install(ROOT / "model_effort_router", self.runtime)
+        (package / "gate" / "run.py").unlink()
+        for plugin in PLUGINS:
+            result = self.run_loader(plugin, "bin/mer-gate", "--help")
+            self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
+            self.assertIn("scripts/install_core.py", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
     def test_cwd_or_pythonpath_core_is_not_a_fallback(self):
         fake = self.root / "model_effort_router"
         fake.mkdir()

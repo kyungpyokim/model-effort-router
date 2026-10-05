@@ -104,6 +104,22 @@ class CoreInstallTest(unittest.TestCase):
         self.assertTrue(target.is_symlink())
         self.assertTrue((self.source / "entrypoints.py").is_file())
 
+    def test_check_rejects_symlinked_package_and_bootstrap_files(self):
+        self.runtime.mkdir()
+        target = self.runtime / "model_effort_router"
+        target.symlink_to(self.source, target_is_directory=True)
+        self.assertIn("symlink: model_effort_router", install_core.check(self.source, self.runtime))
+        target.unlink()
+        install_core.install(self.source, self.runtime)
+        for name in ("__init__.py", "entrypoints.py"):
+            path = target / name
+            path.unlink()
+            path.symlink_to(self.source / name)
+            with self.subTest(name=name):
+                self.assertIn(f"symlink: model_effort_router/{name}", install_core.check(self.source, self.runtime))
+            path.unlink()
+            path.write_text((self.source / name).read_text())
+
     def test_staging_mismatch_does_not_replace_previous_install(self):
         install_core.install(self.source, self.runtime)
         with patch.object(install_core, "check", return_value=["differs: entrypoints.py"]):
