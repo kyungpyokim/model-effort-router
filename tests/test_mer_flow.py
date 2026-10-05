@@ -399,6 +399,52 @@ class ChangeSummaryTest(unittest.TestCase):
         self.assertEqual((r["change"], r["risk_flags"]), (None, ["auth"]))
 
 
+class ContentFlagTest(unittest.TestCase):
+    """Door from what the run wrote, not only from where: destructive statements outside a migration path."""
+
+    @staticmethod
+    def section(path, *added, removed=()):
+        body = "".join(f"-{r}\n" for r in removed) + "".join(f"+{a}\n" for a in added)
+        return f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n{body}"
+
+    def run_diff(self, diff, **kw):
+        return Harness(diff={"is_repo": True, "untracked": [], **diff}).run("L2", **kw)
+
+    def test_an_added_destructive_statement_is_a_one_way_door(self):
+        d = self.section("app/db.py", 'cur.execute("DROP TABLE users")')
+        r = self.run_diff({"diff": d, "files": ["app/db.py"]})
+        self.assertEqual((r["risk_flags"], r["change"]["door"]), (["data_loss"], "one-way"))
+
+    def test_a_removed_statement_does_not_flag(self):
+        d = self.section("app/db.py", "pass", removed=['cur.execute("DROP TABLE users")'])
+        r = self.run_diff({"diff": d, "files": ["app/db.py"]})
+        self.assertEqual((r["risk_flags"], r["change"]["door"]), ([], "two-way"))
+
+    def test_prose_is_not_scanned(self):
+        d = self.section("docs/ops.md", "Never run DROP TABLE by hand.")
+        r = self.run_diff({"diff": d, "files": ["docs/ops.md"]})
+        self.assertEqual(r["risk_flags"], [])
+
+    def test_a_diff_section_of_a_file_the_run_did_not_change_is_ignored(self):
+        d = self.section("old.py", "DROP TABLE legacy") + self.section("app/x.py", "x = 1")
+        r = self.run_diff({"diff": d, "files": ["app/x.py"]})
+        self.assertEqual(r["risk_flags"], [])
+
+    def test_a_new_untracked_file_is_read_from_disk(self):
+        with tempfile.TemporaryDirectory() as cwd:
+            with open(os.path.join(cwd, "reset.sql"), "w") as f:
+                f.write("ALTER TABLE users ADD COLUMN age int;\n")
+            h = Harness(diff={"is_repo": True, "diff": "", "files": [], "untracked": ["reset.sql"]})
+            r = run_flow(REQ, splan("L2"), cwd=cwd, runner=h.runner, env={}, gate_fn=h.gate, diff_fn=h.diff_fn,
+                         emit=h.events.append)
+        self.assertEqual((r["risk_flags"], r["change"]["door"]), (["data_migration"], "one-way"))
+
+    def test_request_path_and_content_flags_merge_in_canonical_order(self):
+        d = self.section("src/auth/store.py", "os.system('rm -rf /data')")
+        r = self.run_diff({"diff": d, "files": ["src/auth/store.py"]}, risk_flags=("concurrency",))
+        self.assertEqual(r["risk_flags"], ["auth", "data_loss", "concurrency"])
+
+
 class BaselineTest(unittest.TestCase):
     """The blast radius counts what this run changed, not files that were already dirty before it."""
 

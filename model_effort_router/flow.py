@@ -8,7 +8,7 @@ import time
 
 from . import review as rv
 from .difficulty.decision import merge_risk_flags
-from .difficulty.risk import detect_risk_flags
+from .difficulty.risk import detect_content_flags, detect_risk_flags
 from .gate import probe as pb
 from .gate.discovery import Check
 from .gate.run import DEFAULT_TIMEOUT_S as PROBE_TIMEOUT_S  # the probe runs the gate's test command: same limit
@@ -16,6 +16,8 @@ from .host.hosts import CODEX
 from .policy.session import ONE_WAY_FLAGS, REVIEW_DEFAULT
 
 GATE_TEXT_MAX = 2000
+CONTENT_SCAN_MAX = 64_000  # chars read from a new untracked file for the content flags
+PROSE_SUFFIXES = (".md", ".rst", ".txt")
 USAGE_KEYS = ("input", "cached_input", "output", "reasoning_output")
 PLAN_FIRST = "First write a short plan, then implement it. "
 WRAP_UP = "When finished, end with a short summary of the changes."
@@ -52,6 +54,25 @@ def _stamp(cwd, path):
     except OSError:
         return None
     return st.st_mtime_ns, st.st_size
+
+
+def _added_text(cwd, diff, paths):
+    """What this run wrote into `paths`, for the content flags: added diff lines, and new untracked files read from
+    disk (capped). Prose is skipped: docs name "drop table" without running it."""
+    paths = {p for p in paths if not p.endswith(PROSE_SUFFIXES)}
+    out, mine = [], False
+    for line in (diff.get("diff") or "").splitlines():
+        if line.startswith("+++ "):
+            mine = line[6:] in paths  # "+++ b/<path>"; a quoted name never matches, so it is not scanned
+        elif mine and line.startswith("+"):
+            out.append(line[1:])
+    for path in paths & set(diff.get("untracked") or ()):
+        try:
+            with open(os.path.join(cwd, path), errors="replace") as f:
+                out.append(f.read(CONTENT_SCAN_MAX))
+        except OSError:
+            pass
+    return "\n".join(out)
 
 
 def _change_summary(paths, flags):
@@ -261,10 +282,10 @@ def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="r
     except Exception as exc:  # timeout, codex crash: report, never traceback
         result = {"status": "error", "exit_code": 1, "error": f"{type(exc).__name__}: {exc}"[:300],
                   "message": flow.message}
-    paths = [] if target == "plan_only" else [p for p in _changed_paths(flow.diff_fn(cwd))
-                                              if p not in flow.baseline or _stamp(cwd, p) != flow.baseline[p]]
-    # ponytail: path-based flags only (diff text would flag "lock"/"charge" everywhere); content scan if paths miss real cases
-    flags = merge_risk_flags(risk_flags, detect_risk_flags("", paths))
+    final = {} if target == "plan_only" else flow.diff_fn(cwd)
+    paths = [p for p in _changed_paths(final) if p not in flow.baseline or _stamp(cwd, p) != flow.baseline[p]]
+    # request words match paths only; in code just destructive statements count ("lock"/"charge" are everywhere)
+    flags = merge_risk_flags(risk_flags, detect_risk_flags("", paths), detect_content_flags(_added_text(cwd, final, paths)))
     review = {**flow.review, **({"text": flow.review["text"][-rv.FINDINGS_MAX:]} if "text" in flow.review else {})}
     out = {**result, "level": sp.level, "target": target, "escalations": flow.esc, "gate": (flow.gate or {}).get("overall"),
            "review": review, "probe": flow.probe, "risk_flags": list(flags),
