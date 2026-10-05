@@ -63,6 +63,7 @@ class _Flow:
         self.thread, self.esc, self.profile, self.message = None, 0, sp.start, None
         self.gate = None
         self.review = {"verdict": None, "findings": None, "skipped": "not required"}
+        self.baseline = set()  # paths already changed before implement(); review_only keeps it empty
         self.review_required = bool(sp.review)
 
     def call(self, role, argv, profile, thread=None, subagents=None):
@@ -147,6 +148,7 @@ class _Flow:
         sp = self.sp
         n = sp.implement_subagents
         was_clean = self._clean()
+        self.baseline = set(_changed_paths(self.diff_fn(self.cwd)))  # dirty before this run: not part of its change
         prompt = f"{self.request}\n\n{PLAN_FIRST if sp.plan_first else ''}{SUBAGENT_HINT if n else ''}{SELF_CHECK if n == 0 else ''}{WRAP_UP}"
         stream, rec = self.call("implement", self.cx.session_argv(sp.start, prompt, "workspace-write", self.config, n), sp.start,
                                 subagents=n)
@@ -215,7 +217,7 @@ def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="r
     except Exception as exc:  # timeout, codex crash: report, never traceback
         result = {"status": "error", "exit_code": 1, "error": f"{type(exc).__name__}: {exc}"[:300],
                   "message": flow.message}
-    paths = [] if target == "plan_only" else _changed_paths(flow.diff_fn(cwd))
+    paths = [] if target == "plan_only" else [p for p in _changed_paths(flow.diff_fn(cwd)) if p not in flow.baseline]
     # ponytail: path-based flags only (diff text would flag "lock"/"charge" everywhere); content scan if paths miss real cases
     flags = merge_risk_flags(risk_flags, detect_risk_flags("", paths))
     review = {**flow.review, **({"text": flow.review["text"][-rv.FINDINGS_MAX:]} if "text" in flow.review else {})}

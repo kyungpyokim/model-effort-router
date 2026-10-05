@@ -393,3 +393,19 @@ class ChangeSummaryTest(unittest.TestCase):
         self.assertIsNone(Harness(diff={"is_repo": False}).run("L2")["change"])
         r = Harness().run("L2", target="plan_only", risk_flags=("auth",))
         self.assertEqual((r["change"], r["risk_flags"]), (None, ["auth"]))
+
+
+class BaselineTest(unittest.TestCase):
+    """The blast radius counts what this run changed, not files that were already dirty before it."""
+
+    def test_files_dirty_before_the_run_are_not_counted(self):
+        before = {"is_repo": True, "diff": "d", "files": ["old.py"], "untracked": [".omc/a", ".omc/b"]}
+        after = {**before, "files": ["old.py", "new.py"], "untracked": [".omc/a", ".omc/b", "db/migrations/0001.sql"]}
+        h = Harness()
+        h.diff_fn = lambda cwd: after if h.calls else before
+        r = h.run("L2")
+        self.assertEqual((r["change"], r["risk_flags"]), ({"files": 2, "top_dirs": 2, "door": "one-way"}, ["data_migration"]))
+
+    def test_review_only_counts_the_whole_diff_under_review(self):
+        r = Harness(diff=REPO).run("L2", target="review_only")
+        self.assertEqual(r["change"]["files"], 2)
