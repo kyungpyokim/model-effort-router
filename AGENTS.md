@@ -13,3 +13,10 @@ Navigation pointers:
 - Review prompts and verdict parsing: `model_effort_router/review.py`
 - Session review policy: `model_effort_router/policy/session.py`
 - Risk patterns: `model_effort_router/difficulty/risk.py`
+
+Retro: feed human review findings back into the next agent run.
+
+- A finding that comes up twice in human review becomes a one-line rule here.
+- If a test, lint or `scripts/` check can catch it deterministically, add the check instead and drop the rule.
+- If an agent got lost looking for a file, add a navigation pointer above.
+- Delete lines that no longer hold. One rule per line, with a short reason.

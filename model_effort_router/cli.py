@@ -415,11 +415,11 @@ def _main(
         max_escalations=args.max_escalations,
         timeout_s=args.timeout,
         config=host_config,
+        risk_flags=plan.risk_flags,
     )
     d = plan.decision
     result.update(
         session_id=sid,
-        risk_flags=list(plan.risk_flags),
         backend=d.backend if d else None,
         session_plan=sp.to_dict(),
     )

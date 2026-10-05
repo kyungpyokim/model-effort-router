@@ -2,6 +2,7 @@
 
 import shlex
 
+from .difficulty.decision import format_risk_flags
 from .flow import PLAN_FIRST, SUBAGENT_HINT, WRAP_UP
 from .policy.session import REVIEW_DEFAULT
 
@@ -55,7 +56,7 @@ def dry_run_text(plan, sp, text, host, config):
         f"host: {host.name}",
         f"level: {sp.level or 'manual'}" + (f" (backend {d.backend})" if d else ""),
         f"target: {plan.target}",
-        f"risk flags: {', '.join(plan.risk_flags) or 'none'}",
+        f"risk flags: {format_risk_flags(plan.risk_flags)}",
         f"session: {fmt_profile(sp.start, host)}",
         f"plan first: {'yes' if sp.plan_first else 'no'}",
         f"review: {fmt_profile(sp.review, host) if sp.review else 'none'}",
@@ -78,6 +79,16 @@ def human_output(out):
     lines.append(
         f"gate: {out['gate'] or 'not run'}; review: {r['verdict'] or r['skipped'] or '-'}"
     )
+    c = out.get("change")
+    if c:
+        lines.append(
+            f"door: {c['door']}; risk flags: {format_risk_flags(out['risk_flags'])}; "
+            f"blast radius: {c['files']} file(s) in {c['top_dirs']} top-level dir(s)"
+        )
+    if out["status"] == "review_fixed":
+        lines.append(
+            "note: review fix applied but not re-reviewed; check the findings below"
+        )
     u = out["usage"]
     lines.append(
         f"usage: {u['total']} tokens (in {u['input']}, out {u['output']}) over {len(out['calls'])} call(s)"
@@ -94,7 +105,7 @@ def human_output(out):
 def chat_note(plan, sp, profile, host):
     d = plan.decision
     note = (
-        f"mer chat: {d.level if d else 'manual'}, risk flags {', '.join(plan.risk_flags) or 'none'} -> "
+        f"mer chat: {d.level if d else 'manual'}, risk flags {format_risk_flags(plan.risk_flags)} -> "
         f"{fmt_profile(profile, host)}. No gate/escalation/review here; switch with {host.switch_hint} if the task grows."
     )
     if sp.review and plan.target == "route" and host.name == "antigravity":

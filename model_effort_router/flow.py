@@ -6,8 +6,10 @@ The host (codex or claude, host/hosts.py) supplies the argv builders, stream par
 import time
 
 from . import review as rv
+from .difficulty.decision import merge_risk_flags
+from .difficulty.risk import detect_risk_flags
 from .host.hosts import CODEX
-from .policy.session import REVIEW_DEFAULT
+from .policy.session import ONE_WAY_FLAGS, REVIEW_DEFAULT
 
 GATE_TEXT_MAX = 2000
 USAGE_KEYS = ("input", "cached_input", "output", "reasoning_output")
@@ -33,6 +35,18 @@ def _sum_usage(calls):
             total[k] += (c["usage"] or {}).get(k, 0)
     return {**total, "total": total["input"] + total["output"],
             "missing": sum(c["usage"] is None for c in calls)}
+
+
+def _changed_paths(diff):
+    return [*(diff.get("files") or []), *(diff.get("untracked") or [])] if diff.get("is_repo") else []
+
+
+def _change_summary(paths, flags):
+    """Door and blast radius for the human reviewer (None: no repo or no change)."""
+    if not paths:
+        return None
+    return {"files": len(paths), "top_dirs": len({p.split("/", 1)[0] for p in paths}),
+            "door": "one-way" if set(flags) & set(ONE_WAY_FLAGS) else "two-way"}
 
 
 def _profile(call):
@@ -191,7 +205,8 @@ class _Flow:
 
 
 def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="route", max_escalations=2,
-             timeout_s=1200, config=None, clock=time.monotonic, host=CODEX):
+             timeout_s=1200, config=None, clock=time.monotonic, host=CODEX, risk_flags=()):
+    """`risk_flags`: the route's flags; the result adds those of the final diff's paths."""
     flow = _Flow(request, sp, cwd, runner, env, gate_fn, diff_fn, emit, max_escalations, timeout_s,
                  config or host.config, clock, host)
     t0 = clock()
@@ -200,9 +215,13 @@ def run_flow(request, sp, *, cwd, runner, env, gate_fn, diff_fn, emit, target="r
     except Exception as exc:  # timeout, codex crash: report, never traceback
         result = {"status": "error", "exit_code": 1, "error": f"{type(exc).__name__}: {exc}"[:300],
                   "message": flow.message}
+    paths = [] if target == "plan_only" else _changed_paths(flow.diff_fn(cwd))
+    # ponytail: path-based flags only (diff text would flag "lock"/"charge" everywhere); content scan if paths miss real cases
+    flags = merge_risk_flags(risk_flags, detect_risk_flags("", paths))
     review = {**flow.review, **({"text": flow.review["text"][-rv.FINDINGS_MAX:]} if "text" in flow.review else {})}
     out = {**result, "level": sp.level, "target": target, "escalations": flow.esc, "gate": (flow.gate or {}).get("overall"),
-           "review": review, "calls": flow.calls, "usage": _sum_usage(flow.calls),
+           "review": review, "risk_flags": list(flags),
+           "change": _change_summary(paths, flags), "calls": flow.calls, "usage": _sum_usage(flow.calls),
            "threads": list(dict.fromkeys(c["thread_id"] for c in flow.calls if c["thread_id"])),
            "profile": _profile(flow.calls[0]) if flow.calls else None,
            "final_profile": _profile(next((c for c in reversed(flow.calls) if c["role"] != "review"), None)),
