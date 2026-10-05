@@ -1,4 +1,5 @@
 """Profile results and effort fallback shared by host adapters."""
+
 from dataclasses import dataclass
 from typing import Optional
 
