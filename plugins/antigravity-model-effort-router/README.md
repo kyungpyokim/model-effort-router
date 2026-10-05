@@ -1,6 +1,6 @@
 # Model-Effort Router for Antigravity
 
-A native Antigravity plugin packaging the shared routing core and an interactive `mer chat` entry point.
+A native Antigravity plugin packaging host integration and an interactive `mer chat` entry point. The routing core is installed separately and shared by all three plugins.
 
 ## Use
 
@@ -29,4 +29,13 @@ The default subscription classifier is disabled on this host until tool isolatio
 
 ## Install
 
-Validate locally with `agy plugin validate plugins/antigravity-model-effort-router`. After review, install from the repository using `agy plugin install ./plugins/antigravity-model-effort-router`. The latter changes the current user's Antigravity plugin installation.
+Install the shared runtime from a matching repository checkout first:
+
+```bash
+git clone https://github.com/kyungpyokim/model-effort-router-next.git
+cd model-effort-router-next
+python3 scripts/install_core.py
+python3 scripts/install_core.py --check
+```
+
+Validate locally with `agy plugin validate plugins/antigravity-model-effort-router`. After review, install from the repository using `agy plugin install ./plugins/antigravity-model-effort-router`. The plugin update does not update the shared runtime; run the installer after core changes.

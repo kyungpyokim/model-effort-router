@@ -16,6 +16,8 @@ Also verified from spike evidence: exec stream `turn.completed.usage`, rollout `
 import json
 from pathlib import Path
 
+from model_effort_router.events import iter_events as _events
+
 KEYS = {"input_tokens": "input", "cached_input_tokens": "cached_input",
         "output_tokens": "output", "reasoning_output_tokens": "reasoning_output"}
 STAGE_PREFIX = "mer_"
@@ -32,16 +34,6 @@ def add(a, b):
 
 def total_tokens(u):
     return u["input"] + u["output"]
-
-
-def _events(text):
-    for line in text.splitlines():
-        try:
-            ev = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(ev, dict):
-            yield ev
 
 
 def exec_stream_usage_by_thread(text):

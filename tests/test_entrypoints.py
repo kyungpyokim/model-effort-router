@@ -7,6 +7,16 @@ from model_effort_router import entrypoints
 
 
 class EntrypointsTest(unittest.TestCase):
+    def test_runtime_api_mismatch_does_not_start_cli_or_change_host(self):
+        with patch.dict(os.environ, {"MER_HOST": "claude"}):
+            with self.assertRaises(entrypoints.RuntimeCompatibilityError):
+                entrypoints.cli("codex", runtime_api=999)
+            self.assertEqual(os.environ["MER_HOST"], "claude")
+            with self.assertRaises(entrypoints.RuntimeCompatibilityError):
+                entrypoints.gate("codex", runtime_api=999)
+            self.assertEqual(entrypoints.hook("codex", Path("/tmp/plugin"), runtime_api=999), 0)
+            self.assertEqual(os.environ["MER_HOST"], "claude")
+
     def test_cli_pins_host_at_call_time_and_returns_exit_code(self):
         with patch.dict(os.environ, {"MER_HOST": "codex"}):
             with patch("model_effort_router.cli.main", side_effect=lambda: 7 if os.environ["MER_HOST"] == "claude" else 9):

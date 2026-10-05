@@ -5,36 +5,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from pathlib import Path
 
 from model_effort_router.host import codex_hooks
-from scripts import sync_plugin
-from tests.hook_helpers import PLUGIN, ROOT
+from tests.hook_helpers import HookCase, PLUGIN, ROOT, run_script
 
 CLAUDE = ROOT / "plugins" / "claude-model-effort-router"
 PROMPT = "Fix the login auth check in auth.py ZEBRA_PROMPT_TEXT"
-
-
-class SyncTest(unittest.TestCase):
-    def test_both_bundles_in_sync_and_listed(self):
-        self.assertEqual(sync_plugin.check(), [], "run: python3 scripts/sync_plugin.py")
-        self.assertEqual([b.parent.name for b in sync_plugin.BUNDLES],
-                         ["codex-model-effort-router", "claude-model-effort-router", "antigravity-model-effort-router"])
-
-    def test_check_reports_drift_in_each_bundle(self):
-        for bundle in sync_plugin.BUNDLES:
-            f = bundle / "flow.py"
-            original = f.read_text()
-            try:
-                f.write_text(original + "# drift\n")
-                self.assertIn(f"{bundle.parent.name}: differs: flow.py", sync_plugin.check())
-            finally:
-                f.write_text(original)
-        self.assertEqual(sync_plugin.check(), [])
-
-    def test_claude_bundle_has_the_new_modules(self):
-        for rel in ("host/claude_exec.py", "adapters/claude.py", "host/hosts.py", "host/advice.py"):
-            self.assertTrue((CLAUDE / "model_effort_router" / rel).exists(), rel)
 
 
 class ManifestTest(unittest.TestCase):
@@ -64,7 +40,7 @@ class ManifestTest(unittest.TestCase):
     def test_wrapper_defaults_to_the_claude_host(self):
         with tempfile.TemporaryDirectory() as d:
             env = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
-            env.update(HOME=d, MER_STATE_DIR=d)
+            env.update(MER_CORE_PATH=str(ROOT), HOME=d, MER_STATE_DIR=d)
             p = subprocess.run([sys.executable, str(CLAUDE / "bin" / "mer"), "run", "--dry-run", "--level", "L2", "--cwd", d,
                                 "Fix the bug in calc.py"], capture_output=True, text=True, env=env, timeout=60)
         self.assertEqual(p.returncode, 0, p.stderr)
@@ -74,7 +50,7 @@ class ManifestTest(unittest.TestCase):
     def test_wrapper_ignores_an_exported_other_host_but_the_flag_wins(self):
         with tempfile.TemporaryDirectory() as d:
             env = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
-            env.update(HOME=d, MER_STATE_DIR=d, MER_HOST="codex")
+            env.update(MER_CORE_PATH=str(ROOT), HOME=d, MER_STATE_DIR=d, MER_HOST="codex")
             def run(*extra):
                 return subprocess.run([sys.executable, str(CLAUDE / "bin" / "mer"), "run", "--dry-run", "--level", "L2",
                                                              "--cwd", d, *extra, "Fix the bug in calc.py"], capture_output=True, text=True,
@@ -85,7 +61,7 @@ class ManifestTest(unittest.TestCase):
     def test_codex_entry_points_ignore_an_exported_claude_host(self):
         with tempfile.TemporaryDirectory() as d:
             env = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
-            env.update(HOME=d, MER_STATE_DIR=d, MER_HOST="claude")
+            env.update(MER_CORE_PATH=str(ROOT), HOME=d, MER_STATE_DIR=d, MER_HOST="claude")
             p = subprocess.run([sys.executable, str(PLUGIN / "bin" / "mer"), "run", "--dry-run", "--level", "L2", "--cwd", d,
                                 "Fix the bug in calc.py"], capture_output=True, text=True, env=env, timeout=60)
             self.assertIn("host: codex", p.stdout)
@@ -97,40 +73,28 @@ class ManifestTest(unittest.TestCase):
     def test_codex_plugin_unchanged_default_host(self):
         with tempfile.TemporaryDirectory() as d:
             env = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
-            env.update(HOME=d, MER_STATE_DIR=d)
+            env.update(MER_CORE_PATH=str(ROOT), HOME=d, MER_STATE_DIR=d)
             p = subprocess.run([sys.executable, str(PLUGIN / "bin" / "mer"), "run", "--dry-run", "--level", "L2", "--cwd", d,
                                 "Fix the bug in calc.py"], capture_output=True, text=True, env=env, timeout=60)
         self.assertIn("host: codex", p.stdout)
 
 
-class HookTest(unittest.TestCase):
+class HookTest(HookCase):
+    plugin = CLAUDE
+
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        self.repo, self.state = self.root / "repo", self.root / "state"
-        self.repo.mkdir()
-        (self.repo / ".model-effort-router.json").write_text('{"difficulty": {"backend": "fake"}}')
+        super().setUp()
+        self.home = self.root
         self.fake = {"level": "L4", "confidence": 0.62, "risk_flags": ["auth"]}
 
     def env(self, **extra):
-        e = {"MER_STATE_DIR": str(self.state), "HOME": str(self.root), "PYTHONPATH": str(ROOT),
-             "MER_TEST_REGISTRY_MODULE": "tests.fake_registry", "MER_TEST_FAKE_BACKEND": json.dumps(self.fake),
-             "MER_HOST": "codex"}  # a shell that exports the other host must not matter
-        e.update(extra)
-        return e
+        return super().env(**{"MER_HOST": "codex", **extra})
 
     def submit(self, prompt=PROMPT, payload=None, **extra):
-        data = payload if payload is not None else {"session_id": "s1", "cwd": str(self.repo), "prompt": prompt,
-                                                    "hook_event_name": "UserPromptSubmit"}
-        base = {k: v for k, v in os.environ.items() if not k.startswith(("MER_", "XDG_", "CLAUDE_CONFIG_DIR"))}
-        base.update(self.env(**extra))
-        return subprocess.run([sys.executable, str(CLAUDE / "hooks" / "user_prompt_submit.py")],
-                              input=data if isinstance(data, str) else json.dumps(data), capture_output=True, text=True,
-                              env=base, timeout=60, cwd=str(self.root))
+        return super().submit(prompt, sid="s1", env_extra=extra, payload=payload)
 
     def log(self):
-        return [json.loads(line) for p in self.state.glob("*.log.jsonl") for line in p.read_text().splitlines()]
+        return self.all_log_events()
 
     def test_advice_output_shape_and_claude_wording(self):
         p = self.submit()
@@ -178,9 +142,9 @@ class HookTest(unittest.TestCase):
     def test_codex_hook_ignores_an_exported_claude_host(self):
         base = {k: v for k, v in os.environ.items() if not k.startswith(("MER_", "XDG_"))}
         base.update(self.env(MER_HOST="claude"))
-        p = subprocess.run([sys.executable, str(PLUGIN / "hooks" / "user_prompt_submit.py")],
-                           input=json.dumps({"session_id": "s1", "cwd": str(self.repo), "prompt": PROMPT}),
-                           capture_output=True, text=True, env=base, timeout=60, cwd=str(self.root))
+        p = run_script("hooks/user_prompt_submit.py",
+                       stdin=json.dumps({"session_id": "s1", "cwd": str(self.repo), "prompt": PROMPT}),
+                       env=base, cwd=str(self.root))
         c = json.loads(p.stdout)["hookSpecificOutput"]["additionalContext"]
         self.assertIn("gpt-6.1-sol, reasoning effort high", c)
         self.assertNotIn("claude-", c)
@@ -204,7 +168,8 @@ class HookTest(unittest.TestCase):
         self.assertTrue(any(e["event"] == "error" for e in self.log()))
 
     def test_fail_open_when_the_core_cannot_be_imported(self):
-        base = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
+        base = {k: v for k, v in os.environ.items() if not k.startswith(("MER_", "XDG_"))}
+        base.update(HOME=str(self.root), MER_CORE_PATH=str(self.root / "missing-runtime"))
         for plugin in (CLAUDE, PLUGIN):
             with self.subTest(plugin=plugin.name):
                 broken = self.root / plugin.name

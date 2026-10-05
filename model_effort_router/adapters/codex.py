@@ -4,9 +4,7 @@ from types import MappingProxyType
 from typing import Mapping, Tuple
 
 from ..profiles.profiles import EFFORTS, TIERS, Profile
-
-# Host effort scale, low -> high.
-EFFORT_ORDER = ("low", "medium", "high", "xhigh", "max", "ultra")
+from .common import EFFORT_ORDER, ResolvedProfile, apply_support as _apply_support
 
 _LUNA = ("low", "medium", "high", "xhigh", "max")
 # Per-model supported efforts from the phase-0 spike (models_cache.json).
@@ -41,21 +39,6 @@ class CodexConfig:
         for tier, model in self.tiers.items():
             if model not in self.model_efforts:
                 raise ValueError(f"tier {tier!r} uses model {model!r} with no supported-effort data")
-
-
-@dataclass(frozen=True)
-class ResolvedProfile:
-    tier: str
-    model: str
-    requested_effort: str  # after the abstract -> host effort map
-    applied_effort: str  # after the model-support fallback
-
-
-def _apply_support(requested: str, supported) -> str:
-    """Nearest higher supported effort, else the highest supported one."""
-    ranked = sorted(supported, key=EFFORT_ORDER.index)
-    want = EFFORT_ORDER.index(requested)
-    return next((e for e in ranked if EFFORT_ORDER.index(e) >= want), ranked[-1])
 
 
 def resolve(profile: Profile, config: CodexConfig = CodexConfig()) -> ResolvedProfile:

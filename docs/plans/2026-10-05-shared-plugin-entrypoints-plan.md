@@ -1,5 +1,7 @@
 # Shared Plugin Entrypoints Implementation Plan
 
+> 이 사본 유지 계획은 `2026-10-06-single-shared-core-plan.md`의 단일 공유 코어 구조로 대체되었다. 아래 내용은 이전 구현 기록이다.
+
 > **For agentic workers:** 구현 시 `superpowers:executing-plans` 또는 `superpowers:subagent-driven-development`를 적용하고 아래 체크박스를 순서대로 완료한다. 2026-10-06 구현·검증을 완료했으며 결과는 문서 끝에 기록했다.
 
 **Goal:** 세 플러그인의 공통 실행 준비·호출 로직을 원본 `model_effort_router/`로 모으고 플러그인은 최소 로더로 유지한다.

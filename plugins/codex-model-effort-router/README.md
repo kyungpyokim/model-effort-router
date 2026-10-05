@@ -9,14 +9,31 @@ PreToolUse enforcement were removed in Phase 7.)
 
 ## Install (run these yourself)
 
-The manifest must declare `skills` and `hooks` (fixed after a live install where `/hooks` showed nothing). Hook commands use `${CLAUDE_PLUGIN_ROOT}` because that variable is verified working in Codex 0.159.2.
+The plugin contains host integration only. Install the shared runtime from a
+matching repository checkout before installing the marketplace plugin:
+
+```bash
+git clone https://github.com/kyungpyokim/model-effort-router-next.git
+cd model-effort-router-next
+python3 scripts/install_core.py
+python3 scripts/install_core.py --check
+```
+
+The manifest must declare `skills` and `hooks`. Hook commands use
+`${CLAUDE_PLUGIN_ROOT}` because that variable is verified working in Codex
+0.159.2.
 
 ```bash
 codex plugin marketplace add kyungpyokim/model-effort-router-next
 codex plugin add model-effort-router@model-effort-router
 ```
 
-Update later with `codex plugin marketplace upgrade model-effort-router` then `codex plugin add model-effort-router@model-effort-router` (bump `version` in `.codex-plugin/plugin.json` on every change). For development from a checkout use `codex plugin marketplace add .` instead (run `python3 scripts/sync_plugin.py` first if you changed model_effort_router/).
+Update later with `codex plugin marketplace upgrade model-effort-router` then
+`codex plugin add model-effort-router@model-effort-router` (bump `version` in
+`.codex-plugin/plugin.json` on every plugin change). For development from a
+checkout use `codex plugin marketplace add .` and set
+`MER_CORE_PATH="$PWD"` while testing. The plugin update does not update the
+shared runtime; run `python3 scripts/install_core.py` after core changes.
 
 Then start a Codex session and open `/hooks`: review and trust the hook (UserPromptSubmit).
 **Untrusted hooks are skipped silently**, so until you trust it there is no advice. **After updating the plugin the hook set has changed (PreToolUse is gone): re-trust the hooks in `/hooks`.** The `mer` CLI needs no hook.
@@ -67,8 +84,11 @@ Non-routed prompts and `/router off` get no context at all. The hook is fail-ope
 
 ## Maintenance
 
-The plugin bundles a copy of `model_effort_router/`. After editing core: `python3 scripts/sync_plugin.py`
-(a unit test fails if the copy drifts; `skills/.../SKILL.md` is hand-written).
+`model_effort_router/` is installed once as the shared runtime. After editing
+core, run `python3 scripts/install_core.py` and verify with
+`python3 scripts/install_core.py --check`. The plugin launcher checks
+`RUNTIME_API`; incompatible or missing runtimes print setup advice and exit
+with code 2. Hooks fail open and remain silent.
 
 ## Known limitations
 

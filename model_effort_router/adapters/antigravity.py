@@ -4,7 +4,7 @@ from types import MappingProxyType
 from typing import Mapping, Tuple
 
 from ..profiles.profiles import EFFORTS, TIERS, Profile
-from .codex import _apply_support
+from .common import ResolvedProfile, apply_support
 
 ANTIGRAVITY_EFFORTS = ("medium", "high")
 _TIERS = MappingProxyType({"economy": "gemini-3.8-flash", "balanced": "claude-sonnet-5-5",
@@ -44,15 +44,7 @@ class AntigravityConfig:
         object.__setattr__(self, "model_efforts", MappingProxyType({k: tuple(v) for k, v in self.model_efforts.items()}))
 
 
-@dataclass(frozen=True)
-class ResolvedProfile:
-    tier: str
-    model: str
-    requested_effort: str
-    applied_effort: str
-
-
 def resolve(profile: Profile, config: AntigravityConfig = AntigravityConfig()) -> ResolvedProfile:
     model = config.tiers[profile.tier]
-    applied = _apply_support(config.efforts[profile.effort], config.model_efforts[model])
+    applied = apply_support(config.efforts[profile.effort], config.model_efforts[model])
     return ResolvedProfile(profile.tier, f"{model}-{applied}", profile.effort, applied)

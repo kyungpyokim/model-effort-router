@@ -1,10 +1,10 @@
-"""Claude Code host adapter: abstract profile -> model + effort. Same Resolved shape as adapters/codex.py."""
+"""Claude Code host adapter: abstract profile -> model + effort. Shared ResolvedProfile result."""
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Callable, Mapping, Optional, Tuple
 
 from ..profiles.profiles import EFFORTS, TIERS, Profile
-from .codex import _apply_support
+from .common import ResolvedProfile, apply_support
 
 CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")  # `claude --effort` choices (CLI 2.1.280 --help)
 CONTEXTS = ("lean", "full")
@@ -47,17 +47,9 @@ class ClaudeConfig:
                 raise ValueError(f"tier {tier!r} uses model {model!r} with no supported-effort data")
 
 
-@dataclass(frozen=True)
-class ResolvedProfile:
-    tier: str
-    model: str
-    requested_effort: str  # after the abstract -> host effort map
-    applied_effort: Optional[str]  # after the model-support fallback; None = the model takes no effort flag
-
-
 def resolve(profile: Profile, config: ClaudeConfig = ClaudeConfig()) -> ResolvedProfile:
     model = config.tiers[profile.tier]
     requested = config.efforts[profile.effort]
     supported = config.model_efforts[model]
-    applied = _apply_support(requested, supported) if supported else None  # nearest higher supported, else highest
+    applied = apply_support(requested, supported) if supported else None  # nearest higher supported, else highest
     return ResolvedProfile(profile.tier, model, requested, applied)

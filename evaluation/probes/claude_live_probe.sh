@@ -7,6 +7,7 @@ OUT="${1:-$REPO/runs/claude-probe}"
 mkdir -p "$OUT"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+export MER_CORE_PATH="${MER_CORE_PATH:-$REPO}"
 export MER_CLASSIFIER=1  # keep any installed router hook quiet inside these calls
 
 echo "== 1. result shape (sonnet, medium, auto, Agent disallowed)"
