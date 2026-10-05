@@ -36,7 +36,7 @@ class CliCase(unittest.TestCase):
         h = h or self.h
         out = io.StringIO()
         rc = cli.main(["run", "--cwd", str(self.cwd), *flags, request], env=self.env(**(spec or {})), runner=h.runner,
-                      gate_fn=h.gate, diff_fn=lambda c: h.diff, out=out)
+                      gate_fn=h.gate, diff_fn=h.diff_fn, out=out)
         return rc, out.getvalue()
 
     def log_events(self):
