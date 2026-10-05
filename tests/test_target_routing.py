@@ -82,6 +82,13 @@ class FallbackToRulesTest(unittest.TestCase):
         self.assertEqual((len(t.calls), len(f.calls)), (1, 1))
         self.assertIn("fallback_cause:t:TimeoutError", plan.decision.reason_codes)
 
+    def test_both_backends_failing_keeps_both_causes_in_the_log(self):
+        """Jev without a key and a fallback that fails too: the log must still say why Jev did not decide."""
+        t = TargetBackend("route", exc=TimeoutError(), name="t")
+        f = FakeBackend("f", exc=RuntimeError())
+        plan = route("Fix the bug in parser.py", registry=reg(t, f), repo_config=self.cfg())
+        self.assertEqual((plan.decision.backend, plan.decision.reason_codes), ("default", ("t:TimeoutError", "f:RuntimeError")))
+
     def test_override_turning_backend_no_route_into_route_is_logged_as_override(self):
         t = TargetBackend("no_route", name="t")
         plan = route("/router session=frontier:high\nhello", registry=reg(t), repo_config={"difficulty": {"backend": "t"}})
