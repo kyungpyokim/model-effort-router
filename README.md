@@ -78,6 +78,8 @@ python3 <plugin>/bin/mer chat 'add pagination to the orders API'
   - `inconclusive`: 환경 문제 등으로 판단할 수 없습니다(변경 이전 코드 그대로도 실패하면 여기로 내려갑니다). HEAD에 커밋된 절대 경로·저장소 밖을 가리키는 symlink가 있으면 스냅샷을 풀 수 없어 이 값이 됩니다.
   - `skipped`: 실행 전 트리가 깨끗하지 않았거나, Gate가 실패했거나 `test` 검사가 통과하지 않았거나, 바뀐 테스트 파일이 없거나(또는 테스트 쪽 파일과 `.md`만 바뀌었거나), test 명령이 없거나, 저장소·HEAD가 없거나, cwd가 저장소 루트가 아니거나, 실행 중 HEAD가 바뀌었을 때입니다. `review_only`·`plan_only`·`no_changes`·`error` 결과에는 `probe`가 `null`일 수 있습니다.
   - 보고만 합니다. `status`와 종료 코드는 바뀌지 않고, Review 프롬프트와 사람용 출력에만 실립니다. Review 지적을 고친 뒤에는 다시 돌리지 않습니다.
+  - `gate.probe_nudge: true`(repo·user 설정, repo가 우선, 기본값 꺼짐)를 켜면 `passes_without_change`일 때 같은 구현 세션을 **한 번만** 되돌려 새 테스트가 옛 코드에서 실패하게 만들거나, 의도한 것이라면 아무것도 바꾸지 말고 한 문장으로 답하라고 요청합니다(`probe_nudge` 호출, 서브에이전트 없음). 추가 호출은 verdict가 `passes_without_change`일 때만 생기고(1회), 그 턴 뒤 Gate가 실패해 승격이 일어나면 호출이 더 늘 수 있습니다. 그 턴이 파일을 바꿨을 때만 Gate와 probe를 다시 돌리고, `probe`는 최종 결과가 됩니다. 아무것도 바꾸지 않았으면 재실행 없이 그 답을 기록합니다. 값이 `true`/`false`가 아니면 설정 오류로 종료 코드 2입니다.
+  - nudge를 한 실행의 `probe`에는 `nudge` 키가 붙습니다: `first`(되돌리기 전 verdict), `reply`(에이전트 답변, 최대 300자), `changed`(그 턴이 파일을 바꿨는가), `product_paths_added`(그 턴과 그 뒤 승격이 바꾼, 테스트 쪽도 문서(`.md` 등)도 아닌 경로, 삭제 포함). 호출이 실패하면 `{"first", "error"}`만 남고(그 턴이 파일을 바꿨을 수 있어 Gate와 probe는 승격 없이 다시 돕니다) 실행 결과는 Gate가 정합니다. `product_paths_added`가 비어 있지 않으면 사람용 출력에 `warning: probe nudge changed product code: ...`가 붙습니다. 되돌림은 한 번뿐이고, nudge 뒤에도 `passes_without_change`가 남아도 `status`·종료 코드는 바뀌지 않습니다(그 턴 뒤 Gate가 실패하면 기존 Gate 규칙대로 승격·`gate_failed`가 됩니다).
 - `chat`: 분류만 하고, 고른 모델·effort로 대화형 세션을 엽니다.
 - `--dry-run`: 결정, 사다리, 첫 명령만 출력하고 세션을 시작하지 않습니다. 모델을 호출하는 분류기도 부르지 않으며, `--level`로 레벨을 정하거나 `--classify`로 분류 호출 1회를 허용합니다.
 - 요청 첫 줄 override: `/router off`, `/router session=frontier:high`. override로도 위험 신호의 Review 하한은 없앨 수 없습니다.
@@ -94,7 +96,7 @@ python3 <plugin>/bin/mer chat 'add pagination to the orders API'
 {
   "router": {"mode": "auto"},
   "difficulty": {"backend": "jev", "fallback": "nimble", "timeout_s": 10},
-  "gate": {"checks": {"test": "python3 -m unittest"}},
+  "gate": {"checks": {"test": "python3 -m unittest"}, "probe_nudge": false},
   "session": {"subagent_policy": "level", "claude_context": "lean"}
 }
 ```

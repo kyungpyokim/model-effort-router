@@ -67,6 +67,17 @@ def dry_run_text(plan, sp, text, host, config):
     return "\n".join(lines)
 
 
+def _nudge_lines(nudge, probe_shown):
+    if nudge.get("error"):
+        return [f"warning: probe nudge failed: {nudge['error']}"]
+    lines = [] if probe_shown else [f"probe nudge: changed={str(nudge['changed']).lower()}, final probe skipped"]
+    if not nudge["changed"] and nudge.get("reply"):  # the "intended" answer, readable without --json
+        lines.append(f"probe nudge reply: {' '.join(nudge['reply'].split())}")
+    if nudge.get("product_paths_added"):
+        lines.append(f"warning: probe nudge changed product code: {', '.join(nudge['product_paths_added'])}")
+    return lines
+
+
 def human_output(out):
     r = out["review"]
     lines = [
@@ -86,10 +97,15 @@ def human_output(out):
             f"blast radius: {c['files']} file(s) in {c['top_dirs']} top-level dir(s)"
         )
     p = out.get("probe")
-    if p and p["verdict"] != "skipped":
-        lines.append(f"probe: {p['verdict']}" + (f" ({p['reason']})" if p.get("reason") else ""))
+    nudge = (p or {}).get("nudge")
+    shown = bool(p) and p["verdict"] != "skipped"
+    if shown:
+        lines.append(f"probe: {p['verdict']}" + (f" ({p['reason']})" if p.get("reason") else "")
+                     + (f" (nudged from {nudge['first']})" if nudge else ""))
         if p["verdict"] == "passes_without_change":
             lines.append("warning: changed tests also pass without the change; they may not guard it")
+    if nudge:
+        lines += _nudge_lines(nudge, shown)
     if out["status"] == "review_fixed":
         lines.append(
             "note: review fix applied but not re-reviewed; check the findings below"
