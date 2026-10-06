@@ -385,9 +385,10 @@ class CliAndHookTests(unittest.TestCase):
             self.assertIn("Context Packet", skill)
             if host == "antigravity":
                 self.assertNotIn("L1-L5", skill)
+                self.assertIn("mer run` is unsupported", skill)
             else:
                 self.assertIn("L1-L5", skill)
-            self.assertIn("removed", skill)
+                self.assertIn("removed", skill)
             self.assertNotIn("escalates the same session", readme)
             self.assertIn("never changes the current turn", (root / "plugins/codex-model-effort-router/skills/classify/SKILL.md").read_text())
 

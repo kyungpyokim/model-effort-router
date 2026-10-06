@@ -1,6 +1,6 @@
 {
   "name": "model-effort-router",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Advises Main on a configured role, model, and effort per request; provides a single-worker CLI and advisory hook for Codex.",
   "license": "MIT",
   "keywords": [
