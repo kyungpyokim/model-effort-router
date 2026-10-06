@@ -117,3 +117,14 @@ Results on v2 (250 cases, no provider errors). The baseline is the committed pro
 Jev effort recall moved from low 75/114 to 111/114 and xhigh 11/26 to 25/26; `medium` became the weak class (50/62 to 37/62, now split between `low` 14 and `high` 11). Adding role criteria alone lowered Nimble effort from 154 to 138 on the same set, which c1 more than recovers.
 
 These numbers are optimistic. Both the role criteria and this rubric were written after reading v2 errors and adjudication rationales, so v2 can no longer estimate generalization. No further tuning on v2 is planned; the next score of record is a single run on v3 after its two independent human labelings are adjudicated. Raw predictions: `runs/role-effort-tuning-v2-baseline-20261006.json` and `runs/role-effort-tuning-v2-effort-c1-20261006.json` (each file records the exact questions sent).
+
+## Score of record on human holdout v3 (2026-10-06)
+
+The prompt from commit `532e9e4` (role criteria v2 plus effort rubric c1) was run once on the fresh 150-case v3 holdout, labeled independently by five annotators with per-dimension majority vote fixed before any model output was seen (details in `README.md`). No provider errors.
+
+| Backend | Role | Effort | Joint |
+|---|---:|---:|---:|
+| Jev | 141/150 (94.0%) | 119/150 (79.3%) | 111/150 (74.0%) |
+| Nimble | 124/150 (82.7%) | 101/150 (67.3%) | 85/150 (56.7%) |
+
+Compared with the v2 tuning-set numbers (Jev effort 86.0%, joint 76.8%), effort fell by about 7 points on unseen data, as expected for a rubric written from v2 adjudication rationales; it remains about 10 points above the pre-tuning holdout v2 measurement (69.2%), though the two sets differ. Jev clears the 85% role target, and effort (80%) and joint (75%) miss by one and two cases with confidence intervals that include the targets. Remaining Jev effort errors concentrate on `medium` (12/24 correct, 11 predicted `low`) and on 12 of 83 `low` cases predicted higher; `xhigh` recall is 12/13. Nimble's largest error is `fix` predicted as `implementation` (11). v3 is now spent for tuning purposes; any further prompt change needs a new holdout.
