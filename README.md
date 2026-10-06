@@ -54,6 +54,17 @@ Nimble defaults to model `nimble` at `http://127.0.0.1:11434/v1/systemone` and n
 
 Add the `difficulty` object to `.model-effort-router.json` in the repository root or to `~/.config/model-effort-router/config.json`. `difficulty.nimble.model` and `.url` override the defaults. Nimble URLs must use HTTP(S) and point to `localhost`, `127.0.0.1`, or `::1`; MER rejects non-loopback URLs, so Nimble requests stay on the machine. In the example above, a Nimble failure sends the task to hosted Jev through TypeSafe; configure Jev's API key if you want that fallback.
 
+### Classifier performance
+
+On the latest 150-case synthetic holdout, Jev outperformed Nimble on role, effort, and exact joint classification:
+
+| Backend | Role | Effort | Role + effort |
+|---|---:|---:|---:|
+| Jev (`jev-latest`) | 141/150 (94.0%) | 119/150 (79.3%) | 111/150 (74.0%) |
+| Nimble | 124/150 (82.7%) | 101/150 (67.3%) | 85/150 (56.7%) |
+
+We recommend Jev when classification accuracy is the priority. Nimble provides local inference; set its fallback to `none` if requests must stay on-device. These results come from 150 synthetic cases and are directional, not a measure of real-world traffic. See the [evaluation report](docs/evaluation/README.md).
+
 ## Use
 
 ```sh

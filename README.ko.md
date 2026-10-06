@@ -54,6 +54,17 @@ Nimble은 기본적으로 API 키 없이 `http://127.0.0.1:11434/v1/systemone`�
 
 위 `difficulty` 객체를 저장소 루트의 `.model-effort-router.json` 또는 `~/.config/model-effort-router/config.json`에 추가합니다. `difficulty.nimble.model`과 `.url`은 기본값을 재정의합니다. Nimble URL은 HTTP(S)를 사용하고 `localhost`, `127.0.0.1`, `::1`을 가리켜야 합니다. MER는 loopback이 아닌 URL을 거부하므로 Nimble 요청은 기기 안에서 처리됩니다. 위 예시에서는 Nimble이 실패하면 작업 내용이 TypeSafe의 호스팅 Jev로 전송됩니다. 이 fallback을 사용하려면 Jev API 키를 설정하십시오.
 
+### 분류기 성능
+
+최신 합성 holdout 150건에서 Jev는 role, effort, 두 항목의 동시 정확도 모두 Nimble보다 높았습니다.
+
+| Backend | Role | Effort | Role + effort |
+|---|---:|---:|---:|
+| Jev (`jev-latest`) | 141/150 (94.0%) | 119/150 (79.3%) | 111/150 (74.0%) |
+| Nimble | 124/150 (82.7%) | 101/150 (67.3%) | 85/150 (56.7%) |
+
+분류 정확도를 우선하면 Jev를 권장합니다. Nimble은 로컬 추론에 사용할 수 있으며, 요청이 기기 밖으로 나가지 않게 하려면 fallback을 `none`으로 설정하십시오. 이 결과는 합성 케이스 150건에서 나온 방향성 지표이며 실제 사용자 요청의 성능을 나타내지는 않습니다. 자세한 내용은 [평가 보고서](docs/evaluation/README.md)를 참고하십시오.
+
 ## 사용법
 
 ```sh
