@@ -1,9 +1,12 @@
 """Route requests; run once or opt into low-first verification and promotion."""
 import argparse
+import hashlib
 import json
 import os
 import signal
 import shlex
+import stat
+import subprocess
 import sys
 import threading
 import time
@@ -11,12 +14,59 @@ import uuid
 from math import isfinite
 
 from .difficulty.subscription import SubscriptionBackend
+from .difficulty.decision import merge_risk_flags
+from .difficulty.risk import detect_risk_flags
 from .flow import WorkerInterrupted, run_low_first, run_worker
 from .host import hosts
 from .host.codex_hooks import _registry, load_configs
 from .logging import route_log
 from .policy.overrides import parse_override
 from .policy.router import route
+from .review import _git, git_diff
+
+
+_ONE_WAY_FLAGS = frozenset(("data_migration", "data_loss", "payment"))
+
+
+def _changed_paths(diff):
+    return [*(diff.get("files") or []), *(diff.get("untracked") or [])] if diff.get("is_repo") else []
+
+
+def _path_state(cwd, path):
+    full_path = os.path.join(cwd, path)
+    try:
+        info = os.lstat(full_path)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        return ("unreadable", exc.errno)
+    if stat.S_ISLNK(info.st_mode):
+        try:
+            return ("link", os.readlink(full_path))
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            return ("unreadable", exc.errno)
+    if stat.S_ISREG(info.st_mode):
+        digest = hashlib.sha256()
+        try:
+            with open(full_path, "rb") as source:
+                for block in iter(lambda: source.read(65536), b""):
+                    digest.update(block)
+        except OSError as exc:
+            return ("unreadable", exc.errno)
+        return ("file", info.st_mode & 0o777, digest.digest())
+    return ("other", info.st_mode, info.st_size, info.st_mtime_ns)
+
+
+def _change_summary(paths, flags):
+    if not paths:
+        return None
+    # ponytail: top-level path buckets approximate impact; domain review supplies the real blast radius.
+    top_dirs = len({path.split("/", 1)[0] for path in paths if "/" in path})
+    return {"door": "one-way" if _ONE_WAY_FLAGS.intersection(flags) else "two-way",
+            "blast_radius": "local" if top_dirs <= 1 else "broad",
+            "files": len(paths), "top_dirs": top_dirs, "risk_flags": list(flags)}
 
 
 class _WorkerSignalScope:
@@ -142,6 +192,13 @@ def main(argv=None, *, env=None, runner=None, out=None):
     _, task = parse_override(args.request)
     task = task.strip()
     packet = _context_packet(task, cwd, plan)
+    baseline_paths = _changed_paths(git_diff(cwd))
+    try:
+        root_status, root_output = _git(["rev-parse", "--show-toplevel"], cwd)
+        path_root = os.path.realpath(root_output.strip()) if root_status == 0 else cwd
+    except (OSError, subprocess.SubprocessError):
+        path_root = cwd
+    baseline_states = {path: _path_state(path_root, path) for path in baseline_paths}
     sid = f"mer-{int(time.time())}-{uuid.uuid4().hex[:6]}"
     started = time.monotonic()
     try:
@@ -171,6 +228,12 @@ def main(argv=None, *, env=None, runner=None, out=None):
         policy = "xhigh-continuation" if start_effort == "xhigh" else "low-retry" if args.retry_low else "low-first"
         result = {**result, "policy": policy,
                   "classifier_usage": plan.classifier_usage, "classifier_usage_missing": plan.classifier_usage_missing}
+    final_paths = _changed_paths(git_diff(cwd))
+    changed_paths = [path for path in dict.fromkeys((*baseline_paths, *final_paths))
+                     if path not in baseline_states or _path_state(path_root, path) != baseline_states[path]]
+    result_flags = merge_risk_flags(plan.risk_flags, detect_risk_flags("", changed_paths))
+    result = {**result, "risk_flags": list(result_flags),
+              "change": _change_summary(changed_paths, result_flags)}
     result["wall_s"] = round(time.monotonic() - started, 3)
     try:
         route_log.append(route_log.state_dir(env), sid, {"event": "run", "role": plan.decision.role,
@@ -189,7 +252,15 @@ def main(argv=None, *, env=None, runner=None, out=None):
                              for a in result.get("attempts", [])]} if args.low_first else {})})
     except OSError:
         pass
-    print(json.dumps(result, ensure_ascii=False) if args.json else result.get("error", result.get("message", "")), file=out)
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False), file=out)
+    else:
+        lines = [result.get("error", result.get("message", ""))]
+        change = result.get("change")
+        if change:
+            lines.append(f"Door: {change['door']}; Blast Radius: {change['blast_radius']} "
+                         f"({change['files']} file(s), {change['top_dirs']} top-level directories)")
+        print("\n".join(line for line in lines if line), file=out)
     return status
 
 
