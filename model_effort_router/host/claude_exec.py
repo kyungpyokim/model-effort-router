@@ -53,7 +53,7 @@ def _user_settings_path():
 def _settings(cwd=None, read=None):
     """Parsed settings dicts in precedence order (user, then cwd/.claude/settings.json, then settings.local.json).
     A missing, unreadable or invalid file is skipped (never an error). `read(path) -> text` is injectable."""
-    read = read or (lambda p: open(p, encoding="utf-8").read())
+    read = read or _read_settings
     paths = [_user_settings_path()] + ([os.path.join(cwd, ".claude", n) for n in ("settings.json", "settings.local.json")] if cwd else [])
     out = []
     for path in paths:
@@ -64,6 +64,11 @@ def _settings(cwd=None, read=None):
         if isinstance(data, dict):
             out.append(data)
     return out
+
+
+def _read_settings(path):
+    with open(path, encoding="utf-8") as stream:
+        return stream.read()
 
 
 def plugins_off(cwd=None, read=None):

@@ -21,7 +21,8 @@ class LabelsTest(unittest.TestCase):
     def test_sheet_has_role_effort_fields_and_merge_makes_labeled(self):
         sheet = self.d / "kim.tsv"
         labels.write_sheet(str(self.corpus), str(sheet))
-        rows = list(csv.DictReader(sheet.open(), delimiter="\t"))
+        with sheet.open() as stream:
+            rows = list(csv.DictReader(stream, delimiter="\t"))
         self.assertEqual(tuple(rows[0]), labels.TSV_FIELDS)
         rows[0].update(labeler="kim", role="fix", effort="low")
         rows[1].update(labeler="kim", role="analysis", effort="low")
