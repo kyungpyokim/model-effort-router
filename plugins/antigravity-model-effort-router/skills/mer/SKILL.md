@@ -1,5 +1,5 @@
 ---
-name: model-effort-router
+name: mer
 description: Classify an Antigravity development request and provide role/effort advice to Main.
 ---
 

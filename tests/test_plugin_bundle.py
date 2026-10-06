@@ -65,8 +65,8 @@ class PluginBundleTest(unittest.TestCase):
                     self.assertEqual(metadata["version"], "0.6.1")
 
     def test_skill_has_frontmatter(self):
-        text = (PLUGIN / "skills" / "model-effort-router" / "SKILL.md").read_text()
-        self.assertTrue(text.startswith("---\nname: model-effort-router\n"))
+        text = (PLUGIN / "skills" / "mer" / "SKILL.md").read_text()
+        self.assertTrue(text.startswith("---\nname: mer\n"))
         self.assertNotIn("spawn_agent", text)
 
     def test_all_loaders_import_one_shared_core_and_forward_arguments(self):

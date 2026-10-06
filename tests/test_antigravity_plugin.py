@@ -36,7 +36,7 @@ class AntigravityBundleTest(unittest.TestCase):
             self.assertIn("execution isolation is unverified", run.stderr)
 
     def test_bundle_has_native_skill_and_no_unsafe_hook(self):
-        skill = (PLUGIN / "skills" / "model-effort-router" / "SKILL.md").read_text()
+        skill = (PLUGIN / "skills" / "mer" / "SKILL.md").read_text()
         self.assertIn("mer route", skill)
         self.assertIn("worker execution remains unsupported", skill)
         self.assertFalse((PLUGIN / "hooks.json").exists())

@@ -1,5 +1,5 @@
 ---
-name: model-effort-router
+name: mer
 description: Route development requests to a role, effort, and Claude model; provide Main with Subagent guidance.
 ---
 
