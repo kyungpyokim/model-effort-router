@@ -379,7 +379,7 @@ class CliAndHookTests(unittest.TestCase):
     def test_host_docs_and_manifests_describe_advisory_single_worker_contract(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         for host in ("codex", "claude", "antigravity"):
-            skill = (root / "plugins" / f"{host}-model-effort-router" / "skills/mer/SKILL.md").read_text()
+            skill = (root / "plugins" / f"{host}-model-effort-router" / "skills/routing/SKILL.md").read_text()
             readme = (root / "plugins" / f"{host}-model-effort-router/README.md").read_text()
             self.assertIn("role", skill.lower())
             self.assertIn("Context Packet", skill)
@@ -389,7 +389,7 @@ class CliAndHookTests(unittest.TestCase):
                 self.assertIn("L1-L5", skill)
             self.assertIn("removed", skill)
             self.assertNotIn("escalates the same session", readme)
-            self.assertIn("never changes the current turn", (root / "plugins/codex-model-effort-router/skills/mer/SKILL.md").read_text())
+            self.assertIn("never changes the current turn", (root / "plugins/codex-model-effort-router/skills/routing/SKILL.md").read_text())
 
 
 if __name__ == "__main__":

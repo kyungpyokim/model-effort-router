@@ -1,5 +1,5 @@
 ---
-name: mer
+name: routing
 description: Classify an Antigravity development request and provide role/effort advice to Main.
 ---
 

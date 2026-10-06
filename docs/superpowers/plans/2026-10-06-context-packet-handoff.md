@@ -51,9 +51,9 @@ Expected: PASS.
 ### Task 2: Align host skills and user docs with the handoff contract
 
 **Files:**
-- Modify: `plugins/codex-model-effort-router/skills/mer/SKILL.md`
-- Modify: `plugins/claude-model-effort-router/skills/mer/SKILL.md`
-- Modify: `plugins/antigravity-model-effort-router/skills/mer/SKILL.md`
+- Modify: `plugins/codex-model-effort-router/skills/routing/SKILL.md`
+- Modify: `plugins/claude-model-effort-router/skills/routing/SKILL.md`
+- Modify: `plugins/antigravity-model-effort-router/skills/routing/SKILL.md`
 - Modify: `README.md`
 - Modify: `README.ko.md`
 

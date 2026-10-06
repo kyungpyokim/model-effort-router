@@ -1,5 +1,5 @@
 ---
-name: mer
+name: routing
 description: Route development requests to a role, effort, and Codex model; provide Main with Subagent guidance.
 ---
 
