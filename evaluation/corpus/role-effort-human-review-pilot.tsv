@@ -1,0 +1,10 @@
+id	task	paths	human_role	human_effort	rationale
+seed-001	README.md 제목의 오타 'Instal'을 'Install'로 고쳐줘	README.md			
+seed-008	Add a `--verbose` flag to the CLI entry point in cli.py and print extra timing info	cli.py			
+seed-009	The pagination helper returns one item too many on the last page; fix it	lib/paginate.py			
+seed-011	utils/format.py의 currency 포맷 함수가 음수에서 괄호를 쓰도록 수정해줘	utils/format.py			
+seed-015	프론트엔드 폼 상태 관리를 useState 여러 개에서 reducer 기반으로 옮기고 관련 컴포넌트 세 곳을 수정해줘	components/Checkout.tsx, components/Address.tsx, components/Cart.tsx			
+seed-025	Make the job scheduler safe to run on multiple instances: design leader election and lock handling	scheduler/			
+seed-026	Migrate the orders table to a new schema with a changed primary key; write the migration and backfill	db/migrations/, repo/orders.py			
+seed-028	Intermittent double charges appear under load; find the root cause across the payment, queue and retry code and fix it	billing/, queue/			
+seed-040	Fix the login bug				
