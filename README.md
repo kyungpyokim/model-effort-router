@@ -4,6 +4,41 @@
 
 MER classifies a development request as a **role + effort**, maps that pair to a host model, and can run an external worker request. Main remains responsible for conversation context, deciding which steps are needed, and invoking host-native Subagents. MER does not change the current Codex turn. Worker runs can opt into verification-driven effort promotion.
 
+## Installation
+
+The host plugin does not include the shared runtime. Clone this repository and install the runtime first:
+
+```sh
+git clone https://github.com/kyungpyokim/model-effort-router-next.git
+cd model-effort-router-next
+python3 scripts/install_core.py
+python3 scripts/install_core.py --check
+```
+
+Then install the plugin for your host from the repository root:
+
+**Codex CLI** — add this repository's Codex marketplace and install its plugin:
+
+```sh
+codex plugin marketplace add https://github.com/kyungpyokim/model-effort-router-next --sparse .agents/plugins --sparse plugins/codex-model-effort-router
+codex plugin add model-effort-router@model-effort-router
+```
+
+**Claude Code** — add this repository's Claude marketplace, install the plugin, then start a new session:
+
+```sh
+claude plugin marketplace add kyungpyokim/model-effort-router-next
+claude plugin install model-effort-router@model-effort-router
+```
+
+**Antigravity CLI** — install the local plugin directory:
+
+```sh
+agy plugin install ./plugins/antigravity-model-effort-router
+```
+
+Antigravity can classify and advise, but worker execution is not supported. Marketplace plugin installs do not install or update the shared runtime; rerun `python3 scripts/install_core.py` from this checkout when updating it. See the [Codex plugin guide](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace guide](https://code.claude.com/docs/en/plugin-marketplaces), and [Antigravity plugin guide](https://antigravity.google/docs/plugins/) for host-specific details.
+
 ## Routing contract
 
 The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, or `xhigh`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
