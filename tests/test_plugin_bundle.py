@@ -62,7 +62,7 @@ class PluginBundleTest(unittest.TestCase):
                 self.assertTrue(metadata["description"])
                 self.assertNotRegex(metadata["description"], r"L1.?L5|escalation|independent review")
                 if plugin.name.startswith(("claude", "codex")):
-                    self.assertEqual(metadata["version"], "0.6.0")
+                    self.assertEqual(metadata["version"], "0.6.1")
 
     def test_skill_has_frontmatter(self):
         text = (PLUGIN / "skills" / "model-effort-router" / "SKILL.md").read_text()
