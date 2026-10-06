@@ -43,7 +43,7 @@ python3 -m evaluation.labels merge \
 
 2026-10-06에 이 holdout의 role 오류 사례와 effort 혼동 방향을 보고 role 기준 문장을 추가했다. 따라서 holdout v2는 더 이상 깨끗한 최종 평가셋이 아니며, 이후에는 **사람 판정 조정용 세트**로 쓴다. AI 라벨인 dev-v2는 effort 오류 방향이 사람 판정과 반대로 나타나므로(dev에서는 Jev가 낮게, 사람 판정에서는 높게 예측) effort 조정 근거로 쓰지 않는다.
 
-새 최종 평가셋은 `role-effort-human-holdout-v3.jsonl` 150건이다. `corpus-v3.jsonl` 600건 중 dev-v2, holdout-v1, holdout-v2, seed, v1과 task/path가 겹치지 않는 나머지 전부이며, 순서는 seed `20261007`로 섞었다. 겹치는 task 문장이나 유사도 0.8 이상의 근사 중복은 없다. task/path만 복사했고 legacy 라벨은 넣지 않았다. 150건은 정확도 약 80%에서 이항 근사 오차폭이 대략 ±6.4%p다. 서로 독립된 다섯 사람이 `role-effort-human-holdout-v3-a.tsv`부터 `-e.tsv`까지 채웠고, 상대 시트·모델 출력·옛 라벨·v2 판정 결과를 보지 않았다. 판정과 최종 측정이 끝나기 전에는 이 세트로 프롬프트를 조정하거나 오류 사례를 열람하지 않는다.
+새 최종 평가셋은 `role-effort-human-holdout-v3.jsonl` 150건이다. `corpus-v3.jsonl` 600건 중 dev-v2, holdout-v1, holdout-v2, seed, v1과 task/path가 겹치지 않는 나머지 전부이며, 순서는 seed `20261007`로 섞었다. 겹치는 task 문장이나 유사도 0.8 이상의 근사 중복은 없다. task/path만 복사했고 legacy 라벨은 넣지 않았다. 150건은 정확도 약 80%에서 이항 근사 오차폭이 대략 ±6.4%p다. `role-effort-human-holdout-v3-a.tsv`부터 `-e.tsv`까지 다섯 판정 시트를 사용했다. a 시트의 role/effort/note는 사용자 요청으로 Codex가 채웠다. 나머지 시트의 작성 주체와 독립성은 이 실행 기록만으로 확인할 수 없으므로 사람 5명의 독립 판정 정확도로 해석하지 않는다. 판정과 최종 측정이 끝나기 전에는 이 세트로 프롬프트를 조정하거나 오류 사례를 열람하지 않는다.
 
 ```sh
 python3 -m evaluation.labels merge \
@@ -56,7 +56,7 @@ python3 -m evaluation.labels merge \
   evaluation/corpus/role-effort-human-holdout-v3-e.tsv
 ```
 
-처음 두 사람(a, b)의 일치는 role 140/150, effort 89/150에 그쳐 세 사람(c, d, e)을 추가했다. 다섯 명 모두 일치한 경우는 role 137건, effort 69건이다. effort에서 annotator-a는 다른 네 명보다 일관되게 한 단계 높게 판정했다(다른 판정자와 쌍별 effort 일치 84–100/150, 나머지 네 명끼리는 116–135/150). 모델 출력을 보기 전에 차원별 다수결을 최종 라벨로 정했다. 150건 모두 동률 없이 과반이 있었고, 3/5 다수결은 effort 25건, role 3건이다. 결과는 `role-effort-human-holdout-v3-adjudicated.jsonl`에 있다.
+처음 두 시트(a, b)의 일치는 role 140/150, effort 89/150에 그쳐 세 시트(c, d, e)를 추가했다. 다섯 시트 모두 일치한 경우는 role 137건, effort 69건이다. effort에서 annotator-a는 다른 네 명보다 일관되게 한 단계 높게 판정했다(다른 판정자와 쌍별 effort 일치 84–100/150, 나머지 네 명끼리는 116–135/150). 차원별 다수결을 최종 라벨로 사용했다. 150건 모두 동률 없이 과반이 있었고, 3/5 다수결은 effort 25건, role 3건이다. 결과는 `role-effort-human-holdout-v3-adjudicated.jsonl`에 있다.
 
 v3 공식 측정(커밋 `532e9e4`의 프롬프트, backend별 150회, 실패 0)은 다음과 같다. 초기 기준은 role 85%, effort 80%, joint 75%다.
 
@@ -65,9 +65,15 @@ v3 공식 측정(커밋 `532e9e4`의 프롬프트, backend별 150회, 실패 0)�
 | Jev (`jev-latest`) | 141/150 (94.0%, 95% Wilson CI 89.0–96.8) | 119/150 (79.3%, 72.2–85.0) | 111/150 (74.0%, 66.4–80.4) |
 | Nimble | 124/150 (82.7%, 75.8–87.9) | 101/150 (67.3%, 59.5–74.3) | 85/150 (56.7%, 48.7–64.3) |
 
-Jev는 role 기준을 넘었고 effort와 joint는 각각 1건, 2건 모자라지만 신뢰구간이 기준을 포함한다. Jev가 Nimble보다 role, effort, joint 모두 높다(McNemar exact p 0.00049, 0.0064, 0.00031). Jev의 남은 effort 약점은 실제 `medium`이다(12/24, `low`로 11건). 판정자 한 명을 나머지 네 명의 다수결과 비교한 effort 일치는 97–145/150이며(동률 시 최다 라벨 중 하나면 일치로 계산해 사람 쪽에 유리함), Jev의 119는 그 범위 안에 있다. 측정 원본은 `runs/role-effort-human-holdout-v3-final-20261006.json`이다. 이 결과를 본 뒤로 v3도 조정에 쓰면 오염되므로, 이후 프롬프트 변경은 새 holdout으로 검증한다.
+Jev는 role 기준을 넘었고 effort와 joint는 각각 1건, 2건 모자라지만 신뢰구간이 기준을 포함한다. Jev가 Nimble보다 role, effort, joint 모두 높다(McNemar exact p 0.00049, 0.0064, 0.00031). Jev의 남은 effort 약점은 실제 `medium`이다(12/24, `low`로 11건). 각 시트를 나머지 네 시트의 다수결과 비교한 effort 일치는 97–145/150이며(동률 시 최다 라벨 중 하나면 일치로 계산해 판정 시트 쪽에 유리함), Jev의 119는 그 범위 안에 있다. 측정 원본은 `runs/role-effort-human-holdout-v3-final-20261006.json`이다. 이 결과를 본 뒤로 v3도 조정에 쓰면 오염되므로, 이후 프롬프트 변경은 새 holdout으로 검증한다.
+
+같은 날 현재 체크아웃으로 v3를 재측정한 결과 Jev는 role 142/150, effort 119/150, joint 111/150이었다. Nimble은 124/150, 101/150, 85/150으로 같았고 양쪽 모두 실패 0건이었다. 이 재측정은 별도 표본이 아닌 같은 150건의 반복 실행이다. 원본은 `runs/role-effort-human-holdout-v3-rerun-current.json`에 있다.
 
 분류 backend를 실제 호출하면 설정에 따라 외부 서비스 또는 `codex exec`를 사용하고 사용량이 발생할 수 있다. 비교 API를 직접 실행하기 전에 대상 backend와 요청 텍스트 전송 여부를 확인한다. 이 저장소는 live 비교를 자동 실행하지 않는다.
+
+## 실행 정책 파일럿
+
+현재 실행 정책의 탐색 결과는 [low 시작·승격 파일럿](low-first-escalation-pilot-20261006.md)에 기록했다. 같은 `gpt-6-luna`로 기존 13개 fixture 작업을 비교했으며 과거 L1–L5 라벨은 사용하지 않았다. 리뷰로 보완한 검사에서 low 첫 시도는 11/13, medium 승격 후는 13/13, high 1회는 11/13이었다. 승격까지 합친 worker 토큰은 22.0% 적었다. 결과를 본 뒤 검사기를 보완한 작은 탐색이므로 분류 정확도나 일반 작업 성공률로 해석하지 않는다.
 
 ## 과거 평가 자료
 

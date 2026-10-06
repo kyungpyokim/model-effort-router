@@ -118,9 +118,9 @@ Jev effort recall moved from low 75/114 to 111/114 and xhigh 11/26 to 25/26; `me
 
 These numbers are optimistic. Both the role criteria and this rubric were written after reading v2 errors and adjudication rationales, so v2 can no longer estimate generalization. No further tuning on v2 is planned; the next score of record is a single run on v3 after its two independent human labelings are adjudicated. Raw predictions: `runs/role-effort-tuning-v2-baseline-20261006.json` and `runs/role-effort-tuning-v2-effort-c1-20261006.json` (each file records the exact questions sent).
 
-## Score of record on human holdout v3 (2026-10-06)
+## Score of record on v3 label consensus (2026-10-06)
 
-The prompt from commit `532e9e4` (role criteria v2 plus effort rubric c1) was run once on the fresh 150-case v3 holdout, labeled independently by five annotators with per-dimension majority vote fixed before any model output was seen (details in `README.md`). No provider errors.
+The prompt from commit `532e9e4` (role criteria v2 plus effort rubric c1) was run once on the fresh 150-case v3 holdout, scored against per-dimension majority vote from five label sheets (details in `README.md`). Sheet a was filled by Codex at the user’s request; the authorship and independence of the other sheets are not verified by this run record. These scores are agreement with the label consensus, not accuracy against five independent human annotators. No provider errors.
 
 | Backend | Role | Effort | Joint |
 |---|---:|---:|---:|
