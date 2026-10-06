@@ -1,4 +1,5 @@
 """Router configuration: repo values override user values, then built-in defaults."""
+import re
 from dataclasses import dataclass
 from math import isfinite
 from types import MappingProxyType
@@ -8,11 +9,12 @@ from ..difficulty.decision import EFFORTS
 from ..difficulty.nimble import validate_options as validate_nimble
 
 MODES = ("auto", "manual", "off")
-SECTIONS = ("router", "difficulty", "models", "jev")
+SECTIONS = ("router", "difficulty", "models", "antigravity_hook", "jev")
 PASSTHROUGH_SECTIONS = ("gate",)  # owned by the independent mer-gate CLI
 DEFAULTS = {
     "router": {"mode": "auto"},
     "difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10},
+    "antigravity_hook": {"model": "gemini-3.8-flash", "effort": "high"},
     "models": {
         "codex": {"execution": {"primary": "gpt-6-luna", "fallback": "gpt-6.1-sol", "efforts": list(EFFORTS)},
                   "reasoning": {"primary": "gpt-6.1-sol", "fallback": "gpt-6-luna", "efforts": list(EFFORTS)}},
@@ -31,6 +33,7 @@ class RouterConfig:
     fallback: str
     timeout_s: float
     models: object
+    antigravity_hook: object
     nimble: Optional[dict] = None
 
 
@@ -69,7 +72,9 @@ def _validate_models(raw):
 
 
 def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConfig:
-    merged = {key: (dict(value) if key != "models" else {h: {k: dict(v) for k, v in groups.items()} for h, groups in value.items()})
+    merged = {key: ({h: {k: dict(v) for k, v in groups.items()} for h, groups in value.items()}
+                    if key == "models" else {name: dict(item) if isinstance(item, dict) else item
+                                              for name, item in value.items()})
               for key, value in DEFAULTS.items()}
     for name, source in (("user", user), ("repo", repo), ("task", task)):
         source = _layer(source, name)
@@ -104,6 +109,14 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         raise ValueError("difficulty.timeout_s must be a positive finite number")
     if difficulty["backend"] == "nimble_jev" or difficulty["fallback"] == "nimble_jev":
         raise ValueError("difficulty backend 'nimble_jev' was removed; use 'nimble' with fallback 'jev'")
+    hook = merged["antigravity_hook"]
+    if set(hook) - {"model", "effort"}:
+        raise ValueError("unknown antigravity_hook settings")
+    model = hook.get("model")
+    if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", model):
+        raise ValueError("antigravity_hook.model must be a valid model slug (1-128 ASCII characters)")
+    if hook.get("effort") not in ("medium", "high"):
+        raise ValueError("antigravity_hook.effort must be 'medium' or 'high'")
     if registry is not None and router["mode"] == "auto":
         for key in ("backend", "fallback"):
             if difficulty[key] != "none" and difficulty[key] not in registry:
@@ -114,4 +127,5 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
                                for h, groups in merged["models"].items()})
     _validate_models(merged["models"])
     nimble = validate_nimble(difficulty["nimble"]) if "nimble" in difficulty else None
-    return RouterConfig(router["mode"], difficulty["backend"], difficulty["fallback"], float(timeout), models, nimble)
+    return RouterConfig(router["mode"], difficulty["backend"], difficulty["fallback"], float(timeout), models,
+                        MappingProxyType(dict(hook)), nimble)

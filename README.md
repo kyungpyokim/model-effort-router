@@ -139,6 +139,7 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
 {
   "router": {"mode": "auto"},
   "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10},
+  "antigravity_hook": {"model": "gemini-3.8-flash", "effort": "high"},
   "models": {
     "codex": {
       "execution": {"primary": "gpt-6-luna", "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
