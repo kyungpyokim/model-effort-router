@@ -34,14 +34,18 @@ QUESTIONS = {
                      "or a short message) without implementing or editing project files."),
     }},
     "effort": {"type": "choice", "instructions": (
-        "Choose the reasoning effort needed from the requested scope and uncertainty. "
-        "Judge it independently of role, file count, or keywords. If relevant context "
-        "must be inspected to decide the work, prefer at least medium."
+        "Choose the reasoning effort from how hard the decisions are, not from how much code "
+        "must be read. Judge it independently of role, file count, or keywords: planning or "
+        "reviewing a change needs the same effort as making it."
     ), "criteria": {
-        "low": "The request is clear and localized, and the solution is obvious without broader context.",
-        "medium": "Relevant context must be read, or a few bounded choices must be considered.",
-        "high": "Several interacting parts, design tradeoffs, or uncertain diagnosis need careful reasoning.",
-        "xhigh": "Broad, highly uncertain work needs deep reasoning because mistakes could have serious consequences.",
+        "low": ("One function, option, or explanation is involved and the request states or clearly "
+                "implies the approach, even if that code must be read first."),
+        "medium": ("Existing parts are connected or changed by established patterns, edge cases need "
+                   "judgment, or missing details must be gathered before deciding."),
+        "high": ("Correctness depends on interacting guarantees such as concurrency, consistency, "
+                 "compatibility, or security, or real design tradeoffs or uncertain diagnosis remain."),
+        "xhigh": ("Rare timing-dependent failures across several subsystems, or changes where a mistake "
+                  "would corrupt or lose production data, bypass security, or cause irreversible harm."),
     }},
 }
 

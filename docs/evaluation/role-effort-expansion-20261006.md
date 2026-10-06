@@ -98,3 +98,22 @@ Dev results against the same rows (Jev 159 paired, Nimble 160; no provider error
 v1 defined `implementation` as adding behavior "or changing working code or configuration on purpose". Nimble, which shares the same questions, then moved fix, review, and plan requests to `implementation` (agreed role 110 → 101), so v1 was rejected. v2 narrows `implementation` to adding new behavior or a feature and removes the Nimble regression.
 
 For Jev, every changed prediction on the labeler-disagreed rows was a typo or rename request that labeler-a marked `lint` and labeler-b marked `implementation`; Jev moved 7 of them to `lint` and 3 to `fix`. That is the direction the labeling guide prescribes, but the agreed subset contains no `lint` and almost no chat-only `analysis` rows, so dev cannot confirm an accuracy gain for Jev. The two-case effort drop is within run-to-run noise. Validating this change needs a fresh human-adjudicated set that includes `lint` and chat-only `analysis` requests (for example from the 150 unused `corpus-v3.jsonl` rows). Raw predictions: `runs/role-effort-dev-role-criteria-20261006.json` (v1) and `runs/role-effort-dev-role-criteria-v2-20261006.json` (v2).
+
+## Effort rubric tuned on the human v2 set (2026-10-06)
+
+The 250-case human-adjudicated v2 set is now the tuning set (see `README.md`); the fresh 150-case v3 holdout is unlabeled and was not opened. AI-labeled dev was not used for effort: there Jev under-predicted effort relative to the agreed AI labels, while against human labels it over-predicted `low` as `medium`, so the two references pull in opposite directions.
+
+The previous rubric told the classifier to prefer at least `medium` whenever context had to be inspected. Human adjudication repeatedly rated single-function fixes, plans, and reviews with a stated approach as `low` even when that code had to be read, rated unknown requests with no details as `medium` (gather information first), and reserved `xhigh` for rare cross-subsystem timing failures or work where a mistake would corrupt production data or bypass security. The new rubric states effort by decision difficulty rather than reading volume, says planning or reviewing a change needs the same effort as making it, and encodes those boundaries. The labeling guide was intentionally left unchanged while v3 is being labeled.
+
+Results on v2 (250 cases, no provider errors). The baseline is the committed prompt with role criteria v2; it already differs from the earlier holdout runs because the role criteria were added.
+
+| Backend | Prompt | Role | Effort | Joint |
+|---|---|---:|---:|---:|
+| Jev | baseline | 227 (90.8%) | 175 (70.0%) | 156 (62.4%) |
+| Jev | effort rubric c1 | 225 (90.0%) | 215 (86.0%) | 192 (76.8%) |
+| Nimble | baseline | 207 (82.8%) | 138 (55.2%) | 117 (46.8%) |
+| Nimble | effort rubric c1 | 201 (80.4%) | 177 (70.8%) | 145 (58.0%) |
+
+Jev effort recall moved from low 75/114 to 111/114 and xhigh 11/26 to 25/26; `medium` became the weak class (50/62 to 37/62, now split between `low` 14 and `high` 11). Adding role criteria alone lowered Nimble effort from 154 to 138 on the same set, which c1 more than recovers.
+
+These numbers are optimistic. Both the role criteria and this rubric were written after reading v2 errors and adjudication rationales, so v2 can no longer estimate generalization. No further tuning on v2 is planned; the next score of record is a single run on v3 after its two independent human labelings are adjudicated. Raw predictions: `runs/role-effort-tuning-v2-baseline-20261006.json` and `runs/role-effort-tuning-v2-effort-c1-20261006.json` (each file records the exact questions sent).
