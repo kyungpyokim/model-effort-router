@@ -21,7 +21,7 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(set(hooks), {"UserPromptSubmit"})
         cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/user_prompt_submit.py", cmd)
-        skill = (CLAUDE / "skills" / "routing" / "SKILL.md").read_text()
+        skill = (CLAUDE / "skills" / "classify" / "SKILL.md").read_text()
         self.assertIn("Subagent", skill)
         self.assertIn("neither changes Main's model", skill)
         self.assertIn("--role", skill)
@@ -44,8 +44,8 @@ class ManifestTest(unittest.TestCase):
             self.assertEqual(codex.returncode, 0, codex.stderr)
 
     def test_claude_and_codex_skill_contracts_are_host_specific(self):
-        codex_skill = (PLUGIN / "skills" / "routing" / "SKILL.md").read_text()
-        claude_skill = (CLAUDE / "skills" / "routing" / "SKILL.md").read_text()
+        codex_skill = (PLUGIN / "skills" / "classify" / "SKILL.md").read_text()
+        claude_skill = (CLAUDE / "skills" / "classify" / "SKILL.md").read_text()
         self.assertIn("gpt-6.1-sol", codex_skill)
         self.assertIn("claude-opus-5-5", claude_skill)
 

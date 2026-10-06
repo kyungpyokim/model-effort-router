@@ -60,7 +60,7 @@
 - Modify: `model_effort_router/host/advice.py`
 - Modify: `tests/test_user_prompt_submit.py`
 - Modify: `plugins/codex-model-effort-router/README.md`
-- Modify: `plugins/codex-model-effort-router/skills/routing/SKILL.md`
+- Modify: `plugins/codex-model-effort-router/skills/classify/SKILL.md`
 
 **Interfaces:**
 - Reuse `route()`, `session_plan()`, and the Codex host adapter to select and resolve the profile. Do not classify the prompt twice.

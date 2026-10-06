@@ -1,5 +1,5 @@
 ---
-name: routing
+name: classify
 description: Route development requests to a role, effort, and Claude model; provide Main with Subagent guidance.
 ---
 

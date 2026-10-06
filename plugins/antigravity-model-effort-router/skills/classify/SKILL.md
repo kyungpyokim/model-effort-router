@@ -1,5 +1,5 @@
 ---
-name: routing
+name: classify
 description: Classify an Antigravity development request and provide role/effort advice to Main.
 ---
 
