@@ -29,7 +29,7 @@
 ## 목표 구조
 
 ```text
-model-effort-router-next/
+model-effort-router/
 ├── model_effort_router/
 │   ├── entrypoints.py                  # ModelEffortRouter facade + 기존 함수 API
 │   ├── cli.py                          # 기존 host 선택·route·run 흐름
