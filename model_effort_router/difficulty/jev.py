@@ -5,7 +5,7 @@ import threading
 import urllib.error
 import urllib.request
 
-from .decision import DifficultyDecision, DifficultyInput, ROLES
+from .decision import DifficultyDecision, DifficultyInput
 from .subscription import MAX_PATHS, MAX_TASK_CHARS, BackendOutputError
 
 URL = "https://api.typesafe.ai/v1/systemone"
@@ -19,8 +19,20 @@ class MissingKeyError(RuntimeError):
 
 
 QUESTIONS = {
-    "role": {"type": "choice", "instructions": "Which single role best describes the requested work?",
-             "criteria": {role: role for role in ROLES}},
+    "role": {"type": "choice", "instructions": (
+        "Which single role best describes the main deliverable of the request? "
+        "Judge the requested output, not keywords in the text."
+    ), "criteria": {
+        "implementation": "Add new behavior or a feature.",
+        "fix": "Repair a bug or failure in existing behavior.",
+        "lint": "Fix only spelling, typos, formatting, style, or static-analysis issues such as unused imports.",
+        "test": "Writing, changing, or running tests is the main goal.",
+        "plan": "Produce a plan for work before executing it.",
+        "design": "A structure, interface, or architecture proposal is the requested deliverable.",
+        "review": "Inspect existing changes or code and report findings without modifying them.",
+        "analysis": ("Explain causes or behavior, or answer in chat only (translation, wording, naming, "
+                     "or a short message) without implementing or editing project files."),
+    }},
     "effort": {"type": "choice", "instructions": (
         "Choose the reasoning effort needed from the requested scope and uncertainty. "
         "Judge it independently of role, file count, or keywords. If relevant context "

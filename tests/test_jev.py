@@ -1,6 +1,6 @@
 import json
 import unittest
-from model_effort_router.difficulty.decision import DifficultyInput
+from model_effort_router.difficulty.decision import DifficultyInput, ROLES
 from model_effort_router.difficulty.jev import JevBackend, MissingKeyError, parse_decision
 from model_effort_router.difficulty.subscription import BackendOutputError
 
@@ -39,6 +39,11 @@ class JevContractTest(unittest.TestCase):
         got=backend.classify(DifficultyInput("Analyze parser",("src/parser.py",)),4)
         self.assertEqual((got.role,got.effort),("analysis","high"))
         self.assertEqual(set(seen["body"]["questions"]),{"role","effort"})
+        role = seen["body"]["questions"]["role"]
+        self.assertEqual(set(role["criteria"]), set(ROLES))
+        self.assertTrue(all(role["criteria"][name] != name for name in ROLES))
+        self.assertIn("chat", role["criteria"]["analysis"].lower())
+        self.assertIn("spelling", role["criteria"]["lint"].lower())
         effort = seen["body"]["questions"]["effort"]
         self.assertIn("independently of role", effort["instructions"])
         self.assertEqual(set(effort["criteria"]), {"low", "medium", "high", "xhigh"})

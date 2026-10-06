@@ -75,3 +75,26 @@ A follow-up prompt made the high/xhigh boundary more explicit and narrowed when 
 - `evaluation/corpus/role-effort-dev-v2.jsonl` and `evaluation/corpus/role-effort-holdout-v1.jsonl`: both AI labels are preserved with status `labeled`; no `final` labels are present.
 
 After the 40 holdout cases have human labels, adjudicate them and rerun Jev and Nimble on that held-out split for a human-referenced result. Use the development set to revise the guide or tune routing, not to report final accuracy.
+
+## Role criteria definitions (2026-10-06)
+
+Before this change the runtime `role` question sent only the role names as criteria; `effort` already had definitions. A rerun of the unchanged prompt on the 250-case human-adjudicated holdout reproduced the earlier measurement (Jev role 213/250, effort 173/250, joint 141/250; Nimble identical to the first run at 181/154/103). Nimble returned the same 250 predictions; Jev differed on 5 roles and 3 efforts, so a 2–5 case swing is within run-to-run noise. Raw predictions: `runs/role-effort-human-holdout-v2-rerun-20261006.json`.
+
+Jev's 37 holdout role errors were concentrated in two classes: `analysis` requests answered in chat only (translation, wording, naming, short messages) predicted as `implementation`/`design`/`plan`/`review` (16), and spelling, typo, or unused-import requests predicted as `fix`/`implementation` (7). The role question now carries one-line definitions taken from the labeling guide, with chat-only answers placed under `analysis` and spelling/typo/format/static-analysis fixes under `lint`. Because these error patterns were found on the holdout, the holdout is no longer a clean test of this change; tuning and the comparison below use the dev split only.
+
+Dev results against the same rows (Jev 159 paired, Nimble 160; no provider errors). Both references are unadjudicated AI labels; "agreed" means both labelers chose the same value.
+
+| Backend | Reference | Baseline | v1 criteria | v2 criteria (kept) |
+|---|---|---:|---:|---:|
+| Jev | role, labeler-a | 124 | 128 | 131 |
+| Jev | role, labeler-b | 141 | 143 | 135 |
+| Jev | role, agreed (128) | 122 | 122 | 122 |
+| Jev | effort, agreed (85) | 64 | 64 | 62 |
+| Nimble | role, labeler-a | 113 | 106 | 117 |
+| Nimble | role, labeler-b | 130 | 124 | 133 |
+| Nimble | role, agreed (128) | 110 | 101 | 111 |
+| Nimble | effort, agreed (85) | 49 | 49 | 52 |
+
+v1 defined `implementation` as adding behavior "or changing working code or configuration on purpose". Nimble, which shares the same questions, then moved fix, review, and plan requests to `implementation` (agreed role 110 → 101), so v1 was rejected. v2 narrows `implementation` to adding new behavior or a feature and removes the Nimble regression.
+
+For Jev, every changed prediction on the labeler-disagreed rows was a typo or rename request that labeler-a marked `lint` and labeler-b marked `implementation`; Jev moved 7 of them to `lint` and 3 to `fix`. That is the direction the labeling guide prescribes, but the agreed subset contains no `lint` and almost no chat-only `analysis` rows, so dev cannot confirm an accuracy gain for Jev. The two-case effort drop is within run-to-run noise. Validating this change needs a fresh human-adjudicated set that includes `lint` and chat-only `analysis` requests (for example from the 150 unused `corpus-v3.jsonl` rows). Raw predictions: `runs/role-effort-dev-role-criteria-20261006.json` (v1) and `runs/role-effort-dev-role-criteria-v2-20261006.json` (v2).
