@@ -129,7 +129,7 @@ JSON과 route log에는 `first_pass`, `escalation_count`, 그리고 각 시도�
 
 탐색적 비교를 위해 `--retry-low`는 medium 전에 동일한 실패 피드백을 사용해 low 재시도를 한 번 추가합니다. 별도로 동일하게 초기화한 workspace에서 일반 low-first와 비교하고, 전체 chain과 사용량을 보고하십시오. 이미 수정된 workspace에서 두 arm을 모두 실행하지 마십시오.
 
-Main은 간결한 Context Packet(`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`)을 전달해야 합니다. 검토에는 `goal`, `decisions`, `constraints`, `diff`, `verification`만 전달하고, 기본적으로 다른 agent의 private reasoning이나 전체 대화를 전달하지 마십시오. Hook은 이 지침만 제공하며 네이티브 Subagent를 직접 생성하지 않습니다.
+Hook은 Context Packet 필드와 작성 지침을 제공할 뿐, Main의 대화에서 완성된 packet을 가져오지 않습니다. Main이 현재 요청과 관련 대화의 사실을 추려 Context Packet(`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`)을 채우고 네이티브 Subagent 호출에 직접 포함해야 합니다. 검토에는 `goal`, `decisions`, `constraints`, 실제 diff, 검증 상태/결과만 전달하고 실행하지 않은 검사는 `실행 안 함`으로 표시하십시오. 기본적으로 private reasoning이나 전체 대화를 전달하지 마십시오. Hook은 Main의 대화를 읽거나 네이티브 Subagent를 직접 생성하지 않습니다. `mer run`은 별도 단일 worker 경로라 Main의 대화를 읽을 수 없으므로 필요한 컨텍스트를 명시적인 task 입력에 포함해야 합니다.
 
 ## 설정
 

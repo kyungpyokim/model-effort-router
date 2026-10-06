@@ -75,7 +75,9 @@ class HookTest(HookCase):
         note = hook_output["additionalContext"]
         self.assertIn("Role: review", note)
         self.assertIn("claude-opus-5-5", note)
-        self.assertIn("goal, decisions, constraints, diff, verification", note)
+        self.assertIn("goal, decisions, constraints, actual diff, verification status/results", note)
+        self.assertIn("native Subagent invocation", note)
+        self.assertIn("not run", note)
         self.assertIn("does not change this Main turn", note)
         self.assertNotIn("L1", note)
         self.assertEqual(settings.read_bytes(), original_settings)

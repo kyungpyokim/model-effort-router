@@ -383,7 +383,10 @@ class CliAndHookTests(unittest.TestCase):
             readme = (root / "plugins" / f"{host}-model-effort-router/README.md").read_text()
             self.assertIn("role", skill.lower())
             self.assertIn("Context Packet", skill)
-            self.assertIn("L1-L5", skill)
+            if host == "antigravity":
+                self.assertNotIn("L1-L5", skill)
+            else:
+                self.assertIn("L1-L5", skill)
             self.assertIn("removed", skill)
             self.assertNotIn("escalates the same session", readme)
             self.assertIn("never changes the current turn", (root / "plugins/codex-model-effort-router/skills/model-effort-router/SKILL.md").read_text())

@@ -129,7 +129,7 @@ JSON and route logs record `first_pass`, `escalation_count`, and each attempt's 
 
 For exploratory comparison, `--retry-low` adds one low retry with the same failure feedback before medium. Compare it with normal low-first on separate, equally initialized workspaces and report the full chain and usage; do not run both arms on the already-modified workspace.
 
-Main should pass a compact Context Packet (`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`). For review, pass only `goal`, `decisions`, `constraints`, `diff`, and `verification`; do not forward another agent's private reasoning or the full conversation by default. Hooks only provide this guidance and do not create native Subagents themselves.
+Hooks provide Context Packet fields and instructions, not a completed packet from Main's conversation. Main should use the current request and relevant conversation to populate a compact packet (`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`) and include it directly in the host-native Subagent invocation. For review, pass only `goal`, `decisions`, `constraints`, the actual diff, and verification status/results; mark checks that were not run as not run. Do not forward private reasoning or the full conversation by default. Hooks do not inspect Main's conversation or create native Subagents. `mer run` is a separate one-worker path and cannot read Main's conversation, so include needed context in its explicit task input.
 
 ## Configuration
 
