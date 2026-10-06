@@ -9,12 +9,11 @@ from ..difficulty.decision import EFFORTS
 from ..difficulty.nimble import validate_options as validate_nimble
 
 MODES = ("auto", "manual", "off")
-SECTIONS = ("router", "difficulty", "models", "antigravity_hook", "jev")
+SECTIONS = ("router", "difficulty", "models", "jev")
 PASSTHROUGH_SECTIONS = ("gate",)  # owned by the independent mer-gate CLI
 DEFAULTS = {
     "router": {"mode": "auto"},
     "difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10},
-    "antigravity_hook": {"model": "gemini-3.8-flash", "effort": "high"},
     "models": {
         "codex": {"execution": {"primary": "gpt-6-luna", "fallback": "gpt-6.1-sol", "efforts": list(EFFORTS)},
                   "reasoning": {"primary": "gpt-6.1-sol", "fallback": "gpt-6-luna", "efforts": list(EFFORTS)}},
@@ -33,7 +32,6 @@ class RouterConfig:
     fallback: str
     timeout_s: float
     models: object
-    antigravity_hook: object
     nimble: Optional[dict] = None
 
 
@@ -61,10 +59,12 @@ def _validate_models(raw):
         for lane, item in groups.items():
             if not isinstance(item, dict) or set(item) - {"primary", "fallback", "efforts"}:
                 raise ValueError(f"models.{host}.{lane} has unknown or invalid settings")
-            if not isinstance(item.get("primary"), str) or not item["primary"].strip():
-                raise ValueError(f"models.{host}.{lane}.primary must be a model name")
-            if item.get("fallback") is not None and (not isinstance(item["fallback"], str) or not item["fallback"].strip()):
-                raise ValueError(f"models.{host}.{lane}.fallback must be a model name or null")
+            for key in ("primary", "fallback"):
+                model = item.get(key)
+                if model is None and key == "fallback":
+                    continue
+                if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", model):
+                    raise ValueError(f"models.{host}.{lane}.{key} must be a valid model slug (1-128 ASCII characters)")
             efforts = item.get("efforts")
             if not isinstance(efforts, list) or not efforts or any(e not in EFFORTS for e in efforts):
                 raise ValueError(f"models.{host}.{lane}.efforts must list supported efforts")
@@ -109,14 +109,6 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         raise ValueError("difficulty.timeout_s must be a positive finite number")
     if difficulty["backend"] == "nimble_jev" or difficulty["fallback"] == "nimble_jev":
         raise ValueError("difficulty backend 'nimble_jev' was removed; use 'nimble' with fallback 'jev'")
-    hook = merged["antigravity_hook"]
-    if set(hook) - {"model", "effort"}:
-        raise ValueError("unknown antigravity_hook settings")
-    model = hook.get("model")
-    if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", model):
-        raise ValueError("antigravity_hook.model must be a valid model slug (1-128 ASCII characters)")
-    if hook.get("effort") not in ("medium", "high"):
-        raise ValueError("antigravity_hook.effort must be 'medium' or 'high'")
     if registry is not None and router["mode"] == "auto":
         for key in ("backend", "fallback"):
             if difficulty[key] != "none" and difficulty[key] not in registry:
@@ -127,5 +119,4 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
                                for h, groups in merged["models"].items()})
     _validate_models(merged["models"])
     nimble = validate_nimble(difficulty["nimble"]) if "nimble" in difficulty else None
-    return RouterConfig(router["mode"], difficulty["backend"], difficulty["fallback"], float(timeout), models,
-                        MappingProxyType(dict(hook)), nimble)
+    return RouterConfig(router["mode"], difficulty["backend"], difficulty["fallback"], float(timeout), models, nimble)

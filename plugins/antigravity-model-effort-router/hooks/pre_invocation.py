@@ -26,11 +26,15 @@ def main():
         config = resolve_config(repo=repo, user=user)
         if config.mode != "auto":
             return
-        profile = config.antigravity_hook
-        selected = resolve_model(profile["model"], profile["effort"]).model
+        execution = config.models["antigravity"]["execution"]
+        supported = [effort for effort in ("medium", "high") if effort in execution["efforts"]]
+        if not supported:
+            return
+        effort = supported[-1]
+        selected = resolve_model(execution["primary"], effort, supported).model
         message = (
             "[model-effort-router] Preferred delegated profile: "
-            f"{selected}, effort {profile['effort']}. Give a native Antigravity Subagent a concise context packet "
+            f"{selected}, effort {effort}. Give a native Antigravity Subagent a concise context packet "
             "from the current request and relevant conversation. For code changes, delegate implementation, "
             "integrate it, then run the separate write-capable review workflow. This is guidance for "
             "Subagent selection; the host's current Subagent controls do not guarantee this exact model or "
