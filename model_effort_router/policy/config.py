@@ -8,7 +8,7 @@ from ..difficulty.decision import EFFORTS
 from ..difficulty.nimble import validate_options as validate_nimble
 
 MODES = ("auto", "manual", "off")
-SECTIONS = ("router", "difficulty", "models")
+SECTIONS = ("router", "difficulty", "models", "jev")
 PASSTHROUGH_SECTIONS = ("gate",)  # owned by the independent mer-gate CLI
 DEFAULTS = {
     "router": {"mode": "auto"},
@@ -73,7 +73,15 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
               for key, value in DEFAULTS.items()}
     for name, source in (("user", user), ("repo", repo), ("task", task)):
         source = _layer(source, name)
+        if "jev" in source:
+            if name != "user":
+                raise ValueError("jev credentials are only allowed in global user config")
+            jev = source["jev"]
+            if set(jev) - {"api_key"} or ("api_key" in jev and not isinstance(jev["api_key"], str)):
+                raise ValueError("user jev config only accepts a string api_key")
         for key in SECTIONS:
+            if key == "jev":
+                continue
             if key == "models":
                 for host, groups in source.get(key, {}).items():
                     merged[key].setdefault(host, {})

@@ -3,6 +3,8 @@ import unittest
 from model_effort_router.difficulty.decision import DifficultyInput, ROLES
 from model_effort_router.difficulty.jev import JevBackend, MissingKeyError, parse_decision
 from model_effort_router.difficulty.subscription import BackendOutputError
+from model_effort_router.policy.config import resolve_config
+from model_effort_router.policy.router import _make_backends
 
 
 def response(role="fix", effort="medium", confidence=0.8, usage=None):
@@ -23,6 +25,27 @@ class FakeTransport:
         return self.status, json.dumps(self.body)
 
 class JevContractTest(unittest.TestCase):
+    def test_global_config_key_is_used_for_authorization(self):
+        seen = {}
+        factory = lambda **options: JevBackend(
+            transport=lambda url, headers, body, timeout: (seen.update(headers=headers) or (200, json.dumps(response()))),
+            env={"TYPESAFE_API_KEY": "env-key"}, **options)
+        backend = _make_backends(resolve_config(repo={"difficulty": {"backend": "jev"}}, user={"jev": {"api_key": "global-key"}}),
+                                 {"jev": factory}, {"jev": {"api_key": "global-key"}})[0]
+        backend.classify(DifficultyInput("x"), 1)
+        self.assertEqual(seen["headers"]["Authorization"], "Bearer global-key")
+
+    def test_environment_key_remains_fallback(self):
+        seen = {}
+        backend = JevBackend(transport=lambda url, headers, body, timeout: (
+            seen.update(headers=headers) or (200, json.dumps(response()))), env={"TYPESAFE_API_KEY": "env-key"})
+        backend.classify(DifficultyInput("x"), 1)
+        self.assertEqual(seen["headers"]["Authorization"], "Bearer env-key")
+
+    def test_repo_local_jev_key_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "global user config"):
+            resolve_config(repo={"jev": {"api_key": "repo-key"}})
+
     def test_parser_accepts_role_effort_with_optional_metadata(self):
         got=parse_decision({"role":"review","effort":"xhigh","confidence":0.8,"reason_code":"security_review"},"jev")
         self.assertEqual((got.role,got.effort,got.confidence,got.reason_code),("review","xhigh",.8,"security_review"))

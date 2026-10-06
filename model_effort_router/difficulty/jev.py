@@ -101,8 +101,8 @@ class SystemOneBackend:
     name = None
     calls_model = True
 
-    def __init__(self, transport=default_transport, model=None, env=None, **_):
-        self._transport, self._model, self._env = transport, model, env
+    def __init__(self, transport=default_transport, model=None, env=None, api_key=None, **_):
+        self._transport, self._model, self._env, self._api_key = transport, model, env, api_key
         self.last_usage = None
 
     def _endpoint(self, env):
@@ -140,7 +140,7 @@ class JevBackend(SystemOneBackend):
     name = "jev"
 
     def _endpoint(self, env):
-        key = env.get(KEY_ENV)
+        key = self._api_key or env.get(KEY_ENV)
         if not key:
             raise MissingKeyError(f"{KEY_ENV} is not set")
         return URL, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, \

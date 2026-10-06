@@ -56,6 +56,8 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
 
 Legacy L1-L5, tier/profile, session, escalation, and `nimble_jev` settings are rejected with migration guidance. Replace tier overrides with `/router role=<role> effort=<effort>`; replace an old Main-session routing workflow with `mer route` plus a Main-selected Subagent. `nimble_jev` is removed; configure `nimble` and a separate classifier fallback such as `jev`.
 
+Set `jev.api_key` only in the global user config (`$MER_USER_CONFIG` or `~/.config/model-effort-router/config.json`, respecting `XDG_CONFIG_HOME`): `{"jev": {"api_key": "your-typesafe-api-key"}}`. Repository config cannot provide this credential. `TYPESAFE_API_KEY` remains a fallback when the global key is absent.
+
 ## Runtime development
 
 `model_effort_router/` is the shared runtime source. Plugins contain host integration only. Use `MER_CORE_PATH="$PWD"` for development. Install and verify with:

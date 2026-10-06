@@ -37,13 +37,16 @@ class _Broken:
         raise self.error
 
 
-def _make_backends(config, registry):
+def _make_backends(config, registry, user_config=None):
     out = []
     for name in (config.backend, config.fallback):
         if name == "none":
             continue
         try:
-            out.append(create(name, registry, **({"options": config.nimble} if name == "nimble" and config.nimble else {})))
+            options = {"options": config.nimble} if name == "nimble" and config.nimble else {}
+            if name == "jev" and user_config:
+                options["api_key"] = user_config.get("jev", {}).get("api_key")
+            out.append(create(name, registry, **options))
         except Exception as exc:
             out.append(_Broken(name, exc))
     return out
@@ -79,7 +82,7 @@ def route(message, *, paths=(), repo_config=None, user_config=None, registry=Non
         return RoutePlan(NO_ROUTE, "manual")
     if not explicit and not phase_override and classify_target(text, paths) == NO_ROUTE:
         return RoutePlan(NO_ROUTE, cfg.mode)
-    backends = _make_backends(cfg, registry)
+    backends = _make_backends(cfg, registry, user_config)
     if phase_override:
         decision = DifficultyDecision(role_override, effort_override, "explicit")
     else:
