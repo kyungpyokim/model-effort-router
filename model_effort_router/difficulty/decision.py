@@ -6,16 +6,11 @@ from typing import Optional, Tuple
 ROLES = ("implementation", "fix", "lint", "test", "plan", "design", "review", "analysis")
 EFFORTS = ("low", "medium", "high", "xhigh")
 EXECUTION_ROLES = frozenset(("implementation", "fix", "lint", "test"))
-REASONING_ROLES = frozenset(ROLES) - EXECUTION_ROLES
 RISK_FLAGS = ("security", "auth", "payment", "data_migration", "data_loss", "concurrency")
 
 
 def merge_risk_flags(*groups):
     return tuple(flag for flag in RISK_FLAGS if any(flag in group for group in groups))
-
-
-def format_risk_flags(flags):
-    return ", ".join(flags) or "none"
 
 
 @dataclass(frozen=True)
