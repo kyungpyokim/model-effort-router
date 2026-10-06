@@ -20,7 +20,7 @@ MER는 개발 요청을 **역할 + 노력 수준**으로 분류하고, 해당 �
 }
 ```
 
-Jev는 기본적으로 `jev-latest` 모델을 사용합니다. API 키는 저장소 설정이 아닌 전역 사용자 설정(`$MER_USER_CONFIG` 또는 `~/.config/model-effort-router/config.json`, `XDG_CONFIG_HOME` 준수)에 저장합니다.
+Jev는 기본적으로 `jev-latest` 모델을 사용합니다. API 키는 저장소 설정이 아닌 `~/.config/model-effort-router/config.json`에 저장합니다.
 
 ```json
 {
@@ -28,7 +28,7 @@ Jev는 기본적으로 `jev-latest` 모델을 사용합니다. API 키는 저장
 }
 ```
 
-전역 키가 없으면 `TYPESAFE_API_KEY` 환경 변수도 사용할 수 있습니다. 다른 Jev 모델을 선택하려면 `MER_JEV_MODEL`을 설정합니다. 설정된 주 backend를 먼저 호출하고, 실패한 경우에만 fallback을 호출합니다.
+설정된 주 backend를 먼저 호출하고, 실패한 경우에만 fallback을 호출합니다.
 
 Nimble을 로컬 분류기로 사용하려면 Ollama를 설치하고 로컬 서버가 실행 중인지 확인한 뒤 모델을 받아옵니다.
 
@@ -52,7 +52,7 @@ Nimble은 기본적으로 API 키 없이 `http://127.0.0.1:11434/v1/systemone`�
 }
 ```
 
-`difficulty.nimble.model`과 `.url`은 `MER_NIMBLE_MODEL`, `MER_NIMBLE_URL` 환경 변수보다 우선하며, 환경 변수는 기본값보다 우선합니다. Nimble URL은 HTTP(S)를 사용하고 `localhost`, `127.0.0.1`, `::1`을 가리켜야 합니다. MER는 loopback이 아닌 URL을 거부하므로 Nimble 요청은 기기 안에서 처리됩니다. 위 예시에서는 Nimble이 실패하면 작업 내용이 TypeSafe의 호스팅 Jev로 전송됩니다. 이 fallback을 사용하려면 Jev API 키를 설정하십시오.
+위 `difficulty` 객체를 저장소 루트의 `.model-effort-router.json` 또는 `~/.config/model-effort-router/config.json`에 추가합니다. `difficulty.nimble.model`과 `.url`은 기본값을 재정의합니다. Nimble URL은 HTTP(S)를 사용하고 `localhost`, `127.0.0.1`, `::1`을 가리켜야 합니다. MER는 loopback이 아닌 URL을 거부하므로 Nimble 요청은 기기 안에서 처리됩니다. 위 예시에서는 Nimble이 실패하면 작업 내용이 TypeSafe의 호스팅 Jev로 전송됩니다. 이 fallback을 사용하려면 Jev API 키를 설정하십시오.
 
 ## 사용법
 

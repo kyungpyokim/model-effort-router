@@ -20,7 +20,7 @@ The classifier backend decides the request's role and effort. It is separate fro
 }
 ```
 
-Jev uses the TypeSafe `jev-latest` model by default. Store its API key in the global user config (`$MER_USER_CONFIG` or `~/.config/model-effort-router/config.json`, respecting `XDG_CONFIG_HOME`), never in repository config:
+Jev uses the TypeSafe `jev-latest` model by default. Store its API key in `~/.config/model-effort-router/config.json`, never in repository config:
 
 ```json
 {
@@ -28,7 +28,7 @@ Jev uses the TypeSafe `jev-latest` model by default. Store its API key in the gl
 }
 ```
 
-`TYPESAFE_API_KEY` is also supported when the global key is absent. Set `MER_JEV_MODEL` to select another Jev model. The configured primary backend runs first; the fallback runs only if it fails.
+The configured primary backend runs first; the fallback runs only if it fails.
 
 For local classification with Nimble, install Ollama and ensure its local server is running, then pull the model:
 
@@ -52,7 +52,7 @@ Nimble defaults to model `nimble` at `http://127.0.0.1:11434/v1/systemone` and n
 }
 ```
 
-`difficulty.nimble.model` and `.url` override `MER_NIMBLE_MODEL` and `MER_NIMBLE_URL`, which override the defaults. Nimble URLs must use HTTP(S) and point to `localhost`, `127.0.0.1`, or `::1`; MER rejects non-loopback URLs, so Nimble requests stay on the machine. In the example above, a Nimble failure sends the task to hosted Jev through TypeSafe; configure Jev's API key if you want that fallback.
+Add the `difficulty` object to `.model-effort-router.json` in the repository root or to `~/.config/model-effort-router/config.json`. `difficulty.nimble.model` and `.url` override the defaults. Nimble URLs must use HTTP(S) and point to `localhost`, `127.0.0.1`, or `::1`; MER rejects non-loopback URLs, so Nimble requests stay on the machine. In the example above, a Nimble failure sends the task to hosted Jev through TypeSafe; configure Jev's API key if you want that fallback.
 
 ## Use
 
