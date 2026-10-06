@@ -43,7 +43,7 @@ def git_diff(cwd):
         literal = ["-c", "core.quotePath=false"]  # non-ASCII names as they are, not "\303\251"; the probe matches paths
         return {"is_repo": True, "diff": _git(["diff", *base], cwd)[1],
                 "files": _git([*literal, "diff", "--name-only", "--no-renames", *base], cwd)[1].split("\n")[:-1],
-                "untracked": _git([*literal, "ls-files", "--others", "--exclude-standard"], cwd)[1].split("\n")[:-1]}
+                "untracked": _git([*literal, "ls-files", "--others", "--exclude-standard", "--full-name"], cwd)[1].split("\n")[:-1]}
     except (OSError, subprocess.SubprocessError):
         return {"is_repo": False}
 
