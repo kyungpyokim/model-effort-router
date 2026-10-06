@@ -1,4 +1,5 @@
 """Router configuration: repo values override user values, then built-in defaults."""
+import re
 from dataclasses import dataclass
 from math import isfinite
 from types import MappingProxyType
@@ -58,10 +59,12 @@ def _validate_models(raw):
         for lane, item in groups.items():
             if not isinstance(item, dict) or set(item) - {"primary", "fallback", "efforts"}:
                 raise ValueError(f"models.{host}.{lane} has unknown or invalid settings")
-            if not isinstance(item.get("primary"), str) or not item["primary"].strip():
-                raise ValueError(f"models.{host}.{lane}.primary must be a model name")
-            if item.get("fallback") is not None and (not isinstance(item["fallback"], str) or not item["fallback"].strip()):
-                raise ValueError(f"models.{host}.{lane}.fallback must be a model name or null")
+            for key in ("primary", "fallback"):
+                model = item.get(key)
+                if model is None and key == "fallback":
+                    continue
+                if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", model):
+                    raise ValueError(f"models.{host}.{lane}.{key} must be a valid model slug (1-128 ASCII characters)")
             efforts = item.get("efforts")
             if not isinstance(efforts, list) or not efforts or any(e not in EFFORTS for e in efforts):
                 raise ValueError(f"models.{host}.{lane}.efforts must list supported efforts")
@@ -69,7 +72,9 @@ def _validate_models(raw):
 
 
 def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConfig:
-    merged = {key: (dict(value) if key != "models" else {h: {k: dict(v) for k, v in groups.items()} for h, groups in value.items()})
+    merged = {key: ({h: {k: dict(v) for k, v in groups.items()} for h, groups in value.items()}
+                    if key == "models" else {name: dict(item) if isinstance(item, dict) else item
+                                              for name, item in value.items()})
               for key, value in DEFAULTS.items()}
     for name, source in (("user", user), ("repo", repo), ("task", task)):
         source = _layer(source, name)

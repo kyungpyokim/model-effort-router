@@ -1,0 +1,11 @@
+{
+  "model-effort-router": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "python3 ./hooks/pre_invocation.py",
+        "timeout": 5
+      }
+    ]
+  }
+}

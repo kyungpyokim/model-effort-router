@@ -143,6 +143,10 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
     "codex": {
       "execution": {"primary": "gpt-6-luna", "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
       "reasoning": {"primary": "gpt-6.1-sol", "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
+    },
+    "antigravity": {
+      "execution": {"primary": "gemini-3.8-flash", "fallback": null, "efforts": ["medium", "high"]},
+      "reasoning": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]}
     }
   }
 }
