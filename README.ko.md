@@ -4,6 +4,41 @@ English version: [README.md](README.md)
 
 MER는 개발 요청을 **역할 + 노력 수준**으로 분류하고, 해당 조합을 호스트 모델에 매핑하며, 외부 worker 요청을 실행할 수 있습니다. Main은 대화 컨텍스트를 유지하고, 필요한 단계를 결정하며, 호스트 네이티브 Subagent를 호출하는 일을 계속 담당합니다. MER는 현재 Codex 턴을 변경하지 않습니다. Worker 실행은 검증 기반 노력 수준 승격을 선택할 수 있습니다.
 
+## 설치
+
+호스트 플러그인에는 공유 runtime이 포함되어 있지 않습니다. 먼저 저장소를 복제하고 runtime을 설치합니다.
+
+```sh
+git clone https://github.com/kyungpyokim/model-effort-router-next.git
+cd model-effort-router-next
+python3 scripts/install_core.py
+python3 scripts/install_core.py --check
+```
+
+그다음 저장소 루트에서 사용할 호스트 플러그인을 설치합니다.
+
+**Codex CLI** — 이 저장소의 Codex marketplace를 등록하고 플러그인을 설치합니다.
+
+```sh
+codex plugin marketplace add https://github.com/kyungpyokim/model-effort-router-next --sparse .agents/plugins --sparse plugins/codex-model-effort-router
+codex plugin add model-effort-router@model-effort-router
+```
+
+**Claude Code** — 이 저장소의 Claude marketplace를 등록하고 플러그인을 설치한 뒤 새 세션을 시작합니다.
+
+```sh
+claude plugin marketplace add kyungpyokim/model-effort-router-next
+claude plugin install model-effort-router@model-effort-router
+```
+
+**Antigravity CLI** — 로컬 플러그인 디렉터리를 설치합니다.
+
+```sh
+agy plugin install ./plugins/antigravity-model-effort-router
+```
+
+Antigravity는 분류와 조언을 지원하지만 worker 실행은 지원하지 않습니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/)를 참고하십시오.
+
 ## 라우팅 계약
 
 분류기는 `role`과 `effort`를 반환하며, `confidence`와 `reason_code`는 선택 사항입니다. 역할은 `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, `analysis`입니다. 앞의 네 역할은 실행 모델을 사용하고, 나머지는 추론 모델을 사용합니다. 노력 수준은 `low`, `medium`, `high`, `xhigh`입니다. 독립적인 위험 감지는 안전 민감 검토/설계 요청을 최소 `high`까지 올릴 수 있지만, 역할이나 모델 레인은 변경하지 않습니다.
