@@ -10,6 +10,50 @@ MER는 개발 요청을 **역할 + 노력 수준**으로 분류하고, 해당 �
 
 기본값은 Codex 실행 모델 `gpt-6-luna`, 추론 모델 `gpt-6.1-sol`이며, Claude 실행 모델 `claude-sonnet-5-5`, 추론 모델 `claude-opus-5-5`입니다. 각 호스트/레인에는 설정 가능한 primary, fallback, 지원 effort가 있습니다. MER는 stderr에서 실행 fallback을 추론하지 않으며, worker가 시작되었을 수 있는 경우 재시도하지 않습니다. 명시적인 사전 실행 불가 신호가 있을 때만 fallback을 허용합니다. 분류기 provider는 설정된 다음 분류기로 넘어갈 수 있습니다. 모두 실패하면 CLI 라우팅은 오류를 반환하고, hook은 fail open으로 동작하여 사용자 요청을 막지 않습니다.
 
+## 분류기 backend 설정
+
+분류기 backend는 요청의 role과 effort를 판정합니다. worker model을 선택하는 `models.<host>`와는 별개입니다. 내장 분류기 기본값은 fallback이 없는 `subscription`입니다. TypeSafe Jev를 role/effort 분류기의 주 backend로 사용하려면 `difficulty.backend`를 `jev`로 설정합니다.
+
+```json
+{
+  "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10}
+}
+```
+
+Jev는 기본적으로 `jev-latest` 모델을 사용합니다. API 키는 저장소 설정이 아닌 전역 사용자 설정(`$MER_USER_CONFIG` 또는 `~/.config/model-effort-router/config.json`, `XDG_CONFIG_HOME` 준수)에 저장합니다.
+
+```json
+{
+  "jev": {"api_key": "your-typesafe-api-key"}
+}
+```
+
+전역 키가 없으면 `TYPESAFE_API_KEY` 환경 변수도 사용할 수 있습니다. 다른 Jev 모델을 선택하려면 `MER_JEV_MODEL`을 설정합니다. 설정된 주 backend를 먼저 호출하고, 실패한 경우에만 fallback을 호출합니다.
+
+Nimble을 로컬 분류기로 사용하려면 Ollama를 설치하고 로컬 서버가 실행 중인지 확인한 뒤 모델을 받아옵니다.
+
+```sh
+ollama pull nimble
+```
+
+Nimble은 기본적으로 API 키 없이 `http://127.0.0.1:11434/v1/systemone`의 `nimble` 모델을 사용합니다. `difficulty.backend`를 `nimble`로 선택합니다. 예시:
+
+```json
+{
+  "difficulty": {
+    "backend": "nimble",
+    "fallback": "jev",
+    "timeout_s": 10,
+    "nimble": {
+      "model": "nimble",
+      "url": "http://127.0.0.1:11434/v1/systemone"
+    }
+  }
+}
+```
+
+`difficulty.nimble.model`과 `.url`은 `MER_NIMBLE_MODEL`, `MER_NIMBLE_URL` 환경 변수보다 우선하며, 환경 변수는 기본값보다 우선합니다. Nimble URL은 HTTP(S)를 사용하고 `localhost`, `127.0.0.1`, `::1`을 가리켜야 합니다. MER는 loopback이 아닌 URL을 거부하므로 Nimble 요청은 기기 안에서 처리됩니다. 위 예시에서는 Nimble이 실패하면 작업 내용이 TypeSafe의 호스팅 Jev로 전송됩니다. 이 fallback을 사용하려면 Jev API 키를 설정하십시오.
+
 ## 사용법
 
 ```sh
@@ -48,7 +92,7 @@ Main은 간결한 Context Packet(`task`, `context`, `decisions`, `constraints`, 
 ```json
 {
   "router": {"mode": "auto"},
-  "difficulty": {"backend": "subscription", "fallback": "jev", "timeout_s": 10},
+  "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10},
   "models": {
     "codex": {
       "execution": {"primary": "gpt-6-luna", "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
@@ -60,7 +104,7 @@ Main은 간결한 Context Packet(`task`, `context`, `decisions`, `constraints`, 
 
 Legacy L1-L5, tier/profile, session, escalation 및 `nimble_jev` 설정은 마이그레이션 안내와 함께 거부됩니다. tier override는 `/router role=<role> effort=<effort>`로 바꾸고, 이전 Main-session 라우팅 workflow는 `mer route`와 Main이 선택한 Subagent 조합으로 바꾸십시오. `nimble_jev`는 제거되었으므로 `nimble`과 `jev` 같은 별도의 classifier fallback을 설정하십시오.
 
-`jev.api_key`는 전역 사용자 설정(`$MER_USER_CONFIG` 또는 `~/.config/model-effort-router/config.json`, `XDG_CONFIG_HOME` 준수)에만 설정하십시오: `{"jev": {"api_key": "your-typesafe-api-key"}}`. 저장소 설정에는 이 credential을 제공할 수 없습니다. 전역 key가 없으면 `TYPESAFE_API_KEY`가 fallback으로 남아 있습니다.
+Jev 인증 정보는 전역 사용자 설정에만 둘 수 있습니다. 자세한 방법은 [분류기 backend 설정](#분류기-backend-설정)을 참고하십시오. 저장소 설정에는 이 인증 정보를 둘 수 없습니다.
 
 ## Runtime 개발
 

@@ -10,6 +10,50 @@ The classifier returns `role` and `effort`; `confidence` and `reason_code` are o
 
 Defaults are Codex execution `gpt-6-luna`, reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5`, reasoning `claude-opus-5-5`. Each host/lane has configurable primary, fallback, and supported efforts. MER never infers execution fallback from stderr or retries after a worker may have started; only an explicit pre-execution-unavailable signal permits it. Classifier providers may fall through to the configured next classifier. If all fail, CLI routing returns an error; hooks fail open and leave the user request unblocked.
 
+## Classifier backend setup
+
+The classifier backend decides the request's role and effort. It is separate from `models.<host>`, which selects the worker model. The built-in classifier default is `subscription` with no fallback. To use hosted Jev as the primary role/effort classifier, configure `difficulty.backend` as `jev`:
+
+```json
+{
+  "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10}
+}
+```
+
+Jev uses the TypeSafe `jev-latest` model by default. Store its API key in the global user config (`$MER_USER_CONFIG` or `~/.config/model-effort-router/config.json`, respecting `XDG_CONFIG_HOME`), never in repository config:
+
+```json
+{
+  "jev": {"api_key": "your-typesafe-api-key"}
+}
+```
+
+`TYPESAFE_API_KEY` is also supported when the global key is absent. Set `MER_JEV_MODEL` to select another Jev model. The configured primary backend runs first; the fallback runs only if it fails.
+
+For local classification with Nimble, install Ollama and ensure its local server is running, then pull the model:
+
+```sh
+ollama pull nimble
+```
+
+Nimble defaults to model `nimble` at `http://127.0.0.1:11434/v1/systemone` and needs no API key. Select it with `difficulty.backend: "nimble"`; for example:
+
+```json
+{
+  "difficulty": {
+    "backend": "nimble",
+    "fallback": "jev",
+    "timeout_s": 10,
+    "nimble": {
+      "model": "nimble",
+      "url": "http://127.0.0.1:11434/v1/systemone"
+    }
+  }
+}
+```
+
+`difficulty.nimble.model` and `.url` override `MER_NIMBLE_MODEL` and `MER_NIMBLE_URL`, which override the defaults. Nimble URLs must use HTTP(S) and point to `localhost`, `127.0.0.1`, or `::1`; MER rejects non-loopback URLs, so Nimble requests stay on the machine. In the example above, a Nimble failure sends the task to hosted Jev through TypeSafe; configure Jev's API key if you want that fallback.
+
 ## Use
 
 ```sh
@@ -48,7 +92,7 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
 ```json
 {
   "router": {"mode": "auto"},
-  "difficulty": {"backend": "subscription", "fallback": "jev", "timeout_s": 10},
+  "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10},
   "models": {
     "codex": {
       "execution": {"primary": "gpt-6-luna", "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
@@ -60,7 +104,7 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
 
 Legacy L1-L5, tier/profile, session, escalation, and `nimble_jev` settings are rejected with migration guidance. Replace tier overrides with `/router role=<role> effort=<effort>`; replace an old Main-session routing workflow with `mer route` plus a Main-selected Subagent. `nimble_jev` is removed; configure `nimble` and a separate classifier fallback such as `jev`.
 
-Set `jev.api_key` only in the global user config (`$MER_USER_CONFIG` or `~/.config/model-effort-router/config.json`, respecting `XDG_CONFIG_HOME`): `{"jev": {"api_key": "your-typesafe-api-key"}}`. Repository config cannot provide this credential. `TYPESAFE_API_KEY` remains a fallback when the global key is absent.
+Jev credentials belong only in the global user config; see [Classifier backend setup](#classifier-backend-setup). Repository config cannot provide this credential.
 
 ## Runtime development
 
