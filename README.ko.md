@@ -9,8 +9,8 @@ MER는 개발 요청을 **역할 + 노력 수준**으로 분류하고, 해당 �
 호스트 플러그인에는 공유 runtime이 포함되어 있지 않습니다. 먼저 저장소를 복제하고 runtime을 설치합니다.
 
 ```sh
-git clone https://github.com/kyungpyokim/model-effort-router-next.git
-cd model-effort-router-next
+git clone https://github.com/kyungpyokim/model-effort-router.git
+cd model-effort-router
 python3 scripts/install_core.py
 python3 scripts/install_core.py --check
 ```
@@ -20,14 +20,14 @@ python3 scripts/install_core.py --check
 **Codex CLI** — 이 저장소의 Codex marketplace를 등록하고 플러그인을 설치합니다.
 
 ```sh
-codex plugin marketplace add https://github.com/kyungpyokim/model-effort-router-next --sparse .agents/plugins --sparse plugins/codex-model-effort-router
+codex plugin marketplace add https://github.com/kyungpyokim/model-effort-router --sparse .agents/plugins --sparse plugins/codex-model-effort-router
 codex plugin add model-effort-router@model-effort-router
 ```
 
 **Claude Code** — 이 저장소의 Claude marketplace를 등록하고 플러그인을 설치한 뒤 새 세션을 시작합니다.
 
 ```sh
-claude plugin marketplace add kyungpyokim/model-effort-router-next
+claude plugin marketplace add kyungpyokim/model-effort-router
 claude plugin install model-effort-router@model-effort-router
 ```
 

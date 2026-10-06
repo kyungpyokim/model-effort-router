@@ -9,8 +9,8 @@ MER classifies a development request as a **role + effort**, maps that pair to a
 The host plugin does not include the shared runtime. Clone this repository and install the runtime first:
 
 ```sh
-git clone https://github.com/kyungpyokim/model-effort-router-next.git
-cd model-effort-router-next
+git clone https://github.com/kyungpyokim/model-effort-router.git
+cd model-effort-router
 python3 scripts/install_core.py
 python3 scripts/install_core.py --check
 ```
@@ -20,14 +20,14 @@ Then install the plugin for your host from the repository root:
 **Codex CLI** — add this repository's Codex marketplace and install its plugin:
 
 ```sh
-codex plugin marketplace add https://github.com/kyungpyokim/model-effort-router-next --sparse .agents/plugins --sparse plugins/codex-model-effort-router
+codex plugin marketplace add https://github.com/kyungpyokim/model-effort-router --sparse .agents/plugins --sparse plugins/codex-model-effort-router
 codex plugin add model-effort-router@model-effort-router
 ```
 
 **Claude Code** — add this repository's Claude marketplace, install the plugin, then start a new session:
 
 ```sh
-claude plugin marketplace add kyungpyokim/model-effort-router-next
+claude plugin marketplace add kyungpyokim/model-effort-router
 claude plugin install model-effort-router@model-effort-router
 ```
 

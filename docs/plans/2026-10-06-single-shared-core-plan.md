@@ -38,7 +38,7 @@ ${XDG_DATA_HOME:-~/.local/share}/model-effort-router/runtime/
 └── model_effort_router/              # 사용자당 공유 설치 1개
 ```
 
-- 설치: 먼저 `git clone https://github.com/kyungpyokim/model-effort-router-next.git`로 별도 checkout을 준비하고 그 디렉터리에서 `python3 scripts/install_core.py`를 실행한다. marketplace 플러그인만 설치해서는 코어 준비를 완료할 수 없다는 점을 각 README에 명시한다. PyPI 배포나 installer 자체를 플러그인에 복제하는 경로는 만들지 않는다.
+- 설치: 먼저 `git clone https://github.com/kyungpyokim/model-effort-router.git`로 별도 checkout을 준비하고 그 디렉터리에서 `python3 scripts/install_core.py`를 실행한다. marketplace 플러그인만 설치해서는 코어 준비를 완료할 수 없다는 점을 각 README에 명시한다. PyPI 배포나 installer 자체를 플러그인에 복제하는 경로는 만들지 않는다.
 - 재설치/갱신: checkout을 대상 릴리스로 갱신한 후 동일 명령. 플러그인 업데이트는 공유 코어를 자동 업데이트하지 않는다. 삭제된 원본 모듈이 runtime에 남지 않도록 전체 package를 교체한다.
 - 검사: `python3 scripts/install_core.py --check`; 대상과 원본의 파일 목록/내용 차이는 종료 코드 1, 동일하면 0.
 - 개발/테스트 override: `MER_CORE_PATH=/absolute/path/to/repository` 또는 임시 runtime 부모. 그 아래에 `model_effort_router/`가 있어야 한다. 상대 경로는 거절한다.
