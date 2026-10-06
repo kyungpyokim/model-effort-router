@@ -133,6 +133,24 @@ class ArgvTest(unittest.TestCase):
             argv = cx.session_argv(P, "p", "workspace-write", ClaudeConfig(plugins_off=lambda: cx.plugins_off(w)))
             self.assertEqual(json.loads(argv[argv.index("--settings") + 1]), {"enabledPlugins": {"x@m": False, "y@m": False}})
 
+    def test_settings_default_reader_closes_file(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": d}):
+            settings = os.path.join(d, "settings.json")
+            with open(settings, "w", encoding="utf-8") as stream:
+                stream.write('{"model":"main-model"}')
+            opened = []
+            real_open = open
+
+            def track_open(*args, **kwargs):
+                handle = real_open(*args, **kwargs)
+                opened.append(handle)
+                return handle
+
+            with mock.patch("builtins.open", side_effect=track_open):
+                self.assertEqual(cx._settings(), [{"model": "main-model"}])
+            self.assertEqual(len(opened), 1)
+            self.assertTrue(opened[0].closed)
+
     def test_full_context_has_no_context_flags_for_implement_and_user_settings_for_read_only(self):
         for argv in (cx.session_argv(P, "p", "workspace-write", FULL), cx.resume_argv(P, "S", "p", FULL)):
             self.assertNotIn("--setting-sources", argv)
