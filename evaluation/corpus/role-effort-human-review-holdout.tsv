@@ -1,0 +1,42 @@
+id	task	paths	human_role	human_effort	rationale
+holdout-001	The existing Slurm status parser calls int() on the exit-code field `0:9` and crashes. Parse the documented status:signal pair and feed both values into its existing result tuple.	ops/slurm_status.py			
+holdout-002	Our incremental backup writer sometimes reports a successful snapshot whose parent chunk list is incomplete after abrupt power loss. Derive the failure from journal traces, repair commit ordering and recovery, and prove all acknowledged snapshots remain restorable.	backup/journal.cpp, backup/snapshot.cpp, backup/recovery.cpp			
+holdout-003	What does --frozen-lockfile do in yarn?				
+holdout-004	검토만 해줘. 실사용 메모 Core Data 이관은 첨부 관계를 본문 inline ID로 바꾸고 원래 관계와 파일명을 삭제해. 유일 첨부가 잘못 연결되면 복구 불가야. 중복 ID와 부분 중단을 포함해 보존성을 증명할 수 있는지 봐줘.	ios/Trail/Notes/AttachmentMigration.swift, ios/Trail/Notes/LegacyModel.xcdatamodeld			
+holdout-005	고마워, 수고했어!				
+holdout-006	정산 원장의 FX 원금과 수수료가 재처리 때 간헐적으로 서로 다른 환율 버전을 참조해 실지급 금액이 달라져. rate snapshot 선택, batch checkpoint, 재처리 경로를 조사하고 이미 지급된 항목 대조와 추가 지급 방지까지 수정해줘.	billing/fx_snapshot.py, billing/settlements.py, jobs/settlement_resume.py			
+holdout-007	React useEffect 의존성 배열이 정확히 어떻게 동작하는지 알려줘.				
+holdout-008	FlipCard.vue의 뒷면이 접힌 상태에서도 Tab으로 접근돼. 현재 face 상태에 맞춰 두 패널의 inert를 조절하는 변경 계획만 써줘.	web/src/cards/FlipCard.vue			
+holdout-009	Audit only the attached confidential-query executor rewrite: it implements its own row-level policy bytecode verifier and allows untrusted tenants to submit programs. Verify that type confusion, unchecked jumps and forged capability handles cannot read another tenant's rows.	query/policy_verifier.rs, query/capabilities.rs, query/vm.rs			
+holdout-010	멀티 스레드 영상 편집기에서 cancel 직후 간헐적으로 use-after-free가 난다. renderer와 background decoder의 수명 경합 원인을 찾아 고쳐줘.				
+holdout-011	프로젝트 하위 라우트 전체에 admin/editor/viewer 역할별 접근 제어를 적용하는 계획만 세워줘. 구현은 하지 마.	api/projects/			
+holdout-012	Plan only: the existing package inventory CLI should support --license exactly filtering its already loaded license field. It has no network calls; add the predicate and help text within that command.	tooling/inventory_cli.py			
+holdout-013	Review only: audit this custom TLS certificate-chain validation rewrite for name constraints, cross-signing and trust-anchor confusion; the attached patch handles these checks itself.				
+holdout-014	Plan only: add searchable tags to our existing notes feature using the current database and search adapter; cover model, index mapping and UI filter.				
+holdout-015	Support compressed partner feeds through the ingestion route, staging reader and validation report. Use the installed ZIP reader, allow exactly one CSV member, reject unsafe member paths and enforce an expanded-byte limit.	api/feeds.py, etl/staging_reader.py, etl/validation_report.py			
+holdout-016	UserTable doesn't reset to page 1 when the filter changes. Fix.	src/components/UserTable.vue			
+holdout-017	In nginx/dev.conf, change listen 8080 to listen 8081; no production configuration changes.				
+holdout-018	리뷰만: 외부 게시물 링크에 `const href=new URL(input); return <a href={href.href}>open</a>`를 써. javascript:와 data:도 열 수 있는지, 기존 https 링크를 유지하면서 무엇을 막아야 하는지 확인해줘.	web/src/posts/RichLink.tsx			
+holdout-019	현재 GraphQL 상품 상세에 제조사 보증 정보를 추가해줘. resolver, 기존 upstream adapter, 타입 정의, 상세 화면을 맞춰줘.				
+holdout-020	백업이 없는 운영 사진 저장소의 object key를 내용 기반 ID로 바꾸는 migration을 작성해줘. 충돌이나 누락 시 원본이 삭제되므로 전수 검증과 안전한 중단·복구가 필요해.				
+holdout-021	Plan the change to the blob range parser only: support bytes=N- open-ended ranges using the supplied object length, retain closed ranges, and return the existing RangeError for unsupported multiple ranges.	storage/range_header.py			
+holdout-022	Translate this paragraph of our privacy policy into Korean.				
+holdout-023	Add retry with exponential backoff (max 3 attempts) to the S3 upload helper.	storage/s3.py			
+holdout-024	Logout leaves the signed-in avatar visible because Header.tsx uses `if (user) setAvatar(user.avatar)`. Clear its local avatar when the existing auth store becomes null. No session storage changes.	web/src/account/Header.tsx			
+holdout-025	Review only the /download Content-Disposition helper patch. The requested filename may contain Unicode or double quotes; check quoted fallback escaping and filename* encoding, with no storage changes.	api/content_disposition.py			
+holdout-026	운영 구독 청구에서 월말 시간대 전환 때 일부 계정만 두 달치가 청구된다. 스케줄 기준과 기간 계산, 재시도 기록을 분석해 원인을 고쳐줘.				
+holdout-027	Tell me what 'eventual consistency' means using a library-book analogy.				
+holdout-028	CSV 과학 측정 reader의 `rows = list(csv.reader(text.splitlines()))`가 따옴표 안의 줄바꿈을 없애 시료 메모를 합쳐버린다. 한 reader에서 quoted multiline field의 줄바꿈을 보존하고 CRLF 파일도 읽도록 고쳐줘. delimiter와 column schema는 그대로야.	science/measurements.py			
+holdout-029	"Review the one CSV cell escaper only: `def safe_cell(s):
+    return ""'""+s if s.startswith(""="") else s`. It is meant to neutralize spreadsheet formulas in user-supplied exports, including leading whitespace and +, -, @. Report gaps without editing."	exports/csv_cells.py			
+holdout-030	Redis의 list와 sorted set을 택배 대기줄에 비유해서 설명해줘. 구현안은 필요 없어.				
+holdout-031	Introduce a write-ahead staging protocol for the regenerable image-processing queue instead of publishing directly from each producer. Define staged/published states, restart recovery and reconciler ownership, and migrate all producer calls.	jobs/staging.py, jobs/publish.py, jobs/reconcile.py, producers/			
+holdout-032	What does HTTP 304 mean, and when can a browser use a cached response?				
+holdout-033	Rewrite JWT signing to support key rotation with kid, an overlap window and revocation, keeping old tokens valid until expiry. Check this diff, don't change anything.	auth/jwt.py, auth/keys.py			
+holdout-034	Add the exact line '*.profraw' to the root .gitignore if absent.				
+holdout-035	계획만 작성해줘. AddressLine.tsx의 읽기 전용 우편번호가 label과 연결되지 않아. 기존 id 생성 함수를 이용해 label-for 연결을 추가하고 확인할 항목을 정리해줘.	web/src/address/AddressLine.tsx			
+holdout-036	A distributed lock service loses exclusivity only when lease renewal overlaps a clock jump. Derive a reproducer from traces, correct the timing assumptions and verify the fencing behavior.				
+holdout-037	Convert the iOS app's networking layer from completion handlers to async/await across all 9 service classes, with proper cancellation.	Networking/			
+holdout-038	How does floating-point cancellation differ from integer overflow? Give a numerical example in chat only.				
+holdout-039	Plan only: constrain the plugin archive filename accepted by the existing installer to a basename ending in .zip; refuse absolute paths and path separators before joining it to the cache directory. Plugin execution is unchanged.	tooling/install_archive.py			
+holdout-040	프로젝트 soft delete 도입: deleted_at 컬럼, 모든 조회에서 필터링, 복구 엔드포인트까지.	models/project.py, api/projects.py, db/migrations/			

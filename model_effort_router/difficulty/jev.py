@@ -5,7 +5,7 @@ import threading
 import urllib.error
 import urllib.request
 
-from .decision import DifficultyDecision, DifficultyInput, EFFORTS, ROLES
+from .decision import DifficultyDecision, DifficultyInput, ROLES
 from .subscription import MAX_PATHS, MAX_TASK_CHARS, BackendOutputError
 
 URL = "https://api.typesafe.ai/v1/systemone"
@@ -21,8 +21,16 @@ class MissingKeyError(RuntimeError):
 QUESTIONS = {
     "role": {"type": "choice", "instructions": "Which single role best describes the requested work?",
              "criteria": {role: role for role in ROLES}},
-    "effort": {"type": "choice", "instructions": "What reasoning effort is needed?",
-               "criteria": {effort: effort for effort in EFFORTS}},
+    "effort": {"type": "choice", "instructions": (
+        "Choose the reasoning effort needed from the requested scope and uncertainty. "
+        "Judge it independently of role, file count, or keywords. If relevant context "
+        "must be inspected to decide the work, prefer at least medium."
+    ), "criteria": {
+        "low": "The request is clear and localized, and the solution is obvious without broader context.",
+        "medium": "Relevant context must be read, or a few bounded choices must be considered.",
+        "high": "Several interacting parts, design tradeoffs, or uncertain diagnosis need careful reasoning.",
+        "xhigh": "Broad, highly uncertain work needs deep reasoning because mistakes could have serious consequences.",
+    }},
 }
 
 
