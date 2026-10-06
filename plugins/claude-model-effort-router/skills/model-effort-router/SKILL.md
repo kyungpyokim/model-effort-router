@@ -14,5 +14,6 @@ The UserPromptSubmit hook classifies eligible development requests into role and
 - Pass only the context needed by the task. Standard packets contain task, context, decisions, constraints, relevant files, and expected result. Review packets contain goal, decisions, constraints, diff, and verification, without implementation-agent reasoning.
 - `python3 ${CLAUDE_PLUGIN_ROOT}/bin/mer route --json '<task>'` shows the route. Main may provide an explicit phase with `--role` and `--effort` together.
 - `python3 ${CLAUDE_PLUGIN_ROOT}/bin/mer run --role review --effort high '<task>'` runs one read-only worker request. No Gate, escalation, or automatic follow-up review runs.
+- When a run changes repository paths, its output includes a `change` summary: `door` (`one-way` for data migration, data loss, or payment risk; otherwise `two-way`) and estimated `blast_radius` (`local` or `broad`). Treat blast radius as a path-based estimate and review the actual changes.
 - `mer chat`, L1-L5 and tier/profile overrides, and automatic escalation/review options were removed. Use `mer route` and Main's Subagent tool instead. Replace `/router session=...` with `/router role=<role> effort=<effort>`.
 - If all classifier providers fail, CLI routing reports an error; the hook fails open and lets the request continue.
