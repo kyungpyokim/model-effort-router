@@ -21,7 +21,7 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(set(hooks), {"UserPromptSubmit"})
         cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/user_prompt_submit.py", cmd)
-        skill = (CLAUDE / "skills" / "model-effort-router" / "SKILL.md").read_text()
+        skill = (CLAUDE / "skills" / "classify" / "SKILL.md").read_text()
         self.assertIn("Subagent", skill)
         self.assertIn("neither changes Main's model", skill)
         self.assertIn("--role", skill)
@@ -44,8 +44,8 @@ class ManifestTest(unittest.TestCase):
             self.assertEqual(codex.returncode, 0, codex.stderr)
 
     def test_claude_and_codex_skill_contracts_are_host_specific(self):
-        codex_skill = (PLUGIN / "skills" / "model-effort-router" / "SKILL.md").read_text()
-        claude_skill = (CLAUDE / "skills" / "model-effort-router" / "SKILL.md").read_text()
+        codex_skill = (PLUGIN / "skills" / "classify" / "SKILL.md").read_text()
+        claude_skill = (CLAUDE / "skills" / "classify" / "SKILL.md").read_text()
         self.assertIn("gpt-6.1-sol", codex_skill)
         self.assertIn("claude-opus-5-5", claude_skill)
 
@@ -75,7 +75,9 @@ class HookTest(HookCase):
         note = hook_output["additionalContext"]
         self.assertIn("Role: review", note)
         self.assertIn("claude-opus-5-5", note)
-        self.assertIn("goal, decisions, constraints, diff, verification", note)
+        self.assertIn("goal, decisions, constraints, actual diff, verification status/results", note)
+        self.assertIn("native Subagent invocation", note)
+        self.assertIn("not run", note)
         self.assertIn("does not change this Main turn", note)
         self.assertNotIn("L1", note)
         self.assertEqual(settings.read_bytes(), original_settings)
