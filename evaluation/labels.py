@@ -1,11 +1,10 @@
-"""Independent label files -> labeled corpus (guide §4). Labels live apart from the corpus so labelers never see
-each other's work (or `proposed`) while labeling.
+"""Independent label files -> labeled corpus (guide §3). Labels live apart so labelers never see each other's work.
 
-  python3 -m evaluation.labels sheet CORPUS OUT.tsv          blank sheet: id, task, paths + empty level/risk_flags/target
+  python3 -m evaluation.labels sheet CORPUS OUT.tsv          blank sheet: id, task, paths + empty role/effort
   python3 -m evaluation.labels merge CORPUS OUT LABELS...    add every label file (.jsonl or filled .tsv) to the cases
 
-Label file rows: {id, labeler, level (L1..L5 or empty for no_route), risk_flags, target}. In a .tsv the labeler is
-the file's `labeler` column and risk_flags are comma-separated. Merge validates through evaluation.cases.
+Label file rows: {id, labeler, role, effort}. In a .tsv the labeler is the file's `labeler` column.
+Merge validates through evaluation.cases.
 """
 import csv
 import json
@@ -13,7 +12,7 @@ import sys
 
 from . import cases as corpus
 
-TSV_FIELDS = ("id", "task", "paths", "labeler", "level", "risk_flags", "target", "note")
+TSV_FIELDS = ("id", "task", "paths", "labeler", "role", "effort", "note")
 
 
 def write_sheet(corpus_path, out_path, labeler=""):
@@ -21,16 +20,19 @@ def write_sheet(corpus_path, out_path, labeler=""):
         w = csv.writer(f, delimiter="\t")
         w.writerow(TSV_FIELDS)
         for c in corpus.load(corpus_path):
-            w.writerow([c["id"], c["task"], ",".join(c["paths"]), labeler, "", "", "", ""])
+            w.writerow([c["id"], c["task"], ",".join(c["paths"]), labeler, "", "", ""])
 
 
 def read_labels(path):
     if path.endswith(".tsv"):
         with open(path, newline="", encoding="utf-8") as f:
-            rows = list(csv.DictReader(f, delimiter="\t"))
-        return [{"id": r["id"], "labeler": (r.get("labeler") or "").strip(), "level": (r.get("level") or "").strip() or None,
-                 "risk_flags": [x.strip() for x in (r.get("risk_flags") or "").split(",") if x.strip()],
-                 "target": (r.get("target") or "").strip()} for r in rows]
+            reader = csv.DictReader(f, delimiter="\t")
+            expected = list(TSV_FIELDS)
+            if reader.fieldnames != expected:
+                raise corpus.CorpusError(f"{path}: expected TSV columns {expected}, got {reader.fieldnames}")
+            rows = list(reader)
+        return [{"id": r["id"], "labeler": (r.get("labeler") or "").strip(),
+                 "role": (r.get("role") or "").strip(), "effort": (r.get("effort") or "").strip()} for r in rows]
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
 
@@ -41,13 +43,16 @@ def merge(corpus_path, label_paths):
     by_id = {r["id"]: r for r in rows}
     for path in label_paths:
         for lab in read_labels(path):
+            allowed = {"id", "labeler", "role", "effort"}
+            if not isinstance(lab, dict) or set(lab) != allowed:
+                fields = sorted(lab) if isinstance(lab, dict) else type(lab).__name__
+                raise corpus.CorpusError(f"{path}: label must contain exactly {sorted(allowed)}, got {fields}")
             if lab["id"] not in by_id:
                 raise corpus.CorpusError(f"{path}: unknown case id {lab['id']!r}")
             case = by_id[lab["id"]]
-            case["labels"] = case["labels"] + [{k: lab[k] for k in ("labeler", "level", "risk_flags", "target")}]
+            case["labels"] = case["labels"] + [{k: lab[k] for k in ("labeler", "role", "effort")}]
     out = []
     for r in rows:
-        r = {k: v for k, v in r.items() if k != "proposed"} if r["labels"] else r  # proposed never leaks into labeled data
         if r["status"] == "draft" and len(r["labels"]) >= 2:
             r["status"] = "labeled"
         out.append(corpus.validate_case(r))

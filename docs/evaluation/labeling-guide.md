@@ -1,110 +1,61 @@
-# Routing Corpus 라벨링 가이드
+# Role / effort 라벨링 가이드
 
-이 문서는 기획서 §10(Level 정의), §22.1(Routing Corpus)의 라벨 기준을 고정한다. 라벨은 "이 작업을 사람이 보면 어느 난이도인가"에 대한 판단이며, 어떤 Backend의 예측이나 라우팅 로그도 라벨이 아니다. 이 가이드를 바꾸면 이미 붙인 라벨의 유효성이 달라지므로 변경 이력을 문서 하단에 남긴다.
+활성 평가 라벨은 요청에 필요한 **role**과 **effort**다. 허용 값은 런타임 계약인 `model_effort_router/difficulty/decision.py`의 `ROLES`와 `EFFORTS`가 정한다. 기존 L1~L5 코퍼스와 보고서는 역사 자료로 보존하며 새 스키마로 변환하거나 활성 평가에 섞지 않는다. 새로 라벨링할 케이스는 `evaluation/corpus/role-effort-seed.jsonl`에서 시작한다.
 
-## 1. 라벨 스키마
+## 1. 스키마
 
-케이스 하나는 JSONL 한 줄이며 형식은 `evaluation/cases.py`가 검증한다.
+케이스 한 건은 JSONL 한 줄이다. 초안은 id, task, paths, status만 가진다. 라벨과 제안은 초안 파일에 넣지 않는다.
 
 ```json
-{"id": "c-001", "task": "...", "paths": ["a.py"], "status": "adjudicated",
- "labels": [{"labeler": "kim", "level": "L3", "risk_flags": ["auth"], "target": "route"},
-            {"labeler": "lee", "level": "L3", "risk_flags": ["auth"], "target": "route"}],
- "final": {"level": "L3", "risk_flags": ["auth"], "target": "route"}}
+{"id":"seed-001","task":"Fix the null-pointer crash in parse_date()","paths":["date_utils.py"],"status":"draft"}
 ```
 
-- `level`: `L1`~`L5`. 작업의 **난이도**이며 위험도가 아니다. 위험은 `risk_flags`로 따로 붙인다.
-- `risk_flags`: `security`, `auth`, `payment`, `data_migration`, `data_loss`, `concurrency` 중 해당되는 것 전부. 없으면 빈 목록. 작업 문장에 단어가 있는지가 아니라 **변경이 실제로 그 영역을 건드리는지**로 판단한다.
-- `target`: `route`(Plan → Implement → Review 전체), `plan_only`(계획만 요청), `review_only`(검토만 요청), `no_route`(질문, 잡담, 코드 작업이 아닌 요청 또는 대상이 불명확해 라우팅하지 않는 것이 맞는 요청). `no_route`이면 `level`은 `null`이다.
-- `status`: `draft`(후보, 라벨 없음) → `labeled`(독립 라벨 2개 이상) → `adjudicated`(불일치 해소 후 `final` 확정). `final`은 adjudicated에서만 존재한다.
-- `paths`는 선택 입력이다. 경로가 있으면 라벨러도 그 경로를 보고 판단한다.
+라벨은 독립 파일 또는 `labels.py sheet`로 작성한다. 코퍼스 안의 `labels` 항목에는 `labeler`도 기록한다. 판정이 끝난 케이스는 두 명 이상의 라벨과 `final`을 갖는다.
 
-초안(`draft`)은 `labels` 대신 작성자의 제안인 `proposed`를 가진다. `proposed`는 정답이 아니며 평가에 쓰이지 않는다. 라벨러는 독립 라벨링 전에 `proposed`를 보지 않는다.
+```json
+{"id":"seed-001","task":"Fix the null-pointer crash in parse_date()","paths":["date_utils.py"],"status":"adjudicated",
+ "labels":[{"labeler":"kim","role":"fix","effort":"low"},{"labeler":"lee","role":"fix","effort":"medium"}],
+ "final":{"role":"fix","effort":"medium"}}
+```
 
-## 2. 레벨별 앵커 예시
+- `role`: `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, `analysis` 중 요청의 주된 작업 유형.
+- `effort`: `low`, `medium`, `high`, `xhigh` 중 요청을 처리하는 데 필요한 추론 강도. 위험 표식이나 과거 난이도 등급이 아니다.
+- `status`: `draft`(라벨 없음) → `labeled`(서로 독립된 라벨 2개 이상) → `adjudicated`(불일치 합의 후 `final`).
+- `paths`는 선택 입력이다. 요청과 함께 경로를 제공하면 모든 라벨러에게 같은 경로를 보여준다.
 
-기준은 §10의 문장 그대로다. 예시는 경계 판단의 기준점이며 목록은 라벨링 중 보완한다.
+모든 역할과 effort 값은 `evaluation/cases.py`가 런타임 상수에 따라 검증한다. 예전 `level`, `risk_flags`, `target` 필드는 허용하지 않는다.
 
-**L1 — Mechanical.** 판단이 거의 필요 없고, 결과가 문장만 읽어도 결정되는 변경.
-- README의 오타 수정.
-- 한 파일 안에서 변수 이름 바꾸기.
-- config 기본값 하나를 지정된 값으로 바꾸기.
-- 버튼 문구 교체, 저작권 연도 일괄 갱신처럼 반복적이지만 판단이 없는 수정.
+## 2. 판단 기준
 
-**L2 — Local Change.** 한 기능 또는 소수 파일 안에서 끝나고, 약간의 코드 이해와 판단이 필요한 변경.
-- 한 함수의 null 처리 버그 수정.
-- CLI에 옵션 하나 추가.
-- 페이지네이션의 off-by-one 수정.
-- 기존 엔드포인트의 입력 검증 추가(구조 변경 없음).
+먼저 요청의 주된 작업을 role로 정하고, 별도로 필요한 추론 강도를 effort로 정한다. 두 라벨을 서로 추론해 정하지 않는다. 예를 들어 복잡한 결함 분석은 `fix`와 `high`일 수 있고, 단순한 구현 변경은 `implementation`과 `low`일 수 있다.
 
-**L3 — Multi-file / Moderate.** 여러 파일·모듈에 영향이 있고 설계 판단이 필요한 작업.
-- API, 서비스, 저장소 계층을 함께 바꾸는 새 엔드포인트.
-- 여러 컴포넌트의 상태 관리 방식 교체.
-- 캐시 계층 도입과 갱신 시 무효화.
-- 역할 기반 접근 제어를 여러 라우트에 적용(`auth`).
+- `implementation`: 새 동작이나 기능 구현.
+- `fix`: 기존 동작의 버그나 장애 수정.
+- `lint`: 스타일, 정적 분석, 형식 문제 수정.
+- `test`: 테스트 작성·수정·실행이 요청의 주된 목적.
+- `plan`: 실행 전에 계획만 요청.
+- `design`: 구조·인터페이스·기술 설계가 요청의 주된 결과물.
+- `review`: 기존 변경이나 코드를 검토하고 수정하지 않음.
+- `analysis`: 코드나 상황의 원인·동작 설명을 요청하며 구현하지 않음.
 
-**L4 — Architectural.** 구조나 중요한 기술 판단이 필요한 작업.
-- 모놀리식 서비스를 모듈로 분리하고 호출부를 모두 수정.
-- 세션 저장소를 프로세스 메모리에서 외부 저장소로 이전.
-- 공개 API 계약 변경과 구버전 호환 유지.
-- 여러 인스턴스에서 안전한 스케줄러 설계(`concurrency`).
+effort는 요청에 담긴 판단 난이도와 불확실성으로 고른다. 낮은 effort는 범위와 해법이 명확하고 국소적인 작업, medium은 보통 수준의 코드 이해나 몇 가지 선택이 필요한 작업, high는 여러 모듈의 상호작용·복수의 설계 선택·불확실한 원인 분석이 필요한 작업, xhigh는 광범위하고 결과 위험이 큰 문제를 깊게 추론해야 하는 작업에 쓴다. 파일 개수나 특정 단어만으로 자동 결정하지 않는다. 근거가 부족하면 과장하지 말고 보이는 요청 범위에서 가장 타당한 값을 고른다.
 
-**L5 — Critical / Deep.** 높은 수준의 추론과 검증이 필요한 작업.
-- 토큰 서명 키 교체 로직처럼 보안 핵심 로직 재작성(`security`, `auth`).
-- 부하 시에만 나타나는 이중 결제처럼 원인 불명의 복합 장애(`payment`, `concurrency`).
-- 틀리면 행이 유실될 수 있는 운영 데이터 migration(`data_migration`, `data_loss`).
-- 재현이 어려운 동시성 버그와 대규모 구조 재설계.
+질문이나 설명 요청도 분석이 필요한 경우 `analysis`로 분류한다. 코드 관련 질문이라는 이유만으로 구현 role을 붙이지 않는다. 계획 요청은 `plan`, 검토만 요청은 `review`로 분류한다.
 
-## 3. 경계 판단 규칙
+## 3. 독립 라벨링과 합의
 
-1. **영향 범위보다 판단의 양.** 파일 수가 많아도 모든 수정이 같은 기계적 규칙이면 L1~L2, 파일 수가 적어도 설계 판단이 필요하면 L3 이상으로 본다. 저작권 연도 일괄 갱신은 L1이고, 같은 호출부 수십 곳을 새 로거로 바꾸는 작업은 계약을 지켜야 하므로 L2~L3이다.
-2. **L1 대 L2.** 문장만 읽고 결과를 결정할 수 있으면 L1, 코드를 읽어야 무엇을 바꿀지 알 수 있으면 L2.
-3. **L2 대 L3.** 변경이 한 모듈 안에서 테스트 한두 개로 검증되면 L2, 다른 계층·모듈과의 계약을 함께 맞춰야 하면 L3.
-4. **L3 대 L4.** 기존 구조 안에서 기능을 더하면 L3, 구조 자체나 저장·통신 방식이 바뀌면 L4. 스키마 변경은 호환되는 컬럼 추가면 L3, 키 변경이나 이전이면 L4 이상.
-5. **L4 대 L5.** 해법 설계가 핵심이면 L4, 원인이 불명확하거나 틀렸을 때 복구할 수 없는 손실(데이터, 돈, 보안 사고)이 따르고 높은 검증이 필요하면 L5.
-6. **위험 신호는 레벨을 자동으로 올리지 않는다.** 위험 신호는 Stage Policy의 최소 프로필이 처리한다(§11.2). 예: 입력 검증 추가는 L2이고 `security`는 영역이 실제로 보안 경계면이면 붙인다. 레벨은 작업 난이도만으로 정한다.
-7. **요구가 불명확한 작업.** 코드 맥락이 전혀 없으면 `no_route`. 맥락이 있는데 범위만 불명확하면 **보이는 범위 중 합리적인 중간값**으로 붙이고 메모에 사유를 남긴다. "안전하게 높게"는 금지다. 그러면 Over-routing이 정답처럼 굳는다.
-8. **target 규칙.** "계획만", "plan only", "리뷰만"처럼 범위를 한정한 요청은 그 target으로 붙이고, level은 **구현했을 때의** 난이도로 붙인다. 계획을 세운 뒤 구현까지 요청하면 `route`.
-9. **질문과 설명 요청**은 코드 이야기여도 `no_route`.
-10. **로거·호출부 일괄 교체.** 필드 대응이 이미 정해져 있으면(기존 필드를 그대로 유지) L2, 필드 스키마를 새로 설계해야 하면 L3. (seed-016 합의)
-11. **세션 저장소**를 바꾸는 작업은 인증 상태를 다루므로 `auth`를 붙인다. (seed-022 합의)
-12. **키 변경·backfill이 있는 migration**은 잘못되면 행이 유실되므로 `data_migration`과 `data_loss`를 함께 붙인다. (seed-026 합의)
-13. **비밀번호 해시·토큰 서명처럼 인증의 핵심 암호 로직 교체**는 표준 해법이 있어도 L5(앵커 "보안 핵심 로직 재작성"). 저장된 해시를 옮기면 `data_migration`도 붙인다. (seed-031 합의)
-14. **OAuth·외부 인증 연동**은 토큰·secret·redirect 검증을 다루므로 `auth`와 `security`를 함께 붙인다. (seed-034 합의)
-15. **멱등성·크래시 복구.** `concurrency`는 동시 실행이 실제로 경합할 때만 붙인다. 재시도가 동시에 겹칠 수 있는 idempotency key는 `concurrency`, 크래시 후 재실행만 다루면 붙이지 않는다. (exp-004, exp-008 합의)
-16. **인증 방어 장치 대 인증 상태 버그.** 비밀번호 정책, 로그인 잠금처럼 공격을 막는 장치는 `auth`와 `security`, 토큰 만료 시각 비교 같은 인증 상태 버그는 `auth`만. (exp-011, exp-017, exp-053 합의)
-17. **동시성 모델 변경**(completion handler → async/await, 스레드 모델 교체)은 `concurrency`. 메시지 전달 보장(at-least-once와 중복 제거)이나 이벤트 버스 도입만으로는 붙이지 않는다. (exp-041, exp-101 합의, seed-024와 일관)
+1. 최소 두 명이 같은 `id`, `task`, `paths`만 보고 각자 라벨링한다. 서로의 라벨과 합의 기록은 가린다. 초안에는 제안 라벨이 없으므로 이를 숨기는 절차도 필요 없다.
+2. `python3 -m evaluation.cases CORPUS.jsonl`로 합의를 확인한다. 보고서는 역할별 정확 일치, effort별 정확 일치, 두 차원의 **동시 일치**, 그리고 각 차원에서 불일치한 케이스 id를 출력한다. 세 명 이상일 때도 각 차원에서 모두 일치해야 정확 일치로 센다.
+3. 불일치는 요청을 다시 읽고 각 라벨러가 독립적으로 근거를 설명한 뒤 합의한다. 불일치가 정의의 모호함에서 비롯됐다면 이 가이드에 기준을 보완하고, 필요하면 이전 라벨을 버린 뒤 보완된 기준으로 다시 독립 라벨링한다.
+4. 합의된 `final`을 기록하고 상태를 `adjudicated`로 바꾼다. `evaluation/compare.py`는 이 활성 role/effort 라벨만 점수화한다.
 
-## 4. 라벨링 절차 (§22.1)
+시트와 병합 명령:
 
-1. **독립 라벨링.** 라벨러 2명 이상이 서로의 라벨과 `proposed`를 보지 않고 각자 `labels`에 한 항목을 추가한다. 케이스 상태는 `labeled`가 된다.
-2. **일치 확인.** `python3 -m evaluation.cases <corpus.jsonl>`이 일치율과 두 목록을 출력한다.
-   - `discuss`: level이 1단계 차이이거나 risk_flags·target이 다른 케이스. 라벨러가 논의해 합의하고 `final`을 적어 `adjudicated`로 바꾼다. 합의 사유가 경계 규칙 보완이면 3장에 추가한다.
-   - `revise_guide`: 2단계 이상 차이. 케이스를 그대로 합의하지 않는다. 차이가 생긴 이유를 찾아 이 가이드(정의, 앵커, 경계 규칙)를 보완한 뒤 **보완된 가이드로 다시 독립 라벨링**한다. 이전 라벨은 폐기한다.
-3. 세 명 이상이면 가장 큰 차이를 기준으로 분류한다.
-4. `adjudicated` 케이스만 Backend 비교(`evaluation/compare.py`)에 쓴다.
-
-## 5. 표본 구성
-
-- L1~L5 각 레벨을 모두 포함하고, 한 레벨이 전체의 40%를 넘지 않게 한다.
-- 위험 신호 6종을 각각 포함한다. 위험 신호가 있는 작업은 전체의 20% 이상을 목표로 한다.
-- target 네 가지(`route`, `plan_only`, `review_only`, `no_route`)를 모두 포함한다. 라우팅하면 안 되는 요청도 오탐을 재려면 필요하다.
-- 한국어와 영어 요청을 함께 넣는다.
-- 경계 사례(위 3장의 각 경계)를 일부러 포함한다.
-- **초기 목표 150건 이상, 현재 합본 300건(2026-10-04).** `evaluation/corpus/seed.jsonl`의 40건은 출발점이며 모두 `draft`다.
-
-## 6. 라우팅 로그의 사용 범위
-
-라우팅 로그(§21)는 예측과 실행 결과이지 정답이 아니다. **후보 수집원으로만** 쓴다. 로그에는 프롬프트 원문이 없으므로(해시와 길이만) 후보 문장은 사용자가 직접 제공하거나 재작성한다. 후보를 `draft`로 넣을 때 로그의 level을 `proposed`에 옮기는 것은 허용하지만, 라벨로 복사하거나 `final`의 근거로 쓰지 않는다. Backend가 고른 레벨을 라벨로 삼으면 비교가 순환 논리가 된다.
-
-## 7. 이후 과제
-
-- TODO(Phase 6): confidence 보정(§11.2 임계값 산출)과 cost·로컬 자원 사용량 비교. 여기서는 다루지 않는다.
+```sh
+python3 -m evaluation.labels sheet evaluation/corpus/role-effort-seed.jsonl labels-a.tsv
+python3 -m evaluation.labels merge evaluation/corpus/role-effort-seed.jsonl merged.jsonl labels-a.tsv labels-b.tsv
+```
 
 ## 변경 이력
 
-- 초안 작성.
-- 2026-10-01: 시드 40건 독립 라벨링(claude, opus). 35건 일치, 5건 1단계·플래그 차이를 합의해 경계 규칙 10~14 추가. 2단계 이상 차이 없음.
-- 2026-10-01: 확장 110건(초안 Sonnet 에이전트, 독립 라벨 opus·sonnet 에이전트). 100건 일치, 10건 1단계·플래그 차이를 합의해 경계 규칙 15~17 추가. 2단계 이상 차이 없음. 합본 `evaluation/corpus/corpus-v1.jsonl` 150건.
-
-- 2026-10-04: 새 150건 draft를 생성하고 Codex 에이전트 두 명(codex-a, codex-b)이 proposed·note·상대 라벨·backend 예측 없이 독립 라벨링했다. 139건 완전 일치, 11건은 기존 경계 규칙에 따라 합의(사유는 expansion-v2-labeled.jsonl note), 2단계 이상 차이 없음. 기존 정의와 경계 규칙은 변경하지 않았다. v1 150건을 보존한 corpus-v2.jsonl 300건: L1 51, L2 49, L3/L4/L5 각50, no_route50. AI 라벨만 있으며 사람 검증은 아직 없다.
+- 2026-10-06: 활성 판정 계약을 role/effort로 전환. 과거 L1~L5 라벨과 보고서는 그대로 보존하고, 새 초안 seed는 기존 seed에서 task/path만 가져온다.
