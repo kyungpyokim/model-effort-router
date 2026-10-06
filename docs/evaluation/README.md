@@ -41,6 +41,18 @@ python3 -m evaluation.labels merge \
 
 250건을 모두 사람 판정한 뒤 조정된 프롬프트를 한 번 측정했다. Jev (`jev-latest`)는 role 214/250 (85.6%, 95% Wilson CI 80.7–89.4), effort 174/250 (69.6%, 63.6–75.0), joint 143/250 (57.2%, 51.0–63.2)였다. Nimble은 role 181/250 (72.4%, 66.6–77.6), effort 154/250 (61.6%, 55.4–67.4), joint 103/250 (41.2%, 35.3–47.4)였다. 두 backend 모두 실패 없이 250건을 처리했다. 앞서 정한 초기 기준(role 85%, effort 80%, joint 75%)에서 Jev는 role만 통과했다. xhigh 재현율은 Jev 12/26 (46.2%), Nimble 7/26 (26.9%)로 특히 낮고 표본도 작다. 이 holdout은 prompt 조정에 재사용하지 않는다. 측정 원본은 `runs/role-effort-human-holdout-v2-comparison-20261006.json`에 있다.
 
+2026-10-06에 이 holdout의 role 오류 사례와 effort 혼동 방향을 보고 role 기준 문장을 추가했다. 따라서 holdout v2는 더 이상 깨끗한 최종 평가셋이 아니며, 이후에는 **사람 판정 조정용 세트**로 쓴다. AI 라벨인 dev-v2는 effort 오류 방향이 사람 판정과 반대로 나타나므로(dev에서는 Jev가 낮게, 사람 판정에서는 높게 예측) effort 조정 근거로 쓰지 않는다.
+
+새 최종 평가셋은 `role-effort-human-holdout-v3.jsonl` 150건이다. `corpus-v3.jsonl` 600건 중 dev-v2, holdout-v1, holdout-v2, seed, v1과 task/path가 겹치지 않는 나머지 전부이며, 순서는 seed `20261007`로 섞었다. 겹치는 task 문장이나 유사도 0.8 이상의 근사 중복은 없다. task/path만 복사했고 legacy 라벨은 넣지 않았다. 150건은 정확도 약 80%에서 이항 근사 오차폭이 대략 ±6.4%p다. v2와 같은 방식으로 서로 독립된 두 사람이 `role-effort-human-holdout-v3-a.tsv`와 `-b.tsv`를 채우고, 상대 시트·모델 출력·옛 라벨·v2 판정 결과를 보지 않는다. 판정과 최종 측정이 끝나기 전에는 이 세트로 프롬프트를 조정하거나 오류 사례를 열람하지 않는다.
+
+```sh
+python3 -m evaluation.labels merge \
+  evaluation/corpus/role-effort-human-holdout-v3.jsonl \
+  evaluation/corpus/role-effort-human-holdout-v3-labeled.jsonl \
+  evaluation/corpus/role-effort-human-holdout-v3-a.tsv \
+  evaluation/corpus/role-effort-human-holdout-v3-b.tsv
+```
+
 분류 backend를 실제 호출하면 설정에 따라 외부 서비스 또는 `codex exec`를 사용하고 사용량이 발생할 수 있다. 비교 API를 직접 실행하기 전에 대상 backend와 요청 텍스트 전송 여부를 확인한다. 이 저장소는 live 비교를 자동 실행하지 않는다.
 
 ## 과거 평가 자료
