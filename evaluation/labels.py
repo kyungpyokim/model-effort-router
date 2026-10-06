@@ -1,4 +1,4 @@
-"""Independent label files -> labeled corpus (guide §3). Labels live apart so labelers never see each other's work.
+"""Independent label files -> labeled corpus (guide §4). Labels live apart so labelers never see each other's work.
 
   python3 -m evaluation.labels sheet CORPUS OUT.tsv          blank sheet: id, task, paths + empty role/effort
   python3 -m evaluation.labels merge CORPUS OUT LABELS...    add every label file (.jsonl or filled .tsv) to the cases

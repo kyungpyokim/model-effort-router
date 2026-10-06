@@ -21,8 +21,10 @@
 
 4. 합의한 role/effort를 각 `final`에 기록하고 상태를 `adjudicated`로 바꾼다. 분류 점수는 [`evaluation.compare`](../../evaluation/compare.py)의 Python API가 adjudicated 케이스에 대해 role 정확도, effort 정확도, 동시 정확도를 계산한다.
 
+첫 40건은 `evaluation/corpus/role-effort-v1.jsonl`에 수록되어 있다. 두 AI 라벨러의 독립 라벨 일치율은 role 38/40, effort 33/40, 동시 31/40이며, 불일치는 경계 기준을 보완한 뒤 판정했다. 이 합성 시드는 실제 사용자 요청 분포를 대표하지 않으며 사람의 독립 검증도 거치지 않았다.
+
 분류 backend를 실제 호출하면 설정에 따라 외부 서비스 또는 `codex exec`를 사용하고 사용량이 발생할 수 있다. 비교 API를 직접 실행하기 전에 대상 backend와 요청 텍스트 전송 여부를 확인한다. 이 저장소는 live 비교를 자동 실행하지 않는다.
 
 ## 과거 평가 자료
 
-`evaluation/corpus/`의 기존 L1–L5 라벨, `evaluation/pilot/`, 날짜가 붙은 평가 보고서는 변경하지 않고 보존한다. 과거 실험 결과는 해당 시점의 방식으로만 해석한다. 활성 데이터는 `evaluation/corpus/role-effort-seed.jsonl`에서 시작한다.
+`evaluation/corpus/`의 기존 L1–L5 라벨, `evaluation/pilot/`, 날짜가 붙은 평가 보고서는 변경하지 않고 보존한다. 과거 실험 결과는 해당 시점의 방식으로만 해석한다. 새 라벨링은 `evaluation/corpus/role-effort-seed.jsonl`에서 시작하고 adjudicated 데이터는 `role-effort-v1.jsonl`에 저장한다.
