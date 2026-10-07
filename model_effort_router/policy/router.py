@@ -1,9 +1,16 @@
 """Role/effort classification and host model mapping."""
+
 from dataclasses import dataclass
 from typing import Optional
 
 from ..difficulty.chain import classify_with_fallback
-from ..difficulty.decision import DifficultyDecision, DifficultyInput, EFFORTS, EXECUTION_ROLES, merge_risk_flags
+from ..difficulty.decision import (
+    EFFORTS,
+    EXECUTION_ROLES,
+    DifficultyDecision,
+    DifficultyInput,
+    merge_risk_flags,
+)
 from ..difficulty.registry import BACKENDS, create
 from ..difficulty.risk import detect_risk_flags
 from ..difficulty.usage import sum_usage
@@ -33,6 +40,7 @@ class _Broken:
     def __init__(self, name, error):
         self.name, self.error = name, error
         self.calls_model = False
+
     def classify(self, task, timeout_s):
         raise self.error
 
@@ -43,9 +51,13 @@ def _make_backends(config, registry, user_config=None):
         if name == "none":
             continue
         try:
-            options = {"options": config.nimble} if name == "nimble" and config.nimble else {}
+            options = (
+                {"options": config.nimble} if name == "nimble" and config.nimble else {}
+            )
             if name == "jev" and user_config:
                 options["api_key"] = user_config.get("jev", {}).get("api_key")
+            if name == "openai_decisions" and user_config:
+                options["api_key"] = user_config.get("openai", {}).get("api_key")
             out.append(create(name, registry, **options))
         except Exception as exc:
             out.append(_Broken(name, exc))
@@ -59,20 +71,38 @@ def _usage(backends, selected):
         if getattr(backend, "name", None) == selected:
             break
     model_calls = [b for b in attempted if getattr(b, "calls_model", False)]
-    reported = [b.last_usage for b in model_calls if isinstance(getattr(b, "last_usage", None), dict)]
+    reported = [
+        b.last_usage
+        for b in model_calls
+        if isinstance(getattr(b, "last_usage", None), dict)
+    ]
     return (sum_usage(reported) if reported else None, len(reported) < len(model_calls))
 
 
-def route(message, *, paths=(), repo_config=None, user_config=None, registry=None, host="codex", explicit=False,
-          role_override=None, effort_override=None):
+def route(
+    message,
+    *,
+    paths=(),
+    repo_config=None,
+    user_config=None,
+    registry=None,
+    host="codex",
+    explicit=False,
+    role_override=None,
+    effort_override=None,
+):
     registry = BACKENDS if registry is None else registry
     override, text = parse_override(message)
     if override.rejected:
         return RoutePlan(NO_ROUTE, "invalid_override", override_rejected=True)
-    cfg = resolve_config(task=override.as_config(), repo=repo_config, user=user_config, registry=registry)
+    cfg = resolve_config(
+        task=override.as_config(), repo=repo_config, user=user_config, registry=registry
+    )
     flags = detect_risk_flags(text, paths)
     role_override = role_override if role_override is not None else override.role
-    effort_override = effort_override if effort_override is not None else override.effort
+    effort_override = (
+        effort_override if effort_override is not None else override.effort
+    )
     phase_override = role_override is not None or effort_override is not None
     if phase_override and (role_override is None or effort_override is None):
         raise ValueError("--role and --effort must be provided together")
@@ -86,27 +116,56 @@ def route(message, *, paths=(), repo_config=None, user_config=None, registry=Non
     if phase_override:
         decision = DifficultyDecision(role_override, effort_override, "explicit")
     else:
-        decision, _causes = classify_with_fallback(DifficultyInput(text, tuple(paths)), backends, cfg.timeout_s)
+        decision, _causes = classify_with_fallback(
+            DifficultyInput(text, tuple(paths)), backends, cfg.timeout_s
+        )
     flags = merge_risk_flags(flags)
     effort = decision.effort
-    safety_floor = (decision.role == "review" and bool(set(flags) & {"security", "data_loss", "data_migration"})
-                    or decision.role == "design" and bool(set(flags) & {"security", "auth"}))
+    safety_floor = (
+        decision.role == "review"
+        and bool(set(flags) & {"security", "data_loss", "data_migration"})
+        or decision.role == "design"
+        and bool(set(flags) & {"security", "auth"})
+    )
     if safety_floor and EFFORTS.index(effort) < EFFORTS.index("high"):
         effort = "high"
     lane = "execution" if decision.role in EXECUTION_ROLES else "reasoning"
     try:
         mapped = cfg.models[host][lane]
     except KeyError as exc:
-        raise ValueError(f"no model mapping configured for host {host!r} and lane {lane!r}") from exc
+        raise ValueError(
+            f"no model mapping configured for host {host!r} and lane {lane!r}"
+        ) from exc
     if effort not in mapped["efforts"]:
-        raise ValueError(f"{host} {lane} model {mapped['primary']} does not support requested effort {effort}; configure a capable primary")
+        raise ValueError(
+            f"{host} {lane} model {mapped['primary']} does not support requested effort {effort}; configure a capable primary"
+        )
     if host == "antigravity":
         from ..adapters.antigravity import resolve_model
+
         primary = resolve_model(mapped["primary"], effort, mapped["efforts"]).model
-        fallback = (resolve_model(mapped["fallback"], effort, mapped["efforts"]).model
-                    if mapped["fallback"] else None)
+        fallback = (
+            resolve_model(mapped["fallback"], effort, mapped["efforts"]).model
+            if mapped["fallback"]
+            else None
+        )
     else:
         primary, fallback = mapped["primary"], mapped["fallback"]
-    usage, missing = _usage(backends, decision.backend) if decision.backend != "explicit" else (None, False)
-    return RoutePlan(ROUTE, cfg.mode, decision, flags, primary, fallback, lane,
-                     decision.effort, effort, usage, missing)
+    usage, missing = (
+        _usage(backends, decision.backend)
+        if decision.backend != "explicit"
+        else (None, False)
+    )
+    return RoutePlan(
+        ROUTE,
+        cfg.mode,
+        decision,
+        flags,
+        primary,
+        fallback,
+        lane,
+        decision.effort,
+        effort,
+        usage,
+        missing,
+    )

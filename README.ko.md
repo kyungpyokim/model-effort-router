@@ -1,6 +1,6 @@
 # Model Effort Router
 
-English version: [README.md](README.md)
+영문판: [README.md](README.md)
 
 MER는 개발 요청을 **역할 + 노력 수준**으로 분류하고, 해당 조합을 호스트 모델에 매핑하며, 외부 worker 요청을 실행할 수 있습니다. Main은 대화 컨텍스트를 유지하고, 필요한 단계를 결정하며, 호스트 네이티브 Subagent를 호출하는 일을 계속 담당합니다. MER는 현재 Codex 턴을 변경하지 않습니다. Worker 실행은 검증 기반 노력 수준 승격을 선택할 수 있습니다.
 
@@ -65,6 +65,18 @@ Jev는 기본적으로 `jev-latest` 모델을 사용합니다. API 키는 저장
 
 설정된 주 backend를 먼저 호출하고, 실패한 경우에만 fallback을 호출합니다.
 
+OpenAI Decisions API도 선택형 `openai_decisions` backend로 사용할 수 있습니다(기본 모델 `gpt-6-luna`).
+
+```json
+{"difficulty": {"backend": "openai_decisions", "fallback": "subscription", "timeout_s": 10}}
+```
+
+`OPENAI_API_KEY` 환경변수를 설정하거나, 키를 저장소가 아닌 전역 `~/.config/model-effort-router/config.json`에 저장합니다.
+
+```json
+{"openai": {"api_key": "your-openai-api-key"}}
+```
+
 Nimble을 로컬 분류기로 사용하려면 Ollama를 설치하고 로컬 서버가 실행 중인지 확인한 뒤 모델을 받아옵니다.
 
 ```sh
@@ -91,14 +103,15 @@ Nimble은 기본적으로 API 키 없이 `http://127.0.0.1:11434/v1/systemone`�
 
 ### 분류기 성능
 
-최신 합성 holdout 150건에서 Jev는 role, effort, 두 항목의 동시 정확도 모두 Nimble보다 높았습니다.
+합성 코퍼스 v3 150건에서 측정한 role/effort 라벨 일치율입니다.
 
 | Backend | Role | Effort | Role + effort |
 |---|---:|---:|---:|
 | Jev (`jev-latest`) | 141/150 (94.0%) | 119/150 (79.3%) | 111/150 (74.0%) |
 | Nimble | 124/150 (82.7%) | 101/150 (67.3%) | 85/150 (56.7%) |
+| OpenAI Decisions API (`gpt-6-luna`) | 136/150 (90.7%) | 119/150 (79.3%) | 107/150 (71.3%) |
 
-분류 정확도를 우선하면 Jev를 권장합니다. Nimble은 로컬 추론에 사용할 수 있으며, 요청이 기기 밖으로 나가지 않게 하려면 fallback을 `none`으로 설정하십시오. 이 결과는 합성 케이스 150건에서 나온 방향성 지표이며 실제 사용자 요청의 성능을 나타내지는 않습니다. 자세한 내용은 [평가 보고서](docs/evaluation/README.md)를 참고하십시오.
+Decisions API는 API 엔드포인트이고 `gpt-6-luna`는 해당 API에서 사용하는 모델입니다. 이 코퍼스에서는 Jev가 가장 높은 일치율을 기록했습니다. 세 결과는 같은 기존 평가 케이스를 사용했으므로 독립적인 실제 사용자 정확도가 아니라 판정 라벨과의 일치율로 해석해야 합니다. Nimble은 로컬 추론에 사용할 수 있으며, 요청이 기기 밖으로 나가지 않게 하려면 fallback을 `none`으로 설정하십시오. 자세한 내용은 [평가 인덱스](docs/evaluation/README.md)와 [Decisions API 측정 기록](docs/evaluation/openai-decisions-20261007.md)을 참고하십시오.
 
 ## 사용법
 
@@ -110,7 +123,7 @@ python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and f
 
 `mer route`는 분류/매핑만 수행합니다. 기본적으로 `mer run`은 worker 요청을 정확히 하나 실행합니다. 추론 역할은 읽기 전용으로 실행됩니다. Antigravity는 분류하고 조언을 제공할 수 있지만, Subagent 격리가 검증되지 않았으므로 worker 실행은 지원되지 않습니다. `mer chat`은 제거되었으므로, route 결과를 사용해 Main이 선택된 Subagent를 호출하도록 요청하십시오. 명시적인 `--role`과 `--effort`는 자동 hook 적합성 판단을 우회하며, 반드시 함께 제공해야 합니다.
 
-실행 후 MER는 worker 전후의 저장소 변경 경로를 비교합니다. 변경이 감지되면 텍스트 출력에는 `door`(`one-way`는 데이터 마이그레이션, 데이터 손실 또는 결제 위험인 경우이고, 그 외에는 `two-way`)와 예상 `blast_radius`(`local` 또는 `broad`), 변경 파일 수 및 최상위 디렉터리 수가 표시됩니다. JSON에는 결과 `risk_flags`와 함께 동일한 값이 `change` 아래에 포함됩니다. Blast radius는 경로 기반 추정치이므로 실제 변경 내용을 검토해 영향을 판단하십시오.
+실행 후 MER는 worker 전후의 저장소 변경 경로를 비교합니다. 변경이 감지되면 텍스트 출력에는 `door`(`one-way`는 데이터 마이그레이션, 데이터 손실 또는 결제 위험인 경우이고, 그 외에는 `two-way`)와 예상 `blast_radius`(`local` 또는 `broad`), 변경 파일 수 및 최상위 디렉터리 수가 표시됩니다. JSON에는 결과 `risk_flags`와 함께 동일한 값이 `change` 아래에 포함됩니다. 영향 범위는 경로를 바탕으로 추정하므로 실제 변경 내용을 검토해 영향을 판단하십시오.
 
 ### Low-first worker 실행
 
@@ -129,7 +142,7 @@ JSON과 route log에는 `first_pass`, `escalation_count`, 그리고 각 시도�
 
 탐색적 비교를 위해 `--retry-low`는 medium 전에 동일한 실패 피드백을 사용해 low 재시도를 한 번 추가합니다. 별도로 동일하게 초기화한 workspace에서 일반 low-first와 비교하고, 전체 chain과 사용량을 보고하십시오. 이미 수정된 workspace에서 두 arm을 모두 실행하지 마십시오.
 
-Hook은 Context Packet 필드와 작성 지침을 제공할 뿐, Main의 대화에서 완성된 packet을 가져오지 않습니다. Main이 현재 요청과 관련 대화의 사실을 추려 Context Packet(`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`)을 채우고 네이티브 Subagent 호출에 직접 포함해야 합니다. 검토에는 `goal`, `decisions`, `constraints`, 실제 diff, 검증 상태/결과만 전달하고 실행하지 않은 검사는 `실행 안 함`으로 표시하십시오. 기본적으로 private reasoning이나 전체 대화를 전달하지 마십시오. Hook은 Main의 대화를 읽거나 네이티브 Subagent를 직접 생성하지 않습니다. `mer run`은 별도 단일 worker 경로라 Main의 대화를 읽을 수 없으므로 필요한 컨텍스트를 명시적인 task 입력에 포함해야 합니다.
+Hook은 Context Packet 필드와 작성 지침을 제공할 뿐, Main의 대화에서 완성된 packet을 가져오지 않습니다. Main이 현재 요청과 관련 대화의 사실을 추려 Context Packet(`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`)을 채우고 네이티브 Subagent 호출에 직접 포함해야 합니다. 검토에는 `goal`, `decisions`, `constraints`, 실제 diff, 검증 상태/결과만 전달하고 실행하지 않은 검사는 `실행 안 함`으로 표시하십시오. 기본적으로 비공개 추론 과정이나 전체 대화를 전달하지 마십시오. Hook은 Main의 대화를 읽거나 네이티브 Subagent를 직접 생성하지 않습니다. `mer run`은 별도 단일 worker 경로라 Main의 대화를 읽을 수 없으므로 필요한 컨텍스트를 명시적인 task 입력에 포함해야 합니다.
 
 ## 설정
 
