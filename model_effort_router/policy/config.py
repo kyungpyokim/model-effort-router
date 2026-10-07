@@ -66,9 +66,9 @@ DEFAULTS = {
             "reasoning": {
                 "primary": "opencode/nemotron-3-ultra-free",
                 "alternatives": [
-                    "opencode/glm-5.3",
-                    "opencode/kimi-k3",
-                    "opencode/grok-4.7",
+                    "opencode-go/glm-5.3",
+                    "opencode-go/kimi-k3",
+                    "opencode-go/grok-4.7",
                 ],
                 "fallback": None,
                 "efforts": list(EFFORTS),

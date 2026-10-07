@@ -30,16 +30,16 @@ class ConfigPrecedenceTest(unittest.TestCase):
         self.assertEqual(c.models["antigravity"]["reasoning"]["primary"],"claude-opus-5-5")
         self.assertEqual(c.models["opencode"]["execution"]["alternatives"],[])
         self.assertEqual(c.models["opencode"]["reasoning"]["alternatives"],[
-            "opencode/glm-5.3", "opencode/kimi-k3", "opencode/grok-4.7"
+            "opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"
         ])
 
     def test_primary_can_select_an_inherited_alternative(self):
         c = resolve_config(repo={"models": {"opencode": {"reasoning": {
-            "primary": "opencode/glm-5.3"
+            "primary": "opencode-go/glm-5.3"
         }}}})
-        self.assertEqual(c.models["opencode"]["reasoning"]["primary"], "opencode/glm-5.3")
+        self.assertEqual(c.models["opencode"]["reasoning"]["primary"], "opencode-go/glm-5.3")
         self.assertEqual(c.models["opencode"]["reasoning"]["alternatives"], [
-            "opencode/kimi-k3", "opencode/grok-4.7"
+            "opencode-go/kimi-k3", "opencode-go/grok-4.7"
         ])
 
     def test_custom_primary_fallback_effort(self):
