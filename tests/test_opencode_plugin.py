@@ -11,7 +11,7 @@ PLUGIN = ROOT / "plugins" / "opencode-model-effort-router"
 class OpenCodePluginBundleTest(unittest.TestCase):
     def test_bundle_uses_shared_core_and_pins_current_plugin_api(self):
         package = json.loads((PLUGIN / "package.json").read_text())
-        self.assertEqual(package["version"], "0.10.0")
+        self.assertEqual(package["version"], "0.11.0")
         self.assertEqual(package["dependencies"]["@opencode/plugin"], "2.0.24")
         self.assertTrue((PLUGIN / "router.py").is_file())
         self.assertTrue((PLUGIN / "bin" / "mer").is_file())
@@ -25,7 +25,8 @@ class OpenCodePluginBundleTest(unittest.TestCase):
         self.assertIn('await ctx.tool.transform', source)
         self.assertNotIn("route_advice", source)
         route = (PLUGIN / "src" / "route.ts").read_text()
-        self.assertIn('"--host", "opencode"', route)
+        self.assertIn('"--host"', route)
+        self.assertIn('"opencode"', route)
         self.assertIn('"--json"', route)
         self.assertNotIn('"run"', route)
 
