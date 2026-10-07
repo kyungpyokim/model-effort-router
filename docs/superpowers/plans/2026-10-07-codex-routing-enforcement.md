@@ -2,11 +2,11 @@
 
 > **For agentic workers:** Use `subagent-driven-development` or `executing-plans` to implement this plan task by task.
 
-**Goal:** Check whether Codex can prevent Main from editing before the routed Subagent starts, then implement only the enforcement the hook API can reliably support. Keep Main as the orchestrator and prevent MER-created retries or recursive routing.
+**Goal:** Check whether Codex can prevent Main from editing before the routed Subagent starts, then implement only the enforcement the hook API can reliably support. Keep Main as the orchestrator; MER must not create retries or recursive routing.
 
 **Scope:** This can at most gate observable code-changing tool calls. It cannot force delegation for read-only analysis unless Codex exposes a separate reliable completion gate. Do not describe the result as universal enforcement.
 
-**Architecture:** First inspect the installed Codex hook contract and verify it in a disposable session. If stable turn identity, dispatch correlation, and effective edit denial are supported, persist compact state for managed turns and gate recognized edits until a matching routed Subagent starts. Otherwise retain the advisory hook and document the host limitation. Hooks never start agents, resubmit prompts, or retry classification.
+**Architecture:** First inspect the installed Codex hook contract and verify it in a disposable session. A gate is feasible only if a dispatch can be mapped to the selected child by a proven identity bridge, the host can reliably deny the relevant edits, and those signals are usable despite event ordering. Matching parent and child `turn_id` values alone is not dispatch correlation. Until a current-version probe verifies these signals, keep the hook advisory-only and do not implement a partial gate. Hooks never start agents, resubmit prompts, or retry classification.
 
 **Runtime:** Shared Python package under `model_effort_router/`; Codex hook manifest and launcher under `plugins/codex-model-effort-router/`; `unittest`.
 
@@ -28,13 +28,15 @@
 - Update `plugins/codex-model-effort-router/skills/classify/SKILL.md` and `README.md` to state Main's workflow and the proven enforcement boundary.
 - Add focused tests in `tests/test_codex_route_state.py` and `tests/test_codex_pre_tool_use.py`; extend `tests/test_user_prompt_submit.py`, `tests/test_entrypoints.py`, and `tests/test_plugin_bundle.py`.
 
-## Task 1: Verify the host enforcement contract
+## Task 1: Verify the host enforcement contract — NO-GO for implementation
 
-- [ ] Read the official Codex hooks reference and inspect the installed plugin manifest, launcher, `entrypoints.hook()`, `host/codex_hooks.py`, and existing hook tests.
-- [ ] In a disposable Codex session, verify: stable turn identity in `UserPromptSubmit`; synchronous prompt-hook completion before tool execution; whether dispatch and `SubagentStart` correlate to the same parent turn; which event can deny code-changing tools; exact dispatch/edit tool names and visible role/model/effort fields; and how Codex behaves after a denial. Dispatch correlation must identify the selected routed worker, not merely any worker from the same turn.
-- [ ] Record the observable boundary. Continue to Tasks 2–5 only if a managed turn can be identified, a dispatch can be correlated, and the denial is effective. Require visible model/effort fields before claiming those settings were enforced. If prerequisites fail, make only the documentation update in Task 5 and stop; do not add state or a partial gate.
+- [x] Read the official Codex hooks reference and inspect the installed plugin manifest, launcher, `entrypoints.hook()`, `host/codex_hooks.py`, and existing hook tests.
+- [ ] In a disposable session on the current installed Codex version, probe `PostToolUse` dispatch output for a child identifier that can be joined to `SubagentStart.agent_id`. Record event order too: `SubagentStart` may arrive before the dispatch `PostToolUse` response, so a response-only bridge may arrive too late to release a gate safely. Do not assume parent and child share `turn_id` or infer identity from timing/order.
+- [x] Record current evidence: installed CLI is 0.160.1; historical 0.159.2 output showed dispatch result `task_name: /root/ack`, while `SubagentStart` exposed a child UUID without a task path. The documented `SubagentStart` schema has no dispatch `tool_use_id` and says the event cannot prevent the child from starting. No effort field is documented. `PreToolUse` can deny supported tool calls, but unsupported fields/hook errors can report an error while allowing the tool call to continue. Tool hooks do not cover every possible code change. Therefore the current result is advisory-only: Main must follow routing advice; no read-only delegation or universal code-edit enforcement is claimed.
+- [ ] Do not claim a current-version live probe: none was run. Keep Tasks 2–4 deferred unless a disposable 0.160.1 probe verifies a reliable dispatch→child identity bridge, usable event ordering, and effective denial for the relevant edit tools. A visible model may be checked if exposed; effort remains advisory unless an enforceable effort signal is observed.
+- [x] Update only the classify skill and plugin README to describe Main's responsibilities and the verified limitation. Stop after documentation; do not add routing state, event hooks, or an edit gate.
 
-## Task 2: Add race-safe managed-turn state (only if Task 1 passes)
+## Task 2: Add race-safe managed-turn state (deferred; only if Task 1 later passes)
 
 Files: add `tests/test_codex_route_state.py` and `model_effort_router/host/codex_route_state.py`.
 
@@ -45,7 +47,7 @@ Files: add `tests/test_codex_route_state.py` and `model_effort_router/host/codex
 
 Run: `MER_CORE_PATH="$PWD" python3 -m unittest tests.test_codex_route_state`
 
-## Task 3: Memoize one route decision per managed turn
+## Task 3: Memoize one route decision per managed turn (deferred; only if Task 1 later passes)
 
 Files: modify `model_effort_router/host/codex_hooks.py`; extend `tests/test_user_prompt_submit.py`.
 
@@ -55,7 +57,7 @@ Files: modify `model_effort_router/host/codex_hooks.py`; extend `tests/test_user
 
 Run: `MER_CORE_PATH="$PWD" python3 -m unittest tests.test_user_prompt_submit`
 
-## Task 4: Correlate the routed dispatch and gate edits
+## Task 4: Correlate the routed dispatch and gate edits (deferred; only if Task 1 later passes)
 
 Files: modify `model_effort_router/host/codex_hooks.py` and `plugins/codex-model-effort-router/hooks/hooks.json`; add `tests/test_codex_pre_tool_use.py`.
 
@@ -68,14 +70,14 @@ Files: modify `model_effort_router/host/codex_hooks.py` and `plugins/codex-model
 
 Run: `MER_CORE_PATH="$PWD" python3 -m unittest tests.test_codex_pre_tool_use tests.test_codex_route_state`
 
-## Task 5: Wire events, document the boundary, and verify
+## Task 5: Wire events, document the boundary, and verify (documentation-only under current NO-GO)
 
-Files: modify `model_effort_router/entrypoints.py`, the Codex launcher and `hooks.json`, `plugins/codex-model-effort-router/skills/classify/SKILL.md`, `README.md`; extend `tests/test_entrypoints.py` and `tests/test_plugin_bundle.py`.
+Files under current NO-GO: `README.md`, `plugins/codex-model-effort-router/skills/classify/SKILL.md`, `plugins/codex-model-effort-router/README.md`. Runtime wiring, manifest, and tests remain deferred unless Task 1 later passes.
 
-- [ ] Add an allowlisted event dispatcher that reads hook stdin once and forwards the event name to the shared handler. Keep the existing `UserPromptSubmit` default for legacy direct callers. Test launcher subprocess input/output for each registered event and unknown-event fail-open behavior.
-- [ ] Register only events proven in Task 1. Assert synchronous configuration and packaged launcher wiring in bundle tests.
-- [ ] Document Main's route → packet → matching Subagent dispatch → integrate sequence. State clearly that this gate covers only observed code-changing tool calls; read-only work and actual Subagent model/effort are covered only if the host exposes enforceable signals.
-- [ ] If Task 1 failed, document the precise missing host capability and leave the advisory runtime behavior unchanged.
+- [ ] Only after a later Task 1 pass: add an allowlisted event dispatcher that reads hook stdin once and forwards the event name to the shared handler; keep the existing `UserPromptSubmit` default for legacy direct callers and test launcher wiring.
+- [ ] Only after a later Task 1 pass: register events proven by the disposable probe.
+- [x] Document Main's route → packet → matching Subagent dispatch → integrate sequence and the current boundary: Main is responsible for following advice; hooks cannot force read-only delegation or universally enforce code edits. Actual model/effort compliance is not claimed without enforceable signals.
+- [x] Leave advisory runtime behavior unchanged because Task 1 prerequisites are not verified.
 
 If implementing the gate, run:
 
@@ -89,7 +91,7 @@ MER_CORE_PATH="$PWD" python3 -m unittest discover
 ## Acceptance criteria
 
 - The outcome matches the verified Codex hook contract; no unsupported guarantee is claimed.
-- When the gate is feasible, duplicate/concurrent events do not independently classify the same managed turn, and only a correlated routed Subagent start releases code-edit tools.
+- When the gate becomes feasible, duplicate/concurrent events do not independently classify the same managed turn, and only a proven-correlated routed Subagent start releases code-edit tools.
 - Direct, no-route, off/manual, child, and missing-ID cases retain defined non-poisoning behavior.
 - Repeated denied calls remain denied; MER never retries, recursively routes, or resubmits.
 - No raw prompts or private reasoning are persisted.

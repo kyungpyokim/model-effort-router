@@ -1,6 +1,8 @@
 # Codex Model Effort Router
 
-Codex UserPromptSubmit integration for the shared MER runtime. The hook adds route and Subagent guidance; it does not mutate the current turn or spawn a Subagent.
+Codex UserPromptSubmit integration for the shared MER runtime. The hook adds route and Subagent guidance; it does not mutate the current turn or spawn a Subagent. Main is responsible for following the advice: prepare the task packet, dispatch the selected host-native Subagent, and integrate its result.
+
+Routing is advisory-only. The current hook signals do not establish a verified dispatch-to-child identity bridge for an edit gate. Hooks cannot force delegation for read-only work, universally enforce code edits, or guarantee runtime model/effort compliance. Main should apply the recommended route when dispatching; model and effort remain recommendations unless Codex exposes enforceable signals.
 
 Install the shared runtime from the repository with `python3 scripts/install_core.py`. Use `MER_CORE_PATH="$PWD"` for development. See the [`classify` skill](skills/classify/SKILL.md) for role/effort routing and the [`review` skill](skills/review/SKILL.md) for the implementation-to-review workflow.
 
