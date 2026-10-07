@@ -24,6 +24,7 @@ DEFAULTS = {
             },
             "reasoning": {
                 "primary": "gpt-6.1-sol",
+                "alternatives": ["gpt-6-astra"],
                 "fallback": "gpt-6-luna",
                 "efforts": list(EFFORTS),
             },
@@ -36,6 +37,7 @@ DEFAULTS = {
             },
             "reasoning": {
                 "primary": "claude-opus-5-5",
+                "alternatives": ["claude-fable-5-1"],
                 "fallback": "claude-sonnet-5-5",
                 "efforts": list(EFFORTS),
             },
@@ -50,6 +52,23 @@ DEFAULTS = {
                 "primary": "claude-opus-5-5",
                 "fallback": None,
                 "efforts": ["medium", "high"],
+            },
+        },
+        "opencode": {
+            "execution": {
+                "primary": "opencode/mimo-v2.6-flash-free",
+                "fallback": None,
+                "efforts": list(EFFORTS),
+            },
+            "reasoning": {
+                "primary": "opencode/nemotron-3-ultra-free",
+                "alternatives": [
+                    "opencode-go/glm-5.3",
+                    "opencode-go/kimi-k3",
+                    "opencode-go/grok-4.7",
+                ],
+                "fallback": None,
+                "efforts": list(EFFORTS),
             },
         },
     },
@@ -89,7 +108,7 @@ def _layer(value, name):
 
 def _validate_models(raw):
     for host, groups in raw.items():
-        if host not in ("codex", "claude", "antigravity") or not isinstance(
+        if host not in ("codex", "claude", "antigravity", "opencode") or not isinstance(
             groups, dict
         ):
             raise ValueError(f"models.{host} must be a host mapping")
@@ -99,6 +118,7 @@ def _validate_models(raw):
             if not isinstance(item, dict) or set(item) - {
                 "primary",
                 "fallback",
+                "alternatives",
                 "efforts",
             }:
                 raise ValueError(
@@ -114,6 +134,22 @@ def _validate_models(raw):
                     raise ValueError(
                         f"models.{host}.{lane}.{key} must be a valid model slug (1-128 ASCII characters)"
                     )
+            alternatives = item.get("alternatives", [])
+            if not isinstance(alternatives, list) or any(
+                not isinstance(model, str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", model)
+                for model in alternatives
+            ):
+                raise ValueError(
+                    f"models.{host}.{lane}.alternatives must be a list of valid model slugs"
+                )
+            if (
+                len(set(alternatives)) != len(alternatives)
+                or item.get("primary") in alternatives
+            ):
+                raise ValueError(
+                    f"models.{host}.{lane}.alternatives must be unique and exclude primary"
+                )
             efforts = item.get("efforts")
             if (
                 not isinstance(efforts, list)
@@ -161,7 +197,16 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
                 for host, groups in source.get(key, {}).items():
                     merged[key].setdefault(host, {})
                     for lane, options in groups.items():
-                        merged[key][host].setdefault(lane, {}).update(options)
+                        current = merged[key][host].setdefault(lane, {})
+                        if "primary" in options and "alternatives" not in options:
+                            alternatives = current.get("alternatives", [])
+                            if isinstance(alternatives, list):
+                                current["alternatives"] = [
+                                    model
+                                    for model in alternatives
+                                    if model != options["primary"]
+                                ]
+                        current.update(options)
             else:
                 merged[key].update(source.get(key, {}))
     router, difficulty = merged["router"], merged["difficulty"]

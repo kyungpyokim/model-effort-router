@@ -18,7 +18,30 @@ class ConfigPrecedenceTest(unittest.TestCase):
         c=resolve_config(user={"router":{"mode":"off"}},repo={"router":{"mode":"auto"}})
         self.assertEqual(c.mode,"auto")
         self.assertEqual(c.models["codex"]["execution"]["primary"],"gpt-6-luna")
+        self.assertEqual(c.models["codex"]["execution"]["alternatives"],["gpt-6-astra"])
         self.assertEqual(c.models["codex"]["reasoning"]["primary"],"gpt-6.1-sol")
+        self.assertEqual(c.models["codex"]["reasoning"]["alternatives"],["gpt-6-astra"])
+        self.assertEqual(c.models["claude"]["execution"]["primary"],"claude-sonnet-5-5")
+        self.assertEqual(c.models["claude"]["execution"]["alternatives"],["claude-fable-5-1"])
+        self.assertEqual(c.models["claude"]["reasoning"]["primary"],"claude-opus-5-5")
+        self.assertEqual(c.models["claude"]["reasoning"]["alternatives"],["claude-fable-5-1"])
+        self.assertEqual(c.models["antigravity"]["execution"]["primary"],"gemini-3.8-flash")
+        self.assertEqual(c.models["antigravity"]["execution"]["alternatives"],["claude-opus-5-5"])
+        self.assertEqual(c.models["antigravity"]["reasoning"]["primary"],"claude-opus-5-5")
+        self.assertEqual(c.models["opencode"]["execution"]["alternatives"],[])
+        self.assertEqual(c.models["opencode"]["reasoning"]["alternatives"],[
+            "opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"
+        ])
+
+    def test_primary_can_select_an_inherited_alternative(self):
+        c = resolve_config(repo={"models": {"opencode": {"reasoning": {
+            "primary": "opencode-go/glm-5.3"
+        }}}})
+        self.assertEqual(c.models["opencode"]["reasoning"]["primary"], "opencode-go/glm-5.3")
+        self.assertEqual(c.models["opencode"]["reasoning"]["alternatives"], [
+            "opencode-go/kimi-k3", "opencode-go/grok-4.7"
+        ])
+
     def test_custom_primary_fallback_effort(self):
         c=resolve_config(repo={"models":{"codex":{"execution":{"primary":"custom","fallback":"backup","efforts":["medium","high"]}}}})
         self.assertEqual((c.models["codex"]["execution"]["primary"],c.models["codex"]["execution"]["fallback"]),("custom","backup"))

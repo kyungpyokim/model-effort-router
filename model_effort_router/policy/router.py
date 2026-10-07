@@ -34,6 +34,7 @@ class RoutePlan:
     classifier_usage_missing: bool = False
     override_rejected: bool = False
     fallback_reason: Optional[str] = None
+    model_options: tuple = ()
 
 
 class _Broken:
@@ -149,8 +150,13 @@ def route(
             if mapped["fallback"]
             else None
         )
+        alternatives = tuple(
+            resolve_model(model, effort, mapped["efforts"]).model
+            for model in mapped.get("alternatives", [])
+        )
     else:
         primary, fallback = mapped["primary"], mapped["fallback"]
+        alternatives = tuple(mapped.get("alternatives", []))
     usage, missing = (
         _usage(backends, decision.backend)
         if decision.backend != "explicit"
@@ -168,4 +174,7 @@ def route(
         effort,
         usage,
         missing,
+        False,
+        None,
+        (primary, *alternatives),
     )

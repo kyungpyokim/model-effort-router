@@ -30,6 +30,10 @@ class TargetingTest(unittest.TestCase):
                 ("Make the job scheduler safe to run on multiple instances", ROUTE),
                 ("Redesign the cache invalidation protocol; stale reads show up with two writers", ROUTE),
                 ("세션 저장소를 Redis로 옮겨줘", ROUTE),
+                ("opencode 플러그인 추가 계획", ROUTE),
+                ("opencode 플러그인 계획 세워줘", ROUTE),
+                ("Add an OpenCode plugin", ROUTE),
+                ("plan opencode plugin", ROUTE),
             ]
         )
 

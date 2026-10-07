@@ -37,13 +37,48 @@ claude plugin install model-effort-router@model-effort-router
 agy plugin install ./plugins/antigravity-model-effort-router
 ```
 
-Antigravity는 분류와 조언을 지원하지만 worker 실행은 지원하지 않습니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/)를 참고하십시오.
+**OpenCode** — 저장소에서 플러그인 의존성을 설치하고 프로젝트의 `opencode.json`에 경로를 추가합니다.
+
+```sh
+cd plugins/opencode-model-effort-router
+bun install --frozen-lockfile
+```
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["./plugins/opencode-model-effort-router"]
+}
+```
+
+모든 호스트 통합은 기본 모델 추천과 설정된 대안 후보를 안내할 수 있습니다. Codex·Claude·Antigravity는 hook 안내에, OpenCode는 `model_options`에 후보를 표시합니다. 이 후보는 현재 모델을 바꾸거나 자동 재시도를 실행하지 않습니다. 호스트별 제약은 각 플러그인 README를 참고하십시오.
+
+Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지원하지 않습니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/), [OpenCode 플러그인 가이드](https://dev.opencode.ai/docs/plugins/)를 참고하십시오.
 
 ## 라우팅 계약
 
 분류기는 `role`과 `effort`를 반환하며, `confidence`와 `reason_code`는 선택 사항입니다. 역할은 `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, `analysis`입니다. 앞의 네 역할은 실행 모델을 사용하고, 나머지는 추론 모델을 사용합니다. 노력 수준은 `low`, `medium`, `high`, `xhigh`입니다. 독립적인 위험 감지는 안전 민감 검토/설계 요청을 최소 `high`까지 올릴 수 있지만, 역할이나 모델 레인은 변경하지 않습니다.
 
-기본값은 Codex 실행 모델 `gpt-6-luna`, 추론 모델 `gpt-6.1-sol`이며, Claude 실행 모델 `claude-sonnet-5-5`, 추론 모델 `claude-opus-5-5`입니다. 각 호스트/레인에는 설정 가능한 primary, fallback, 지원 effort가 있습니다. MER는 stderr에서 실행 fallback을 추론하지 않으며, worker가 시작되었을 수 있는 경우 재시도하지 않습니다. 명시적인 사전 실행 불가 신호가 있을 때만 fallback을 허용합니다. 분류기 provider는 설정된 다음 분류기로 넘어갈 수 있습니다. 모두 실패하면 CLI 라우팅은 오류를 반환하고, hook은 fail open으로 동작하여 사용자 요청을 막지 않습니다.
+기본값은 Codex 실행 `gpt-6-luna`·추론 `gpt-6.1-sol`, Claude 실행 `claude-sonnet-5-5`·추론 `claude-opus-5-5`, Antigravity 위임 프로필 `gemini-3.8-flash`, OpenCode 실행 조언 `opencode/mimo-v2.6-flash-free`·추론 조언 `opencode/nemotron-3-ultra-free`입니다. OpenCode 추론 후보는 `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, `opencode-go/grok-4.7`입니다. 각 호스트/레인에서 `primary`, 선택적 `alternatives`, `fallback`, 지원 effort를 설정할 수 있습니다. `primary`를 추천하고 `alternatives`를 사용자가 고를 후보로 표시합니다. 예시:
+
+```json
+{
+  "models": {
+    "codex": {
+      "execution": {
+        "primary": "gpt-6-luna",
+        "alternatives": ["gpt-6-astra", "provider/model-id"]
+      },
+      "reasoning": {
+        "primary": "gpt-6.1-sol",
+        "alternatives": ["gpt-6-astra", "provider/another-model"]
+      }
+    }
+  }
+}
+```
+
+예시 모델 ID는 각 호스트에서 사용할 수 있는 모델로 바꾸십시오. OpenCode는 `model_options`를 반환하고, 다른 hook은 안내문에 alternatives를 표시합니다. 대안 후보는 실행 재시도에 사용하지 않습니다. MER는 stderr만으로 실행 fallback을 추론하지 않으며 worker가 시작되었을 수 있는 경우 재시도하지 않습니다. 명시적인 사전 실행 불가 신호가 있을 때만 fallback을 허용합니다. 분류기 provider는 설정된 다음 분류기로 넘어갈 수 있습니다. 모두 실패하면 CLI 라우팅은 오류를 반환하고 hook은 fail open으로 사용자 요청을 막지 않습니다.
 
 ## 분류기 backend 설정
 
@@ -121,7 +156,7 @@ python3 <plugin>/bin/mer route --host codex --role implementation --effort high 
 python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and fix the focused tests'
 ```
 
-`mer route`는 분류/매핑만 수행합니다. 기본적으로 `mer run`은 worker 요청을 정확히 하나 실행합니다. 추론 역할은 읽기 전용으로 실행됩니다. Antigravity는 분류하고 조언을 제공할 수 있지만, Subagent 격리가 검증되지 않았으므로 worker 실행은 지원되지 않습니다. `mer chat`은 제거되었으므로, route 결과를 사용해 Main이 선택된 Subagent를 호출하도록 요청하십시오. 명시적인 `--role`과 `--effort`는 자동 hook 적합성 판단을 우회하며, 반드시 함께 제공해야 합니다.
+`mer route`는 분류/매핑만 수행합니다. 기본적으로 `mer run`은 worker 요청을 정확히 하나 실행합니다. 추론 역할은 읽기 전용으로 실행됩니다. Antigravity는 Subagent 격리가 검증되지 않아, OpenCode는 plugin worker 실행 계약이 없어 worker 실행을 지원하지 않습니다. OpenCode 플러그인은 `route_advice` 조언 도구만 제공합니다. `mer chat`은 제거되었으므로, route 결과를 사용해 Main이 선택된 Subagent를 호출하도록 요청하십시오. 명시적인 `--role`과 `--effort`는 자동 hook 적합성 판단을 우회하며, 반드시 함께 제공해야 합니다.
 
 실행 후 MER는 worker 전후의 저장소 변경 경로를 비교합니다. 변경이 감지되면 텍스트 출력에는 `door`(`one-way`는 데이터 마이그레이션, 데이터 손실 또는 결제 위험인 경우이고, 그 외에는 `two-way`)와 예상 `blast_radius`(`local` 또는 `broad`), 변경 파일 수 및 최상위 디렉터리 수가 표시됩니다. JSON에는 결과 `risk_flags`와 함께 동일한 값이 `change` 아래에 포함됩니다. 영향 범위는 경로를 바탕으로 추정하므로 실제 변경 내용을 검토해 영향을 판단하십시오.
 
@@ -154,8 +189,20 @@ Hook은 Context Packet 필드와 작성 지침을 제공할 뿐, Main의 대화�
   "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10},
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-luna", "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "gpt-6.1-sol", "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
+    },
+    "claude": {
+      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-opus-5-5", "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh"]}
+    },
+    "antigravity": {
+      "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-opus-5-5"], "fallback": null, "efforts": ["medium", "high"]},
+      "reasoning": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]}
+    },
+    "opencode": {
+      "execution": {"primary": "opencode/mimo-v2.6-flash-free", "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "opencode/nemotron-3-ultra-free", "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]}
     }
   }
 }

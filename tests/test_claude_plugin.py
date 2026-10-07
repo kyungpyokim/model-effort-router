@@ -46,8 +46,8 @@ class ManifestTest(unittest.TestCase):
     def test_claude_and_codex_skill_contracts_are_host_specific(self):
         codex_skill = (PLUGIN / "skills" / "classify" / "SKILL.md").read_text()
         claude_skill = (CLAUDE / "skills" / "classify" / "SKILL.md").read_text()
-        self.assertIn("gpt-6.1-sol", codex_skill)
-        self.assertIn("claude-opus-5-5", claude_skill)
+        self.assertIn("gpt-6-luna", codex_skill)
+        self.assertIn("claude-sonnet-5-5", claude_skill)
 
 
 class HookTest(HookCase):
