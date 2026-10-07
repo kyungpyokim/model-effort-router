@@ -20,10 +20,7 @@ class UserPromptSubmitTest(HookCase):
     def test_advisory_includes_role_effort_model_and_context_packet(self):
         self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
         advice = self.context(self.submit("Review the diff in parser.py"))
-        self.assertIn("Role: review", advice)
-        self.assertIn("worker lane: reasoning", advice)
-        self.assertIn("gpt-6.1-sol", advice)
-        self.assertIn("· effort medium", advice)
+        self.assertIn("review → reasoning · gpt-6.1-sol · effort medium", advice)
         self.assertIn("goal, decisions, constraints, actual diff, verification status/results", advice)
         self.assertIn("current request and relevant conversation", advice)
         self.assertIn("populate", advice)
@@ -39,14 +36,14 @@ class UserPromptSubmitTest(HookCase):
     def test_risk_floor_only_raises_effort_for_protected_roles(self):
         self.fake = {"role": "review", "effort": "low"}
         advice = self.context(self.submit("Review the migration that drops the old records in db.py"))
-        self.assertIn("effort high", advice)
-        self.assertIn("Role: review", advice)
+        self.assertIn("· effort high", advice)
+        self.assertIn("review →", advice)
 
     def test_explicit_phase_override_skips_classifier(self):
         self.fake = {"raise": True}
         advice = self.context(self.submit("/router role=analysis effort=xhigh\nAnalyze parser.py"))
-        self.assertIn("Role: analysis", advice)
-        self.assertIn("effort xhigh", advice)
+        self.assertIn("analysis →", advice)
+        self.assertIn("· effort xhigh", advice)
 
     def test_classifier_failure_is_fail_open_and_recorded_without_prompt(self):
         self.fake = {"raise": True}
@@ -99,7 +96,7 @@ class UserPromptSubmitTest(HookCase):
     def test_backend_target_routes_korean_follow_up_the_regex_would_drop(self):
         self.fake = {"role": "analysis", "effort": "low", "target": "route"}
         advice = self.context(self.submit("원인 파악해"))
-        self.assertIn("Role: analysis", advice)
+        self.assertIn("analysis →", advice)
         self.assertEqual(self.log_events()[0]["target"], "route")
 
     def test_backend_no_route_is_silent_and_logged_with_decision(self):
@@ -125,7 +122,7 @@ class UserPromptSubmitTest(HookCase):
     def test_readonly_code_analysis_is_route_eligible(self):
         self.fake = {"role": "analysis", "effort": "high"}
         advice = self.context(self.submit("Analyze the authentication flow in auth.py"))
-        self.assertIn("Role: analysis", advice)
+        self.assertIn("analysis →", advice)
 
     def test_off_and_manual_modes_remain_silent_without_phase_override(self):
         self.write_repo_config({"router": {"mode": "off"}, "difficulty": {"backend": "fake"}})
@@ -153,7 +150,7 @@ class UserPromptSubmitTest(HookCase):
             stdin=json.dumps({"session_id": "s", "cwd": str(self.repo), "prompt": DEV}),
         )
         self.assertEqual(proc.returncode, 0)
-        self.assertIn("Role:", self.context(proc))
+        self.assertIn("[model-effort-router] implementation →", self.context(proc))
 
 
 class SessionContextTest(HookCase):
@@ -234,7 +231,7 @@ class SessionContextTest(HookCase):
             raise OSError("cannot spawn")
 
         out = self.call(spawn=boom)
-        self.assertIn("Role: fix", json.loads(out)["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("fix →", json.loads(out)["hookSpecificOutput"]["additionalContext"])
 
     def test_codex_gets_context_and_a_background_refresh_when_due(self):
         rows = [

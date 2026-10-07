@@ -46,8 +46,8 @@ def main():
                 f"; other configured options: {', '.join(alternatives)} (user-selectable, not automatic fallbacks)"
             )
         message = (
-            "[model-effort-router] Preferred delegated profile: "
-            f"{model_advice}. Give a native Antigravity Subagent a concise context packet "
+            # No role classification happens in this hook: the tagged model/effort pair leads, guidance follows.
+            f"[model-effort-router] {model_advice}. Give a native Antigravity Subagent a concise context packet "
             "from the current request and relevant conversation. For code changes, delegate implementation, "
             "integrate it, then run the separate write-capable review workflow. This is guidance for "
             "Subagent selection; the host's current Subagent controls do not guarantee this exact model or "

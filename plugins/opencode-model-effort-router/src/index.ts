@@ -17,22 +17,21 @@ function appendAdvice(text: string, advice: Record<string, unknown>) {
     guidance +=
       "Mark unrun checks as not run; ask the reviewer to inspect the diff, fix actionable findings, run relevant checks, and report unresolved issues. ";
   }
-  const modelAdvice =
-    `recommended model: ${advice.model} · effort ${advice.effort}` +
-    (alternatives.length
-      ? `; other configured options: ${alternatives.join(", ")} (user-selectable, not automatic fallbacks)`
-      : "");
+  const other = alternatives.length
+    ? ` Other configured options: ${alternatives.join(", ")} (user-selectable, not automatic fallbacks).`
+    : "";
   return (
-    `${text}\n\n[model-effort-router] Main: route this task to a native Subagent using OpenCode's model/effort controls. ` +
-    `Role: ${advice.role}; worker lane: ${advice.agent}; ${modelAdvice}. ${guidance}` +
-    "Integrate the result and decide whether another worker is needed. The hook advises but does not invoke the Subagent or change this turn's model/settings."
+    `${text}\n\n[model-effort-router] ${advice.role} → ${advice.agent} · ${advice.model} · effort ${advice.effort}. ` +
+    `Main: route this task to a native Subagent using OpenCode's model/effort controls. ${guidance}` +
+    "Integrate the result and decide whether another worker is needed. The hook advises but does not invoke the Subagent or change this turn's model/settings." +
+    other
   );
 }
 
 function routingBanner(advice: Record<string, unknown>) {
   return (
-    `[model-effort-router] ${String(advice.role)} → ${String(advice.model)}` +
-    ` · effort ${String(advice.effort)}`
+    `[model-effort-router] ${String(advice.role)} → ${String(advice.agent)}` +
+    ` · ${String(advice.model)} · effort ${String(advice.effort)}`
   );
 }
 

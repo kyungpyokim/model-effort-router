@@ -50,15 +50,17 @@ def render(plan, mer_cmd, host):
     if is_review:
         handoff += "Mark checks that were not run as not run. Ask the review Subagent to inspect the diff, fix actionable findings, run relevant verification, and report changes and unresolved issues. "
     alternatives = tuple(model for model in plan.model_options if model != plan.model)
-    model_advice = f"recommended model: {effort_pair(plan.model, plan.applied_effort)}"
-    if alternatives:
-        model_advice += (
-            f"; other configured options: {', '.join(alternatives)} (user-selectable, not automatic fallbacks)"
-        )
+    other = (
+        f" Other configured options: {', '.join(alternatives)} (user-selectable, not automatic fallbacks)."
+        if alternatives
+        else ""
+    )
     invocation = _claude_invocation(plan) if host.name == "claude" else ""
     return (
-        "[model-effort-router] Main: route this single task to a native Subagent using the host's supported "
+        f"[model-effort-router] {decision.role} → {plan.agent} · {effort_pair(plan.model, plan.applied_effort)}. "
+        "Main: route this single task to a native Subagent using the host's supported "
         f"model/effort controls, or handle it directly when Main's model/effort already match or project instructions require it. "
-        f"Role: {decision.role}; worker lane: {plan.agent}; {model_advice}. {invocation}Build a compact Context Packet with {packet}. {handoff}"
+        f"{invocation}Build a compact Context Packet with {packet}. {handoff}"
         "Integrate the result, then decide whether another worker is needed. The hook provides advice only; it does not inspect Main's conversation or invoke the Subagent, and does not change this Main turn's model/settings."
+        + other
     )
