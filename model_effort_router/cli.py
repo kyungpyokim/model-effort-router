@@ -21,6 +21,7 @@ from .host.codex_hooks import _registry, load_configs
 from .logging import route_log
 from .policy.overrides import parse_override
 from .policy.router import route
+from .policy.targeting import NO_ROUTE
 from .review import _git, git_diff
 
 
@@ -154,7 +155,7 @@ def main(argv=None, *, env=None, runner=None, out=None):
     if plan.override_rejected:
         print("mer: invalid /router override; use `/router role=<role> effort=<effort>` or `/router mode=<mode>`", file=sys.stderr)
         return 2
-    if plan.decision is None:
+    if plan.decision is None or plan.target == NO_ROUTE:
         if args.command == "route" and args.automatic:
             print(json.dumps({"route": "no_route"}) if args.json else "", file=out)
             return 0

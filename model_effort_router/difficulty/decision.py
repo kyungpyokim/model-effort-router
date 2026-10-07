@@ -7,6 +7,7 @@ from .efforts import EFFORTS
 
 ROLES = ("implementation", "fix", "lint", "test", "plan", "design", "review", "analysis")
 EXECUTION_ROLES = frozenset(("implementation", "fix", "lint", "test"))
+TARGETS = ("route", "no_route")
 RISK_FLAGS = ("security", "auth", "payment", "data_migration", "data_loss", "concurrency")
 
 
@@ -28,6 +29,7 @@ class DifficultyDecision:
     backend: str
     confidence: Optional[float] = None
     reason_code: Optional[str] = None
+    target: Optional[str] = None  # set only by a backend that also decides eligibility (`provides_target`)
 
     def __post_init__(self):
         if self.role not in ROLES:
@@ -43,3 +45,5 @@ class DifficultyDecision:
             raise ValueError(f"confidence must be finite and in [0, 1], got {self.confidence!r}")
         if self.reason_code is not None and not isinstance(self.reason_code, str):
             raise ValueError("reason_code must be a string")
+        if self.target is not None and self.target not in TARGETS:
+            raise ValueError(f"target must be one of {TARGETS}, got {self.target!r}")

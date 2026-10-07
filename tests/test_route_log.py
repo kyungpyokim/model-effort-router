@@ -4,7 +4,8 @@ import unittest
 from model_effort_router.difficulty.decision import DifficultyDecision, DifficultyInput
 from model_effort_router.difficulty.subscription import SubscriptionBackend
 from model_effort_router.logging import route_log
-from model_effort_router.policy.router import route
+from model_effort_router.policy.router import RoutePlan, route
+from model_effort_router.policy.targeting import NO_ROUTE
 
 STREAM = "\n".join([
     json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": '{"role":"implementation","effort":"medium"}'}}),
@@ -12,6 +13,19 @@ STREAM = "\n".join([
                                                       "cache_write_input_tokens": 0, "output_tokens": 20,
                                                       "reasoning_output_tokens": 0}}),
 ])
+
+
+class NoRouteEventTest(unittest.TestCase):
+    def test_no_route_plan_with_decision_logs_target_and_classifier_effort(self):
+        plan = RoutePlan(NO_ROUTE, "auto", DifficultyDecision("analysis", "low", "jev", target="no_route"))
+        ev = route_log.route_event(plan, latency_ms=1, prompt="p", configured_backend="jev")
+        self.assertEqual(ev["target"], "no_route")
+        self.assertEqual((ev["decision"]["target"], ev["decision"]["effort"], ev["decision"]["requested_effort"]),
+                         ("no_route", "low", "low"))
+
+    def test_decision_without_target_has_no_target_key(self):
+        plan = route("x", role_override="fix", effort_override="low", explicit=True)
+        self.assertNotIn("target", route_log.route_event(plan, latency_ms=1, prompt="p", configured_backend="a")["decision"])
 
 
 class ClassifierUsageInRouteTest(unittest.TestCase):

@@ -2,6 +2,7 @@ import json
 import unittest
 
 from model_effort_router.difficulty.decision import ROLES, DifficultyInput
+from model_effort_router.difficulty import jev
 from model_effort_router.difficulty.jev import (
     JevBackend,
     MissingKeyError,
@@ -12,11 +13,12 @@ from model_effort_router.policy.config import resolve_config
 from model_effort_router.policy.router import _make_backends
 
 
-def response(role="fix", effort="medium", confidence=0.8, usage=None):
+def response(role="fix", effort="medium", confidence=0.8, usage=None, target="route"):
     body = {
         "answers": {
             "role": {"choice": role, "confidence": confidence},
             "effort": {"choice": effort},
+            "target": {"choice": target},
         }
     }
     if usage is not None:
@@ -113,6 +115,7 @@ class JevContractTest(unittest.TestCase):
                     "answers": {
                         "role": {"choice": "analysis", "confidence": 0.7},
                         "effort": {"choice": "high"},
+                        "target": {"choice": "route"},
                     }
                 }
             )
@@ -120,7 +123,7 @@ class JevContractTest(unittest.TestCase):
         backend = JevBackend(transport=transport, env={"TYPESAFE_API_KEY": "test-key"})
         got = backend.classify(DifficultyInput("Analyze parser", ("src/parser.py",)), 4)
         self.assertEqual((got.role, got.effort), ("analysis", "high"))
-        self.assertEqual(set(seen["body"]["questions"]), {"role", "effort"})
+        self.assertEqual(set(seen["body"]["questions"]), {"role", "effort", "target"})
         role = seen["body"]["questions"]["role"]
         self.assertEqual(set(role["criteria"]), set(ROLES))
         self.assertTrue(all(role["criteria"][name] != name for name in ROLES))
@@ -135,6 +138,24 @@ class JevContractTest(unittest.TestCase):
         self.assertIn("production data", effort["criteria"]["xhigh"].lower())
         self.assertIn("beyond xhigh", effort["criteria"]["max"].lower())
         self.assertEqual(seen["timeout"], 4)
+
+    def test_target_question_and_answer_are_part_of_the_decision(self):
+        t = FakeTransport(response("analysis", "low", target="no_route"))
+        got = JevBackend(transport=t, env={"TYPESAFE_API_KEY": "k"}).classify(DifficultyInput("승인"), 3)
+        self.assertEqual(got.target, "no_route")
+        question = t.calls[0][2]["questions"]["target"]
+        self.assertEqual((question["type"], set(question["criteria"])), ("choice", {"route", "no_route"}))
+        self.assertIn("approvals", question["criteria"]["no_route"])
+        self.assertTrue(JevBackend.provides_target)
+        self.assertEqual(set(jev.QUESTIONS), {"role", "effort"})
+
+    def test_missing_or_invalid_target_answer_is_a_backend_error(self):
+        for answers in ({"role": {"choice": "fix"}, "effort": {"choice": "low"}},
+                        {"role": {"choice": "fix"}, "effort": {"choice": "low"}, "target": {"choice": "maybe"}},
+                        {"role": {"choice": "fix"}, "effort": {"choice": "low"}, "target": "route"}):
+            backend = JevBackend(transport=FakeTransport({"answers": answers}), env={"TYPESAFE_API_KEY": "k"})
+            with self.subTest(answers=answers), self.assertRaises(BackendOutputError):
+                backend.classify(DifficultyInput("x"), 1)
 
     def test_missing_key_fails_for_provider_fallback(self):
         with self.assertRaises(MissingKeyError):

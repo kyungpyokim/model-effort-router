@@ -5,7 +5,7 @@ import threading
 import urllib.error
 import urllib.request
 
-from .decision import DifficultyDecision, DifficultyInput
+from .decision import TARGETS, DifficultyDecision, DifficultyInput
 from .subscription import MAX_PATHS, MAX_TASK_CHARS, BackendOutputError
 
 URL = "https://api.typesafe.ai/v1/systemone"
@@ -50,6 +50,17 @@ QUESTIONS = {
                 "uncertainty, and high consequences require sustained analysis beyond xhigh."),
     }},
 }
+# Asked only by backends with `provides_target` (JevBackend); Nimble's target accuracy is unmeasured.
+TARGET_QUESTION = {"type": "choice", "instructions": (
+    "Does the message ask for development work? Judge the requested work, not keywords. "
+    "Short follow-ups in any language (for example 'find the cause', 'change that value', 'fix it') "
+    "that ask for work on the code or project in progress count as route."
+), "criteria": {
+    "route": ("The message asks for development work on code or the project: implement, fix, test, lint, "
+              "plan, design, review, or analyze/explain code, behavior, tooling, config, or this project."),
+    "no_route": ("Chit-chat, acknowledgements or bare approvals (for example 'ok', '승인', '진행'), "
+                 "or requests unrelated to software development."),
+}}
 
 
 class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
@@ -94,7 +105,8 @@ def parse_decision(data, backend):
         raise BackendOutputError("classifier response is not an object")
     try:
         return DifficultyDecision(role=data["role"], effort=data["effort"], backend=backend,
-                                  confidence=data.get("confidence"), reason_code=data.get("reason_code"))
+                                  confidence=data.get("confidence"), reason_code=data.get("reason_code"),
+                                  target=data.get("target"))
     except (KeyError, TypeError, ValueError) as exc:
         raise BackendOutputError(f"{backend} returned an invalid role/effort decision") from exc
 
@@ -102,6 +114,7 @@ def parse_decision(data, backend):
 class SystemOneBackend:
     name = None
     calls_model = True
+    provides_target = False
 
     def __init__(self, transport=default_transport, model=None, env=None, api_key=None, **_):
         self._transport, self._model, self._env, self._api_key = transport, model, env, api_key
@@ -115,8 +128,9 @@ class SystemOneBackend:
         env = os.environ if self._env is None else self._env
         url, headers, model = self._endpoint(env)
         paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
+        questions = {**QUESTIONS, "target": TARGET_QUESTION} if self.provides_target else QUESTIONS
         body = json.dumps({"state": f"Task:\n{task.task[:MAX_TASK_CHARS]}\n\nRelevant paths:\n{paths}",
-                           "model": model, "questions": QUESTIONS}).encode()
+                           "model": model, "questions": questions}).encode()
         status, text = self._transport(url, headers, body, timeout_s)
         if not 200 <= status < 300:
             raise RuntimeError(f"{self.name} HTTP {status}")
@@ -128,6 +142,11 @@ class SystemOneBackend:
                                    and isinstance(v, int) and not isinstance(v, bool) and v >= 0}
             answers = data["answers"]
             parsed = {key: answers[key].get("choice") for key in ("role", "effort")}
+            if self.provides_target:
+                target = answers["target"].get("choice")
+                if target not in TARGETS:
+                    raise BackendOutputError(f"{self.name} target answer is missing or not one of the offered choices")
+                parsed["target"] = target
             confidence = answers["role"].get("confidence") if isinstance(answers["role"], dict) else None
             if confidence is not None:
                 parsed["confidence"] = confidence
@@ -135,11 +154,12 @@ class SystemOneBackend:
         except (ValueError, KeyError, TypeError, AttributeError) as exc:
             if isinstance(exc, BackendOutputError):
                 raise
-            raise BackendOutputError(f"{self.name} response missing role/effort answers") from exc
+            raise BackendOutputError(f"{self.name} response missing role/effort/target answers") from exc
 
 
 class JevBackend(SystemOneBackend):
     name = "jev"
+    provides_target = True  # its decision carries the routing target; the router asks it before the regex gate
 
     def _endpoint(self, env):
         key = self._api_key or env.get(KEY_ENV)

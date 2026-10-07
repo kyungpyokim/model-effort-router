@@ -18,3 +18,5 @@ Each lane's `primary` is the recommended Subagent model. Add host-supported mode
 ```
 
 Replace the example alternatives with model IDs available to your Claude Subagents. The hook recommends the primary and lists configured alternatives; it does not change Main's model or launch a Subagent.
+
+Claude Code Agent calls can override `model` per call (aliases `sonnet`, `opus`, `haiku`, `fable`) but take effort only from the agent definition, so the plugin ships `agents/effort-{low,medium,high,xhigh,max}.md`, one worker per effort level. The hook advice names the call to make, for example `Agent(subagent_type="model-effort-router:effort-high", model="opus")`. Haiku has no effort support, so its advice is a plain `Agent(model="haiku")`; a model ID without an alias gets no call, and Main handles the task directly or uses a project agent in `.claude/agents/` with `model:` set. Main may also handle a task directly when its own model and effort already match.

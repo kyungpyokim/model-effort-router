@@ -90,6 +90,8 @@ Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지
 }
 ```
 
+`backend: jev`이면 호스트가 만든 메시지를 제외한 모든 프롬프트가 Jev API로 전송되어 라우팅 대상 여부(`route`/`no_route`), role, effort를 판정합니다. 키워드 규칙은 Jev가 실패했을 때 fallback backend 호출 여부만 결정합니다.
+
 Jev는 기본적으로 `jev-latest` 모델을 사용합니다. API 키는 저장소 설정이 아닌 `~/.config/model-effort-router/config.json`에 저장합니다.
 
 ```json

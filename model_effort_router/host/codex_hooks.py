@@ -12,7 +12,6 @@ from ..difficulty.subscription import GUARD_ENV, SubscriptionBackend
 from ..logging import route_log
 from ..policy.config import resolve_config
 from ..policy.router import route
-from ..policy.targeting import NO_ROUTE
 from . import advice, hosts
 
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
@@ -76,18 +75,27 @@ def user_prompt_submit(data, env, plugin_root):
         repo_cfg = _with_timeout(repo_cfg, MAX_BACKEND_TIMEOUT_S)
     started = time.monotonic()
     host = hosts.get(env=env)
-    plan = route(prompt, repo_config=repo_cfg, user_config=user_cfg, registry=registry, host=host.name)
-    latency_ms = (time.monotonic() - started) * 1000
-    if plan.target == NO_ROUTE and plan.decision is None:
+    try:
+        plan = route(prompt, repo_config=repo_cfg, user_config=user_cfg, registry=registry, host=host.name)
+    except Exception as exc:  # fail open, but leave a trace: a routing error must not look like a dropped prompt
+        _append(env, data, sdir, sid, route_log.error_event(
+            exc, latency_ms=(time.monotonic() - started) * 1000, prompt=prompt, configured_backend=cfg.backend,
+            timeout_clamped=clamped))
         return None
+    latency_ms = (time.monotonic() - started) * 1000
     text = advice.render(plan, f'python3 {Path(plugin_root) / "bin" / "mer"}', host)
     out = _context_output("UserPromptSubmit", text) if text else None
-    try:
-        route_log.append(sdir, sid, route_log.route_event(
+    if plan.mode != "off":  # routing turned off by the user: nothing to record
+        _append(env, data, sdir, sid, route_log.route_event(
             plan, latency_ms=latency_ms, prompt=prompt, configured_backend=cfg.backend, timeout_clamped=clamped))
+    return out
+
+
+def _append(env, data, sdir, sid, event):
+    try:
+        route_log.append(sdir, sid, event)
     except Exception as exc:
         _log_error(env, data, exc, "UserPromptSubmit")
-    return out
 
 
 def _log_error(env, data, exc, event):

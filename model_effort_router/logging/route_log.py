@@ -33,6 +33,15 @@ def prompt_fingerprint(prompt):
     return {"prompt_sha": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12], "prompt_len": len(prompt)}
 
 
+def error_event(exc, *, latency_ms, prompt, configured_backend, timeout_clamped=False):
+    """A prompt whose routing raised: type name only, since messages can carry config or prompt text."""
+    ev = {"event": "route", "target": "error", "error_type": type(exc).__name__, "configured_backend": configured_backend,
+          "latency_ms": round(latency_ms, 1), **prompt_fingerprint(prompt)}
+    if timeout_clamped:
+        ev["timeout_clamped"] = True
+    return ev
+
+
 def route_event(plan, *, latency_ms, prompt, configured_backend, timeout_clamped=False):
     decision = plan.decision
     ev = {"event": "route", "target": plan.target, "mode": plan.mode,
@@ -46,11 +55,13 @@ def route_event(plan, *, latency_ms, prompt, configured_backend, timeout_clamped
         ev["classifier_usage"] = dict(plan.classifier_usage)  # token counts only
     if decision:
         ev["decision"] = {
-            "role": decision.role, "effort": plan.applied_effort, "backend": decision.backend,
+            "role": decision.role, "effort": plan.applied_effort or decision.effort, "backend": decision.backend,
             "confidence": decision.confidence, "reason_code": decision.reason_code,
             "risk_flags": list(plan.risk_flags), "model": plan.model,
-            "requested_effort": plan.requested_effort, "applied_effort": plan.applied_effort,
+            "requested_effort": plan.requested_effort or decision.effort, "applied_effort": plan.applied_effort,
         }
+        if decision.target:
+            ev["decision"]["target"] = decision.target
         if decision.backend != "explicit":
             ev["classifier_fallback"] = decision.backend != configured_backend
     return ev

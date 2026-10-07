@@ -19,7 +19,7 @@ from model_effort_router.host import hosts
 from model_effort_router.host.codex_hooks import main as hook_main
 from model_effort_router.policy.config import resolve_config
 from model_effort_router.policy.overrides import parse_override
-from model_effort_router.policy.router import route
+from model_effort_router.policy.router import RoutePlan, route
 from model_effort_router.policy.targeting import classify_target, NO_ROUTE, ROUTE
 from model_effort_router.difficulty.subscription import DifficultyInput, SubscriptionBackend, build_prompt
 
@@ -361,6 +361,13 @@ class CliAndHookTests(unittest.TestCase):
         advice = render(plan, "mer", hosts.CODEX)
         self.assertIn("does not change this Main turn", advice)
         self.assertNotIn("turn/settings/update", advice)
+
+    def test_cli_automatic_route_reports_no_route_even_when_the_classifier_decided_it(self):
+        decision = DifficultyDecision("analysis", "low", "jev", target="no_route")
+        out = io.StringIO()
+        with patch("model_effort_router.cli.route", return_value=RoutePlan(NO_ROUTE, "auto", decision)):
+            status = main(["route", "--automatic", "--json", "승인"], env={"HOME": "/nonexistent"}, out=out)
+        self.assertEqual((status, json.loads(out.getvalue())), (0, {"route": "no_route"}))
 
     def test_chat_is_migration_error_and_does_not_start_a_session(self):
         self.assertEqual(main(["chat", "old flow"], env={}, out=io.StringIO()), 2)

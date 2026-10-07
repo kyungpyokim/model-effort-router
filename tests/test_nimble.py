@@ -67,6 +67,11 @@ class NimbleProviderTest(unittest.TestCase):
         self.assertEqual(plan.decision.backend, "subscription")
         subscription.classify.assert_called_once()
 
+    def test_nimble_does_not_ask_for_or_provide_a_target(self):
+        transport = FakeTransport(response(target="no_route"))
+        decision = NimbleBackend(transport=transport, env={}).classify(DifficultyInput(TASK), 2)
+        self.assertEqual((NimbleBackend.provides_target, decision.target), (False, None))
+
     def test_systemone_question_contract_matches_jev(self):
         self.assertEqual(set(jev.QUESTIONS), {"role", "effort"})
 

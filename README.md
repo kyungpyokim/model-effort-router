@@ -90,6 +90,8 @@ The classifier backend decides the request's role and effort. It is separate fro
 }
 ```
 
+With `backend: jev`, every prompt that is not host-generated is sent to the Jev API, which decides eligibility (`route` or `no_route`), role and effort. The keyword rules only gate the fallback backend when Jev fails.
+
 Jev uses the TypeSafe `jev-latest` model by default. Store its API key in `~/.config/model-effort-router/config.json`, never in repository config:
 
 ```json

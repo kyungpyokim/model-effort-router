@@ -46,9 +46,20 @@ class UserPromptSubmitTest(HookCase):
         self.fake = {"raise": True}
         proc = self.submit()
         self.assertEqual((proc.returncode, proc.stdout), (0, ""))
-        events = self.log_events()
-        self.assertEqual([ev["event"] for ev in events], ["error"])
-        self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(events))
+        (event,) = self.log_events()
+        self.assertEqual((event["event"], event["target"], event["error_type"]), ("route", "error", "ClassificationError"))
+        self.assertEqual(len(event["prompt_sha"]), 12)
+        self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(event))
+        self.assertNotIn("fake backend failure", json.dumps(event))
+
+    def test_unsupported_effort_error_is_logged_not_silently_dropped(self):
+        self.fake = {"effort": "max"}
+        self.write_repo_config({"difficulty": {"backend": "fake"}, "models": {"codex": {"execution": {
+            "primary": "gpt-6-luna", "efforts": ["low", "medium"]}}}})
+        proc = self.submit()
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        (event,) = self.log_events()
+        self.assertEqual((event["target"], event["error_type"]), ("error", "ValueError"))
 
     def test_bad_config_and_garbage_input_fail_open(self):
         (self.repo / ".model-effort-router.json").write_text("{not json")
@@ -58,12 +69,38 @@ class UserPromptSubmitTest(HookCase):
 
     def test_non_development_and_host_generated_prompts_are_not_classified(self):
         for prompt in (
-            "What is the capital of France?",
             "Another Claude session sent a message:\n<agent-message>Fix the bug in parser.py</agent-message>",
             "<task-notification>refactor parser.py</task-notification>",
         ):
             proc = self.submit(prompt)
             self.assertEqual((proc.returncode, proc.stdout), (0, ""), prompt)
+        self.assertEqual(self.log_events(), [])
+
+    def test_regex_gated_prompt_is_silent_but_logged_without_prompt_text(self):
+        proc = self.submit("What is the capital of France? ZEBRA_PROMPT_MARKER")
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        (event,) = self.log_events()
+        self.assertEqual((event["event"], event["target"]), ("route", "no_route"))
+        self.assertNotIn("decision", event)
+        self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(event))
+
+    def test_backend_target_routes_korean_follow_up_the_regex_would_drop(self):
+        self.fake = {"role": "analysis", "effort": "low", "target": "route"}
+        advice = self.context(self.submit("원인 파악해"))
+        self.assertIn("Role: analysis", advice)
+        self.assertEqual(self.log_events()[0]["target"], "route")
+
+    def test_backend_no_route_is_silent_and_logged_with_decision(self):
+        self.fake = {"role": "analysis", "effort": "low", "target": "no_route", "usage": {"input_tokens": 3, "output_tokens": 1}}
+        proc = self.submit("Fix the bug in parser.py")
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        (event,) = self.log_events()
+        self.assertEqual((event["target"], event["decision"]["backend"], event["classifier_usage"]["input_tokens"]),
+                         ("no_route", "fake", 3))
+
+    def test_off_mode_writes_no_route_event(self):
+        self.write_repo_config({"router": {"mode": "off"}, "difficulty": {"backend": "fake"}})
+        self.assertEqual(self.submit().stdout, "")
         self.assertEqual(self.log_events(), [])
 
     def test_readonly_code_analysis_is_route_eligible(self):
