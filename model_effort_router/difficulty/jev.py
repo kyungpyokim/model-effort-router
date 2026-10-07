@@ -18,10 +18,17 @@ class MissingKeyError(RuntimeError):
     pass
 
 
+# Shared by every question: with a "Session context" the request is often a short follow-up.
+CONTEXT_RULE = (
+    " Classify only the current request; use the session context, if given, only to interpret it. "
+    "A follow-up that approves or continues a plan proposed earlier (for example '진행', '응 만들어줘', '둘 다 반영') "
+    "has the role and effort of the work that plan describes."
+)
+
 QUESTIONS = {
     "role": {"type": "choice", "instructions": (
-        "Which single role best describes the main deliverable of the request? "
-        "Judge the requested output, not keywords in the text."
+        "Which single role best describes the main deliverable of the current request? "
+        "Judge the requested output, not keywords in the text." + CONTEXT_RULE
     ), "criteria": {
         "implementation": "Add new behavior or a feature.",
         "fix": "Repair a bug or failure in existing behavior.",
@@ -36,7 +43,7 @@ QUESTIONS = {
     "effort": {"type": "choice", "instructions": (
         "Choose the reasoning effort from how hard the decisions are, not from how much code "
         "must be read. Judge it independently of role, file count, or keywords: planning or "
-        "reviewing a change needs the same effort as making it."
+        "reviewing a change needs the same effort as making it." + CONTEXT_RULE
     ), "criteria": {
         "low": ("One function, option, or explanation is involved and the request states or clearly "
                 "implies the approach, even if that code must be read first."),
@@ -52,15 +59,24 @@ QUESTIONS = {
 }
 # Asked only by backends with `provides_target` (JevBackend); Nimble's target accuracy is unmeasured.
 TARGET_QUESTION = {"type": "choice", "instructions": (
-    "Does the message ask for development work? Judge the requested work, not keywords. "
+    "Does the current request ask for development work? Judge the requested work, not keywords. "
     "Short follow-ups in any language (for example 'find the cause', 'change that value', 'fix it') "
-    "that ask for work on the code or project in progress count as route."
+    "that ask for work on the code or project in progress count as route." + CONTEXT_RULE
 ), "criteria": {
     "route": ("The message asks for development work on code or the project: implement, fix, test, lint, "
-              "plan, design, review, or analyze/explain code, behavior, tooling, config, or this project."),
-    "no_route": ("Chit-chat, acknowledgements or bare approvals (for example 'ok', '승인', '진행'), "
+              "plan, design, review, or analyze/explain code, behavior, tooling, config, or this project. "
+              "A message that approves or continues a plan proposed in the session context "
+              "(for example '진행', '응 만들어줘', '둘 다 반영') is route."),
+    "no_route": ("Chit-chat, or acknowledgements and approvals with nothing to execute (for example 'ok', '승인', "
+                 "'고마워') because the session context has no pending proposal or plan to act on, "
                  "or requests unrelated to software development."),
 }}
+
+
+def state_text(task):
+    paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
+    head = f"Session context:\n{task.context}\n\nCurrent request:\n" if task.context else "Task:\n"
+    return f"{head}{task.task[:MAX_TASK_CHARS]}\n\nRelevant paths:\n{paths}"
 
 
 class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
@@ -127,9 +143,8 @@ class SystemOneBackend:
         self.last_usage = None
         env = os.environ if self._env is None else self._env
         url, headers, model = self._endpoint(env)
-        paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
         questions = {**QUESTIONS, "target": TARGET_QUESTION} if self.provides_target else QUESTIONS
-        body = json.dumps({"state": f"Task:\n{task.task[:MAX_TASK_CHARS]}\n\nRelevant paths:\n{paths}",
+        body = json.dumps({"state": state_text(task),
                            "model": model, "questions": questions}).encode()
         status, text = self._transport(url, headers, body, timeout_s)
         if not 200 <= status < 300:

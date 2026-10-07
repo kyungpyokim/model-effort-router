@@ -2,11 +2,12 @@
 import importlib
 import json
 import os
-import re
 import sys
 import time
 from pathlib import Path
 
+from ..context import refresh, summary
+from ..context.transcripts import HARNESS_MESSAGE, MAX_TURN_CHARS, Turn, clip, read_turns
 from ..difficulty.registry import BACKENDS
 from ..difficulty.subscription import GUARD_ENV, SubscriptionBackend
 from ..logging import route_log
@@ -17,12 +18,6 @@ from . import advice, hosts
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
 USER_CONFIG_ENV = "MER_USER_CONFIG"
 REPO_CONFIG = ".model-effort-router.json"
-# Messages the host itself puts in the user turn (a subagent's report, a background-task notice, a `!` shell
-# command and its output, a slash-command echo): not the user's request, so never classified (no backend call).
-HARNESS_MESSAGE = re.compile(
-    r"\s*(?:Another Claude session sent a message:\s*)?(?:\[SYSTEM NOTIFICATION[^\]]*\]\s*)?"
-    r"<(?:agent-message|cross-session-message|task-notification|bash-input|bash-stdout|bash-stderr"
-    r"|local-command-stdout|local-command-caveat|command-name)\b")
 MAX_BACKEND_TIMEOUT_S = 12  # backend + fallback must fit in the 30s hook timeout with margin
 
 
@@ -61,7 +56,24 @@ def _with_timeout(repo_cfg, timeout_s):
     return {**repo_cfg, "difficulty": {**repo_cfg.get("difficulty", {}), "timeout_s": timeout_s}}
 
 
-def user_prompt_submit(data, env, plugin_root):
+def _session_context(data, host, sdir, sid, prompt, cfg, env):
+    """(context for the classifier, whether the background summary is due). ("", False) when disabled or unusable."""
+    if not cfg.context_enabled or cfg.mode != "auto" or env.get(GUARD_ENV) == "1":
+        return "", False
+    try:
+        turns = read_turns(data.get("transcript_path"), host.name)
+        stored = summary.load(sdir, sid)
+        base, fresh, _ = summary.pending(turns, stored)
+        if fresh and fresh[-1] == Turn("user", clip(prompt.strip(), MAX_TURN_CHARS)):  # already written: it is the task
+            fresh = fresh[:-1]
+        due = host.name in refresh.HOSTS and summary.needs_refresh(turns, stored)
+        return summary.build_context(base, fresh, cfg.context_max_chars), due
+    except Exception as exc:  # the prompt alone still routes
+        _log_error(env, data, exc, "SessionContext")
+        return "", False
+
+
+def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn):
     prompt = data.get("prompt")
     if not isinstance(prompt, str) or HARNESS_MESSAGE.match(prompt):
         return None
@@ -75,14 +87,22 @@ def user_prompt_submit(data, env, plugin_root):
         repo_cfg = _with_timeout(repo_cfg, MAX_BACKEND_TIMEOUT_S)
     started = time.monotonic()
     host = hosts.get(env=env)
+    context, due = _session_context(data, host, sdir, sid, prompt, cfg, env)
+    plan = None
     try:
-        plan = route(prompt, repo_config=repo_cfg, user_config=user_cfg, registry=registry, host=host.name)
+        plan = route(prompt, repo_config=repo_cfg, user_config=user_cfg, registry=registry, host=host.name, context=context)
+        latency_ms = (time.monotonic() - started) * 1000
     except Exception as exc:  # fail open, but leave a trace: a routing error must not look like a dropped prompt
         _append(env, data, sdir, sid, route_log.error_event(
             exc, latency_ms=(time.monotonic() - started) * 1000, prompt=prompt, configured_backend=cfg.backend,
             timeout_clamped=clamped))
         return None
-    latency_ms = (time.monotonic() - started) * 1000
+    finally:  # after routing, detached: the hook never waits for the summarizer
+        if due and (plan.mode if plan else cfg.mode) != "off":
+            try:
+                spawn(host.name, sid, data["transcript_path"], sdir, env)
+            except Exception as exc:
+                _log_error(env, data, exc, "ContextRefresh")
     text = advice.render(plan, f'python3 {Path(plugin_root) / "bin" / "mer"}', host)
     out = _context_output("UserPromptSubmit", text) if text else None
     if plan.mode != "off":  # routing turned off by the user: nothing to record

@@ -91,6 +91,7 @@ def route(
     explicit=False,
     role_override=None,
     effort_override=None,
+    context="",
 ):
     registry = BACKENDS if registry is None else registry
     override, text = parse_override(message)
@@ -112,7 +113,7 @@ def route(
     if cfg.mode == "manual" and not phase_override:
         return RoutePlan(NO_ROUTE, "manual")
     backends = _make_backends(cfg, registry, user_config)
-    task = DifficultyInput(text, tuple(paths))
+    task = DifficultyInput(text, tuple(paths), context=context)
     if phase_override:
         decision = DifficultyDecision(role_override, effort_override, "explicit")
     elif explicit:

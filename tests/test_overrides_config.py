@@ -60,3 +60,18 @@ class ConfigPrecedenceTest(unittest.TestCase):
     def test_standalone_gate_configuration_remains_accepted_by_router(self):
         cfg = resolve_config(repo={"gate": {"checks": {"test": "python -m unittest"}}})
         self.assertEqual(cfg.mode, "auto")
+
+class ContextConfigTest(unittest.TestCase):
+    def test_defaults_and_layer_precedence(self):
+        base = resolve_config()
+        self.assertEqual((base.context_enabled, base.context_max_chars), (True, 6000))
+        user = {"context": {"enabled": True, "max_chars": 3000}}
+        repo = {"context": {"enabled": False}}
+        got = resolve_config(user=user, repo=repo)
+        self.assertEqual((got.context_enabled, got.context_max_chars), (False, 3000))
+
+    def test_invalid_context_settings_are_rejected(self):
+        for bad in ({"enabled": "yes"}, {"max_chars": True}, {"max_chars": 0}, {"max_chars": 99}, {"max_chars": 1e9},
+                    {"max_chars": 1000.5}, {"surprise": 1}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                resolve_config(repo={"context": bad})

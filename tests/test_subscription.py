@@ -34,10 +34,10 @@ class FakeRunner:
     def __init__(self, stdout="", exc=None):
         self.stdout, self.exc, self.calls = stdout, exc, []
 
-    def __call__(self, cmd, *, stdin, env, timeout_s, cwd):
+    def __call__(self, cmd, *, stdin, env, timeout_s, cwd, input_text=None):
         self.calls.append(
             {
-                "cmd": cmd, "stdin": stdin, "env": env, "timeout_s": timeout_s, "cwd": cwd,
+                "cmd": cmd, "input_text": input_text, "stdin": stdin, "env": env, "timeout_s": timeout_s, "cwd": cwd,
                 "cwd_entries": os.listdir(cwd) if cwd and os.path.isdir(cwd) else None,
             }
         )
@@ -126,7 +126,9 @@ class RunnerContractTest(unittest.TestCase):
         self.assertEqual(cmd[cmd.index("-s") + 1], "read-only")
         self.assertEqual(cmd[cmd.index("-m") + 1], "gpt-6-luna")
         self.assertEqual(cmd[cmd.index("-c") + 1], "model_reasoning_effort=low")
-        self.assertIn("add endpoint", cmd[-1])
+        self.assertEqual(cmd[-1], "-")  # `codex exec -` reads the prompt from stdin: it stays out of argv
+        self.assertIn("add endpoint", call["input_text"])
+        self.assertNotIn("add endpoint", " ".join(cmd))
         self.assertIs(call["stdin"], subprocess.DEVNULL)
         self.assertEqual(call["env"][GUARD_ENV], "1")
         self.assertEqual(call["timeout_s"], 9)
@@ -157,6 +159,34 @@ class PromptTest(unittest.TestCase):
         p = build_prompt(DifficultyInput(task="Add X", paths=("a.py", "b.py"), repo_summary="small"))
         for needle in ("Add X", "a.py", "b.py", "small", "implementation", "xhigh", "JSON"):
             self.assertIn(needle, p)
+
+    def test_session_context_is_included_only_when_present(self):
+        with_ctx = build_prompt(DifficultyInput(task="진행", context="Session summary:\nplan X"))
+        self.assertLess(with_ctx.index("plan X"), with_ctx.index("Task:\n진행"))
+        self.assertNotIn("Session context", build_prompt(DifficultyInput(task="진행")))
+
+    def test_codex_classifier_never_gets_session_context_but_claude_does(self):
+        task = DifficultyInput("진행", context="Session summary:\nSECRET PLAN CONTEXT")
+        codex = FakeRunner(agent_message(GOOD))
+        SubscriptionBackend(runner=codex, host="codex").classify(task, 5)  # a read-only agent with a shell: no transcript text
+        self.assertNotIn("SECRET PLAN CONTEXT", codex.calls[0]["input_text"] + " ".join(codex.calls[0]["cmd"]))
+        self.assertIn("진행", codex.calls[0]["input_text"])
+        claude = FakeRunner(json.dumps({"type": "result", "is_error": False, "session_id": "x", "result": GOOD,
+                                        "usage": {"input_tokens": 1, "output_tokens": 1}}))
+        SubscriptionBackend(runner=claude, host="claude").classify(task, 5)
+        self.assertIn("SECRET PLAN CONTEXT", claude.calls[0]["input_text"])
+        self.assertNotIn("SECRET PLAN CONTEXT", " ".join(claude.calls[0]["cmd"]))
+        self.assertEqual(claude.calls[0]["cmd"][-1], "--no-session-persistence")
+
+    def test_default_runner_feeds_input_text_to_stdin(self):
+        out = default_runner(["cat"], stdin=subprocess.DEVNULL, env=os.environ, timeout_s=5, cwd=None, input_text="한글 prompt")
+        self.assertEqual(out, "한글 prompt")
+
+    def test_isolated_argv_without_a_prompt_leaves_it_for_stdin(self):
+        from model_effort_router.difficulty.subscription import isolated_argv
+        argv = isolated_argv("claude", None)
+        self.assertEqual(argv[-1], "--no-session-persistence")
+        self.assertNotIn("--", argv)
 
     def test_task_is_truncated(self):
         p = build_prompt(DifficultyInput(task="x" * (MAX_TASK_CHARS * 3)))

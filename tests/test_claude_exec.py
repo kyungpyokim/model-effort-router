@@ -248,8 +248,8 @@ class ClassifierTest(unittest.TestCase):
 
     def classify(self, host=None, env=None):
         seen = {}
-        def runner(cmd, *, stdin, env, timeout_s, cwd):
-            seen.update(cmd=cmd, env=env, cwd=cwd)
+        def runner(cmd, *, stdin, env, timeout_s, cwd, input_text=None):
+            seen.update(cmd=cmd, env=env, cwd=cwd, input_text=input_text)
             return result(text=self.ANSWER, i=400, created=0, read=100, o=30)
         backend = SubscriptionBackend(runner=runner, host=host)
         with mock.patch.dict(os.environ, env or {}, clear=False):
@@ -262,7 +262,8 @@ class ClassifierTest(unittest.TestCase):
         self.assertEqual(cmd[:6], ["claude", "-p", "--output-format", "json", "--model", "claude-haiku-4-5"])
         self.assertEqual(cmd[cmd.index("--tools") + 1], "")
         self.assertIn("--no-session-persistence", cmd)
-        self.assertEqual(cmd[-2], "--")
+        self.assertNotIn("--", cmd)  # the prompt is on stdin, not argv
+        self.assertIn("Review the auth diff", seen["input_text"])
         self.assertNotIn("--effort", cmd)
         self.assertTrue({"--safe-mode", "--strict-mcp-config"}.issubset(cmd))
         self.assertEqual(seen["env"]["MER_CLASSIFIER"], "1")

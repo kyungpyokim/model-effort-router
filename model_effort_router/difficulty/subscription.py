@@ -10,6 +10,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+from dataclasses import replace
 
 from .decision import DifficultyDecision, DifficultyInput, EFFORTS, ROLES
 from ..events import iter_events
@@ -38,15 +39,16 @@ def _failure_detail(stdout, stderr):
     return text[:200] if isinstance(text, str) and text else "(no stderr)"
 
 
-def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace_s=1):  # hook budget: short grace
+def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace_s=1, input_text=None):  # hook budget: short grace
     """Runs `cmd` in its own process group. On timeout or any interruption the group gets SIGTERM, then SIGKILL
-    after `grace_s`, so a child that cleans up its own children on SIGTERM (mer) gets the chance to."""
+    after `grace_s`, so a child that cleans up its own children on SIGTERM (mer) gets the chance to.
+    `input_text` is written to the child's stdin (instead of `stdin`), keeping large or private text out of argv."""
     proc = subprocess.Popen(
-        cmd, stdin=stdin, env=env, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        cmd, stdin=subprocess.PIPE if input_text is not None else stdin, env=env, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, start_new_session=True,  # own process group so a timeout can kill grandchildren
     )
     try:
-        stdout, stderr = proc.communicate(timeout=timeout_s)
+        stdout, stderr = proc.communicate(input=input_text, timeout=timeout_s)
     except subprocess.TimeoutExpired as exc:
         raise TimeoutError(f"{label} exceeded {timeout_s}s") from exc
     finally:  # timeout, KeyboardInterrupt, anything: never leave the group running
@@ -70,15 +72,40 @@ def _stop_group(proc, grace_s):
             pass
 
 
+def isolated_argv(host, prompt, model=None):  # prompt=None: the caller feeds it on stdin (`claude -p`, `codex exec -`)
+    """One-shot, tool-less model call through the host's subscription CLI. Claude: `claude -p`, as isolated and cheap as
+    --help allows: no tools (`--tools ""`), safe mode (no CLAUDE.md, skills, plugins, hooks, MCP, memory), no MCP servers,
+    nothing persisted. Codex: `codex exec` read-only, ephemeral, user config ignored."""
+    if host == "claude":
+        return ["claude", "-p", "--output-format", "json", "--model", model or CLAUDE_MODEL,
+                "--permission-mode", "dontAsk", "--tools", "", "--safe-mode", "--strict-mcp-config", "--no-session-persistence",
+                *(["--", prompt] if prompt is not None else [])]
+    return ["codex", "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "-s", "read-only",
+            "-m", model or DEFAULT_MODEL, "-c", "model_reasoning_effort=low", "-" if prompt is None else prompt]  # "-": stdin
+
+
+def run_isolated(argv, runner, timeout_s, input_text=None):
+    """Runs `argv` with the guard env set (the nested CLI's own hook must no-op) in an empty per-call dir: no repo files
+    and no .codex/ or .claude/ hooks/agents for the child to load."""
+    env = {**os.environ, GUARD_ENV: "1"}
+    cwd = tempfile.mkdtemp(prefix="mer-classifier-")
+    try:
+        extra = {} if input_text is None else {"input_text": input_text}
+        return runner(argv, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd, **extra)
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
+
+
 def build_prompt(task: DifficultyInput) -> str:
     paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
+    context = f"Session context (earlier conversation; use it only to interpret the task):\n{task.context}\n\n" if task.context else ""
     return (
         "Classify the requested work. Role must be one of " + ", ".join(ROLES) + ". Effort must be one of "
         + ", ".join(EFFORTS) + ".\n"
         'Reply with ONLY JSON: {"role":"implementation","effort":"medium","confidence":0.8, '
         '"reason_code":"short_snake_case"}. Only role and effort are required.\n'
         "Do not run commands or edit files.\n\n"
-        f"Task:\n{task.task[:MAX_TASK_CHARS]}\n\nChanged/expected paths:\n{paths}\n\n"
+        f"{context}Task:\n{task.task[:MAX_TASK_CHARS]}\n\nChanged/expected paths:\n{paths}\n\n"
         f"Repo summary:\n{task.repo_summary[:MAX_TASK_CHARS] or '(none)'}\n"
     )
 
@@ -138,35 +165,16 @@ class SubscriptionBackend:
             raise ValueError(f"subscription classifier is not supported for {self._host}: tool isolation is unverified")
         if self._host == "claude":
             return self._classify_claude(task, timeout_s)
-        cmd = [
-            "codex", "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config",
-            "-s", "read-only",
-            "-m", self._model or DEFAULT_MODEL, "-c", "model_reasoning_effort=low",
-            build_prompt(task),
-        ]
-        env = {**os.environ, GUARD_ENV: "1"}
-        # Empty per-call dir: no repo files and no .codex/ hooks/agents for the nested exec to load.
-        cwd = tempfile.mkdtemp(prefix="mer-classifier-")
-        try:
-            stdout = self._runner(cmd, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd)
-        finally:
-            shutil.rmtree(cwd, ignore_errors=True)
+        # A read-only agent that still has a shell: transcript text must not reach it (prompt injection), so no context.
+        prompt = build_prompt(replace(task, context=""))
+        stdout = run_isolated(isolated_argv("codex", None, self._model), self._runner, timeout_s, input_text=prompt)
         self.last_usage = parse_usage(stdout)
         return parse_output(stdout, self.name)
 
     def _classify_claude(self, task, timeout_s):
-        """`claude -p` on Haiku, as isolated and cheap as --help allows: no tools (`--tools ""`), safe mode (no CLAUDE.md,
-        skills, plugins, hooks, MCP, memory), no MCP servers, nothing persisted, an empty cwd, guard env set."""
+        """`claude -p` on Haiku with the isolation of `isolated_argv`."""
         from ..host import claude_exec  # lazy: claude_exec imports this module
-        cmd = ["claude", "-p", "--output-format", "json", "--model", self._model or CLAUDE_MODEL,
-               "--permission-mode", "dontAsk", "--tools", "", "--safe-mode", "--strict-mcp-config", "--no-session-persistence",
-               "--", build_prompt(task)]
-        env = {**os.environ, GUARD_ENV: "1"}
-        cwd = tempfile.mkdtemp(prefix="mer-classifier-")
-        try:
-            stdout = self._runner(cmd, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd)
-        finally:
-            shutil.rmtree(cwd, ignore_errors=True)
+        stdout = run_isolated(isolated_argv("claude", None, self._model), self._runner, timeout_s, input_text=build_prompt(task))
         try:
             stream = claude_exec.parse_stream(stdout)
         except claude_exec.ClaudeResultError as exc:

@@ -6,6 +6,7 @@ from model_effort_router.difficulty.decision import DifficultyDecision
 
 class FakeBackend:
     name = "fake"
+    inputs = []  # in-process tests: every DifficultyInput classify() received
 
     def __init__(self, spec):
         self.spec = spec
@@ -14,6 +15,7 @@ class FakeBackend:
         self.provides_target = "target" in spec
 
     def classify(self, task, timeout_s):
+        FakeBackend.inputs.append(task)
         self.last_usage = self.spec.get("usage")
         if self.spec.get("raise"):
             raise RuntimeError("fake backend failure")
