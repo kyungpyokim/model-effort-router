@@ -92,7 +92,7 @@ Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지
 
 `backend: jev`이면 호스트가 만든 메시지를 제외한 모든 프롬프트가 Jev API로 전송되어 라우팅 대상 여부(`route`/`no_route`), role, effort를 판정합니다. 키워드 규칙은 Jev가 실패했을 때 fallback backend 호출 여부만 결정합니다.
 
-**세션 컨텍스트 (Claude, Codex hook).** "진행"처럼 짧은 후속 요청도 이어지는 작업을 기준으로 분류할 수 있도록, hook은 현재 프롬프트와 함께 세션 요약과 최근 user/assistant turn(텍스트만, 도구 출력 제외)을 Jev에 전송합니다. 요약은 호스트 자신의 CLI(`claude -p` Haiku, 텍스트는 stdin 전달. `codex exec`는 아직 shell 없이 실행할 수 없어 Codex 세션은 최근 turn 원문만 전송)가 백그라운드에서 만들어 state 디렉터리에 저장하고(14일간 쓰지 않은 요약 파일은 삭제),  한 turn 늦을 수 있어 가장 최근 turn은 원문 그대로 보냅니다. hook은 요약 작업을 기다리지 않습니다. 저장소 또는 사용자 설정에서 `{"context": {"enabled": false}}`로 끌 수 있고, `context.max_chars`(기본 6000)가 요약과 최근 turn의 크기를 제한합니다. `context.enabled: false`이면 현재 프롬프트만 전송됩니다.
+**세션 컨텍스트 (Claude, Codex hook).** "진행"처럼 짧은 후속 요청도 이어지는 작업을 기준으로 분류할 수 있도록, hook은 현재 프롬프트와 함께 세션 요약과 최근 user/assistant turn(텍스트만, 도구 출력 제외)을 Jev에 전송합니다. 요약은 호스트 자신의 CLI(`claude -p` Haiku, 텍스트는 stdin 전달. `codex exec`는 아직 shell 없이 실행할 수 없어 Codex 세션은 최근 turn 원문만 전송)가 백그라운드에서 만들어 state 디렉터리에 저장하고(14일간 쓰지 않은 요약 파일은 삭제), 한 turn 늦을 수 있어 가장 최근 turn은 원문 그대로 보냅니다. hook은 요약 작업을 기다리지 않습니다. 저장소 또는 사용자 설정에서 `{"context": {"enabled": false}}`로 끌 수 있고, `context.max_chars`(기본 6000)가 요약과 최근 turn의 크기를 제한합니다. `context.enabled: false`이면 현재 프롬프트만 전송됩니다. 백그라운드 요약은 독립 실행 `claude` CLI가 로그인되어 있어야 합니다(`claude auth login`). Claude 데스크톱 앱 세션의 로그인은 CLI에 공유되지 않으며, 로그인되지 않으면 요약을 건너뛰고 오류 이벤트만 기록합니다.
 
 Jev는 기본적으로 `jev-latest` 모델을 사용합니다. API 키는 저장소 설정이 아닌 `~/.config/model-effort-router/config.json`에 저장합니다.
 
