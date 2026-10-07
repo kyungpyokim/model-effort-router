@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Optional
 
 from ..difficulty.decision import EFFORTS
+from ..difficulty.laya import validate_options as validate_laya
 from ..difficulty.nimble import validate_options as validate_nimble
 
 MODES = ("auto", "manual", "off")
@@ -87,6 +88,7 @@ class RouterConfig:
     nimble: Optional[dict] = None
     context_enabled: bool = True
     context_max_chars: int = 6000
+    laya: Optional[dict] = None
 
 
 def _layer(value, name):
@@ -220,7 +222,7 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         raise ValueError(
             f"router.mode must be one of {MODES}, got {router.get('mode')!r}"
         )
-    if set(difficulty) - {"backend", "fallback", "timeout_s", "nimble"}:
+    if set(difficulty) - {"backend", "fallback", "timeout_s", "nimble", "laya"}:
         raise ValueError(
             "legacy or unknown difficulty settings; remove level thresholds and nimble_jev policy"
         )
@@ -263,6 +265,7 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
     )
     _validate_models(merged["models"])
     nimble = validate_nimble(difficulty["nimble"]) if "nimble" in difficulty else None
+    laya = validate_laya(difficulty["laya"]) if "laya" in difficulty else None
     return RouterConfig(
         router["mode"],
         difficulty["backend"],
@@ -272,4 +275,5 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         nimble,
         context["enabled"],
         limit,
+        laya=laya,
     )

@@ -142,6 +142,21 @@ Nimble은 기본적으로 API 키 없이 `http://127.0.0.1:11434/v1/systemone`�
 
 위 `difficulty` 객체를 저장소 루트의 `.model-effort-router.json` 또는 `~/.config/model-effort-router/config.json`에 추가합니다. `difficulty.nimble.model`과 `.url`은 기본값을 재정의합니다. Nimble URL은 HTTP(S)를 사용하고 `localhost`, `127.0.0.1`, `::1`을 가리켜야 합니다. MER는 loopback이 아닌 URL을 거부하므로 Nimble 요청은 기기 안에서 처리됩니다. 위 예시에서는 Nimble이 실패하면 작업 내용이 TypeSafe의 호스팅 Jev로 전송됩니다. 이 fallback을 사용하려면 Jev API 키를 설정하십시오.
 
+Laya를 로컬 분류기로 사용하려면 serving 추가 기능을 설치하고 서버를 loopback에 바인딩합니다.
+
+```sh
+python -m pip install 'laya[serve]'
+LAYA_HOST=127.0.0.1 laya-serve
+```
+
+`.model-effort-router.json` 또는 전역 설정에서 선택합니다.
+
+```json
+{"difficulty": {"backend": "laya", "laya": {"model": "laya", "url": "http://127.0.0.1:8000/v1/systemone"}}}
+```
+
+Laya는 기본적으로 `http://127.0.0.1:8000/v1/systemone`의 `laya` 모델을 사용합니다. `difficulty.backend: "laya"`로 선택할 수 있습니다. `difficulty.laya.model`과 `.url`이 기본값을 재정의하고, 설정에 값이 없으면 `MER_LAYA_MODEL`, `MER_LAYA_URL` 환경 변수를 사용합니다. URL은 HTTP(S)이며 `localhost`, `127.0.0.1`, `::1` 중 하나를 가리켜야 합니다. 로컬 서버에 bearer 인증이 필요한 경우에만 `MER_LAYA_API_KEY`를 설정하십시오. 기본 `laya` 모델 alias는 English 체크포인트로 연결됩니다. 실패 후 다른 분류기를 사용하려면 `fallback`을 별도로 설정하십시오. 서버 API는 [Laya HTTP API 문서](https://nandhakishorm.github.io/laya/http-api/)를 참고하십시오.
+
 ### 분류기 성능
 
 합성 코퍼스 v3 150건에서 측정한 role/effort 라벨 일치율입니다.
@@ -150,9 +165,11 @@ Nimble은 기본적으로 API 키 없이 `http://127.0.0.1:11434/v1/systemone`�
 |---|---:|---:|---:|
 | Jev (`jev-latest`) | 141/150 (94.0%) | 119/150 (79.3%) | 111/150 (74.0%) |
 | Nimble | 124/150 (82.7%) | 101/150 (67.3%) | 85/150 (56.7%) |
+| Laya (`english`) | 90/150 (60.0%) | 38/150 (25.3%) | 30/150 (20.0%) |
+| Laya (`laya:322m-multilingual-mlx-fp16`, Ollama MLX) | 56/150 (37.3%) | 30/150 (20.0%) | 11/150 (7.3%) |
 | OpenAI Decisions API (`gpt-6-luna`) | 136/150 (90.7%) | 119/150 (79.3%) | 107/150 (71.3%) |
 
-Decisions API는 API 엔드포인트이고 `gpt-6-luna`는 해당 API에서 사용하는 모델입니다. 이 코퍼스에서는 Jev가 가장 높은 일치율을 기록했습니다. 세 결과는 같은 기존 평가 케이스를 사용했으므로 독립적인 실제 사용자 정확도가 아니라 판정 라벨과의 일치율로 해석해야 합니다. Nimble은 로컬 추론에 사용할 수 있으며, 요청이 기기 밖으로 나가지 않게 하려면 fallback을 `none`으로 설정하십시오. 자세한 내용은 [평가 인덱스](docs/evaluation/README.md)와 [Decisions API 측정 기록](docs/evaluation/openai-decisions-20261007.md)을 참고하십시오.
+Decisions API는 API 엔드포인트이고 `gpt-6-luna`는 해당 API에서 사용하는 모델입니다. 이 코퍼스에서는 Jev가 가장 높은 일치율을 기록했습니다. 모든 결과는 같은 기존 평가 케이스와 다수결 라벨을 사용하므로 독립적인 실제 사용자 정확도가 아닙니다. 영어 Laya와 다국어 Laya는 checkpoint, serving runtime, 질문 지시문이 달라 점수 차이를 다국어 지원 효과 하나로 분리할 수 없습니다. Nimble은 로컬 추론에 사용할 수 있으며, 요청이 기기 밖으로 나가지 않게 하려면 fallback을 `none`으로 설정하십시오. 자세한 내용은 [평가 인덱스](docs/evaluation/README.md), [영어 Laya 측정](docs/evaluation/laya-20261008.md), [다국어 Laya 측정](docs/evaluation/laya-multilingual-20261008.md), [Decisions API 측정](docs/evaluation/openai-decisions-20261007.md)을 참고하십시오.
 
 ## 사용법
 

@@ -26,33 +26,33 @@ def local_transport(url, headers, body, timeout_s):
     return default_transport(url, headers, body, timeout_s, _LOCAL_OPENER)
 
 
-def check_local_url(url):
+def check_local_url(url, name="nimble"):
     """http(s) to a loopback host only; raises ValueError otherwise (before anything is sent)."""
     try:
         parts = urllib.parse.urlsplit(url)
         host = parts.hostname
     except ValueError as exc:
-        raise ValueError(f"nimble url is not a valid URL: {url!r}") from exc
+        raise ValueError(f"{name} url is not a valid URL: {url!r}") from exc
     if parts.scheme not in ("http", "https") or host not in LOOPBACK_HOSTS or parts.username or parts.password:
-        raise ValueError(f"nimble url must be http(s) to localhost, 127.0.0.1 or ::1, got {url!r}")
+        raise ValueError(f"{name} url must be http(s) to localhost, 127.0.0.1 or ::1, got {url!r}")
     return url
 
 
-def validate_options(raw):
-    """The `difficulty.nimble` config object -> a clean dict. Unknown keys/flags and bad probabilities raise ValueError."""
+def validate_options(raw, name="nimble"):
+    """Validate local SystemOne model/url options and return a clean dict."""
     if not isinstance(raw, dict):
-        raise ValueError("difficulty.nimble must be an object")
+        raise ValueError(f"difficulty.{name} must be an object")
     unknown = sorted(set(raw) - set(OPTION_KEYS))
     if unknown:
-        raise ValueError(f"unknown difficulty.nimble keys {unknown}; allowed: {list(OPTION_KEYS)}")
+        raise ValueError(f"unknown difficulty.{name} keys {unknown}; allowed: {list(OPTION_KEYS)}")
     out = {}
     for key in ("model", "url"):
         if key in raw:
             if not isinstance(raw[key], str) or not raw[key].strip():
-                raise ValueError(f"difficulty.nimble.{key} must be a non-empty string")
+                raise ValueError(f"difficulty.{name}.{key} must be a non-empty string")
             out[key] = raw[key]
     if "url" in out:
-        check_local_url(out["url"])  # a bad url is a config error up front (checked again at send time: env, defaults)
+        check_local_url(out["url"], name)  # a bad url is a config error up front (checked again at send time: env, defaults)
     return out
 
 
