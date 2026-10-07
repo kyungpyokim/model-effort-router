@@ -11,7 +11,7 @@ PLUGIN = ROOT / "plugins" / "opencode-model-effort-router"
 class OpenCodePluginBundleTest(unittest.TestCase):
     def test_bundle_uses_shared_core_and_pins_current_plugin_api(self):
         package = json.loads((PLUGIN / "package.json").read_text())
-        self.assertEqual(package["version"], "0.11.0")
+        self.assertEqual(package["version"], "0.11.1")
         self.assertEqual(package["dependencies"]["@opencode/plugin"], "2.0.24")
         self.assertTrue((PLUGIN / "router.py").is_file())
         self.assertTrue((PLUGIN / "bin" / "mer").is_file())
