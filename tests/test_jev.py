@@ -128,11 +128,12 @@ class JevContractTest(unittest.TestCase):
         self.assertIn("spelling", role["criteria"]["lint"].lower())
         effort = seen["body"]["questions"]["effort"]
         self.assertIn("independently of role", effort["instructions"])
-        self.assertEqual(set(effort["criteria"]), {"low", "medium", "high", "xhigh"})
+        self.assertEqual(set(effort["criteria"]), {"low", "medium", "high", "xhigh", "max"})
         self.assertIn("approach", effort["criteria"]["low"].lower())
         self.assertIn("established patterns", effort["criteria"]["medium"].lower())
         self.assertIn("interacting", effort["criteria"]["high"].lower())
         self.assertIn("production data", effort["criteria"]["xhigh"].lower())
+        self.assertIn("beyond xhigh", effort["criteria"]["max"].lower())
         self.assertEqual(seen["timeout"], 4)
 
     def test_missing_key_fails_for_provider_fallback(self):

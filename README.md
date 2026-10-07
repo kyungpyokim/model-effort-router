@@ -57,7 +57,7 @@ Antigravity and OpenCode provide route advice only; worker execution is unsuppor
 
 ## Routing contract
 
-The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, or `xhigh`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
+The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, `xhigh`, or `max`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
 
 Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5` and reasoning `claude-opus-5-5`; Antigravity delegated profile `gemini-3.8-flash`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free` with reasoning alternatives `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, and `opencode-go/grok-4.7`. Each host/lane accepts `primary`, optional `alternatives`, `fallback`, and supported efforts. `primary` is recommended; alternatives are listed as user-selectable choices. For example:
 
@@ -167,9 +167,9 @@ python3 <plugin>/bin/mer run --host codex --role fix --effort low --low-first \
   --verify 'python3 -m unittest discover -s tests' --json 'Fix the approved bug'
 ```
 
-For execution roles, `--low-first` starts at low and promotes to medium, then high only after the fixed verification command exits with a positive nonzero code. If high fails, it stops with `status: approval_required` before calling xhigh. Only pass `--approve-xhigh` when the user has explicitly approved xhigh for that run; agents must obtain approval before setting it. The configured model must support all four efforts. Each attempt starts a fresh session in the same workspace, keeping edits and receiving the original context plus the previous failure. Worker errors, cancellation, verification start failures, signal termination, and timeouts stop the loop. `--timeout` limits each worker attempt; `--verify-timeout` limits each check (default 300 seconds).
+For execution roles, `--low-first` starts at low and promotes through medium and high after verification failures. It stops for approval before xhigh and again before max. Pass `--approve-xhigh` or `--approve-max` only when the user has explicitly approved that effort for the run. The configured model must support all five efforts. Each attempt starts a fresh session in the same workspace, keeping edits and receiving the original context plus the previous failure. Worker errors, cancellation, verification start failures, signal termination, and timeouts stop the loop. `--timeout` limits each worker attempt; `--verify-timeout` limits each check (default 300 seconds).
 
-An approval stop returns `continuation_context` with the original request and last failure. After approval, pass that context as the request in the same workspace with `--low-first --role <same-role> --effort xhigh --approve-xhigh --verify <same-command>` to run only the xhigh continuation. Its usage is a separate run; combine both records when measuring the full task. Without the explicit xhigh effort, a new invocation starts at low. One-shot xhigh runs also require `--approve-xhigh`.
+An approval stop returns `continuation_context` with the original request and last failure. After xhigh approval, pass that context in the same workspace with `--low-first --role <same-role> --effort xhigh --approve-xhigh --verify <same-command>` to run the xhigh continuation. If xhigh fails, approve max separately and continue with `--effort max --approve-max`. Each continuation is a separate run; combine their records when measuring the full task. Without an explicit xhigh or max effort, a new invocation starts at low. One-shot xhigh and max runs require their matching approval flag.
 
 `--verify` is an explicit argv command executed without shell expansion, using the parent process's privileges and environment. Freeze meaningful completion checks before work starts: fixing argv does not make worker-editable tests tamper-proof. The last 2,000 characters of check output are sent to the next worker and returned in JSON; keep secrets out of that output. Persistent route logs store only attempt metadata, token counts, and check status/duration.
 
@@ -189,20 +189,20 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
   "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10},
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh", "max"]},
+      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh", "max"]}
     },
     "claude": {
-      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-opus-5-5", "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-opus-5-5", "efforts": ["low", "medium", "high", "xhigh", "max"]},
+      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh", "max"]}
     },
     "antigravity": {
       "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-opus-5-5"], "fallback": null, "efforts": ["medium", "high"]},
       "reasoning": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]}
     },
     "opencode": {
-      "execution": {"primary": "opencode/mimo-v2.6-flash-free", "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "opencode/nemotron-3-ultra-free", "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "opencode/mimo-v2.6-flash-free", "fallback": null, "efforts": ["low", "medium", "high", "xhigh", "max"]},
+      "reasoning": {"primary": "opencode/nemotron-3-ultra-free", "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh", "max"]}
     }
   }
 }

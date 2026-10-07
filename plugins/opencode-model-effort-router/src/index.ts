@@ -13,7 +13,7 @@ export default Plugin.define({
           properties: {
             task: { type: "string", minLength: 1, maxLength: 20_000 },
             role: { type: "string", enum: ["implementation", "fix", "lint", "test", "plan", "design", "review", "analysis"] },
-            effort: { type: "string", enum: ["low", "medium", "high", "xhigh"] },
+            effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"] },
           },
           required: ["task", "role", "effort"],
           additionalProperties: false,

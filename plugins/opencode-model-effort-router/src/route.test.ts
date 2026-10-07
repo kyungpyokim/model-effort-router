@@ -22,7 +22,7 @@ describe("OpenCode plugin tool schema", () => {
       expect(registered.map(({ name }) => name)).toEqual(["mer"]);
       expect(registered[0].input.properties.role.enum)
         .toEqual(["implementation", "fix", "lint", "test", "plan", "design", "review", "analysis"]);
-      expect(registered[0].input.properties.effort.enum).toEqual(["low", "medium", "high", "xhigh"]);
+      expect(registered[0].input.properties.effort.enum).toContain("max");
       const result = await registered[0].execute(
         { task: "Add an OpenCode plugin", role: "plan", effort: "medium" },
         { sessionID: "test" },

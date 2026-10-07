@@ -16,12 +16,12 @@ class CodexAdapterTest(unittest.TestCase):
 
     def test_all_abstract_profiles_resolve_to_themselves_by_default(self):
         for tier in ("economy", "balanced", "frontier"):
-            for effort in ("medium", "high", "xhigh"):
+            for effort in ("medium", "high", "xhigh", "max"):
                 with self.subTest(tier=tier, effort=effort):
                     self.assertEqual(resolve(Profile(tier, effort)).applied_effort, effort)
 
     def test_effort_map_is_data(self):
-        cfg = CodexConfig(efforts={"medium": "medium", "high": "high", "xhigh": "ultra"})
+        cfg = CodexConfig(efforts={"medium": "medium", "high": "high", "xhigh": "ultra", "max": "max"})
         sol = resolve(Profile("frontier", "xhigh"), cfg)
         self.assertEqual((sol.requested_effort, sol.applied_effort), ("ultra", "ultra"))
         # luna does not support ultra and nothing is higher -> max supported
@@ -61,7 +61,7 @@ class CodexAdapterTest(unittest.TestCase):
             {"tiers": T, "model_efforts": {"m": "high"}},  # not a sequence of names
             {"tiers": {"economy": "m"}, "model_efforts": {"m": ("high",)}},  # missing tier
             {"efforts": {"medium": "medium", "high": "high"}},  # missing abstract effort
-            {"efforts": {"medium": "medium", "high": "high", "xhigh": "turbo"}},
+            {"efforts": {"medium": "medium", "high": "high", "xhigh": "turbo", "max": "max"}},
         ]
         for kwargs in bad:
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):

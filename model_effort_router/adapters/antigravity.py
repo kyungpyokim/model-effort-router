@@ -15,7 +15,7 @@ _TIERS = MappingProxyType(
         "frontier": "claude-opus-5-5",
     }
 )
-_EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "high"})
+_EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "high", "max": "high"})
 _MODEL_EFFORTS = MappingProxyType(dict.fromkeys(_TIERS.values(), ANTIGRAVITY_EFFORTS))
 
 

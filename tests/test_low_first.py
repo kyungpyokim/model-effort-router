@@ -135,7 +135,8 @@ class LowFirstTests(unittest.TestCase):
                            side_effect=lambda plan: worker(None, plan))
 
         self.assertEqual(efforts, ["low", "medium", "high", "xhigh"])
-        self.assertEqual((result["status"], result["escalation_count"]), ("verification_failed", 3))
+        self.assertEqual((result["status"], result["escalation_count"], result["next_effort"]),
+                         ("approval_required", 3, "max"))
 
     def test_xhigh_continuation_runs_only_xhigh(self):
         efforts = []

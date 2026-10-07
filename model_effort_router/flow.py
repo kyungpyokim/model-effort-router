@@ -93,6 +93,7 @@ def _loop_result(attempts, status, error=None):
 
 def run_low_first(task, plan, *, cwd, runner, env, host, timeout_s, verify,
                   context_packet=None, verify_timeout_s=300, retry_low=False, approve_xhigh=False,
+                  approve_max=False,
                   start_effort="low"):
     """Fresh worker sessions keep workspace edits; only a normal failed check promotes effort.
 
@@ -100,15 +101,17 @@ def run_low_first(task, plan, *, cwd, runner, env, host, timeout_s, verify,
     """
     if plan.decision.role not in EXECUTION_ROLES:
         raise ValueError("low-first requires an execution role")
-    if start_effort not in ("low", "xhigh") or start_effort == "xhigh" and not approve_xhigh:
-        raise ValueError("start_effort must be low or user-approved xhigh")
+    if start_effort not in ("low", "xhigh", "max") or start_effort == "xhigh" and not approve_xhigh \
+            or start_effort == "max" and not approve_max:
+        raise ValueError("start_effort must be low or a user-approved xhigh/max")
     attempts, packet = [], context_packet or task
-    steps = ("xhigh",) if start_effort == "xhigh" else (("low", "low", *EFFORTS[1:]) if retry_low else EFFORTS)
+    steps = EFFORTS[EFFORTS.index(start_effort):] if start_effort in ("xhigh", "max") \
+        else (("low", "low", *EFFORTS[1:]) if retry_low else EFFORTS)
     current = plan
     for effort in steps:
-        if effort == "xhigh" and not approve_xhigh:
-            return {**_loop_result(attempts, "approval_required", "User approval is required before xhigh."),
-                    "next_effort": "xhigh", "approval_required": True, "continuation_context": packet}
+        if effort == "xhigh" and not approve_xhigh or effort == "max" and not approve_max:
+            return {**_loop_result(attempts, "approval_required", f"User approval is required before {effort}."),
+                    "next_effort": effort, "approval_required": True, "continuation_context": packet}
         current = replace(current, requested_effort=effort, applied_effort=effort)
         started = time.monotonic()
         try:

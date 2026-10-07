@@ -30,7 +30,7 @@ _TIERS = MappingProxyType(
 )
 # Claude effort support is configured explicitly; unsupported effort values
 # are rejected or mapped only through a configured compatible fallback.
-_EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "high"})
+_EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "high", "max": "max"})
 
 
 @dataclass(frozen=True)

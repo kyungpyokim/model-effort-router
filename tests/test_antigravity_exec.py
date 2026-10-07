@@ -11,7 +11,8 @@ class AdapterTest(unittest.TestCase):
     def test_default_models_and_abstract_efforts(self):
         for tier, model in (("economy", "gemini-3.8-flash"), ("balanced", "claude-sonnet-5-5"),
                             ("frontier", "claude-opus-5-5")):
-            for requested, applied in (("medium", "medium"), ("high", "high"), ("xhigh", "high")):
+            for requested, applied in (("medium", "medium"), ("high", "high"),
+                                       ("xhigh", "high"), ("max", "high")):
                 with self.subTest(tier=tier, requested=requested):
                     result = resolve(Profile(tier, requested))
                     self.assertEqual((result.tier, result.model, result.requested_effort, result.applied_effort),
@@ -34,7 +35,7 @@ class AdapterTest(unittest.TestCase):
     def test_configuration_validation(self):
         cases = [{"tiers": {}}, {"efforts": {}}, {"tiers": None}, {"efforts": []}, {"model_efforts": None},
                  {"tiers": dict.fromkeys(("economy", "balanced", "frontier"), "unknown")},
-                 {"efforts": {"medium": "medium", "high": "high", "xhigh": "xhigh"}},
+                 {"efforts": {"medium": "medium", "high": "high", "xhigh": "xhigh", "max": "high"}},
                  {"model_efforts": {"gemini-3.8-flash": "high"}},
                  {"model_efforts": {"gemini-3.8-flash": ()}},
                  {"model_efforts": {"gemini-3.8-flash": ("xhigh",)}},
