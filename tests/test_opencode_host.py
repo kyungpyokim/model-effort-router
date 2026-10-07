@@ -14,14 +14,14 @@ class OpenCodeHostTest(unittest.TestCase):
         host = hosts.get("opencode", {})
         config = resolve_config()
         self.assertEqual(host.name, "opencode")
-        self.assertEqual(config.models["opencode"]["execution"]["primary"], "openai/gpt-5.2")
-        self.assertEqual(config.models["opencode"]["reasoning"]["primary"], "anthropic/claude-sonnet-4-5")
+        self.assertEqual(config.models["opencode"]["execution"]["primary"], "opencode/mimo-v2.6-flash-free")
+        self.assertEqual(config.models["opencode"]["reasoning"]["primary"], "opencode/nemotron-3-ultra-free")
 
     def test_explicit_route_returns_opencode_advice_without_classifier(self):
         plan = route("Create an OpenCode plugin", host="opencode", explicit=True,
                      role_override="plan", effort_override="medium")
         self.assertEqual((plan.agent, plan.model, plan.applied_effort),
-                         ("reasoning", "anthropic/claude-sonnet-4-5", "medium"))
+                         ("reasoning", "opencode/nemotron-3-ultra-free", "medium"))
 
     def test_worker_execution_is_rejected(self):
         result = io.StringIO()

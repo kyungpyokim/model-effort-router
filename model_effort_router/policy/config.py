@@ -54,12 +54,12 @@ DEFAULTS = {
         },
         "opencode": {
             "execution": {
-                "primary": "openai/gpt-5.2",
+                "primary": "opencode/mimo-v2.6-flash-free",
                 "fallback": None,
                 "efforts": list(EFFORTS),
             },
             "reasoning": {
-                "primary": "anthropic/claude-sonnet-4-5",
+                "primary": "opencode/nemotron-3-ultra-free",
                 "fallback": None,
                 "efforts": list(EFFORTS),
             },

@@ -16,14 +16,14 @@ describe("routeAdvice", () => {
     const advice = await routeAdvice("--host=claude", "plan", "medium", "/work", "/mer",
       ((file, args, options, callback) => {
         seen = { file, args, options };
-        callback(null, JSON.stringify({ role: "plan", agent: "reasoning", model: "openai/gpt-5.2", effort: "medium" }), "");
+        callback(null, JSON.stringify({ role: "plan", agent: "reasoning", model: "opencode/nemotron-3-ultra-free", effort: "medium" }), "");
         return {} as ReturnType<typeof Bun.spawn>;
       }) as never);
     expect(seen?.file).toBe("/mer");
     expect(seen?.args).toContain("--host=claude");
     expect(seen?.args).toContain("--host");
     expect(seen?.args.slice(-2)).toEqual(["--", "--host=claude"]);
-    expect(advice.model).toBe("openai/gpt-5.2");
+    expect(advice.model).toBe("opencode/nemotron-3-ultra-free");
   });
 
   it("surfaces subprocess failures and malformed output", async () => {

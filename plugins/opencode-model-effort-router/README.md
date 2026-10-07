@@ -31,7 +31,7 @@ OpenCode resolves the path relative to `opencode.json`. The bundle is not instal
 
 ## Model advice
 
-The built-in examples use `openai/gpt-5.2` for execution and `anthropic/claude-sonnet-4-5` for reasoning. Availability depends on the providers and models enabled in the current project. Override these entries in `.model-effort-router.json` to match the models shown by `/models`:
+The defaults use OpenCode Zen's `opencode/mimo-v2.6-flash-free` for execution and `opencode/nemotron-3-ultra-free` for reasoning. Availability can change; confirm the IDs in `/models`. Override these entries in `.model-effort-router.json` if needed:
 
 ```json
 {
@@ -43,5 +43,7 @@ The built-in examples use `openai/gpt-5.2` for execution and `anthropic/claude-s
   }
 }
 ```
+
+OpenCode lists the MiMo free offer as potentially using prompts to improve the model during its free period. The Nemotron free endpoint is a trial; OpenCode says session data is logged to improve NVIDIA products and asks users not to submit personal or confidential data. Check the current [OpenCode Zen privacy terms](https://opencode.ai/docs/zen/#privacy) before sending sensitive work.
 
 The plugin uses OpenCode's stable V1 custom-tool API, pinned at `@opencode-ai/plugin` 1.18.35. OpenCode's V2 plugin API is beta and its package's published tool exports do not yet match the V2 documentation. This version provides route advice only; automatic model/variant selection and `mer run` remain unsupported.

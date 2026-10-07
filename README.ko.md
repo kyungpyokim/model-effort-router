@@ -51,7 +51,7 @@ bun install --frozen-lockfile
 }
 ```
 
-OpenCode는 `route_advice` 도구로 role/model/effort 조언을 제공합니다. 현재 모델을 바꾸거나 worker를 실행하지 않습니다. 기본 조언 모델은 실행용 `openai/gpt-5.2`, 추론용 `anthropic/claude-sonnet-4-5`이며, 실제 사용 가능 모델에 맞춰 설정에서 변경할 수 있습니다.
+OpenCode는 `route_advice` 도구로 role/model/effort 조언을 제공합니다. 현재 모델을 바꾸거나 worker를 실행하지 않습니다. 기본 조언 모델은 실행용 `opencode/mimo-v2.6-flash-free`, 추론용 `opencode/nemotron-3-ultra-free`입니다. 모델 ID는 OpenCode Zen 카탈로그에 맞췄으며, 제공 여부는 `/models`에서 확인할 수 있습니다.
 
 Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지원하지 않습니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/), [OpenCode 플러그인 가이드](https://dev.opencode.ai/docs/plugins/)를 참고하십시오.
 
