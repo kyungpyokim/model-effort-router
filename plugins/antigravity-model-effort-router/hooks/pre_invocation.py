@@ -32,9 +32,19 @@ def main():
             return
         effort = supported[-1]
         selected = resolve_model(execution["primary"], effort, supported).model
+        alternatives = tuple(
+            model for model in (
+                resolve_model(candidate, effort, supported).model
+                for candidate in execution.get("alternatives", [])
+            )
+            if model != selected
+        )
+        model_advice = f"{selected}, effort {effort}"
+        if alternatives:
+            model_advice += f"; other configured options: {', '.join(alternatives)} (user-selectable, not automatic fallbacks)"
         message = (
             "[model-effort-router] Preferred delegated profile: "
-            f"{selected}, effort {effort}. Give a native Antigravity Subagent a concise context packet "
+            f"{model_advice}. Give a native Antigravity Subagent a concise context packet "
             "from the current request and relevant conversation. For code changes, delegate implementation, "
             "integrate it, then run the separate write-capable review workflow. This is guidance for "
             "Subagent selection; the host's current Subagent controls do not guarantee this exact model or "
