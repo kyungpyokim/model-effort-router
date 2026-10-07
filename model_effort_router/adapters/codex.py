@@ -21,7 +21,7 @@ _MODEL_EFFORTS = MappingProxyType(
 _TIERS = MappingProxyType(
     {"economy": "gpt-6-luna", "balanced": "gpt-6-luna", "frontier": "gpt-6.1-sol"}
 )
-_EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "xhigh"})
+_EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"})
 
 
 @dataclass(frozen=True)

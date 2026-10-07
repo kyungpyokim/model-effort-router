@@ -4,7 +4,7 @@ from math import isfinite
 from typing import Optional, Tuple
 
 ROLES = ("implementation", "fix", "lint", "test", "plan", "design", "review", "analysis")
-EFFORTS = ("low", "medium", "high", "xhigh")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
 EXECUTION_ROLES = frozenset(("implementation", "fix", "lint", "test"))
 RISK_FLAGS = ("security", "auth", "payment", "data_migration", "data_loss", "concurrency")
 

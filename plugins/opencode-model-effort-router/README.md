@@ -37,8 +37,8 @@ The defaults use OpenCode Zen's `opencode/mimo-v2.6-flash-free` for execution an
 {
   "models": {
     "opencode": {
-      "execution": {"primary": "provider/model-id", "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "provider/model-id", "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "provider/model-id", "fallback": null, "efforts": ["low", "medium", "high", "xhigh", "max"]},
+      "reasoning": {"primary": "provider/model-id", "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh", "max"]}
     }
   }
 }
@@ -54,13 +54,13 @@ MER recommends the lane's `primary` model based on the routed role and returns `
         "primary": "opencode/mimo-v2.6-flash-free",
         "alternatives": ["provider/another-model"],
         "fallback": null,
-        "efforts": ["low", "medium", "high", "xhigh"]
+        "efforts": ["low", "medium", "high", "xhigh", "max"]
       },
       "reasoning": {
         "primary": "opencode/nemotron-3-ultra-free",
         "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"],
         "fallback": null,
-        "efforts": ["low", "medium", "high", "xhigh"]
+        "efforts": ["low", "medium", "high", "xhigh", "max"]
       }
     }
   }

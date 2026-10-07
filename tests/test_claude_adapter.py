@@ -8,7 +8,7 @@ from model_effort_router.profiles.profiles import Profile
 class ResolveTest(unittest.TestCase):
     def test_default_tiers_and_efforts(self):
         for tier, model in (("economy", "claude-sonnet-5-5"), ("balanced", "claude-sonnet-5-5"), ("frontier", "claude-opus-5-5")):
-            for effort, host in (("medium", "medium"), ("high", "high"), ("xhigh", "high")):
+            for effort, host in (("medium", "medium"), ("high", "high"), ("xhigh", "high"), ("max", "max")):
                 r = resolve(Profile(tier, effort))
                 self.assertEqual((r.tier, r.model, r.requested_effort, r.applied_effort), (tier, model, host, host))
 
@@ -25,7 +25,7 @@ class ResolveTest(unittest.TestCase):
 
     def test_nearest_higher_supported_effort_else_highest(self):
         cfg = ClaudeConfig(model_efforts={"claude-sonnet-5-5": ("high", "max"), "claude-opus-5-5": ("low",), HAIKU: ()},
-                           efforts={"medium": "medium", "high": "high", "xhigh": "xhigh"})
+                           efforts={"medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"})
         self.assertEqual(resolve(Profile("balanced", "medium"), cfg).applied_effort, "high")
         self.assertEqual(resolve(Profile("frontier", "xhigh"), cfg).applied_effort, "low")
         self.assertEqual(resolve(Profile("balanced", "xhigh"), cfg).applied_effort, "max")
@@ -38,7 +38,7 @@ class ResolveTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ClaudeConfig(model_efforts={"claude-sonnet-5-5": ("ultra",), "claude-opus-5-5": (), HAIKU: ()})
         with self.assertRaises(ValueError):
-            ClaudeConfig(efforts={"medium": "low", "high": "high", "xhigh": "ultra"})
+            ClaudeConfig(efforts={"medium": "low", "high": "high", "xhigh": "ultra", "max": "max"})
         with self.assertRaises(ValueError):
             ClaudeConfig(model_efforts={"claude-sonnet-5-5": "high", "claude-opus-5-5": (), HAIKU: ()})
 

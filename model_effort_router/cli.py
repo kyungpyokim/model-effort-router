@@ -104,6 +104,7 @@ def _parser():
             item.add_argument("--verify-timeout", type=float, default=300.0)
             item.add_argument("--retry-low", action="store_true", help="retry low once before promoting, for comparison")
             item.add_argument("--approve-xhigh", action="store_true", help="explicit user approval for xhigh in this run")
+            item.add_argument("--approve-max", action="store_true", help="explicit user approval for max in this run")
     old = sub.add_parser("chat", help="removed; use mer route and ask Main to call a Subagent")
     old.add_argument("request", nargs="?")
     return parser
@@ -166,9 +167,13 @@ def main(argv=None, *, env=None, runner=None, out=None):
     if host.name == "opencode":
         print("mer: OpenCode worker execution is unsupported; use `mer route` for advice.", file=sys.stderr)
         return 2
-    if not args.low_first and plan.applied_effort == "xhigh" and not args.approve_xhigh:
-        result = {**result, "status": "approval_required", "approval_required": True, "next_effort": "xhigh",
-                  "error": "User approval is required before xhigh; pass --approve-xhigh only after approval."}
+    needs_approval = (plan.applied_effort == "xhigh" and not args.approve_xhigh
+                      or plan.applied_effort == "max" and not args.approve_max)
+    if not args.low_first and needs_approval:
+        effort_flag = "--approve-xhigh" if plan.applied_effort == "xhigh" else "--approve-max"
+        result = {**result, "status": "approval_required", "approval_required": True,
+                  "next_effort": plan.applied_effort,
+                  "error": f"User approval is required before {plan.applied_effort}; pass {effort_flag} only after approval."}
         print(json.dumps(result, ensure_ascii=False) if args.json else result["error"], file=out)
         return 1
     start_effort = "low"
@@ -181,12 +186,16 @@ def main(argv=None, *, env=None, runner=None, out=None):
             if plan.decision.role not in EXECUTION_ROLES:
                 raise ValueError("--low-first requires implementation, fix, lint, or test")
             if plan.decision.backend == "explicit" and plan.requested_effort != "low":
-                if plan.requested_effort != "xhigh" or not args.approve_xhigh or args.retry_low:
-                    raise ValueError("--low-first needs low or explicitly approved xhigh without --retry-low")
-                start_effort = "xhigh"
+                if plan.requested_effort not in ("xhigh", "max") or args.retry_low:
+                    raise ValueError("--low-first needs low or an explicitly approved xhigh/max without --retry-low")
+                if plan.requested_effort == "xhigh" and not args.approve_xhigh:
+                    raise ValueError("--low-first xhigh needs --approve-xhigh")
+                if plan.requested_effort == "max" and not args.approve_max:
+                    raise ValueError("--low-first max needs --approve-max")
+                start_effort = plan.requested_effort
             mapped = resolve_config(repo=repo_cfg, user=user_cfg, registry=registry).models[host.name]["execution"]
             if not set(EFFORTS).issubset(mapped["efforts"]):
-                raise ValueError("--low-first requires model support for low, medium, high, xhigh")
+                raise ValueError(f"--low-first requires model support for {', '.join(EFFORTS)}")
             if not shlex.split(args.verify):
                 raise ValueError("--verify must be a non-empty command")
             check = Check("test", args.verify, "--verify", False)
@@ -212,7 +221,8 @@ def main(argv=None, *, env=None, runner=None, out=None):
             if args.low_first:
                 result = run_low_first(task, plan, **options, verify=lambda root, timeout: run_check(check, root, timeout),
                                        verify_timeout_s=args.verify_timeout, retry_low=args.retry_low,
-                                       approve_xhigh=args.approve_xhigh, start_effort=start_effort)
+                                       approve_xhigh=args.approve_xhigh, approve_max=args.approve_max,
+                                       start_effort=start_effort)
             else:
                 result = run_worker(task, plan, **options)
     except WorkerInterrupted as exc:
@@ -229,7 +239,7 @@ def main(argv=None, *, env=None, runner=None, out=None):
         result = {**result, "status": result.get("status", "complete")}
         status = 0 if result["status"] == "complete" else 1
     if args.low_first:
-        policy = "xhigh-continuation" if start_effort == "xhigh" else "low-retry" if args.retry_low else "low-first"
+        policy = f"{start_effort}-continuation" if start_effort in ("xhigh", "max") else "low-retry" if args.retry_low else "low-first"
         result = {**result, "policy": policy,
                   "classifier_usage": plan.classifier_usage, "classifier_usage_missing": plan.classifier_usage_missing}
     final_paths = _changed_paths(git_diff(cwd))

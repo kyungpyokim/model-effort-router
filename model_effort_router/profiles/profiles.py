@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 
 TIERS = ("economy", "balanced", "frontier")
-EFFORTS = ("medium", "high", "xhigh")
+EFFORTS = ("medium", "high", "xhigh", "max")
 
 
 @dataclass(frozen=True)

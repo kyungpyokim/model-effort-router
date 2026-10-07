@@ -46,6 +46,8 @@ QUESTIONS = {
                  "compatibility, or security, or real design tradeoffs or uncertain diagnosis remain."),
         "xhigh": ("Rare timing-dependent failures across several subsystems, or changes where a mistake "
                   "would corrupt or lose production data, bypass security, or cause irreversible harm."),
+        "max": ("The broadest and most demanding reasoning is needed: several interacting systems, substantial "
+                "uncertainty, and high consequences require sustained analysis beyond xhigh."),
     }},
 }
 
