@@ -17,7 +17,10 @@ describe("OpenCode plugin tool schema", () => {
         tool: {
           transform: async (register) => register({ add: (definition) => registered.push(definition as never) }),
         },
-        session: { get: async () => ({ location: { directory: process.cwd() } }) },
+        session: {
+          get: async () => ({ location: { directory: process.cwd() } }),
+          hook: async () => undefined,
+        },
       } as never);
       expect(registered.map(({ name }) => name)).toEqual(["mer"]);
       expect(registered[0].input.properties.role.enum)

@@ -27,10 +27,10 @@ HARNESS_MESSAGE = re.compile(
 MAX_BACKEND_TIMEOUT_S = 12  # backend + fallback must fit in the 30s hook timeout with margin
 
 
-def _registry(env):
+def _registry(env, classifier_host=None):
     reg = dict(BACKENDS)
     if reg.get("subscription") is SubscriptionBackend:  # its CLI follows the host, which only hosts.get reads from the env
-        name = hosts.get(env=env).name
+        name = classifier_host or hosts.get(env=env).name
         reg["subscription"] = lambda: SubscriptionBackend(host=name)
     module = env.get(REGISTRY_MODULE_ENV)
     if module:

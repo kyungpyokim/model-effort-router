@@ -1,6 +1,6 @@
 # OpenCode Model Effort Router
 
-This local OpenCode plugin adds the `mer` tool. It asks the shared MER runtime for role, model, and effort advice; it does not change the current model, launch a worker, or classify the task on its own.
+This local OpenCode plugin runs MER automatically on submitted prompts and appends role, model, and effort advice. It also adds the `mer` tool for an explicit recommendation. It does not change the current model or launch a worker.
 
 ## Install for a project
 
@@ -28,6 +28,8 @@ Add the plugin path to the project's `opencode.json`:
 ```
 
 OpenCode resolves the path relative to `opencode.json`. The bundle is not installed globally and does not edit OpenCode configuration.
+
+The prompt hook checks each submitted prompt before it is sent to the model and adds advice only when MER classifies it for routing. With the default `subscription` classifier, automatic routing uses the installed and authenticated Codex CLI (`codex exec`) for classification. Unrouted prompts pass through unchanged; if routing is disabled or classification fails, the prompt continues without MER advice. OpenCode model selection and worker execution remain manual.
 
 ## Model advice
 

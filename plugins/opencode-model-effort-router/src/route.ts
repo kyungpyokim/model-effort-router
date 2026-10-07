@@ -15,9 +15,27 @@ export async function routeAdvice(
   executable = MER_BIN,
   run: ExecFile = execFile,
 ) {
+  return runRoute(task, cwd, ["--role", role, "--effort", effort], executable, run);
+}
+
+export async function automaticRouteAdvice(
+  task: string,
+  cwd: string,
+  executable = MER_BIN,
+  run: ExecFile = execFile,
+) {
+  return runRoute(task, cwd, ["--automatic"], executable, run);
+}
+
+async function runRoute(
+  task: string,
+  cwd: string,
+  overrides: string[],
+  executable: string,
+  run: ExecFile,
+) {
   if (!task.trim() || task.length > 20_000) throw new Error("task must be 1-20000 characters");
-  const argv = ["route", "--host", "opencode", "--role", role, "--effort", effort,
-    "--json", "--cwd", cwd, "--", task];
+  const argv = ["route", "--host", "opencode", ...overrides, "--json", "--cwd", cwd, "--", task];
   const stdout = await new Promise<string>((resolve, reject) => {
     run(executable, argv, { cwd, timeout: ROUTE_TIMEOUT_MS, maxBuffer: MAX_OUTPUT_BYTES },
       (error, output, stderr) => {
@@ -37,6 +55,7 @@ export async function routeAdvice(
   }
   if (!result || typeof result !== "object") throw new Error("mer route returned an invalid result");
   const advice = result as Record<string, unknown>;
+  if (advice.route === "no_route") return null;
   if (!["role", "agent", "model", "effort"].every((key) => typeof advice[key] === "string")) {
     throw new Error("mer route result is missing role, agent, model, or effort");
   }

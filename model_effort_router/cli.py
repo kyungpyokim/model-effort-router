@@ -13,7 +13,6 @@ import time
 import uuid
 from math import isfinite
 
-from .difficulty.subscription import SubscriptionBackend
 from .difficulty.decision import merge_risk_flags
 from .difficulty.risk import detect_risk_flags
 from .flow import WorkerInterrupted, run_low_first, run_worker
@@ -97,6 +96,8 @@ def _parser():
         item.add_argument("--role")
         item.add_argument("--effort")
         item.add_argument("--json", action="store_true")
+        if command == "route":
+            item.add_argument("--automatic", action="store_true", help="skip requests MER does not classify for routing")
         if command == "run":
             item.add_argument("--timeout", type=float, default=1200.0)
             item.add_argument("--low-first", action="store_true", help="promote effort only after verification fails")
@@ -139,11 +140,11 @@ def main(argv=None, *, env=None, runner=None, out=None):
             host = hosts.get(args.host, env)
             cwd = os.path.realpath(args.cwd)
             repo_cfg, user_cfg = load_configs(cwd, env)
-            registry = _registry(env)
-            if registry.get("subscription") is SubscriptionBackend:
-                registry["subscription"] = lambda: SubscriptionBackend(host=host.name)
+            classifier_host = "codex" if host.name == "opencode" else host.name
+            registry = _registry(env, classifier_host=classifier_host)
             plan = route(args.request, repo_config=repo_cfg, user_config=user_cfg, registry=registry,
-                         host=host.name, explicit=True, role_override=args.role, effort_override=args.effort)
+                         host=host.name, explicit=not getattr(args, "automatic", False),
+                         role_override=args.role, effort_override=args.effort)
     except WorkerInterrupted as exc:
         print(f"mer: {exc}", file=sys.stderr)
         return 1
@@ -154,6 +155,9 @@ def main(argv=None, *, env=None, runner=None, out=None):
         print("mer: invalid /router override; use `/router role=<role> effort=<effort>` or `/router mode=<mode>`", file=sys.stderr)
         return 2
     if plan.decision is None:
+        if args.command == "route" and args.automatic:
+            print(json.dumps({"route": "no_route"}) if args.json else "", file=out)
+            return 0
         print("mer: routing is off or manual; provide an explicit --role and --effort", file=sys.stderr)
         return 2
     result = _response(plan)
