@@ -5,7 +5,11 @@ import ModelEffortRouterPlugin from "./index";
 import { automaticRouteAdvice, routeAdvice } from "./route";
 
 type ExecFile = typeof execFile;
-type ExecCallback = (error: Error | null, stdout: string, stderr: string) => void;
+type ExecCallback = (
+  error: Error | null,
+  stdout: string,
+  stderr: string,
+) => void;
 
 function fakeExec(
   emit: (
@@ -13,7 +17,12 @@ function fakeExec(
     callback: ExecCallback,
   ) => void,
 ): ExecFile {
-  const run = ((file: string, args: string[], _options: unknown, callback: ExecCallback) => {
+  const run = ((
+    file: string,
+    args: string[],
+    _options: unknown,
+    callback: ExecCallback,
+  ) => {
     emit({ file, args }, callback);
     return {} as unknown as ReturnType<typeof execFile>;
   }) as unknown as ExecFile;
@@ -172,7 +181,14 @@ describe("routeAdvice", () => {
 
   it("surfaces subprocess failures and malformed output", async () => {
     await expect(
-      routeAdvice("task", "plan", "medium", "/work", "/mer", failingExec("exit 2", "route rejected")),
+      routeAdvice(
+        "task",
+        "plan",
+        "medium",
+        "/work",
+        "/mer",
+        failingExec("exit 2", "route rejected"),
+      ),
     ).rejects.toThrow("route rejected");
     const malformed = fakeExec((_info, callback) => {
       callback(null, "not json", "");
@@ -249,7 +265,7 @@ describe("prompt hook routing banner", () => {
       expect(posted).toHaveLength(1);
       expect(posted[0].sessionID).toBe("test");
       expect(posted[0].text).toMatch(
-        /^\[model-effort-router\] \S+ → \S+ · effort \S+$/,
+        /^\[model-effort-router\] \S+ → \S+ · \S+ · effort \S+$/,
       );
     } finally {
       if (previousCorePath === undefined) delete process.env.MER_CORE_PATH;

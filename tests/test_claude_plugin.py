@@ -36,14 +36,41 @@ class ManifestTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             env = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
             env.update(MER_CORE_PATH=str(ROOT), HOME=d, MER_STATE_DIR=d, MER_HOST="codex")
-            cmd = [sys.executable, str(CLAUDE / "bin" / "mer"), "route", "--role", "fix", "--effort", "medium",
-                   "--json", "--cwd", d, "Fix the bug in calc.py"]
+            cmd = [
+                sys.executable,
+                str(CLAUDE / "bin" / "mer"),
+                "route",
+                "--role",
+                "fix",
+                "--effort",
+                "medium",
+                "--json",
+                "--cwd",
+                d,
+                "Fix the bug in calc.py",
+            ]
             result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)["role"], "fix")
-            codex = subprocess.run([sys.executable, str(PLUGIN / "bin" / "mer"), "route", "--role", "fix", "--effort", "medium",
-                                   "--json", "--cwd", d, "Fix the bug in calc.py"], capture_output=True, text=True,
-                                   env=env, timeout=60)
+            codex = subprocess.run(
+                [
+                    sys.executable,
+                    str(PLUGIN / "bin" / "mer"),
+                    "route",
+                    "--role",
+                    "fix",
+                    "--effort",
+                    "medium",
+                    "--json",
+                    "--cwd",
+                    d,
+                    "Fix the bug in calc.py",
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=60,
+            )
             self.assertEqual(codex.returncode, 0, codex.stderr)
 
     def test_claude_and_codex_skill_contracts_are_host_specific(self):
@@ -67,20 +94,47 @@ class EffortAgentTest(unittest.TestCase):
         self.assertEqual(len(list((CLAUDE / "agents").glob("*.md"))), len(EFFORTS))
 
     def test_advice_names_agent_and_model_alias_for_claude_only(self):
-        plan = lambda model, effort="high": RoutePlan(
-            ROUTE, "auto", DifficultyDecision("review", "high", "x"), (), model, None, "reasoning", "high", effort,
-            model_options=(model,))
-        for model, alias in (("claude-opus-5-5", "opus"), ("claude-sonnet-5-5", "sonnet"),
-                             ("claude-fable-5-1", "fable"), ("opus", "opus"), ("sonnet-5-5", "sonnet")):
+        def plan(model, effort="high"):
+            return RoutePlan(
+                ROUTE,
+                "auto",
+                DifficultyDecision("review", "high", "x"),
+                (),
+                model,
+                None,
+                "reasoning",
+                "high",
+                effort,
+                model_options=(model,),
+            )
+
+        for model, alias in (
+            ("claude-opus-5-5", "opus"),
+            ("claude-sonnet-5-5", "sonnet"),
+            ("claude-fable-5-1", "fable"),
+            ("opus", "opus"),
+            ("sonnet-5-5", "sonnet"),
+        ):
             note = advice.render(plan(model, "xhigh"), "mer", hosts.CLAUDE)
             self.assertIn(f'Agent(subagent_type="model-effort-router:effort-xhigh", model="{alias}")', note, model)
             self.assertEqual(model != alias, f"may differ from {model}" in note, model)
         self.assertNotIn("subagent_type", advice.render(plan("gpt-6.1-sol"), "mer", hosts.CODEX))
 
     def test_advice_without_alias_or_effort_support_names_no_effort_agent(self):
-        plan = lambda model: RoutePlan(
-            ROUTE, "auto", DifficultyDecision("fix", "low", "x"), (), model, None, "execution", "low", "low",
-            model_options=(model,))
+        def plan(model):
+            return RoutePlan(
+                ROUTE,
+                "auto",
+                DifficultyDecision("fix", "low", "x"),
+                (),
+                model,
+                None,
+                "execution",
+                "low",
+                "low",
+                model_options=(model,),
+            )
+
         note = advice.render(plan("provider/model-id"), "mer", hosts.CLAUDE)
         self.assertNotIn("subagent_type", note)
         self.assertNotIn("model=", note)
@@ -94,7 +148,9 @@ class EffortAgentTest(unittest.TestCase):
     def test_advice_lets_main_work_directly_when_it_matches_and_skips_no_route_plans(self):
         decision = DifficultyDecision("fix", "low", "x", target="no_route")
         self.assertIsNone(advice.render(RoutePlan(NO_ROUTE, "auto", decision), "mer", hosts.CLAUDE))
-        note = advice.render(RoutePlan(ROUTE, "auto", decision, (), "m", None, "execution", "low", "low"), "mer", hosts.CODEX)
+        note = advice.render(
+            RoutePlan(ROUTE, "auto", decision, (), "m", None, "execution", "low", "low"), "mer", hosts.CODEX
+        )
         self.assertIn("handle it directly", note)
 
 
@@ -117,12 +173,14 @@ class HookTest(HookCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         response = json.loads(proc.stdout)
         self.assertEqual(set(response), {"hookSpecificOutput", "systemMessage"})
-        self.assertEqual(response["systemMessage"], "[model-effort-router] review → claude-opus-5-5 · effort medium")
+        self.assertEqual(
+            response["systemMessage"], "[model-effort-router] review → reasoning · claude-opus-5-5 · effort medium"
+        )
         hook_output = response["hookSpecificOutput"]
         self.assertEqual(set(hook_output), {"hookEventName", "additionalContext"})
         self.assertEqual(hook_output["hookEventName"], "UserPromptSubmit")
         note = hook_output["additionalContext"]
-        self.assertIn("Role: review", note)
+        self.assertIn("review → reasoning · claude-opus-5-5 · effort medium", note)
         self.assertIn("claude-opus-5-5", note)
         self.assertIn('Agent(subagent_type="model-effort-router:effort-medium", model="opus")', note)
         self.assertIn("goal, decisions, constraints, actual diff, verification status/results", note)
@@ -133,9 +191,13 @@ class HookTest(HookCase):
         self.assertEqual(settings.read_bytes(), original_settings)
 
     def test_codex_hook_uses_codex_model_mapping_even_if_claude_env_is_set(self):
-        proc = run_script("hooks/user_prompt_submit.py", stdin=json.dumps({"session_id": "s", "cwd": str(self.repo),
-                                                                          "prompt": PROMPT}),
-                          env=self.env(MER_HOST="claude"), cwd=str(self.root), plugin=PLUGIN)
+        proc = run_script(
+            "hooks/user_prompt_submit.py",
+            stdin=json.dumps({"session_id": "s", "cwd": str(self.repo), "prompt": PROMPT}),
+            env=self.env(MER_HOST="claude"),
+            cwd=str(self.root),
+            plugin=PLUGIN,
+        )
         note = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         self.assertNotIn("claude-", note)
         self.assertIn("gpt-6.1-sol", note)
@@ -153,8 +215,13 @@ class HookTest(HookCase):
         old = codex_hooks.HANDLERS["UserPromptSubmit"]
         codex_hooks.HANDLERS["UserPromptSubmit"] = lambda *args: (_ for _ in ()).throw(RuntimeError("boom"))
         try:
-            rc = codex_hooks.main("UserPromptSubmit", CLAUDE, stdin=io.StringIO(json.dumps({"session_id": "s"})),
-                                  stdout=out, env={"HOME": str(self.root)})
+            rc = codex_hooks.main(
+                "UserPromptSubmit",
+                CLAUDE,
+                stdin=io.StringIO(json.dumps({"session_id": "s"})),
+                stdout=out,
+                env={"HOME": str(self.root)},
+            )
         finally:
             codex_hooks.HANDLERS["UserPromptSubmit"] = old
         self.assertEqual((rc, out.getvalue()), (0, ""))

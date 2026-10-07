@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Suggest the configured model profile for native Antigravity Subagents."""
+
 import json
 import os
 import sys
@@ -18,6 +19,7 @@ def main():
             return
         sys.path.insert(0, str(runtime))
         from model_effort_router.adapters.antigravity import resolve_model
+        from model_effort_router.host.advice import effort_pair
         from model_effort_router.host.codex_hooks import load_configs
         from model_effort_router.policy.config import resolve_config
 
@@ -31,20 +33,21 @@ def main():
         if not supported:
             return
         effort = supported[-1]
-        selected = resolve_model(execution["primary"], effort, supported).model
+        primary = execution["primary"]
+        resolve_model(primary, effort, supported)  # validates the primary/effort pair
         alternatives = tuple(
-            model for model in (
-                resolve_model(candidate, effort, supported).model
-                for candidate in execution.get("alternatives", [])
-            )
-            if model != selected
+            model
+            for model in execution.get("alternatives", [])
+            if model != primary and resolve_model(model, effort, supported).model
         )
-        model_advice = f"{selected}, effort {effort}"
+        model_advice = effort_pair(primary, effort)  # display the bare model; the slug folds the effort in
         if alternatives:
-            model_advice += f"; other configured options: {', '.join(alternatives)} (user-selectable, not automatic fallbacks)"
+            model_advice += (
+                f"; other configured options: {', '.join(alternatives)} (user-selectable, not automatic fallbacks)"
+            )
         message = (
-            "[model-effort-router] Preferred delegated profile: "
-            f"{model_advice}. Give a native Antigravity Subagent a concise context packet "
+            # No role classification happens in this hook: the tagged model/effort pair leads, guidance follows.
+            f"[model-effort-router] {model_advice}. Give a native Antigravity Subagent a concise context packet "
             "from the current request and relevant conversation. For code changes, delegate implementation, "
             "integrate it, then run the separate write-capable review workflow. This is guidance for "
             "Subagent selection; the host's current Subagent controls do not guarantee this exact model or "

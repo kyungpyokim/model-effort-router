@@ -1,5 +1,4 @@
 import io
-import json
 import unittest
 from contextlib import redirect_stderr
 
