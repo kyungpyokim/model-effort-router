@@ -19,7 +19,6 @@ DEFAULTS = {
         "codex": {
             "execution": {
                 "primary": "gpt-6-luna",
-                "alternatives": ["gpt-6-astra"],
                 "fallback": "gpt-6.1-sol",
                 "efforts": list(EFFORTS),
             },
@@ -33,7 +32,6 @@ DEFAULTS = {
         "claude": {
             "execution": {
                 "primary": "claude-sonnet-5-5",
-                "alternatives": ["claude-fable-5-1"],
                 "fallback": "claude-opus-5-5",
                 "efforts": list(EFFORTS),
             },
@@ -47,7 +45,6 @@ DEFAULTS = {
         "antigravity": {
             "execution": {
                 "primary": "gemini-3.8-flash",
-                "alternatives": ["claude-opus-5-5"],
                 "fallback": None,
                 "efforts": ["medium", "high"],
             },
@@ -146,9 +143,10 @@ def _validate_models(raw):
                 raise ValueError(
                     f"models.{host}.{lane}.alternatives must be a list of valid model slugs"
                 )
-            if len(set(alternatives)) != len(alternatives) or item.get(
-                "primary"
-            ) in alternatives:
+            if (
+                len(set(alternatives)) != len(alternatives)
+                or item.get("primary") in alternatives
+            ):
                 raise ValueError(
                     f"models.{host}.{lane}.alternatives must be unique and exclude primary"
                 )
