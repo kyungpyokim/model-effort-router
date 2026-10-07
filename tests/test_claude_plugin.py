@@ -116,7 +116,8 @@ class HookTest(HookCase):
         proc = self.submit_claude()
         self.assertEqual(proc.returncode, 0, proc.stderr)
         response = json.loads(proc.stdout)
-        self.assertEqual(set(response), {"hookSpecificOutput"})
+        self.assertEqual(set(response), {"hookSpecificOutput", "systemMessage"})
+        self.assertEqual(response["systemMessage"], "[model-effort-router] review → claude-opus-5-5 · effort medium")
         hook_output = response["hookSpecificOutput"]
         self.assertEqual(set(hook_output), {"hookEventName", "additionalContext"})
         self.assertEqual(hook_output["hookEventName"], "UserPromptSubmit")
