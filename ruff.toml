@@ -1,0 +1,7 @@
+# The classic default lint set the codebase was written against. Ruff 0.16+ widens
+# its built-in defaults; this pins the rules (and results) across ruff versions.
+line-length = 120
+target-version = "py39"
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

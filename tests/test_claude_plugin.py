@@ -67,9 +67,10 @@ class EffortAgentTest(unittest.TestCase):
         self.assertEqual(len(list((CLAUDE / "agents").glob("*.md"))), len(EFFORTS))
 
     def test_advice_names_agent_and_model_alias_for_claude_only(self):
-        plan = lambda model, effort="high": RoutePlan(
-            ROUTE, "auto", DifficultyDecision("review", "high", "x"), (), model, None, "reasoning", "high", effort,
-            model_options=(model,))
+        def plan(model, effort="high"):
+            return RoutePlan(
+                ROUTE, "auto", DifficultyDecision("review", "high", "x"), (), model, None, "reasoning", "high", effort,
+                model_options=(model,))
         for model, alias in (("claude-opus-5-5", "opus"), ("claude-sonnet-5-5", "sonnet"),
                              ("claude-fable-5-1", "fable"), ("opus", "opus"), ("sonnet-5-5", "sonnet")):
             note = advice.render(plan(model, "xhigh"), "mer", hosts.CLAUDE)
@@ -78,9 +79,10 @@ class EffortAgentTest(unittest.TestCase):
         self.assertNotIn("subagent_type", advice.render(plan("gpt-6.1-sol"), "mer", hosts.CODEX))
 
     def test_advice_without_alias_or_effort_support_names_no_effort_agent(self):
-        plan = lambda model: RoutePlan(
-            ROUTE, "auto", DifficultyDecision("fix", "low", "x"), (), model, None, "execution", "low", "low",
-            model_options=(model,))
+        def plan(model):
+            return RoutePlan(
+                ROUTE, "auto", DifficultyDecision("fix", "low", "x"), (), model, None, "execution", "low", "low",
+                model_options=(model,))
         note = advice.render(plan("provider/model-id"), "mer", hosts.CLAUDE)
         self.assertNotIn("subagent_type", note)
         self.assertNotIn("model=", note)
