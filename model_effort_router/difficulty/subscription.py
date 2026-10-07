@@ -11,6 +11,7 @@ import signal
 import subprocess
 import tempfile
 from dataclasses import replace
+from functools import lru_cache
 
 from .decision import DifficultyDecision, DifficultyInput, EFFORTS, ROLES
 from ..events import iter_events
@@ -80,16 +81,56 @@ def _stop_group(proc, grace_s):
             pass
 
 
-def isolated_argv(host, prompt, model=None):  # prompt=None: the caller feeds it on stdin (`claude -p`, `codex exec -`)
+# Behavioural evidence, for this Codex version only (not a guarantee): with these flags `codex exec -s read-only` could
+# not read a canary file under a direct instruction, prompt injection, or explicit exec/spawn_agent bypass attempts, while
+# the no-flag positive control read it through a shell command. The web_search value was not verified. Older Codex may
+# reject unknown feature names and newer ones may rename them, so the flags and the session context sent to a Codex
+# agent are used only on a verified version; add a version here only after re-running the live canary check.
+VERIFIED_CODEX_VERSIONS = ("0.160.1",)
+CODEX_TOOLLESS_FLAGS = (
+    "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "view_image", "--disable", "browser_use",
+    "--disable", "browser_use_external", "--disable", "in_app_browser", "--disable", "computer_use",
+    "--disable", "image_generation", "--disable", "multi_agent", "--disable", "apps", "--disable", "plugins",
+    "--disable", "skill_search", "--disable", "tool_suggest", "--disable", "sleep_tool",
+    "-c", 'web_search="disabled"',
+)
+
+
+@lru_cache(maxsize=8)
+def _probe_version(path, mtime):  # mtime: part of the cache key, so an upgraded binary is probed again
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL,
+                             env={**os.environ, GUARD_ENV: "1"}).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"\b(\d+\.\d+\.\d+(?:[-+][\w.]+)?)\b", out)
+    return match.group(1) if match else None
+
+
+def codex_version():
+    """Version of the `codex` on PATH, or None (not installed, not runnable, or unparsable)."""
+    path = shutil.which("codex")
+    try:
+        return _probe_version(os.path.realpath(path), os.stat(path).st_mtime) if path else None
+    except OSError:
+        return None
+
+
+def codex_verified(probe=None):
+    return (probe or codex_version)() in VERIFIED_CODEX_VERSIONS
+
+
+def isolated_argv(host, prompt, model=None, toolless=True):  # prompt=None: the caller feeds it on stdin (`claude -p`, `codex exec -`)
     """One-shot, tool-less model call through the host's subscription CLI. Claude: `claude -p`, as isolated and cheap as
     --help allows: no tools (`--tools ""`), safe mode (no CLAUDE.md, skills, plugins, hooks, MCP, memory), no MCP servers,
-    nothing persisted. Codex: `codex exec` read-only, ephemeral, user config ignored."""
+    nothing persisted. Codex: `codex exec` read-only, ephemeral, user config ignored, and (`toolless`, only for a verified
+    version: see VERIFIED_CODEX_VERSIONS) its shell and exec tools disabled with CODEX_TOOLLESS_FLAGS."""
     if host == "claude":
         return ["claude", "-p", "--output-format", "json", "--model", model or CLAUDE_MODEL,
                 "--permission-mode", "dontAsk", "--tools", "", "--safe-mode", "--strict-mcp-config", "--no-session-persistence",
                 *(["--", prompt] if prompt is not None else [])]
     return ["codex", "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "-s", "read-only",
-            "-m", model or DEFAULT_MODEL, "-c", "model_reasoning_effort=low", "-" if prompt is None else prompt]  # "-": stdin
+            *(CODEX_TOOLLESS_FLAGS if toolless else ()), "-m", model or DEFAULT_MODEL, "-c", "model_reasoning_effort=low", "-" if prompt is None else prompt]  # "-": stdin
 
 
 def run_isolated(argv, runner, timeout_s, input_text=None):
@@ -161,8 +202,9 @@ class SubscriptionBackend:
     name = "subscription"
     calls_model = True  # route events log its usage (explicit null when unreported)
 
-    def __init__(self, runner=default_runner, model=None, host=None):
+    def __init__(self, runner=default_runner, model=None, host=None, version_probe=None):
         self._runner = runner
+        self._version_probe = version_probe  # tests: () -> Codex version string or None
         self._host = host  # "claude" or codex (None): given by the caller; the env is only read in host/hosts.get
         self._model = model
         self.last_usage = None  # usage of the most recent call, for evaluation (not part of DifficultyDecision)
@@ -173,9 +215,9 @@ class SubscriptionBackend:
             raise ValueError(f"subscription classifier is not supported for {self._host}: tool isolation is unverified")
         if self._host == "claude":
             return self._classify_claude(task, timeout_s)
-        # A read-only agent that still has a shell: transcript text must not reach it (prompt injection), so no context.
-        prompt = build_prompt(replace(task, context=""))
-        stdout = run_isolated(isolated_argv("codex", None, self._model), self._runner, timeout_s, input_text=prompt)
+        verified = codex_verified(self._version_probe)  # unverified: no locked flags, and no transcript text for a shell-capable agent
+        argv = isolated_argv("codex", None, self._model, toolless=verified)
+        stdout = run_isolated(argv, self._runner, timeout_s, input_text=build_prompt(task if verified else replace(task, context="")))
         self.last_usage = parse_usage(stdout)
         return parse_output(stdout, self.name)
 

@@ -1,6 +1,6 @@
 """Background session-summary refresh: `python3 -m model_effort_router.context.refresh <host> <session_id> <transcript> <state_dir>`.
 
-Folds the turns the stored summary does not cover into it through `claude -p` (isolated, tool-less; the
+Folds the turns the stored summary does not cover into it through the host's one-shot CLI (`claude -p`, `codex exec`; isolated, tool-less; the
 guard env keeps that CLI's own hook from routing). Off the hook's critical path: it fails silently, leaving only an error
 event (type name and a fixed reason code only) in the route log."""
 import os
@@ -9,12 +9,13 @@ import sys
 import time
 from pathlib import Path
 
-from ..difficulty.subscription import GUARD_ENV, CliAuthError, default_runner, isolated_argv, run_isolated
+from ..difficulty.subscription import (
+    GUARD_ENV, CliAuthError, _agent_text, codex_verified, default_runner, isolated_argv, parse_usage, run_isolated)
 from ..logging import route_log
 from . import summary
 from .transcripts import clip, read_turns
 
-HOSTS = ("claude",)  # ponytail: `codex exec -s read-only` still has a shell that could read ~ under prompt injection; no verified flag turns it off
+HOSTS = ("claude", "codex")  # codex runs with shell and other tools disabled (subscription.CODEX_TOOLLESS_FLAGS)
 SUMMARY_MAX_CHARS = 2500
 MAX_INPUT_CHARS = 24000  # new turns folded per call; the rest follow, anchored after the last one included
 TIMEOUT_S = 90
@@ -43,22 +44,34 @@ def build_prompt(previous, turns):
 
 
 def _summarize(host, prompt, runner):
-    from ..host import claude_exec  # lazy: claude_exec imports subscription
+    """(summary text, token counts) from a one-shot, tool-less call of the host's CLI."""
     stdout = run_isolated(isolated_argv(host, None), runner, TIMEOUT_S, input_text=prompt)
-    stream = claude_exec.parse_stream(stdout)
-    if not stream.text.strip():
+    if host == "claude":
+        from ..host import claude_exec  # lazy: claude_exec imports subscription
+        stream = claude_exec.parse_stream(stdout)
+        text, used = stream.text, {"input_tokens": stream.usage["input"], "cached_input_tokens": stream.usage["cached_input"],
+                                   "output_tokens": stream.usage["output"]}
+    else:
+        text, raw = _agent_text(stdout), parse_usage(stdout) or {}
+        used = {k: raw[k] for k in ("input_tokens", "cached_input_tokens", "output_tokens")
+                if isinstance(raw.get(k), int) and not isinstance(raw[k], bool)}
+    if not text.strip():
         raise ValueError("empty summary")
-    u = stream.usage
-    return clip(stream.text.strip(), SUMMARY_MAX_CHARS), {
-        "input_tokens": u["input"], "cached_input_tokens": u["cached_input"], "output_tokens": u["output"]}
+    return clip(text.strip(), SUMMARY_MAX_CHARS), used
 
 
-def main(argv, *, runner=default_runner, env=None, min_chars=summary.REFRESH_MIN_CHARS):
+def main(argv, *, runner=default_runner, env=None, min_chars=summary.REFRESH_MIN_CHARS, version_probe=None):
     """Always returns 0."""
     env = os.environ if env is None else env
     if len(argv) != 4 or argv[0] not in HOSTS or env.get(GUARD_ENV) == "1":
         return 0
     host, sid, path, sdir = argv
+    if host == "codex" and not codex_verified(version_probe):  # the tool-free flags are only known to hold on VERIFIED_CODEX_VERSIONS
+        try:
+            route_log.append(sdir, sid, {"event": "error", "code": "context_refresh_failed", "reason": "codex_unverified_version"})
+        except Exception:
+            pass
+        return 0
     try:
         with summary.locked(sdir, sid) as got:
             if not got:  # another refresh is running: it will cover these turns, or the next prompt's will
@@ -88,7 +101,7 @@ def main(argv, *, runner=default_runner, env=None, min_chars=summary.REFRESH_MIN
 def _reason(exc):
     """Fixed code for the log: the exception message can carry CLI output."""
     if isinstance(exc, CliAuthError):
-        return "auth_failed"  # sign the standalone CLI in: `claude auth login`
+        return "auth_failed"  # sign the standalone CLI in: `claude auth login` / `codex login`
     return "timeout" if isinstance(exc, TimeoutError) else "error"
 
 

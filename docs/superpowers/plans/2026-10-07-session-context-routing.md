@@ -7,7 +7,7 @@ The hook classifier (Jev) sees only the current prompt. Follow-ups such as "ì§„í
 ## Decisions (user, 2026-10-07)
 
 - Pass a summary of the whole session to Jev, not only the last message.
-- The summary is produced by the host's subscription CLI (Claude: `claude -p` on Haiku, Codex: `codex exec` on the economy model), reusing the isolated runner in `difficulty/subscription.py`. No extra API key; session text does not leave the host provider except the summary and recent turns sent to Jev.
+- The summary is produced by the host's subscription CLI (Claude: `claude -p` on Haiku, Codex: `codex exec` on the economy model with shell and exec tools disabled; canary-file read attempts failed on Codex 0.160.1, which is behavioral evidence for that version only, so other versions fall back to no Codex summary and no classifier context), reusing the isolated runner in `difficulty/subscription.py`. No extra API key; session text does not leave the host provider except the summary and recent turns sent to Jev.
 - Scope: all hosts, phased. Claude and Codex first; OpenCode and Antigravity need host spikes.
 
 ## Design

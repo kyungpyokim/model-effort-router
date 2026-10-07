@@ -153,11 +153,12 @@ class SessionContextTest(HookCase):
         rows = [{"type": role, "message": {"content": text}} for role, text in turns]
         self.transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
-    def call(self, prompt="진행", host="claude", path=None, env_extra=None, spawn=None):
+    def call(self, prompt="진행", host="claude", path=None, env_extra=None, spawn=None, version="0.160.1"):
         data = {"session_id": SID, "cwd": str(self.repo), "prompt": prompt,
                 "transcript_path": str(path or self.transcript)}
         env = self.env(MER_HOST=host, **(env_extra or {}))
-        return codex_hooks.user_prompt_submit(data, env, PLUGIN, spawn=spawn or (lambda *a: self.spawned.append(a)))
+        return codex_hooks.user_prompt_submit(data, env, PLUGIN, spawn=spawn or (lambda *a: self.spawned.append(a)),
+                                              version_probe=lambda: version)
 
     def test_summary_and_uncovered_turns_reach_the_classifier_without_the_current_prompt(self):
         self.write_transcript(("user", "add retries"), ("assistant", "plan: retries param"), ("user", "진행"))
@@ -206,13 +207,25 @@ class SessionContextTest(HookCase):
         out = self.call(spawn=boom)
         self.assertIn("Role: fix", json.loads(out)["hookSpecificOutput"]["additionalContext"])
 
-    def test_codex_gets_raw_recent_turns_but_no_background_summary(self):
+    def test_codex_gets_context_and_a_background_refresh_when_due(self):
         rows = [{"type": "response_item", "payload": {"type": "message", "role": role, "content": [{"type": kind, "text": text}]}}
                 for role, kind, text in (("user", "input_text", "add retries"), ("assistant", "output_text", self.BIG))]
         self.transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
         self.call(host="codex")
         self.assertIn("Assistant: " + "B" * 100, FakeBackend.inputs[0].context)
+        self.assertEqual([args[:4] for args in self.spawned], [("codex", SID, str(self.transcript), str(self.state))])
+
+    def test_codex_refresh_is_not_spawned_on_an_unverified_version(self):
+        rows = [{"type": "response_item", "payload": {"type": "message", "role": role, "content": [{"type": kind, "text": text}]}}
+                for role, kind, text in (("user", "input_text", "add retries"), ("assistant", "output_text", self.BIG))]
+        self.transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+        for version in ("0.159.0", None):
+            self.call(host="codex", version=version)
         self.assertEqual(self.spawned, [])
+        self.assertIn("Assistant: " + "B" * 100, FakeBackend.inputs[-1].context)  # raw recent turns still flow
+        self.write_transcript(("user", "add retries"), ("assistant", self.BIG))
+        self.call(host="claude", version=None)  # Claude does not depend on the Codex version
+        self.assertEqual(len(self.spawned), 1)
 
     def test_max_chars_bounds_the_context(self):
         self.write_transcript(("user", "add retries"), ("assistant", "x" * 5000), ("user", "진행"))

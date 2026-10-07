@@ -24,6 +24,14 @@ def claude_result(text):
                        "usage": {"input_tokens": 11, "cache_read_input_tokens": 5, "output_tokens": 7}})
 
 
+CODEX_LOCKED = ['--disable', 'shell_tool', '--disable', 'unified_exec', '--disable', 'view_image', '--disable', 'browser_use', '--disable', 'browser_use_external', '--disable', 'in_app_browser', '--disable', 'computer_use', '--disable', 'image_generation', '--disable', 'multi_agent', '--disable', 'apps', '--disable', 'plugins', '--disable', 'skill_search', '--disable', 'tool_suggest', '--disable', 'sleep_tool', '-c', 'web_search="disabled"']  # the flags verified on Codex 0.160.1, written out so a drift in the constant is caught
+
+
+def codex_stream(text, usage=None):
+    return (json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": text}}) + "\n"
+            + json.dumps({"type": "turn.completed", "usage": usage or {"input_tokens": 1, "output_tokens": 1}}) + "\n")
+
+
 class FakeRunner:
     def __init__(self, stdout="", error=None):
         self.stdout, self.error, self.calls = stdout, error, []
@@ -42,8 +50,9 @@ class RefreshTest(unittest.TestCase):
         self.sdir = os.path.join(self._tmp.name, "state")
         self.env = {"PATH": os.environ.get("PATH", "")}
 
-    def run_refresh(self, host, path, runner, sid="s1", min_chars=1):
-        self.assertEqual(refresh.main([host, sid, path, self.sdir], runner=runner, env=self.env, min_chars=min_chars), 0)
+    def run_refresh(self, host, path, runner, sid="s1", min_chars=1, version="0.160.1"):
+        self.assertEqual(refresh.main([host, sid, path, self.sdir], runner=runner, env=self.env, min_chars=min_chars,
+                                      version_probe=lambda: version), 0)
 
     def log_events(self, sid="s1"):
         p = route_log.log_path(self.sdir, sid)
@@ -79,11 +88,50 @@ class RefreshTest(unittest.TestCase):
                      "work in progress", "plain text", str(refresh.SUMMARY_MAX_CHARS), "data"):
             self.assertIn(word, prompt)
 
-    def test_codex_is_not_summarized_until_its_exec_can_run_without_a_shell(self):
-        runner = FakeRunner("{}")
+    def test_codex_folds_turns_through_the_locked_down_exec(self):
+        TURNS_CODEX = read_turns(CODEX, "codex")
+        runner = FakeRunner(codex_stream("CODEX SUMMARY", {"input_tokens": 30, "cached_input_tokens": 10, "output_tokens": 4}))
         self.run_refresh("codex", CODEX, runner)
-        self.assertEqual(runner.calls, [])
-        self.assertEqual(refresh.HOSTS, ("claude",))
+        self.assertEqual(summary.load(self.sdir, "s1"), Stored("CODEX SUMMARY", anchor_at(TURNS_CODEX, len(TURNS_CODEX))))
+        (call,) = runner.calls
+        cmd = call["cmd"]
+        self.assertEqual(cmd[:2], ["codex", "exec"])
+        self.assertEqual(cmd[-1], "-")
+        for flag in ("--ephemeral", "--ignore-user-config", "--json"):
+            self.assertIn(flag, cmd)
+        self.assertEqual(cmd[cmd.index("-s") + 1], "read-only")
+        for i in range(0, len(CODEX_LOCKED), 2):  # every locked flag, as an adjacent pair
+            self.assertIn(CODEX_LOCKED[i:i + 2], [cmd[j:j + 2] for j in range(len(cmd) - 1)])
+        self.assertIn("진행", call["input_text"])
+        self.assertNotIn("진행", " ".join(cmd))
+        self.assertEqual(call["env"][GUARD_ENV], "1")
+        self.assertEqual(call["cwd_files"], [])
+        (event,) = self.log_events()
+        self.assertEqual((event["event"], event["host"]), ("context_refresh", "codex"))
+        self.assertEqual(event["usage"], {"input_tokens": 30, "cached_input_tokens": 10, "output_tokens": 4})
+
+    def test_codex_on_an_unverified_version_is_not_summarized_and_says_why(self):
+        for version in ("0.159.0", "0.161.0", None):
+            runner = FakeRunner(codex_stream("S"))
+            with self.subTest(version=version):
+                self.run_refresh("codex", CODEX, runner, version=version)
+                self.assertEqual(runner.calls, [])
+        self.assertEqual(summary.load(self.sdir, "s1"), Stored())
+        events = self.log_events()
+        self.assertEqual(events and {k: v for e in events for k, v in e.items() if k != "ts"},
+                         {"event": "error", "code": "context_refresh_failed", "reason": "codex_unverified_version"})
+        self.assertEqual(len(events), 3)
+
+    def test_the_version_gate_does_not_touch_claude(self):
+        runner = FakeRunner(claude_result("S"))
+        self.run_refresh("claude", CLAUDE, runner, version=None)
+        self.assertEqual(len(runner.calls), 1)
+
+    def test_codex_empty_or_missing_agent_message_is_an_error(self):
+        for out in (codex_stream("  "), json.dumps({"type": "turn.completed", "usage": {}}) + "\n", "garbage"):
+            self.run_refresh("codex", CODEX, FakeRunner(out))
+        self.assertEqual(summary.load(self.sdir, "s1"), Stored())
+        self.assertEqual([e["code"] for e in self.log_events()], ["context_refresh_failed"] * 3)
 
     def test_summary_is_clipped_to_the_limit(self):
         self.run_refresh("claude", CLAUDE, FakeRunner(claude_result("x" * 9000)))

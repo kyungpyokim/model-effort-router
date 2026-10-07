@@ -9,7 +9,7 @@ from pathlib import Path
 from ..context import refresh, summary
 from ..context.transcripts import HARNESS_MESSAGE, MAX_TURN_CHARS, Turn, clip, read_turns
 from ..difficulty.registry import BACKENDS
-from ..difficulty.subscription import GUARD_ENV, SubscriptionBackend
+from ..difficulty.subscription import GUARD_ENV, SubscriptionBackend, codex_verified
 from ..logging import route_log
 from ..policy.config import resolve_config
 from ..policy.router import route
@@ -56,7 +56,7 @@ def _with_timeout(repo_cfg, timeout_s):
     return {**repo_cfg, "difficulty": {**repo_cfg.get("difficulty", {}), "timeout_s": timeout_s}}
 
 
-def _session_context(data, host, sdir, sid, prompt, cfg, env):
+def _session_context(data, host, sdir, sid, prompt, cfg, env, version_probe=None):
     """(context for the classifier, whether the background summary is due). ("", False) when disabled or unusable."""
     if not cfg.context_enabled or cfg.mode != "auto" or env.get(GUARD_ENV) == "1":
         return "", False
@@ -66,14 +66,15 @@ def _session_context(data, host, sdir, sid, prompt, cfg, env):
         base, fresh, _ = summary.pending(turns, stored)
         if fresh and fresh[-1] == Turn("user", clip(prompt.strip(), MAX_TURN_CHARS)):  # already written: it is the task
             fresh = fresh[:-1]
-        due = host.name in refresh.HOSTS and summary.needs_refresh(turns, stored)
+        due = host.name in refresh.HOSTS and summary.needs_refresh(turns, stored) \
+            and (host.name != "codex" or codex_verified(version_probe))
         return summary.build_context(base, fresh, cfg.context_max_chars), due
     except Exception as exc:  # the prompt alone still routes
         _log_error(env, data, exc, "SessionContext")
         return "", False
 
 
-def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn):
+def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_probe=None):
     prompt = data.get("prompt")
     if not isinstance(prompt, str) or HARNESS_MESSAGE.match(prompt):
         return None
@@ -87,7 +88,7 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn):
         repo_cfg = _with_timeout(repo_cfg, MAX_BACKEND_TIMEOUT_S)
     started = time.monotonic()
     host = hosts.get(env=env)
-    context, due = _session_context(data, host, sdir, sid, prompt, cfg, env)
+    context, due = _session_context(data, host, sdir, sid, prompt, cfg, env, version_probe)
     plan = None
     try:
         plan = route(prompt, repo_config=repo_cfg, user_config=user_cfg, registry=registry, host=host.name, context=context)
