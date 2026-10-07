@@ -1,4 +1,4 @@
-"""Host selection for mer: `--host codex|claude|antigravity`, else $MER_HOST, else codex. A host is its exec module + adapter."""
+"""Host selection for mer. OpenCode exposes route advice only; worker hosts also have an exec module and adapter."""
 from collections import namedtuple
 
 from ..adapters import claude as claude_adapter, codex as codex_adapter, antigravity as antigravity_adapter
@@ -10,7 +10,8 @@ CODEX = Host("codex", codex_exec, codex_adapter.resolve, codex_adapter.CodexConf
 CLAUDE = Host("claude", claude_exec, claude_adapter.resolve, claude_adapter.ClaudeConfig(), "/model and /effort", "effort")
 ANTIGRAVITY = Host("antigravity", antigravity_exec, antigravity_adapter.resolve,
                    antigravity_adapter.AntigravityConfig(), "/model", "effort")
-HOSTS = {h.name: h for h in (CODEX, CLAUDE, ANTIGRAVITY)}
+OPENCODE = Host("opencode", None, None, None, "/models", "variant")
+HOSTS = {h.name: h for h in (CODEX, CLAUDE, ANTIGRAVITY, OPENCODE)}
 
 
 def get(name=None, env=None):

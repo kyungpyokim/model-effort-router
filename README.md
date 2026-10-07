@@ -37,13 +37,29 @@ claude plugin install model-effort-router@model-effort-router
 agy plugin install ./plugins/antigravity-model-effort-router
 ```
 
-Antigravity can classify and advise, but worker execution is not supported. Marketplace plugin installs do not install or update the shared runtime; rerun `python3 scripts/install_core.py` from this checkout when updating it. See the [Codex plugin guide](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace guide](https://code.claude.com/docs/en/plugin-marketplaces), and [Antigravity plugin guide](https://antigravity.google/docs/plugins/) for host-specific details.
+**OpenCode** — install the pinned local plugin dependency, then add the plugin path to the project's `opencode.json`:
+
+```sh
+cd plugins/opencode-model-effort-router
+bun install --frozen-lockfile
+```
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["./plugins/opencode-model-effort-router"]
+}
+```
+
+OpenCode provides the `route_advice` custom tool. It returns role/model/effort advice and does not switch the active model or launch a worker. See the [OpenCode plugin guide](plugins/opencode-model-effort-router/README.md) for model configuration.
+
+Antigravity and OpenCode provide route advice only; worker execution is unsupported. Marketplace plugin installs do not install or update the shared runtime; rerun `python3 scripts/install_core.py` from this checkout when updating it. See the [Codex plugin guide](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace guide](https://code.claude.com/docs/en/plugin-marketplaces), and [Antigravity plugin guide](https://antigravity.google/docs/plugins/) for host-specific details.
 
 ## Routing contract
 
 The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, or `xhigh`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
 
-Defaults are Codex execution `gpt-6-luna`, reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5`, reasoning `claude-opus-5-5`. Each host/lane has configurable primary, fallback, and supported efforts. MER never infers execution fallback from stderr or retries after a worker may have started; only an explicit pre-execution-unavailable signal permits it. Classifier providers may fall through to the configured next classifier. If all fail, CLI routing returns an error; hooks fail open and leave the user request unblocked.
+Defaults are Codex execution `gpt-6-luna`, reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5`, reasoning `claude-opus-5-5`; OpenCode advice execution `openai/gpt-5.2`, reasoning `anthropic/claude-sonnet-4-5`. Each host/lane has configurable primary, fallback, and supported efforts. MER never infers execution fallback from stderr or retries after a worker may have started; only an explicit pre-execution-unavailable signal permits it. Classifier providers may fall through to the configured next classifier. If all fail, CLI routing returns an error; hooks fail open and leave the user request unblocked.
 
 ## Classifier backend setup
 
@@ -121,7 +137,7 @@ python3 <plugin>/bin/mer route --host codex --role implementation --effort high 
 python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and fix the focused tests'
 ```
 
-`mer route` classifies/maps only. By default, `mer run` executes exactly one worker request. Reasoning roles run read-only. Antigravity can classify and provide advice, but worker execution is unsupported because Subagent isolation is unverified. `mer chat` was removed; use the route result to ask Main to invoke the selected Subagent. Explicit `--role` and `--effort` bypass automatic hook eligibility and must be provided together.
+`mer route` classifies/maps only. By default, `mer run` executes exactly one worker request. Reasoning roles run read-only. Antigravity can classify and provide advice, but worker execution is unsupported because Subagent isolation is unverified. OpenCode exposes route advice through a custom tool; it does not switch the active model or run workers. `mer chat` was removed; use the route result to ask Main to invoke the selected Subagent. Explicit `--role` and `--effort` bypass automatic hook eligibility and must be provided together.
 
 After a run, MER compares the repository's changed paths before and after the worker. When changes are detected, text output reports the `door` (`one-way` for data migration, data loss, or payment risk; otherwise `two-way`) and estimated `blast_radius` (`local` or `broad`), plus changed-file and top-level-directory counts. JSON includes the same values under `change`, with the resulting `risk_flags`. Blast radius is a path-based estimate; review the actual changes to assess impact.
 

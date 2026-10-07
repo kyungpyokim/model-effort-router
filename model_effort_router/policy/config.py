@@ -52,6 +52,18 @@ DEFAULTS = {
                 "efforts": ["medium", "high"],
             },
         },
+        "opencode": {
+            "execution": {
+                "primary": "openai/gpt-5.2",
+                "fallback": None,
+                "efforts": list(EFFORTS),
+            },
+            "reasoning": {
+                "primary": "anthropic/claude-sonnet-4-5",
+                "fallback": None,
+                "efforts": list(EFFORTS),
+            },
+        },
     },
 }
 
@@ -89,7 +101,7 @@ def _layer(value, name):
 
 def _validate_models(raw):
     for host, groups in raw.items():
-        if host not in ("codex", "claude", "antigravity") or not isinstance(
+        if host not in ("codex", "claude", "antigravity", "opencode") or not isinstance(
             groups, dict
         ):
             raise ValueError(f"models.{host} must be a host mapping")

@@ -162,6 +162,9 @@ def main(argv=None, *, env=None, runner=None, out=None):
     if host.name == "antigravity":
         print("mer: Antigravity Subagent execution is unsupported because execution isolation is unverified; use `mer route`.", file=sys.stderr)
         return 2
+    if host.name == "opencode":
+        print("mer: OpenCode worker execution is unsupported; use `mer route` for advice.", file=sys.stderr)
+        return 2
     if not args.low_first and plan.applied_effort == "xhigh" and not args.approve_xhigh:
         result = {**result, "status": "approval_required", "approval_required": True, "next_effort": "xhigh",
                   "error": "User approval is required before xhigh; pass --approve-xhigh only after approval."}

@@ -10,7 +10,7 @@ from pathlib import Path
 from scripts.install_core import install
 from tests.hook_helpers import PLUGIN, ROOT
 
-PLUGINS = [ROOT / "plugins" / f"{host}-model-effort-router" for host in ("codex", "claude", "antigravity")]
+PLUGINS = [ROOT / "plugins" / f"{host}-model-effort-router" for host in ("codex", "claude", "antigravity", "opencode")]
 
 
 class PluginBundleTest(unittest.TestCase):
@@ -28,8 +28,10 @@ class PluginBundleTest(unittest.TestCase):
                               env=self.env if env is None else env, input="{}", capture_output=True, text=True, timeout=30)
 
     def scripts(self, plugin):
+        if plugin.name.startswith("opencode"):
+            return ["bin/mer"]
         scripts = ["bin/mer", "bin/mer-gate"]
-        if not plugin.name.startswith("antigravity"):
+        if plugin.name.startswith(("codex", "claude")):
             scripts.append("hooks/user_prompt_submit.py")
         return scripts
 
@@ -55,6 +57,10 @@ class PluginBundleTest(unittest.TestCase):
                     path = plugin / ".claude-plugin" / "plugin.json"
                 elif plugin.name.startswith("codex"):
                     path = plugin / ".codex-plugin" / "plugin.json"
+                elif plugin.name.startswith("opencode"):
+                    package = json.loads((plugin / "package.json").read_text())
+                    self.assertEqual(package["name"], "opencode-model-effort-router")
+                    continue
                 else:
                     path = plugin / "plugin.json"
                 metadata = json.loads(path.read_text())
@@ -96,7 +102,7 @@ class ModelEffortRouter:
         for source in PLUGINS:
             plugin = shutil.copytree(source, self.root / source.name)
             host = source.name.split("-")[0]
-            expected = {"bin/mer": ["cli", host, 1], "bin/mer-gate": ["gate", None if host == "antigravity" else host, 1],
+            expected = {"bin/mer": ["cli", host, 1], "bin/mer-gate": ["gate", None if host in ("antigravity", "opencode") else host, 1],
                         "hooks/user_prompt_submit.py": ["hook", host, str(plugin), 1]}
             for script in self.scripts(plugin):
                 with self.subTest(host=host, script=script):
@@ -163,7 +169,11 @@ def hook(host, root, *, runtime_api=1): return 0
                     result = self.run_loader(plugin, "bin/mer", "run", *args)
                     self.assertEqual(result.returncode, 2, result.stderr)
                     self.assertIn("execution isolation is unverified", result.stderr)
-                if host != "antigravity":
+                if host == "opencode":
+                    result = self.run_loader(plugin, "bin/mer", "run", *args)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertIn("OpenCode worker execution is unsupported", result.stderr)
+                if host in ("codex", "claude"):
                     result = self.run_loader(plugin, "hooks/user_prompt_submit.py")
                     self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 
@@ -214,6 +224,8 @@ def hook(host, root, *, runtime_api=1): return 0
         install(ROOT / "model_effort_router", self.runtime)
         (package / "gate" / "run.py").unlink()
         for plugin in PLUGINS:
+            if plugin.name.startswith("opencode"):
+                continue
             result = self.run_loader(plugin, "bin/mer-gate", "--help")
             self.assertEqual((result.returncode, result.stdout), (2, ""), result.stderr)
             self.assertIn("scripts/install_core.py", result.stderr)

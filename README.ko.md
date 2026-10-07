@@ -37,7 +37,23 @@ claude plugin install model-effort-router@model-effort-router
 agy plugin install ./plugins/antigravity-model-effort-router
 ```
 
-Antigravity는 분류와 조언을 지원하지만 worker 실행은 지원하지 않습니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/)를 참고하십시오.
+**OpenCode** — 저장소에서 플러그인 의존성을 설치하고 프로젝트의 `opencode.json`에 경로를 추가합니다.
+
+```sh
+cd plugins/opencode-model-effort-router
+bun install --frozen-lockfile
+```
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["./plugins/opencode-model-effort-router"]
+}
+```
+
+OpenCode는 `route_advice` 도구로 role/model/effort 조언을 제공합니다. 현재 모델을 바꾸거나 worker를 실행하지 않습니다. 기본 조언 모델은 실행용 `openai/gpt-5.2`, 추론용 `anthropic/claude-sonnet-4-5`이며, 실제 사용 가능 모델에 맞춰 설정에서 변경할 수 있습니다.
+
+Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지원하지 않습니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/), [OpenCode 플러그인 가이드](https://dev.opencode.ai/docs/plugins/)를 참고하십시오.
 
 ## 라우팅 계약
 
@@ -121,7 +137,7 @@ python3 <plugin>/bin/mer route --host codex --role implementation --effort high 
 python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and fix the focused tests'
 ```
 
-`mer route`는 분류/매핑만 수행합니다. 기본적으로 `mer run`은 worker 요청을 정확히 하나 실행합니다. 추론 역할은 읽기 전용으로 실행됩니다. Antigravity는 분류하고 조언을 제공할 수 있지만, Subagent 격리가 검증되지 않았으므로 worker 실행은 지원되지 않습니다. `mer chat`은 제거되었으므로, route 결과를 사용해 Main이 선택된 Subagent를 호출하도록 요청하십시오. 명시적인 `--role`과 `--effort`는 자동 hook 적합성 판단을 우회하며, 반드시 함께 제공해야 합니다.
+`mer route`는 분류/매핑만 수행합니다. 기본적으로 `mer run`은 worker 요청을 정확히 하나 실행합니다. 추론 역할은 읽기 전용으로 실행됩니다. Antigravity는 Subagent 격리가 검증되지 않아, OpenCode는 plugin worker 실행 계약이 없어 worker 실행을 지원하지 않습니다. OpenCode 플러그인은 `route_advice` 조언 도구만 제공합니다. `mer chat`은 제거되었으므로, route 결과를 사용해 Main이 선택된 Subagent를 호출하도록 요청하십시오. 명시적인 `--role`과 `--effort`는 자동 hook 적합성 판단을 우회하며, 반드시 함께 제공해야 합니다.
 
 실행 후 MER는 worker 전후의 저장소 변경 경로를 비교합니다. 변경이 감지되면 텍스트 출력에는 `door`(`one-way`는 데이터 마이그레이션, 데이터 손실 또는 결제 위험인 경우이고, 그 외에는 `two-way`)와 예상 `blast_radius`(`local` 또는 `broad`), 변경 파일 수 및 최상위 디렉터리 수가 표시됩니다. JSON에는 결과 `risk_flags`와 함께 동일한 값이 `change` 아래에 포함됩니다. 영향 범위는 경로를 바탕으로 추정하므로 실제 변경 내용을 검토해 영향을 판단하십시오.
 
