@@ -18,13 +18,13 @@ function appendAdvice(text: string, advice: Record<string, unknown>) {
       "Mark unrun checks as not run; ask the reviewer to inspect the diff, fix actionable findings, run relevant checks, and report unresolved issues. ";
   }
   const modelAdvice =
-    `recommended model: ${advice.model}` +
+    `recommended model: ${advice.model} · effort ${advice.effort}` +
     (alternatives.length
       ? `; other configured options: ${alternatives.join(", ")} (user-selectable, not automatic fallbacks)`
       : "");
   return (
     `${text}\n\n[model-effort-router] Main: route this task to a native Subagent using OpenCode's model/effort controls. ` +
-    `Role: ${advice.role}; worker lane: ${advice.agent}; ${modelAdvice}; effort: ${advice.effort}. ${guidance}` +
+    `Role: ${advice.role}; worker lane: ${advice.agent}; ${modelAdvice}. ${guidance}` +
     "Integrate the result and decide whether another worker is needed. The hook advises but does not invoke the Subagent or change this turn's model/settings."
   );
 }
@@ -64,9 +64,14 @@ export default Plugin.define({
       }
     });
 
-    type MerToolInput = { task: string; mode?: string; role?: string; effort?: string };
+    type MerToolInput = {
+      task: string;
+      mode?: string;
+      role?: string;
+      effort?: string;
+    };
 
-  await ctx.tool.transform((editor) => {
+    await ctx.tool.transform((editor) => {
       editor.add({
         name: "mer",
         description:

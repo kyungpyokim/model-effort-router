@@ -24,14 +24,68 @@ class AntigravityBundleTest(unittest.TestCase):
             root = Path(temp).resolve()
             env = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
             env.update(MER_CORE_PATH=str(ROOT), HOME=str(root), MER_STATE_DIR=str(root / "state"))
-            route = subprocess.run([sys.executable, str(PLUGIN / "bin" / "mer"), "route", "--role", "fix",
-                                    "--effort", "medium", "--json", "--cwd", str(root), "Fix parser.py"],
-                                   capture_output=True, text=True, env=env, timeout=30)
+            route = subprocess.run(
+                [
+                    sys.executable,
+                    str(PLUGIN / "bin" / "mer"),
+                    "route",
+                    "--role",
+                    "fix",
+                    "--effort",
+                    "medium",
+                    "--json",
+                    "--cwd",
+                    str(root),
+                    "Fix parser.py",
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
             self.assertEqual(route.returncode, 0, route.stderr)
             self.assertEqual(json.loads(route.stdout)["role"], "fix")
-            run = subprocess.run([sys.executable, str(PLUGIN / "bin" / "mer"), "run", "--role", "fix",
-                                 "--effort", "medium", "--cwd", str(root), "Fix parser.py"],
-                                capture_output=True, text=True, env=env, timeout=30)
+            text = subprocess.run(
+                [
+                    sys.executable,
+                    str(PLUGIN / "bin" / "mer"),
+                    "route",
+                    "--role",
+                    "fix",
+                    "--effort",
+                    "medium",
+                    "--cwd",
+                    str(root),
+                    "Fix parser.py",
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
+            self.assertEqual(text.returncode, 0, text.stderr)
+            # The one display form everywhere: the plugin tag, then the pair with the effort shown separately.
+            self.assertEqual(
+                text.stdout.strip(), "[model-effort-router] fix → execution · gemini-3.8-flash · effort medium"
+            )
+            run = subprocess.run(
+                [
+                    sys.executable,
+                    str(PLUGIN / "bin" / "mer"),
+                    "run",
+                    "--role",
+                    "fix",
+                    "--effort",
+                    "medium",
+                    "--cwd",
+                    str(root),
+                    "Fix parser.py",
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
             self.assertEqual(run.returncode, 2)
             self.assertIn("execution isolation is unverified", run.stderr)
 

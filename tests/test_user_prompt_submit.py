@@ -23,6 +23,7 @@ class UserPromptSubmitTest(HookCase):
         self.assertIn("Role: review", advice)
         self.assertIn("worker lane: reasoning", advice)
         self.assertIn("gpt-6.1-sol", advice)
+        self.assertIn("· effort medium", advice)
         self.assertIn("goal, decisions, constraints, actual diff, verification status/results", advice)
         self.assertIn("current request and relevant conversation", advice)
         self.assertIn("populate", advice)
@@ -38,29 +39,35 @@ class UserPromptSubmitTest(HookCase):
     def test_risk_floor_only_raises_effort_for_protected_roles(self):
         self.fake = {"role": "review", "effort": "low"}
         advice = self.context(self.submit("Review the migration that drops the old records in db.py"))
-        self.assertIn("effort: high", advice)
+        self.assertIn("effort high", advice)
         self.assertIn("Role: review", advice)
 
     def test_explicit_phase_override_skips_classifier(self):
         self.fake = {"raise": True}
         advice = self.context(self.submit("/router role=analysis effort=xhigh\nAnalyze parser.py"))
         self.assertIn("Role: analysis", advice)
-        self.assertIn("effort: xhigh", advice)
+        self.assertIn("effort xhigh", advice)
 
     def test_classifier_failure_is_fail_open_and_recorded_without_prompt(self):
         self.fake = {"raise": True}
         proc = self.submit()
         self.assertEqual((proc.returncode, proc.stdout), (0, ""))
         (event,) = self.log_events()
-        self.assertEqual((event["event"], event["target"], event["error_type"]), ("route", "error", "ClassificationError"))
+        self.assertEqual(
+            (event["event"], event["target"], event["error_type"]), ("route", "error", "ClassificationError")
+        )
         self.assertEqual(len(event["prompt_sha"]), 12)
         self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(event))
         self.assertNotIn("fake backend failure", json.dumps(event))
 
     def test_unsupported_effort_error_is_logged_not_silently_dropped(self):
         self.fake = {"effort": "max"}
-        self.write_repo_config({"difficulty": {"backend": "fake"}, "models": {"codex": {"execution": {
-            "primary": "gpt-6-luna", "efforts": ["low", "medium"]}}}})
+        self.write_repo_config(
+            {
+                "difficulty": {"backend": "fake"},
+                "models": {"codex": {"execution": {"primary": "gpt-6-luna", "efforts": ["low", "medium"]}}},
+            }
+        )
         proc = self.submit()
         self.assertEqual((proc.returncode, proc.stdout), (0, ""))
         (event,) = self.log_events()
@@ -96,12 +103,19 @@ class UserPromptSubmitTest(HookCase):
         self.assertEqual(self.log_events()[0]["target"], "route")
 
     def test_backend_no_route_is_silent_and_logged_with_decision(self):
-        self.fake = {"role": "analysis", "effort": "low", "target": "no_route", "usage": {"input_tokens": 3, "output_tokens": 1}}
+        self.fake = {
+            "role": "analysis",
+            "effort": "low",
+            "target": "no_route",
+            "usage": {"input_tokens": 3, "output_tokens": 1},
+        }
         proc = self.submit("Fix the bug in parser.py")
         self.assertEqual((proc.returncode, proc.stdout), (0, ""))
         (event,) = self.log_events()
-        self.assertEqual((event["target"], event["decision"]["backend"], event["classifier_usage"]["input_tokens"]),
-                         ("no_route", "fake", 3))
+        self.assertEqual(
+            (event["target"], event["decision"]["backend"], event["classifier_usage"]["input_tokens"]),
+            ("no_route", "fake", 3),
+        )
 
     def test_off_mode_writes_no_route_event(self):
         self.write_repo_config({"router": {"mode": "off"}, "difficulty": {"backend": "fake"}})
@@ -123,8 +137,9 @@ class UserPromptSubmitTest(HookCase):
         self.fake = {"role": "fix", "effort": "medium"}
         self.context(self.submit())
         (event,) = self.log_events()
-        self.assertEqual((event["event"], event["decision"]["role"], event["decision"]["effort"]),
-                         ("route", "fix", "medium"))
+        self.assertEqual(
+            (event["event"], event["decision"]["role"], event["decision"]["effort"]), ("route", "fix", "medium")
+        )
         self.assertEqual((event["prompt_len"], len(event["prompt_sha"])), (len(DEV), 12))
         self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(event))
         self.assertNotIn("prompt", event)
@@ -132,14 +147,18 @@ class UserPromptSubmitTest(HookCase):
     def test_log_failure_does_not_change_advisory_output(self):
         blocker = self.root / "file"
         blocker.write_text("x")
-        proc = run_script("hooks/user_prompt_submit.py", env=self.env(MER_STATE_DIR=str(blocker / "sub")),
-                          stdin=json.dumps({"session_id": "s", "cwd": str(self.repo), "prompt": DEV}))
+        proc = run_script(
+            "hooks/user_prompt_submit.py",
+            env=self.env(MER_STATE_DIR=str(blocker / "sub")),
+            stdin=json.dumps({"session_id": "s", "cwd": str(self.repo), "prompt": DEV}),
+        )
         self.assertEqual(proc.returncode, 0)
         self.assertIn("Role:", self.context(proc))
 
 
 class SessionContextTest(HookCase):
     """In-process, with an injected spawner: no refresh process and no model CLI ever starts."""
+
     BIG = "B" * summary.REFRESH_MIN_CHARS
 
     def setUp(self):
@@ -154,19 +173,28 @@ class SessionContextTest(HookCase):
         self.transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
     def call(self, prompt="진행", host="claude", path=None, env_extra=None, spawn=None, version="0.160.1"):
-        data = {"session_id": SID, "cwd": str(self.repo), "prompt": prompt,
-                "transcript_path": str(path or self.transcript)}
+        data = {
+            "session_id": SID,
+            "cwd": str(self.repo),
+            "prompt": prompt,
+            "transcript_path": str(path or self.transcript),
+        }
         env = self.env(MER_HOST=host, **(env_extra or {}))
-        return codex_hooks.user_prompt_submit(data, env, PLUGIN, spawn=spawn or (lambda *a: self.spawned.append(a)),
-                                              version_probe=lambda: version)
+        return codex_hooks.user_prompt_submit(
+            data, env, PLUGIN, spawn=spawn or (lambda *a: self.spawned.append(a)), version_probe=lambda: version
+        )
 
     def test_summary_and_uncovered_turns_reach_the_classifier_without_the_current_prompt(self):
         self.write_transcript(("user", "add retries"), ("assistant", "plan: retries param"), ("user", "진행"))
-        summary.save(str(self.state), SID, "goal: retries", summary.anchor_at(read_turns(str(self.transcript), "claude"), 1))
+        summary.save(
+            str(self.state), SID, "goal: retries", summary.anchor_at(read_turns(str(self.transcript), "claude"), 1)
+        )
         self.call("진행")
         (seen,) = FakeBackend.inputs
         self.assertEqual(seen.task, "진행")
-        self.assertEqual(seen.context, "Session summary:\ngoal: retries\n\nRecent turns:\nAssistant: plan: retries param")
+        self.assertEqual(
+            seen.context, "Session summary:\ngoal: retries\n\nRecent turns:\nAssistant: plan: retries param"
+        )
 
     def test_refresh_is_spawned_detached_when_enough_is_uncovered(self):
         self.write_transcript(("user", "add retries"), ("assistant", self.BIG))
@@ -204,20 +232,31 @@ class SessionContextTest(HookCase):
 
         def boom(*args):
             raise OSError("cannot spawn")
+
         out = self.call(spawn=boom)
         self.assertIn("Role: fix", json.loads(out)["hookSpecificOutput"]["additionalContext"])
 
     def test_codex_gets_context_and_a_background_refresh_when_due(self):
-        rows = [{"type": "response_item", "payload": {"type": "message", "role": role, "content": [{"type": kind, "text": text}]}}
-                for role, kind, text in (("user", "input_text", "add retries"), ("assistant", "output_text", self.BIG))]
+        rows = [
+            {
+                "type": "response_item",
+                "payload": {"type": "message", "role": role, "content": [{"type": kind, "text": text}]},
+            }
+            for role, kind, text in (("user", "input_text", "add retries"), ("assistant", "output_text", self.BIG))
+        ]
         self.transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
         self.call(host="codex")
         self.assertIn("Assistant: " + "B" * 100, FakeBackend.inputs[0].context)
         self.assertEqual([args[:4] for args in self.spawned], [("codex", SID, str(self.transcript), str(self.state))])
 
     def test_codex_refresh_is_not_spawned_on_an_unverified_version(self):
-        rows = [{"type": "response_item", "payload": {"type": "message", "role": role, "content": [{"type": kind, "text": text}]}}
-                for role, kind, text in (("user", "input_text", "add retries"), ("assistant", "output_text", self.BIG))]
+        rows = [
+            {
+                "type": "response_item",
+                "payload": {"type": "message", "role": role, "content": [{"type": kind, "text": text}]},
+            }
+            for role, kind, text in (("user", "input_text", "add retries"), ("assistant", "output_text", self.BIG))
+        ]
         self.transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
         for version in ("0.159.0", None):
             self.call(host="codex", version=version)
