@@ -2,14 +2,14 @@
 
 Folds the turns the stored summary does not cover into it through `claude -p` (isolated, tool-less; the
 guard env keeps that CLI's own hook from routing). Off the hook's critical path: it fails silently, leaving only an error
-event (type name only) in the route log."""
+event (type name and a fixed reason code only) in the route log."""
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-from ..difficulty.subscription import GUARD_ENV, default_runner, isolated_argv, run_isolated
+from ..difficulty.subscription import GUARD_ENV, CliAuthError, default_runner, isolated_argv, run_isolated
 from ..logging import route_log
 from . import summary
 from .transcripts import clip, read_turns
@@ -77,10 +77,19 @@ def main(argv, *, runner=default_runner, env=None, min_chars=summary.REFRESH_MIN
                                          "latency_ms": round((time.monotonic() - started) * 1000, 1)})
     except Exception as exc:
         try:
-            route_log.append(sdir, sid, {"event": "error", "type": type(exc).__name__, "code": "context_refresh_failed"})
+            route_log.append(sdir, sid, {"event": "error", "type": type(exc).__name__, "code": "context_refresh_failed",
+                                         "reason": _reason(exc)})
         except Exception:
             pass
     return 0
+
+
+
+def _reason(exc):
+    """Fixed code for the log: the exception message can carry CLI output."""
+    if isinstance(exc, CliAuthError):
+        return "auth_failed"  # sign the standalone CLI in: `claude auth login`
+    return "timeout" if isinstance(exc, TimeoutError) else "error"
 
 
 def spawn(host, session_id, transcript_path, state_dir, env, popen=subprocess.Popen):

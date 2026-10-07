@@ -11,6 +11,7 @@ from model_effort_router.difficulty.subscription import (
     GUARD_ENV,
     MAX_TASK_CHARS,
     BackendOutputError,
+    CliAuthError,
     SubscriptionBackend,
     build_prompt,
     default_runner,
@@ -224,8 +225,17 @@ class DefaultRunnerTest(unittest.TestCase):
         # claude -p --output-format json reports errors on stdout, after a long usage blob
         code = ("import json, sys; print(json.dumps({'is_error': True, 'usage': {'pad': 'x' * 500}, "
                 "'result': 'Failed to authenticate: OAuth session expired'})); sys.exit(1)")
-        with self.assertRaisesRegex(RuntimeError, r"exited 1: Failed to authenticate"):
+        with self.assertRaisesRegex(CliAuthError, r"exited 1: Failed to authenticate"):
             self.run_py(code)
+
+    def test_auth_failures_raise_cli_auth_error(self):
+        for code in ("import sys; sys.stderr.write('Error: Not logged in. Please run claude auth login'); sys.exit(1)",
+                     "import sys; sys.stderr.write('401 Unauthorized'); sys.exit(1)"):
+            with self.assertRaises(CliAuthError):
+                self.run_py(code)
+        with self.assertRaises(RuntimeError) as ctx:
+            self.run_py("import sys; sys.stderr.write('boom'); sys.exit(3)")
+        self.assertNotIsInstance(ctx.exception, CliAuthError)
 
     def test_failure_message_uses_the_json_subtype_when_there_is_no_result(self):
         code = "import json, sys; print(json.dumps({'is_error': True, 'subtype': 'error_max_turns'})); sys.exit(1)"

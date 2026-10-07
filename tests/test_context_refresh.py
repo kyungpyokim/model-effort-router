@@ -10,7 +10,7 @@ from unittest import mock
 from model_effort_router.context import refresh, summary
 from model_effort_router.context.summary import Stored, anchor_at
 from model_effort_router.context.transcripts import read_turns
-from model_effort_router.difficulty.subscription import GUARD_ENV
+from model_effort_router.difficulty.subscription import GUARD_ENV, CliAuthError
 from model_effort_router.logging import route_log
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "transcripts"
@@ -109,7 +109,14 @@ class RefreshTest(unittest.TestCase):
         self.assertEqual(len(events), 3)
         self.assertTrue(all(e["event"] == "error" and e["code"] == "context_refresh_failed" for e in events))
         self.assertEqual(events[0]["type"], "TimeoutError")
+        self.assertEqual([e["reason"] for e in events], ["timeout", "error", "error"])
         self.assertNotIn("secret", json.dumps(events))
+
+    def test_auth_failure_is_logged_as_auth_failed_without_its_message(self):
+        self.run_refresh("claude", CLAUDE, FakeRunner(error=CliAuthError("claude exited 1: Failed to authenticate: secret")))
+        [event] = self.log_events()
+        self.assertEqual((event["code"], event["reason"], event["type"]), ("context_refresh_failed", "auth_failed", "CliAuthError"))
+        self.assertNotIn("secret", json.dumps(event))
 
     def test_nothing_to_do_never_calls_the_cli(self):
         summary.save(self.sdir, "s1", "S", anchor_at(TURNS, len(TURNS)))

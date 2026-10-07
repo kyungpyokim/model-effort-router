@@ -26,6 +26,13 @@ class BackendOutputError(ValueError):
     """Backend output could not be turned into a DifficultyDecision."""
 
 
+class CliAuthError(RuntimeError):
+    """The host CLI is not signed in (or its sign-in expired): a fix for the user, not a retry."""
+
+
+AUTH_FAILURE = re.compile(r"failed to authenticate|not logged in|unauthori[sz]ed|\b401\b", re.I)
+
+
 def _failure_detail(stdout, stderr):
     """Why a child failed: stderr, else the result/subtype of a JSON stdout (claude -p reports errors there).
     Other stdout is not echoed: codex streams events that can hold file contents."""
@@ -55,7 +62,8 @@ def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace
         if proc.poll() is None:
             _stop_group(proc, grace_s)
     if proc.returncode != 0:
-        raise RuntimeError(f"{label} exited {proc.returncode}: {_failure_detail(stdout, stderr)}")
+        detail = _failure_detail(stdout, stderr)
+        raise (CliAuthError if AUTH_FAILURE.search(detail) else RuntimeError)(f"{label} exited {proc.returncode}: {detail}")
     return stdout
 
 
