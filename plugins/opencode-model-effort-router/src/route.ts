@@ -15,7 +15,13 @@ export async function routeAdvice(
   executable = MER_BIN,
   run: ExecFile = execFile,
 ) {
-  return runRoute(task, cwd, ["--role", role, "--effort", effort], executable, run);
+  return runRoute(
+    task,
+    cwd,
+    ["--role", role, "--effort", effort],
+    executable,
+    run,
+  );
 }
 
 export async function automaticRouteAdvice(
@@ -34,18 +40,35 @@ async function runRoute(
   executable: string,
   run: ExecFile,
 ) {
-  if (!task.trim() || task.length > 20_000) throw new Error("task must be 1-20000 characters");
-  const argv = ["route", "--host", "opencode", ...overrides, "--json", "--cwd", cwd, "--", task];
+  if (!task.trim() || task.length > 20_000)
+    throw new Error("task must be 1-20000 characters");
+  const argv = [
+    "route",
+    "--host",
+    "opencode",
+    ...overrides,
+    "--json",
+    "--cwd",
+    cwd,
+    "--",
+    task,
+  ];
   const stdout = await new Promise<string>((resolve, reject) => {
-    run(executable, argv, { cwd, timeout: ROUTE_TIMEOUT_MS, maxBuffer: MAX_OUTPUT_BYTES },
+    run(
+      executable,
+      argv,
+      { cwd, timeout: ROUTE_TIMEOUT_MS, maxBuffer: MAX_OUTPUT_BYTES },
       (error, output, stderr) => {
         if (error) {
-          const detail = String(stderr || error.message).trim().slice(0, 500);
+          const detail = String(stderr || error.message)
+            .trim()
+            .slice(0, 500);
           reject(new Error(`mer route failed: ${detail}`));
           return;
         }
         resolve(String(output));
-      });
+      },
+    );
   });
   let result: unknown;
   try {
@@ -53,11 +76,18 @@ async function runRoute(
   } catch {
     throw new Error("mer route returned invalid JSON");
   }
-  if (!result || typeof result !== "object") throw new Error("mer route returned an invalid result");
+  if (!result || typeof result !== "object")
+    throw new Error("mer route returned an invalid result");
   const advice = result as Record<string, unknown>;
   if (advice.route === "no_route") return null;
-  if (!["role", "agent", "model", "effort"].every((key) => typeof advice[key] === "string")) {
-    throw new Error("mer route result is missing role, agent, model, or effort");
+  if (
+    !["role", "agent", "model", "effort"].every(
+      (key) => typeof advice[key] === "string",
+    )
+  ) {
+    throw new Error(
+      "mer route result is missing role, agent, model, or effort",
+    );
   }
   return advice;
 }

@@ -86,6 +86,11 @@ class RouteContractTests(unittest.TestCase):
         self.assertEqual((plan.agent, plan.requested_effort, plan.applied_effort), ("reasoning", "low", "high"))
         self.assertIn("security", plan.risk_flags)
 
+    def test_explicit_opencode_route_detects_korean_auth_and_payment_risks(self):
+        plan = route("인증/결제 신뢰경계 검토", role_override="review", effort_override="medium",
+                     host="opencode")
+        self.assertEqual(plan.risk_flags, ("auth", "payment"))
+
     def test_no_route_policy_still_routes_code_analysis_and_design(self):
         self.assertEqual(classify_target("Why does parser.py fail?"), ROUTE)
         self.assertEqual(classify_target("Analyze the cause of race condition in worker.py"), ROUTE)

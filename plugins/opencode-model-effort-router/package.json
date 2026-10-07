@@ -8,6 +8,15 @@
     "@opencode/plugin": "2.0.24"
   },
   "scripts": {
-    "test": "bun test src/*.test.ts"
+    "test": "bun test src/*.test.ts",
+    "lint": "eslint src",
+    "format": "prettier --write src"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "prettier": "^3.9.9",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.1"
   }
 }
