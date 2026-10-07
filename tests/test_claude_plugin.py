@@ -6,7 +6,10 @@ import sys
 import tempfile
 import unittest
 
-from model_effort_router.host import codex_hooks
+from model_effort_router.difficulty.decision import EFFORTS, DifficultyDecision
+from model_effort_router.host import advice, codex_hooks, hosts
+from model_effort_router.policy.router import RoutePlan
+from model_effort_router.policy.targeting import NO_ROUTE, ROUTE
 from tests.hook_helpers import HookCase, PLUGIN, ROOT, run_script
 
 CLAUDE = ROOT / "plugins" / "claude-model-effort-router"
@@ -50,6 +53,51 @@ class ManifestTest(unittest.TestCase):
         self.assertIn("claude-sonnet-5-5", claude_skill)
 
 
+class EffortAgentTest(unittest.TestCase):
+    def test_every_effort_has_an_agent_definition_with_matching_frontmatter(self):
+        for effort in EFFORTS:
+            text = (CLAUDE / "agents" / f"effort-{effort}.md").read_text()
+            head = text.split("---")[1]
+            with self.subTest(effort=effort):
+                self.assertIn(f"name: effort-{effort}\n", head)
+                self.assertIn(f"effort: {effort}\n", head)
+                self.assertIn("Context Packet", text)
+                self.assertIn("recursively", text)
+                self.assertIn("Use only when the model-effort-router hook advice names this agent.", head)
+        self.assertEqual(len(list((CLAUDE / "agents").glob("*.md"))), len(EFFORTS))
+
+    def test_advice_names_agent_and_model_alias_for_claude_only(self):
+        plan = lambda model, effort="high": RoutePlan(
+            ROUTE, "auto", DifficultyDecision("review", "high", "x"), (), model, None, "reasoning", "high", effort,
+            model_options=(model,))
+        for model, alias in (("claude-opus-5-5", "opus"), ("claude-sonnet-5-5", "sonnet"),
+                             ("claude-fable-5-1", "fable"), ("opus", "opus"), ("sonnet-5-5", "sonnet")):
+            note = advice.render(plan(model, "xhigh"), "mer", hosts.CLAUDE)
+            self.assertIn(f'Agent(subagent_type="model-effort-router:effort-xhigh", model="{alias}")', note, model)
+            self.assertEqual(model != alias, f"may differ from {model}" in note, model)
+        self.assertNotIn("subagent_type", advice.render(plan("gpt-6.1-sol"), "mer", hosts.CODEX))
+
+    def test_advice_without_alias_or_effort_support_names_no_effort_agent(self):
+        plan = lambda model: RoutePlan(
+            ROUTE, "auto", DifficultyDecision("fix", "low", "x"), (), model, None, "execution", "low", "low",
+            model_options=(model,))
+        note = advice.render(plan("provider/model-id"), "mer", hosts.CLAUDE)
+        self.assertNotIn("subagent_type", note)
+        self.assertNotIn("model=", note)
+        self.assertIn(".claude/agents/", note)
+        for model in ("claude-haiku-4-5", "haiku"):
+            note = advice.render(plan(model), "mer", hosts.CLAUDE)
+            self.assertIn('Agent(model="haiku")', note)
+            self.assertNotIn("subagent_type", note)
+            self.assertIn("effort does not apply", note)
+
+    def test_advice_lets_main_work_directly_when_it_matches_and_skips_no_route_plans(self):
+        decision = DifficultyDecision("fix", "low", "x", target="no_route")
+        self.assertIsNone(advice.render(RoutePlan(NO_ROUTE, "auto", decision), "mer", hosts.CLAUDE))
+        note = advice.render(RoutePlan(ROUTE, "auto", decision, (), "m", None, "execution", "low", "low"), "mer", hosts.CODEX)
+        self.assertIn("handle it directly", note)
+
+
 class HookTest(HookCase):
     plugin = CLAUDE
 
@@ -75,6 +123,7 @@ class HookTest(HookCase):
         note = hook_output["additionalContext"]
         self.assertIn("Role: review", note)
         self.assertIn("claude-opus-5-5", note)
+        self.assertIn('Agent(subagent_type="model-effort-router:effort-medium", model="opus")', note)
         self.assertIn("goal, decisions, constraints, actual diff, verification status/results", note)
         self.assertIn("native Subagent invocation", note)
         self.assertIn("not run", note)
@@ -92,9 +141,10 @@ class HookTest(HookCase):
 
     def test_guard_non_development_and_host_messages_are_silent(self):
         self.assertEqual(self.submit_claude(MER_CLASSIFIER="1").stdout, "")
-        for prompt in ("What is the capital of France?", "<task-notification>fix parser.py</task-notification>"):
-            self.assertEqual(self.submit_claude(prompt).stdout, "")
-        self.assertEqual(self.all_log_events(), [])
+        self.assertEqual(self.submit_claude("What is the capital of France?").stdout, "")
+        self.assertEqual([e["target"] for e in self.all_log_events()], ["no_route"])
+        self.assertEqual(self.submit_claude("<task-notification>fix parser.py</task-notification>").stdout, "")
+        self.assertEqual(len(self.all_log_events()), 1)
 
     def test_fail_open_for_garbage_missing_core_and_handler_errors(self):
         self.assertEqual(self.submit(payload="not json", env_extra={"MER_HOST": "claude"}).stdout, "")

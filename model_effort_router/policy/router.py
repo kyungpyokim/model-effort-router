@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from ..difficulty.chain import classify_with_fallback
+from ..difficulty.chain import ClassificationError, classify_with_fallback
 from ..difficulty.decision import (
     EFFORTS,
     EXECUTION_ROLES,
@@ -111,15 +111,29 @@ def route(
         return RoutePlan(NO_ROUTE, "off")
     if cfg.mode == "manual" and not phase_override:
         return RoutePlan(NO_ROUTE, "manual")
-    if not explicit and not phase_override and classify_target(text, paths) == NO_ROUTE:
-        return RoutePlan(NO_ROUTE, cfg.mode)
     backends = _make_backends(cfg, registry, user_config)
+    task = DifficultyInput(text, tuple(paths))
     if phase_override:
         decision = DifficultyDecision(role_override, effort_override, "explicit")
+    elif explicit:
+        decision, _causes = classify_with_fallback(task, backends, cfg.timeout_s)
     else:
-        decision, _causes = classify_with_fallback(
-            DifficultyInput(text, tuple(paths)), backends, cfg.timeout_s
-        )
+        decision, rest, asked = None, backends, False
+        # Only the first (primary) slot may decide eligibility; target answers from fallback-slot backends are ignored (the regex decides).
+        if backends and getattr(backends[0], "provides_target", False):
+            asked = True  # ask it ALONE first
+            try:
+                decision, _causes = classify_with_fallback(task, backends[:1], cfg.timeout_s)
+            except ClassificationError:  # failed: the regex gates the fallback, so chit-chat never pays for it
+                rest = backends[1:]
+        target = decision.target if decision else None
+        if target is None:
+            target = classify_target(text, paths)
+        if target == NO_ROUTE:  # keep what the target backend spent (and its decision) for the log
+            usage, missing = _usage(backends[:1], backends[0].name) if asked else (None, False)
+            return RoutePlan(NO_ROUTE, cfg.mode, decision, classifier_usage=usage, classifier_usage_missing=missing)
+        if decision is None:
+            decision, _causes = classify_with_fallback(task, rest, cfg.timeout_s)
     flags = merge_risk_flags(flags)
     effort = decision.effort
     safety_floor = (

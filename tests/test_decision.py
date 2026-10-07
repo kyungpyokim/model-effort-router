@@ -14,6 +14,12 @@ class DecisionContractTest(unittest.TestCase):
                                          ("analysis", "low", math.inf), ("fix", "medium", 1.1)):
             with self.subTest(role=role, effort=effort), self.assertRaises(ValueError):
                 DifficultyDecision(role, effort, "fake", confidence)
+    def test_target_is_optional_and_limited_to_route_or_no_route(self):
+        self.assertIsNone(DifficultyDecision("fix", "low", "fake").target)
+        for target in ("route", "no_route"):
+            self.assertEqual(DifficultyDecision("fix", "low", "fake", target=target).target, target)
+        with self.assertRaises(ValueError):
+            DifficultyDecision("fix", "low", "fake", target="maybe")
     def test_decision_is_immutable_and_risk_flags_are_canonical(self):
         decision = DifficultyDecision("review", "high", "fake")
         with self.assertRaises(FrozenInstanceError):

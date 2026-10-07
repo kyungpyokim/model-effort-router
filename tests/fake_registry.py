@@ -11,6 +11,7 @@ class FakeBackend:
         self.spec = spec
         self.last_usage = None
         self.calls_model = bool(spec.get("calls_model", "usage" in spec))
+        self.provides_target = "target" in spec
 
     def classify(self, task, timeout_s):
         self.last_usage = self.spec.get("usage")
@@ -18,7 +19,7 @@ class FakeBackend:
             raise RuntimeError("fake backend failure")
         return DifficultyDecision(
             self.spec.get("role", "implementation"), self.spec.get("effort", "medium"), "fake",
-            confidence=self.spec.get("confidence"), reason_code=f"timeout_{timeout_s:g}")
+            confidence=self.spec.get("confidence"), target=self.spec.get("target"), reason_code=f"timeout_{timeout_s:g}")
 
 
 def register(registry, env):
