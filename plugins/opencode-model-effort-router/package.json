@@ -10,10 +10,12 @@
   "scripts": {
     "test": "bun test src/*.test.ts",
     "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
     "format": "prettier --write src"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/bun": "^1.4.2",
     "eslint": "^10.12.0",
     "prettier": "^3.9.9",
     "typescript": "^5.9.3",
