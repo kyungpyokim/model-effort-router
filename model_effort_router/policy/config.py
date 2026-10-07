@@ -18,31 +18,31 @@ DEFAULTS = {
     "models": {
         "codex": {
             "execution": {
-                "primary": "gpt-6-luna",
+                "primary": "gpt-6-astra",
                 "fallback": "gpt-6.1-sol",
                 "efforts": list(EFFORTS),
             },
             "reasoning": {
-                "primary": "gpt-6.1-sol",
+                "primary": "gpt-6-astra",
                 "fallback": "gpt-6-luna",
                 "efforts": list(EFFORTS),
             },
         },
         "claude": {
             "execution": {
-                "primary": "claude-sonnet-5-5",
+                "primary": "claude-fable-5-1",
                 "fallback": "claude-opus-5-5",
                 "efforts": list(EFFORTS),
             },
             "reasoning": {
-                "primary": "claude-opus-5-5",
+                "primary": "claude-fable-5-1",
                 "fallback": "claude-sonnet-5-5",
                 "efforts": list(EFFORTS),
             },
         },
         "antigravity": {
             "execution": {
-                "primary": "gemini-3.8-flash",
+                "primary": "claude-opus-5-5",
                 "fallback": None,
                 "efforts": ["medium", "high"],
             },

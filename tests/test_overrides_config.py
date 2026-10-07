@@ -17,8 +17,12 @@ class ConfigPrecedenceTest(unittest.TestCase):
     def test_role_model_defaults_and_repo_precedence(self):
         c=resolve_config(user={"router":{"mode":"off"}},repo={"router":{"mode":"auto"}})
         self.assertEqual(c.mode,"auto")
-        self.assertEqual(c.models["codex"]["execution"]["primary"],"gpt-6-luna")
-        self.assertEqual(c.models["codex"]["reasoning"]["primary"],"gpt-6.1-sol")
+        self.assertEqual(c.models["codex"]["execution"]["primary"],"gpt-6-astra")
+        self.assertEqual(c.models["codex"]["reasoning"]["primary"],"gpt-6-astra")
+        self.assertEqual(c.models["claude"]["execution"]["primary"],"claude-fable-5-1")
+        self.assertEqual(c.models["claude"]["reasoning"]["primary"],"claude-fable-5-1")
+        self.assertEqual(c.models["antigravity"]["execution"]["primary"],"claude-opus-5-5")
+        self.assertEqual(c.models["antigravity"]["reasoning"]["primary"],"claude-opus-5-5")
     def test_custom_primary_fallback_effort(self):
         c=resolve_config(repo={"models":{"codex":{"execution":{"primary":"custom","fallback":"backup","efforts":["medium","high"]}}}})
         self.assertEqual((c.models["codex"]["execution"]["primary"],c.models["codex"]["execution"]["fallback"]),("custom","backup"))

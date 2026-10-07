@@ -19,7 +19,7 @@ class RouteTest(unittest.TestCase):
     def test_classifies_role_effort_and_maps_by_lane(self):
         b=FakeBackend("analysis","high")
         p=route("Analyze the parser bug",registry=registry(b),repo_config={"difficulty":{"backend":"fake"}})
-        self.assertEqual((p.decision.role,p.decision.effort,p.agent,p.model),("analysis","high","reasoning","gpt-6.1-sol"))
+        self.assertEqual((p.decision.role,p.decision.effort,p.agent,p.model),("analysis","high","reasoning","gpt-6-astra"))
     def test_explicit_role_effort_skips_classifier(self):
         p=route("plan next changes",role_override="plan",effort_override="medium",explicit=True)
         self.assertEqual((p.decision.role,p.agent),("plan","reasoning"))

@@ -9,7 +9,7 @@ The plugin imports the shared runtime from `${XDG_DATA_HOME:-~/.local/share}/mod
 
 The UserPromptSubmit hook classifies eligible development requests and adds a `[model-effort-router]` note. It does not read Main's conversation or populate a complete Context Packet. It never changes the current turn's model/settings or creates a Subagent. Main fills the packet from the current request and relevant conversation, then uses the host-native Subagent invocation.
 
-- Roles `implementation`, `fix`, `lint`, and `test` map to execution (`gpt-6-luna` by default); `plan`, `design`, `review`, and `analysis` map to reasoning (`gpt-6.1-sol` by default).
+- Roles `implementation`, `fix`, `lint`, and `test` map to execution (`gpt-6-astra` by default); `plan`, `design`, `review`, and `analysis` map to reasoning (`gpt-6-astra` by default).
 - Effort is `low`, `medium`, `high`, or `xhigh`. Risk floors can raise sensitive review/design work to at least `high`; they do not change role or model lane.
 - Give each worker only the needed, populated Context Packet: task, context, decisions, constraints, relevant files, and expected result. Do not forward the full conversation or private reasoning by default.
 - For nontrivial code changes, complete and integrate implementation first, then use the `review` skill. It guides a separate Subagent to inspect the actual diff and fix actionable findings. Skip docs-only and trivial mechanical edits.
