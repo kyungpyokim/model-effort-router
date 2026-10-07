@@ -29,6 +29,13 @@ function appendAdvice(text: string, advice: Record<string, unknown>) {
   );
 }
 
+function routingBanner(advice: Record<string, unknown>) {
+  return (
+    `[model-effort-router] ${String(advice.role)} → ${String(advice.model)}` +
+    ` · effort ${String(advice.effort)}`
+  );
+}
+
 export default Plugin.define({
   id: "model-effort-router",
   async setup(ctx) {
@@ -40,13 +47,26 @@ export default Plugin.define({
           event.prompt.text,
           session.location.directory,
         );
-        if (advice) event.prompt.text = appendAdvice(event.prompt.text, advice);
-      } catch {
-        console.warn("[model-effort-router] automatic routing skipped");
+        if (!advice) return;
+        event.prompt.text = appendAdvice(event.prompt.text, advice);
+        // Best-effort visible banner. Display failure must never block admission.
+        await ctx.session
+          .synthetic({
+            sessionID: event.sessionID,
+            text: routingBanner(advice),
+          })
+          .catch(() => {});
+      } catch (routeError) {
+        console.warn(
+          "[model-effort-router] automatic routing skipped:",
+          routeError,
+        );
       }
     });
 
-    await ctx.tool.transform((editor) => {
+    type MerToolInput = { task: string; mode?: string; role?: string; effort?: string };
+
+  await ctx.tool.transform((editor) => {
       editor.add({
         name: "mer",
         description:
@@ -77,7 +97,8 @@ export default Plugin.define({
           required: ["task"],
           additionalProperties: false,
         },
-        async execute({ task, mode, role, effort }, context) {
+        async execute(rawInput, context) {
+          const { task, mode, role, effort } = rawInput as MerToolInput;
           const session = await ctx.session.get({
             sessionID: context.sessionID,
           });

@@ -1,7 +1,30 @@
 import { describe, expect, it } from "bun:test";
+import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import ModelEffortRouterPlugin from "./index";
 import { automaticRouteAdvice, routeAdvice } from "./route";
+
+type ExecFile = typeof execFile;
+type ExecCallback = (error: Error | null, stdout: string, stderr: string) => void;
+
+function fakeExec(
+  emit: (
+    info: { file: string; args: string[] },
+    callback: ExecCallback,
+  ) => void,
+): ExecFile {
+  const run = ((file: string, args: string[], _options: unknown, callback: ExecCallback) => {
+    emit({ file, args }, callback);
+    return {} as unknown as ReturnType<typeof execFile>;
+  }) as unknown as ExecFile;
+  return run;
+}
+
+function failingExec(message: string, stderr: string): ExecFile {
+  return fakeExec((_info, callback) => {
+    callback(new Error(message), "", stderr);
+  });
+}
 
 describe("OpenCode plugin tool schema", () => {
   it("registers the visible mer tool with supported roles and efforts", async () => {
@@ -23,7 +46,11 @@ describe("OpenCode plugin tool schema", () => {
     try {
       await ModelEffortRouterPlugin.setup({
         tool: {
-          transform: async (register) =>
+          transform: async (
+            register: (callbacks: {
+              add: (definition: unknown) => void;
+            }) => unknown,
+          ) =>
             register({
               add: (definition) => registered.push(definition as never),
             }),
@@ -93,8 +120,8 @@ describe("routeAdvice", () => {
       "medium",
       "/work",
       "/mer",
-      ((file, args, options, callback) => {
-        seen = { file, args, options };
+      fakeExec(({ file, args }, callback) => {
+        seen = { file, args, options: undefined };
         callback(
           null,
           JSON.stringify({
@@ -105,14 +132,13 @@ describe("routeAdvice", () => {
           }),
           "",
         );
-        return {} as ReturnType<typeof Bun.spawn>;
-      }) as never,
+      }),
     );
     expect(seen?.file).toBe("/mer");
     expect(seen?.args).toContain("--host=claude");
     expect(seen?.args).toContain("--host");
     expect(seen?.args.slice(-2)).toEqual(["--", "--host=claude"]);
-    expect(advice.model).toBe("opencode/nemotron-3-ultra-free");
+    expect(advice?.model).toBe("opencode/nemotron-3-ultra-free");
   });
 
   it("passes automatic classification through the existing CLI path", async () => {
@@ -121,7 +147,7 @@ describe("routeAdvice", () => {
       "Fix auth and payment boundaries",
       "/work",
       "/mer",
-      ((file, args, _options, callback) => {
+      fakeExec(({ file, args }, callback) => {
         seen = { file, args };
         callback(
           null,
@@ -133,8 +159,7 @@ describe("routeAdvice", () => {
           }),
           "",
         );
-        return {} as ReturnType<typeof Bun.spawn>;
-      }) as never,
+      }),
     );
     expect(seen?.file).toBe("/mer");
     expect(seen?.args).toContain("--automatic");
@@ -142,23 +167,115 @@ describe("routeAdvice", () => {
       "--",
       "Fix auth and payment boundaries",
     ]);
-    expect(advice.effort).toBe("high");
+    expect(advice?.effort).toBe("high");
   });
 
   it("surfaces subprocess failures and malformed output", async () => {
-    const failure = ((_, __, ___, callback) => {
-      callback(new Error("exit 2"), "", "route rejected");
-      return {};
-    }) as never;
     await expect(
-      routeAdvice("task", "plan", "medium", "/work", "/mer", failure),
+      routeAdvice("task", "plan", "medium", "/work", "/mer", failingExec("exit 2", "route rejected")),
     ).rejects.toThrow("route rejected");
-    const malformed = ((_, __, ___, callback) => {
+    const malformed = fakeExec((_info, callback) => {
       callback(null, "not json", "");
-      return {};
-    }) as never;
+    });
     await expect(
       routeAdvice("task", "plan", "medium", "/work", "/mer", malformed),
     ).rejects.toThrow("invalid JSON");
+  });
+});
+
+describe("prompt hook routing banner", () => {
+  const previousCorePath = process.env.MER_CORE_PATH;
+
+  function fakeCtx(
+    synthetic: (input: { sessionID: string; text: string }) => Promise<unknown>,
+  ) {
+    const harness: {
+      hookFn?: (event: {
+        sessionID: string;
+        prompt: { text: string };
+      }) => Promise<void>;
+    } = {};
+    return {
+      harness,
+      ctx: {
+        tool: { transform: async () => undefined },
+        session: {
+          get: async () => ({
+            parentID: undefined,
+            location: { directory: process.cwd() },
+          }),
+          hook: async (
+            _name: string,
+            fn: (event: {
+              sessionID: string;
+              prompt: { text: string };
+            }) => Promise<void>,
+          ) => {
+            harness.hookFn = fn;
+          },
+          synthetic: async (input: { sessionID: string; text: string }) =>
+            synthetic(input),
+        },
+      },
+    };
+  }
+
+  function runHook(
+    harness: {
+      hookFn?: (event: {
+        sessionID: string;
+        prompt: { text: string };
+      }) => Promise<void>;
+    },
+    text: string,
+  ) {
+    return harness.hookFn?.({ sessionID: "test", prompt: { text } });
+  }
+
+  it("posts a visible synthetic banner when advice is produced", async () => {
+    process.env.MER_CORE_PATH = fileURLToPath(
+      new URL("../../../", import.meta.url),
+    );
+    try {
+      const posted: { sessionID: string; text: string }[] = [];
+      const { harness, ctx } = fakeCtx(async (input) => {
+        posted.push(input);
+      });
+      await ModelEffortRouterPlugin.setup(ctx as never);
+      await runHook(
+        harness,
+        "Fix the payment double-charge race in the checkout ledger",
+      );
+      expect(posted).toHaveLength(1);
+      expect(posted[0].sessionID).toBe("test");
+      expect(posted[0].text).toMatch(
+        /^\[model-effort-router\] \S+ → \S+ · effort \S+$/,
+      );
+    } finally {
+      if (previousCorePath === undefined) delete process.env.MER_CORE_PATH;
+      else process.env.MER_CORE_PATH = previousCorePath;
+    }
+  });
+
+  it("never blocks admission when the display call fails", async () => {
+    process.env.MER_CORE_PATH = fileURLToPath(
+      new URL("../../../", import.meta.url),
+    );
+    try {
+      const { harness, ctx } = fakeCtx(async () => {
+        throw new Error("display unavailable");
+      });
+      await ModelEffortRouterPlugin.setup(ctx as never);
+      let settled = false;
+      await runHook(
+        harness,
+        "Fix the payment double-charge race in the checkout ledger",
+      );
+      settled = true;
+      expect(settled).toBe(true);
+    } finally {
+      if (previousCorePath === undefined) delete process.env.MER_CORE_PATH;
+      else process.env.MER_CORE_PATH = previousCorePath;
+    }
   });
 });
