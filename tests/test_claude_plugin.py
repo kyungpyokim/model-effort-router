@@ -46,8 +46,8 @@ class ManifestTest(unittest.TestCase):
     def test_claude_and_codex_skill_contracts_are_host_specific(self):
         codex_skill = (PLUGIN / "skills" / "classify" / "SKILL.md").read_text()
         claude_skill = (CLAUDE / "skills" / "classify" / "SKILL.md").read_text()
-        self.assertIn("gpt-6-astra", codex_skill)
-        self.assertIn("claude-fable-5-1", claude_skill)
+        self.assertIn("gpt-6-luna", codex_skill)
+        self.assertIn("claude-sonnet-5-5", claude_skill)
 
 
 class HookTest(HookCase):
@@ -74,7 +74,7 @@ class HookTest(HookCase):
         self.assertEqual(hook_output["hookEventName"], "UserPromptSubmit")
         note = hook_output["additionalContext"]
         self.assertIn("Role: review", note)
-        self.assertIn("claude-fable-5-1", note)
+        self.assertIn("claude-opus-5-5", note)
         self.assertIn("goal, decisions, constraints, actual diff, verification status/results", note)
         self.assertIn("native Subagent invocation", note)
         self.assertIn("not run", note)
@@ -88,7 +88,7 @@ class HookTest(HookCase):
                           env=self.env(MER_HOST="claude"), cwd=str(self.root), plugin=PLUGIN)
         note = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         self.assertNotIn("claude-", note)
-        self.assertIn("gpt-6-astra", note)
+        self.assertIn("gpt-6.1-sol", note)
 
     def test_guard_non_development_and_host_messages_are_silent(self):
         self.assertEqual(self.submit_claude(MER_CLASSIFIER="1").stdout, "")

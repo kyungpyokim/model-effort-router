@@ -31,14 +31,14 @@ OpenCode resolves the path relative to `opencode.json`. The bundle is not instal
 
 ## Model advice
 
-The defaults use OpenCode Zen's `opencode/mimo-v2.6-flash-free` for execution and `opencode/nemotron-3-ultra-free` for reasoning. Availability can change; confirm the IDs in `/models`. Override these entries in `.model-effort-router.json` if needed:
+The defaults use OpenCode Zen's `opencode/mimo-v2.6-flash-free` for execution and `opencode/nemotron-3-ultra-free` for reasoning. Reasoning alternatives are `opencode/glm-5.3`, `opencode/kimi-k3`, and `opencode/grok-4.7`. Availability can change; confirm the IDs in `/models`. Override these entries in `.model-effort-router.json` if needed:
 
 ```json
 {
   "models": {
     "opencode": {
       "execution": {"primary": "provider/model-id", "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "provider/model-id", "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]}
+      "reasoning": {"primary": "provider/model-id", "alternatives": ["opencode/glm-5.3", "opencode/kimi-k3", "opencode/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]}
     }
   }
 }
@@ -58,7 +58,7 @@ MER recommends the lane's `primary` model based on the routed role and returns `
       },
       "reasoning": {
         "primary": "opencode/nemotron-3-ultra-free",
-        "alternatives": ["provider/another-reasoning-model"],
+        "alternatives": ["opencode/glm-5.3", "opencode/kimi-k3", "opencode/grok-4.7"],
         "fallback": null,
         "efforts": ["low", "medium", "high", "xhigh"]
       }

@@ -118,14 +118,14 @@ class WorkerSafetyTests(unittest.TestCase):
             return "stream"
         plan = self._plan()
         result = run_worker("task", plan, cwd="/tmp", runner=runner, env={}, host=hosts.CODEX, timeout_s=3)
-        self.assertIn("gpt-6-astra", calls[0])
+        self.assertIn("gpt-6-luna", calls[0])
         self.assertIn("model_reasoning_effort=high", calls[0])
-        self.assertEqual(result["model"], "gpt-6-astra")
+        self.assertEqual(result["model"], "gpt-6-luna")
 
     def test_antigravity_route_uses_effort_suffixed_model_slug(self):
         plan = route("Fix parser.py", host="antigravity", explicit=True,
                      role_override="fix", effort_override="medium")
-        self.assertEqual(plan.model, "claude-opus-5-5-medium")
+        self.assertEqual(plan.model, "gemini-3.8-flash-medium")
 
     def test_review_packet_includes_untracked_paths(self):
         from model_effort_router.cli import _context_packet
@@ -238,7 +238,7 @@ class WorkerSafetyTests(unittest.TestCase):
         event = events[0]
         self.assertEqual(status, 0)
         self.assertEqual((event["requested_model"], event["actual_model"], event["fallback_reason"], event["status"], event["usage"]),
-                         ("gpt-6-astra", "backup-model", "ModelUnavailableBeforeExecution", "complete", {"input": 11, "output": 2}))
+                         ("gpt-6-luna", "backup-model", "ModelUnavailableBeforeExecution", "complete", {"input": 11, "output": 2}))
 
     def test_cancellation_during_fallback_logs_actual_model_and_primary_rejection(self):
         import threading

@@ -10,8 +10,8 @@ Each lane's `primary` is the recommended Subagent model. Add host-supported mode
 {
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-astra", "alternatives": ["provider/model-id"]},
-      "reasoning": {"primary": "gpt-6-astra", "alternatives": ["provider/another-model"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra", "provider/model-id"]},
+      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra", "provider/another-model"]}
     }
   }
 }

@@ -59,19 +59,19 @@ Antigravity and OpenCode provide route advice only; worker execution is unsuppor
 
 The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, or `xhigh`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
 
-Defaults are Codex execution and reasoning `gpt-6-astra`; Claude execution and reasoning `claude-fable-5-1`; Antigravity delegated profile `claude-opus-5-5`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free`. Each host/lane accepts `primary`, optional `alternatives`, `fallback`, and supported efforts. `primary` is recommended; alternatives are listed as user-selectable choices. For example:
+Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5` and reasoning `claude-opus-5-5`; Antigravity delegated profile `gemini-3.8-flash`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free` with reasoning alternatives `opencode/glm-5.3`, `opencode/kimi-k3`, and `opencode/grok-4.7`. Each host/lane accepts `primary`, optional `alternatives`, `fallback`, and supported efforts. `primary` is recommended; alternatives are listed as user-selectable choices. For example:
 
 ```json
 {
   "models": {
     "codex": {
       "execution": {
-        "primary": "gpt-6-astra",
-        "alternatives": ["provider/model-id"]
+        "primary": "gpt-6-luna",
+        "alternatives": ["gpt-6-astra", "provider/model-id"]
       },
       "reasoning": {
-        "primary": "gpt-6-astra",
-        "alternatives": ["provider/another-model"]
+        "primary": "gpt-6.1-sol",
+        "alternatives": ["gpt-6-astra", "provider/another-model"]
       }
     }
   }
@@ -189,20 +189,20 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
   "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10},
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-astra", "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "gpt-6-astra", "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
     },
     "claude": {
-      "execution": {"primary": "claude-fable-5-1", "fallback": "claude-opus-5-5", "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "claude-fable-5-1", "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-opus-5-5", "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh"]}
     },
     "antigravity": {
-      "execution": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]},
+      "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-opus-5-5"], "fallback": null, "efforts": ["medium", "high"]},
       "reasoning": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]}
     },
-    "antigravity": {
-      "execution": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]},
-      "reasoning": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]}
+    "opencode": {
+      "execution": {"primary": "opencode/mimo-v2.6-flash-free", "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "opencode/nemotron-3-ultra-free", "alternatives": ["opencode/glm-5.3", "opencode/kimi-k3", "opencode/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]}
     }
   }
 }

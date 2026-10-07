@@ -10,8 +10,8 @@ Each lane's `primary` is the recommended Subagent model. Add host-supported mode
 {
   "models": {
     "claude": {
-      "execution": {"primary": "claude-fable-5-1", "alternatives": ["provider/model-id"]},
-      "reasoning": {"primary": "claude-fable-5-1", "alternatives": ["provider/another-model"]}
+      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1", "provider/model-id"]},
+      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1", "provider/another-model"]}
     }
   }
 }

@@ -18,31 +18,36 @@ DEFAULTS = {
     "models": {
         "codex": {
             "execution": {
-                "primary": "gpt-6-astra",
+                "primary": "gpt-6-luna",
+                "alternatives": ["gpt-6-astra"],
                 "fallback": "gpt-6.1-sol",
                 "efforts": list(EFFORTS),
             },
             "reasoning": {
-                "primary": "gpt-6-astra",
+                "primary": "gpt-6.1-sol",
+                "alternatives": ["gpt-6-astra"],
                 "fallback": "gpt-6-luna",
                 "efforts": list(EFFORTS),
             },
         },
         "claude": {
             "execution": {
-                "primary": "claude-fable-5-1",
+                "primary": "claude-sonnet-5-5",
+                "alternatives": ["claude-fable-5-1"],
                 "fallback": "claude-opus-5-5",
                 "efforts": list(EFFORTS),
             },
             "reasoning": {
-                "primary": "claude-fable-5-1",
+                "primary": "claude-opus-5-5",
+                "alternatives": ["claude-fable-5-1"],
                 "fallback": "claude-sonnet-5-5",
                 "efforts": list(EFFORTS),
             },
         },
         "antigravity": {
             "execution": {
-                "primary": "claude-opus-5-5",
+                "primary": "gemini-3.8-flash",
+                "alternatives": ["claude-opus-5-5"],
                 "fallback": None,
                 "efforts": ["medium", "high"],
             },
@@ -60,6 +65,11 @@ DEFAULTS = {
             },
             "reasoning": {
                 "primary": "opencode/nemotron-3-ultra-free",
+                "alternatives": [
+                    "opencode/glm-5.3",
+                    "opencode/kimi-k3",
+                    "opencode/grok-4.7",
+                ],
                 "fallback": None,
                 "efforts": list(EFFORTS),
             },
@@ -189,7 +199,16 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
                 for host, groups in source.get(key, {}).items():
                     merged[key].setdefault(host, {})
                     for lane, options in groups.items():
-                        merged[key][host].setdefault(lane, {}).update(options)
+                        current = merged[key][host].setdefault(lane, {})
+                        if "primary" in options and "alternatives" not in options:
+                            alternatives = current.get("alternatives", [])
+                            if isinstance(alternatives, list):
+                                current["alternatives"] = [
+                                    model
+                                    for model in alternatives
+                                    if model != options["primary"]
+                                ]
+                        current.update(options)
             else:
                 merged[key].update(source.get(key, {}))
     router, difficulty = merged["router"], merged["difficulty"]

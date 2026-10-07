@@ -17,7 +17,7 @@ class UserPromptSubmitTest(HookCase):
         advice = self.context(self.submit("Review the diff in parser.py"))
         self.assertIn("Role: review", advice)
         self.assertIn("worker lane: reasoning", advice)
-        self.assertIn("gpt-6-astra", advice)
+        self.assertIn("gpt-6.1-sol", advice)
         self.assertIn("goal, decisions, constraints, actual diff, verification status/results", advice)
         self.assertIn("current request and relevant conversation", advice)
         self.assertIn("populate", advice)

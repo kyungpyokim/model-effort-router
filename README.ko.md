@@ -59,19 +59,19 @@ Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지
 
 분류기는 `role`과 `effort`를 반환하며, `confidence`와 `reason_code`는 선택 사항입니다. 역할은 `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, `analysis`입니다. 앞의 네 역할은 실행 모델을 사용하고, 나머지는 추론 모델을 사용합니다. 노력 수준은 `low`, `medium`, `high`, `xhigh`입니다. 독립적인 위험 감지는 안전 민감 검토/설계 요청을 최소 `high`까지 올릴 수 있지만, 역할이나 모델 레인은 변경하지 않습니다.
 
-기본값은 Codex 실행·추론 `gpt-6-astra`, Claude 실행·추론 `claude-fable-5-1`, Antigravity 위임 프로필 `claude-opus-5-5`, OpenCode 실행 조언 `opencode/mimo-v2.6-flash-free`·추론 조언 `opencode/nemotron-3-ultra-free`입니다. 각 호스트/레인에서 `primary`, 선택적 `alternatives`, `fallback`, 지원 effort를 설정할 수 있습니다. `primary`를 추천하고 `alternatives`를 사용자가 고를 후보로 표시합니다. 예시:
+기본값은 Codex 실행 `gpt-6-luna`·추론 `gpt-6.1-sol`, Claude 실행 `claude-sonnet-5-5`·추론 `claude-opus-5-5`, Antigravity 위임 프로필 `gemini-3.8-flash`, OpenCode 실행 조언 `opencode/mimo-v2.6-flash-free`·추론 조언 `opencode/nemotron-3-ultra-free`입니다. OpenCode 추론 후보는 `opencode/glm-5.3`, `opencode/kimi-k3`, `opencode/grok-4.7`입니다. 각 호스트/레인에서 `primary`, 선택적 `alternatives`, `fallback`, 지원 effort를 설정할 수 있습니다. `primary`를 추천하고 `alternatives`를 사용자가 고를 후보로 표시합니다. 예시:
 
 ```json
 {
   "models": {
     "codex": {
       "execution": {
-        "primary": "gpt-6-astra",
-        "alternatives": ["provider/model-id"]
+        "primary": "gpt-6-luna",
+        "alternatives": ["gpt-6-astra", "provider/model-id"]
       },
       "reasoning": {
-        "primary": "gpt-6-astra",
-        "alternatives": ["provider/another-model"]
+        "primary": "gpt-6.1-sol",
+        "alternatives": ["gpt-6-astra", "provider/another-model"]
       }
     }
   }
@@ -189,16 +189,20 @@ Hook은 Context Packet 필드와 작성 지침을 제공할 뿐, Main의 대화�
   "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10},
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-astra", "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "gpt-6-astra", "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
     },
     "claude": {
-      "execution": {"primary": "claude-fable-5-1", "fallback": "claude-opus-5-5", "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "claude-fable-5-1", "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-opus-5-5", "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh"]}
     },
     "antigravity": {
-      "execution": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]},
+      "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-opus-5-5"], "fallback": null, "efforts": ["medium", "high"]},
       "reasoning": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]}
+    },
+    "opencode": {
+      "execution": {"primary": "opencode/mimo-v2.6-flash-free", "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "opencode/nemotron-3-ultra-free", "alternatives": ["opencode/glm-5.3", "opencode/kimi-k3", "opencode/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]}
     }
   }
 }
