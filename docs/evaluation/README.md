@@ -77,6 +77,10 @@ Jev는 role 기준을 넘었고 effort와 joint는 각각 1건, 2건 모자라�
 
 현재 실행 정책의 탐색 결과는 [low 시작·승격 파일럿](low-first-escalation-pilot-20261006.md)에 기록했다. 같은 `gpt-6-luna`로 기존 13개 fixture 작업을 비교했으며 과거 L1–L5 라벨은 사용하지 않았다. 리뷰로 보완한 검사에서 low 첫 시도는 11/13, medium 승격 후는 13/13, high 1회는 11/13이었다. 승격까지 합친 worker 토큰은 22.0% 적었다. 결과를 본 뒤 검사기를 보완한 작은 탐색이므로 분류 정확도나 일반 작업 성공률로 해석하지 않는다.
 
+## 세션 맥락
+
+훅이 Jev에 세션 맥락을 함께 보낼 때의 효과는 [세션 맥락 A/B](session-context-ab-20261007.md)에 기록했다. 실제 transcript의 후속 요청 60건에서 target 판단이 34/60에서 47/60으로, route 케이스의 target+role 동시 정확도가 22/56에서 37/56으로 올랐다. 정답은 AI 라벨러 1명의 판정이고 실제 대화가 담긴 케이스 파일은 저장소에 넣지 않았다.
+
 ## 과거 평가 자료
 
 `evaluation/corpus/`의 기존 L1–L5 라벨, `evaluation/pilot/`, 날짜가 붙은 평가 보고서는 변경하지 않고 보존한다. 과거 실험 결과는 해당 시점의 방식으로만 해석한다. 새 라벨링은 `evaluation/corpus/role-effort-seed.jsonl`에서 시작하고 adjudicated 데이터는 `role-effort-v1.jsonl`에 저장한다.
