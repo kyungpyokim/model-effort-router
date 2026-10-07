@@ -1,0 +1,5589 @@
+{
+  "metadata": {
+    "recorded_at": "2026-10-08T00:07:10.197554+09:00",
+    "corpus": "evaluation/corpus/role-effort-human-holdout-v3-adjudicated.jsonl",
+    "corpus_sha256": "9a9c4f4646452342e403a7a73815b64d36599106d7e794347343c7c44e1372ea",
+    "n": 150,
+    "git_head": "a133ec8ffd123dc9ab49e0f2749e6ecf1cf047aa",
+    "source_sha256": {
+      "model_effort_router/difficulty/laya.py": "6a6dfd3d9a645b37f2c48e33024448cd32c5c54b10ef9c3476bf841915f450ab",
+      "model_effort_router/difficulty/jev.py": "22ddfc8c5179e9a9c75d89609d11c805e55c064ef5a24cac7fb5591c84ecf16f",
+      "model_effort_router/difficulty/nimble.py": "8119abb52a130bc2cda60b5f6b1640e6d723eeda5f61f1f170c95df920121d53"
+    },
+    "python": "3.13.15",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "laya_version": "0.4.0",
+    "torch_version": "2.14.1",
+    "model_requested": "laya",
+    "server_health_after_run": {
+      "status": "ok",
+      "loaded": [
+        "english"
+      ],
+      "revisions": {
+        "english": "7b928d828b7b0e022f929d9bd2e44165aa270148"
+      },
+      "device": "mps",
+      "device_is_preference": false,
+      "checkpoint_devices": {
+        "english": "mps"
+      },
+      "cpu_fallbacks": {
+        "english": {
+          "count": 0,
+          "last_reason": null
+        }
+      }
+    },
+    "request": "default LayaBackend; current production QUESTIONS and state_text; sequential; 30s each; no fallback; gold omitted",
+    "preflight": {
+      "decision": {
+        "role": "plan",
+        "effort": "max"
+      },
+      "elapsed_ms": 25160,
+      "input_tokens": 432,
+      "excluded_from_measurement": true,
+      "capture": "separate console output immediately before batch; manually recorded, excluded from records and aggregate"
+    },
+    "questions_sha256": "f568c1b4a9fd93c90c7694901c775174527651c0c4decee2acd21821ea65a7e6",
+    "source_sha256_capture": "captured after the batch; complete verified pre-run hashes were not retained"
+  },
+  "metrics": {
+    "role_exact": 90,
+    "effort_exact": 38,
+    "joint_exact": 30,
+    "successes": 150,
+    "errors": 0,
+    "latency_ms_all": {
+      "p50": 50.844,
+      "p95_nearest_rank": 103.547,
+      "max": 195.282
+    },
+    "latency_ms_success": {
+      "p50": 50.844,
+      "p95_nearest_rank": 103.547,
+      "max": 195.282
+    },
+    "role_accuracy_by_gold": {
+      "review": [
+        26,
+        39
+      ],
+      "fix": [
+        26,
+        34
+      ],
+      "analysis": [
+        8,
+        19
+      ],
+      "implementation": [
+        17,
+        33
+      ],
+      "plan": [
+        11,
+        18
+      ],
+      "lint": [
+        2,
+        6
+      ],
+      "design": [
+        0,
+        1
+      ]
+    },
+    "effort_accuracy_by_gold": {
+      "high": [
+        17,
+        30
+      ],
+      "medium": [
+        19,
+        24
+      ],
+      "low": [
+        1,
+        83
+      ],
+      "xhigh": [
+        1,
+        13
+      ]
+    },
+    "role_confusion_gold_to_pred": {
+      "review": {
+        "fix": 8,
+        "review": 26,
+        "implementation": 4,
+        "test": 1
+      },
+      "fix": {
+        "fix": 26,
+        "plan": 2,
+        "implementation": 5,
+        "test": 1
+      },
+      "analysis": {
+        "analysis": 8,
+        "plan": 4,
+        "implementation": 2,
+        "test": 1,
+        "fix": 2,
+        "design": 1,
+        "review": 1
+      },
+      "implementation": {
+        "implementation": 17,
+        "fix": 11,
+        "plan": 3,
+        "test": 1,
+        "design": 1
+      },
+      "plan": {
+        "implementation": 3,
+        "plan": 11,
+        "test": 1,
+        "fix": 2,
+        "design": 1
+      },
+      "lint": {
+        "fix": 3,
+        "plan": 1,
+        "lint": 2
+      },
+      "design": {
+        "analysis": 1
+      }
+    },
+    "effort_confusion_gold_to_pred": {
+      "high": {
+        "high": 17,
+        "medium": 10,
+        "max": 3
+      },
+      "medium": {
+        "medium": 19,
+        "high": 4,
+        "max": 1
+      },
+      "low": {
+        "high": 31,
+        "medium": 39,
+        "max": 10,
+        "xhigh": 2,
+        "low": 1
+      },
+      "xhigh": {
+        "max": 2,
+        "high": 7,
+        "medium": 3,
+        "xhigh": 1
+      }
+    }
+  },
+  "records": [
+    {
+      "id": "human-holdout-v3-001",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 646,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 646,
+          "output_tokens": 0,
+          "state_tokens": 127,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 88.015
+    },
+    {
+      "id": "human-holdout-v3-002",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 518,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 518,
+          "output_tokens": 0,
+          "state_tokens": 63,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 184.062
+    },
+    {
+      "id": "human-holdout-v3-003",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 476,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 476,
+          "output_tokens": 0,
+          "state_tokens": 42,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 195.282
+    },
+    {
+      "id": "human-holdout-v3-004",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 508,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 508,
+          "output_tokens": 0,
+          "state_tokens": 58,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 118.106
+    },
+    {
+      "id": "human-holdout-v3-005",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 528,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 528,
+          "output_tokens": 0,
+          "state_tokens": 68,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.718
+    },
+    {
+      "id": "human-holdout-v3-006",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 480,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 480,
+          "output_tokens": 0,
+          "state_tokens": 44,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 143.118
+    },
+    {
+      "id": "human-holdout-v3-007",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 542,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 542,
+          "output_tokens": 0,
+          "state_tokens": 75,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.703
+    },
+    {
+      "id": "human-holdout-v3-008",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 580,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 580,
+          "output_tokens": 0,
+          "state_tokens": 94,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 57.629
+    },
+    {
+      "id": "human-holdout-v3-009",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 504,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 504,
+          "output_tokens": 0,
+          "state_tokens": 56,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.434
+    },
+    {
+      "id": "human-holdout-v3-010",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 544,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 544,
+          "output_tokens": 0,
+          "state_tokens": 76,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 53.737
+    },
+    {
+      "id": "human-holdout-v3-011",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 696,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 696,
+          "output_tokens": 0,
+          "state_tokens": 152,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 136.171
+    },
+    {
+      "id": "human-holdout-v3-012",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 614,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 614,
+          "output_tokens": 0,
+          "state_tokens": 111,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 148.383
+    },
+    {
+      "id": "human-holdout-v3-013",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 554,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 554,
+          "output_tokens": 0,
+          "state_tokens": 81,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 55.123
+    },
+    {
+      "id": "human-holdout-v3-014",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 612,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 612,
+          "output_tokens": 0,
+          "state_tokens": 110,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 58.412
+    },
+    {
+      "id": "human-holdout-v3-015",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 602,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 602,
+          "output_tokens": 0,
+          "state_tokens": 105,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 57.755
+    },
+    {
+      "id": "human-holdout-v3-016",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 508,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 508,
+          "output_tokens": 0,
+          "state_tokens": 58,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.961
+    },
+    {
+      "id": "human-holdout-v3-017",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 510,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 510,
+          "output_tokens": 0,
+          "state_tokens": 59,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.296
+    },
+    {
+      "id": "human-holdout-v3-018",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 456,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 456,
+          "output_tokens": 0,
+          "state_tokens": 32,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 48.541
+    },
+    {
+      "id": "human-holdout-v3-019",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 664,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 664,
+          "output_tokens": 0,
+          "state_tokens": 136,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 101.715
+    },
+    {
+      "id": "human-holdout-v3-020",
+      "gold": {
+        "role": "review",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 552,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 552,
+          "output_tokens": 0,
+          "state_tokens": 80,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.747
+    },
+    {
+      "id": "human-holdout-v3-021",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 688,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 688,
+          "output_tokens": 0,
+          "state_tokens": 148,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 91.08
+    },
+    {
+      "id": "human-holdout-v3-022",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 702,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 702,
+          "output_tokens": 0,
+          "state_tokens": 155,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 64.0
+    },
+    {
+      "id": "human-holdout-v3-023",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 548,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 548,
+          "output_tokens": 0,
+          "state_tokens": 78,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.488
+    },
+    {
+      "id": "human-holdout-v3-024",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 484,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 484,
+          "output_tokens": 0,
+          "state_tokens": 46,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.174
+    },
+    {
+      "id": "human-holdout-v3-025",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 518,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 518,
+          "output_tokens": 0,
+          "state_tokens": 63,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 47.526
+    },
+    {
+      "id": "human-holdout-v3-026",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 474,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 474,
+          "output_tokens": 0,
+          "state_tokens": 41,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.455
+    },
+    {
+      "id": "human-holdout-v3-027",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 534,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 534,
+          "output_tokens": 0,
+          "state_tokens": 71,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 55.03
+    },
+    {
+      "id": "human-holdout-v3-028",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 452,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 452,
+          "output_tokens": 0,
+          "state_tokens": 30,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 49.387
+    },
+    {
+      "id": "human-holdout-v3-029",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 498,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 498,
+          "output_tokens": 0,
+          "state_tokens": 53,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 49.854
+    },
+    {
+      "id": "human-holdout-v3-030",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 662,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 662,
+          "output_tokens": 0,
+          "state_tokens": 135,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 64.173
+    },
+    {
+      "id": "human-holdout-v3-031",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 708,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 708,
+          "output_tokens": 0,
+          "state_tokens": 158,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 103.547
+    },
+    {
+      "id": "human-holdout-v3-032",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 570,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 570,
+          "output_tokens": 0,
+          "state_tokens": 89,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 55.172
+    },
+    {
+      "id": "human-holdout-v3-033",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 436,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 436,
+          "output_tokens": 0,
+          "state_tokens": 22,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 46.267
+    },
+    {
+      "id": "human-holdout-v3-034",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "test",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 672,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 672,
+          "output_tokens": 0,
+          "state_tokens": 140,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 64.299
+    },
+    {
+      "id": "human-holdout-v3-035",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 492,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 492,
+          "output_tokens": 0,
+          "state_tokens": 50,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.93
+    },
+    {
+      "id": "human-holdout-v3-036",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 510,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 510,
+          "output_tokens": 0,
+          "state_tokens": 59,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.105
+    },
+    {
+      "id": "human-holdout-v3-037",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 536,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 536,
+          "output_tokens": 0,
+          "state_tokens": 72,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.279
+    },
+    {
+      "id": "human-holdout-v3-038",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 728,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 728,
+          "output_tokens": 0,
+          "state_tokens": 168,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 67.444
+    },
+    {
+      "id": "human-holdout-v3-039",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "usage": {
+        "input_tokens": 484,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 484,
+          "output_tokens": 0,
+          "state_tokens": 46,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.656
+    },
+    {
+      "id": "human-holdout-v3-040",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 726,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 726,
+          "output_tokens": 0,
+          "state_tokens": 167,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 66.904
+    },
+    {
+      "id": "human-holdout-v3-041",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 526,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 526,
+          "output_tokens": 0,
+          "state_tokens": 67,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.291
+    },
+    {
+      "id": "human-holdout-v3-042",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 524,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 524,
+          "output_tokens": 0,
+          "state_tokens": 66,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 53.652
+    },
+    {
+      "id": "human-holdout-v3-043",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 448,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 448,
+          "output_tokens": 0,
+          "state_tokens": 28,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 122.543
+    },
+    {
+      "id": "human-holdout-v3-044",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 682,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 682,
+          "output_tokens": 0,
+          "state_tokens": 145,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 100.607
+    },
+    {
+      "id": "human-holdout-v3-045",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 664,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 664,
+          "output_tokens": 0,
+          "state_tokens": 136,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 57.933
+    },
+    {
+      "id": "human-holdout-v3-046",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 490,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 490,
+          "output_tokens": 0,
+          "state_tokens": 49,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.909
+    },
+    {
+      "id": "human-holdout-v3-047",
+      "gold": {
+        "role": "analysis",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "test",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 506,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 506,
+          "output_tokens": 0,
+          "state_tokens": 57,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.837
+    },
+    {
+      "id": "human-holdout-v3-048",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 698,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 698,
+          "output_tokens": 0,
+          "state_tokens": 153,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 63.866
+    },
+    {
+      "id": "human-holdout-v3-049",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 430,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 430,
+          "output_tokens": 0,
+          "state_tokens": 19,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 46.154
+    },
+    {
+      "id": "human-holdout-v3-050",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 666,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 666,
+          "output_tokens": 0,
+          "state_tokens": 137,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 63.819
+    },
+    {
+      "id": "human-holdout-v3-051",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 480,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 480,
+          "output_tokens": 0,
+          "state_tokens": 44,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 42.612
+    },
+    {
+      "id": "human-holdout-v3-052",
+      "gold": {
+        "role": "implementation",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 580,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 580,
+          "output_tokens": 0,
+          "state_tokens": 94,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.618
+    },
+    {
+      "id": "human-holdout-v3-053",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 458,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 458,
+          "output_tokens": 0,
+          "state_tokens": 33,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 49.392
+    },
+    {
+      "id": "human-holdout-v3-054",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 640,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 640,
+          "output_tokens": 0,
+          "state_tokens": 124,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 58.256
+    },
+    {
+      "id": "human-holdout-v3-055",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 510,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 510,
+          "output_tokens": 0,
+          "state_tokens": 59,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.937
+    },
+    {
+      "id": "human-holdout-v3-056",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 514,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 514,
+          "output_tokens": 0,
+          "state_tokens": 61,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 53.563
+    },
+    {
+      "id": "human-holdout-v3-057",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 464,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 464,
+          "output_tokens": 0,
+          "state_tokens": 36,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 49.224
+    },
+    {
+      "id": "human-holdout-v3-058",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 504,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 504,
+          "output_tokens": 0,
+          "state_tokens": 56,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.09
+    },
+    {
+      "id": "human-holdout-v3-059",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 536,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 536,
+          "output_tokens": 0,
+          "state_tokens": 72,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 47.878
+    },
+    {
+      "id": "human-holdout-v3-060",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 640,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 640,
+          "output_tokens": 0,
+          "state_tokens": 124,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.741
+    },
+    {
+      "id": "human-holdout-v3-061",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 512,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 512,
+          "output_tokens": 0,
+          "state_tokens": 60,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 51.442
+    },
+    {
+      "id": "human-holdout-v3-062",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 568,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 568,
+          "output_tokens": 0,
+          "state_tokens": 88,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 55.29
+    },
+    {
+      "id": "human-holdout-v3-063",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 688,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 688,
+          "output_tokens": 0,
+          "state_tokens": 148,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 57.499
+    },
+    {
+      "id": "human-holdout-v3-064",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 484,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 484,
+          "output_tokens": 0,
+          "state_tokens": 46,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.504
+    },
+    {
+      "id": "human-holdout-v3-065",
+      "gold": {
+        "role": "plan",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 482,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 482,
+          "output_tokens": 0,
+          "state_tokens": 45,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.088
+    },
+    {
+      "id": "human-holdout-v3-066",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 492,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 492,
+          "output_tokens": 0,
+          "state_tokens": 50,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.56
+    },
+    {
+      "id": "human-holdout-v3-067",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 580,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 580,
+          "output_tokens": 0,
+          "state_tokens": 94,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.629
+    },
+    {
+      "id": "human-holdout-v3-068",
+      "gold": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 536,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 536,
+          "output_tokens": 0,
+          "state_tokens": 72,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 47.426
+    },
+    {
+      "id": "human-holdout-v3-069",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 612,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 612,
+          "output_tokens": 0,
+          "state_tokens": 110,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.909
+    },
+    {
+      "id": "human-holdout-v3-070",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 484,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 484,
+          "output_tokens": 0,
+          "state_tokens": 46,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.085
+    },
+    {
+      "id": "human-holdout-v3-071",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 462,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 462,
+          "output_tokens": 0,
+          "state_tokens": 35,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 49.111
+    },
+    {
+      "id": "human-holdout-v3-072",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 750,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 750,
+          "output_tokens": 0,
+          "state_tokens": 179,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 95.013
+    },
+    {
+      "id": "human-holdout-v3-073",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 518,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 518,
+          "output_tokens": 0,
+          "state_tokens": 63,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 47.575
+    },
+    {
+      "id": "human-holdout-v3-074",
+      "gold": {
+        "role": "review",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 474,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 474,
+          "output_tokens": 0,
+          "state_tokens": 41,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 41.764
+    },
+    {
+      "id": "human-holdout-v3-075",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 524,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 524,
+          "output_tokens": 0,
+          "state_tokens": 66,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 46.751
+    },
+    {
+      "id": "human-holdout-v3-076",
+      "gold": {
+        "role": "review",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 482,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 482,
+          "output_tokens": 0,
+          "state_tokens": 45,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.877
+    },
+    {
+      "id": "human-holdout-v3-077",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 472,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 472,
+          "output_tokens": 0,
+          "state_tokens": 40,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 49.029
+    },
+    {
+      "id": "human-holdout-v3-078",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 466,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 466,
+          "output_tokens": 0,
+          "state_tokens": 37,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 48.848
+    },
+    {
+      "id": "human-holdout-v3-079",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "design",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 490,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 490,
+          "output_tokens": 0,
+          "state_tokens": 49,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.841
+    },
+    {
+      "id": "human-holdout-v3-080",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 646,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 646,
+          "output_tokens": 0,
+          "state_tokens": 127,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 56.601
+    },
+    {
+      "id": "human-holdout-v3-081",
+      "gold": {
+        "role": "design",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 640,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 640,
+          "output_tokens": 0,
+          "state_tokens": 124,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 51.672
+    },
+    {
+      "id": "human-holdout-v3-082",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 508,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 508,
+          "output_tokens": 0,
+          "state_tokens": 58,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.214
+    },
+    {
+      "id": "human-holdout-v3-083",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 528,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 528,
+          "output_tokens": 0,
+          "state_tokens": 68,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 47.201
+    },
+    {
+      "id": "human-holdout-v3-084",
+      "gold": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 538,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 538,
+          "output_tokens": 0,
+          "state_tokens": 73,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.714
+    },
+    {
+      "id": "human-holdout-v3-085",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 518,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 518,
+          "output_tokens": 0,
+          "state_tokens": 63,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 47.031
+    },
+    {
+      "id": "human-holdout-v3-086",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 474,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 474,
+          "output_tokens": 0,
+          "state_tokens": 41,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 42.677
+    },
+    {
+      "id": "human-holdout-v3-087",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 516,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 516,
+          "output_tokens": 0,
+          "state_tokens": 62,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.792
+    },
+    {
+      "id": "human-holdout-v3-088",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 486,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 486,
+          "output_tokens": 0,
+          "state_tokens": 47,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.851
+    },
+    {
+      "id": "human-holdout-v3-089",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 524,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 524,
+          "output_tokens": 0,
+          "state_tokens": 66,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 47.635
+    },
+    {
+      "id": "human-holdout-v3-090",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 442,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 442,
+          "output_tokens": 0,
+          "state_tokens": 25,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 47.164
+    },
+    {
+      "id": "human-holdout-v3-091",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 530,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 530,
+          "output_tokens": 0,
+          "state_tokens": 69,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.842
+    },
+    {
+      "id": "human-holdout-v3-092",
+      "gold": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 618,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 618,
+          "output_tokens": 0,
+          "state_tokens": 113,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 57.869
+    },
+    {
+      "id": "human-holdout-v3-093",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 694,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 694,
+          "output_tokens": 0,
+          "state_tokens": 151,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 65.146
+    },
+    {
+      "id": "human-holdout-v3-094",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 478,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 478,
+          "output_tokens": 0,
+          "state_tokens": 43,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.097
+    },
+    {
+      "id": "human-holdout-v3-095",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 502,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 502,
+          "output_tokens": 0,
+          "state_tokens": 55,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.947
+    },
+    {
+      "id": "human-holdout-v3-096",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 448,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 448,
+          "output_tokens": 0,
+          "state_tokens": 28,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 39.515
+    },
+    {
+      "id": "human-holdout-v3-097",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 458,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 458,
+          "output_tokens": 0,
+          "state_tokens": 33,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 42.007
+    },
+    {
+      "id": "human-holdout-v3-098",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 506,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 506,
+          "output_tokens": 0,
+          "state_tokens": 57,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.62
+    },
+    {
+      "id": "human-holdout-v3-099",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 504,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 504,
+          "output_tokens": 0,
+          "state_tokens": 56,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.953
+    },
+    {
+      "id": "human-holdout-v3-100",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "test",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 706,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 706,
+          "output_tokens": 0,
+          "state_tokens": 157,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 67.574
+    },
+    {
+      "id": "human-holdout-v3-101",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 648,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 648,
+          "output_tokens": 0,
+          "state_tokens": 128,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 65.616
+    },
+    {
+      "id": "human-holdout-v3-102",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 540,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 540,
+          "output_tokens": 0,
+          "state_tokens": 74,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 55.339
+    },
+    {
+      "id": "human-holdout-v3-103",
+      "gold": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 486,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 486,
+          "output_tokens": 0,
+          "state_tokens": 47,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.081
+    },
+    {
+      "id": "human-holdout-v3-104",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 584,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 584,
+          "output_tokens": 0,
+          "state_tokens": 96,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 58.731
+    },
+    {
+      "id": "human-holdout-v3-105",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "usage": {
+        "input_tokens": 584,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 584,
+          "output_tokens": 0,
+          "state_tokens": 96,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 51.005
+    },
+    {
+      "id": "human-holdout-v3-106",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 510,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 510,
+          "output_tokens": 0,
+          "state_tokens": 59,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.814
+    },
+    {
+      "id": "human-holdout-v3-107",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 500,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 500,
+          "output_tokens": 0,
+          "state_tokens": 54,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.875
+    },
+    {
+      "id": "human-holdout-v3-108",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "usage": {
+        "input_tokens": 476,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 476,
+          "output_tokens": 0,
+          "state_tokens": 42,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 42.713
+    },
+    {
+      "id": "human-holdout-v3-109",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 502,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 502,
+          "output_tokens": 0,
+          "state_tokens": 55,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.012
+    },
+    {
+      "id": "human-holdout-v3-110",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 524,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 524,
+          "output_tokens": 0,
+          "state_tokens": 66,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 47.409
+    },
+    {
+      "id": "human-holdout-v3-111",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 506,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 506,
+          "output_tokens": 0,
+          "state_tokens": 57,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.911
+    },
+    {
+      "id": "human-holdout-v3-112",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 456,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 456,
+          "output_tokens": 0,
+          "state_tokens": 32,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 41.305
+    },
+    {
+      "id": "human-holdout-v3-113",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 566,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 566,
+          "output_tokens": 0,
+          "state_tokens": 87,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.861
+    },
+    {
+      "id": "human-holdout-v3-114",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 510,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 510,
+          "output_tokens": 0,
+          "state_tokens": 59,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.318
+    },
+    {
+      "id": "human-holdout-v3-115",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 778,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 778,
+          "output_tokens": 0,
+          "state_tokens": 193,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 72.051
+    },
+    {
+      "id": "human-holdout-v3-116",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "xhigh"
+      },
+      "usage": {
+        "input_tokens": 466,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 466,
+          "output_tokens": 0,
+          "state_tokens": 37,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 42.63
+    },
+    {
+      "id": "human-holdout-v3-117",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 468,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 468,
+          "output_tokens": 0,
+          "state_tokens": 38,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 49.262
+    },
+    {
+      "id": "human-holdout-v3-118",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "test",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 620,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 620,
+          "output_tokens": 0,
+          "state_tokens": 114,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 57.609
+    },
+    {
+      "id": "human-holdout-v3-119",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "test",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 482,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 482,
+          "output_tokens": 0,
+          "state_tokens": 45,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.936
+    },
+    {
+      "id": "human-holdout-v3-120",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "lint",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 510,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 510,
+          "output_tokens": 0,
+          "state_tokens": 59,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.681
+    },
+    {
+      "id": "human-holdout-v3-121",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 622,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 622,
+          "output_tokens": 0,
+          "state_tokens": 115,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 61.228
+    },
+    {
+      "id": "human-holdout-v3-122",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 504,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 504,
+          "output_tokens": 0,
+          "state_tokens": 56,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 45.006
+    },
+    {
+      "id": "human-holdout-v3-123",
+      "gold": {
+        "role": "plan",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 882,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 882,
+          "output_tokens": 0,
+          "state_tokens": 245,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 80.859
+    },
+    {
+      "id": "human-holdout-v3-124",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "lint",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 528,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 528,
+          "output_tokens": 0,
+          "state_tokens": 68,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 49.239
+    },
+    {
+      "id": "human-holdout-v3-125",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 638,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 638,
+          "output_tokens": 0,
+          "state_tokens": 123,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 62.501
+    },
+    {
+      "id": "human-holdout-v3-126",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 734,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 734,
+          "output_tokens": 0,
+          "state_tokens": 171,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 68.991
+    },
+    {
+      "id": "human-holdout-v3-127",
+      "gold": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "design",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 646,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 646,
+          "output_tokens": 0,
+          "state_tokens": 127,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 56.881
+    },
+    {
+      "id": "human-holdout-v3-128",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 522,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 522,
+          "output_tokens": 0,
+          "state_tokens": 65,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 54.564
+    },
+    {
+      "id": "human-holdout-v3-129",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 600,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 600,
+          "output_tokens": 0,
+          "state_tokens": 104,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 57.986
+    },
+    {
+      "id": "human-holdout-v3-130",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 538,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 538,
+          "output_tokens": 0,
+          "state_tokens": 73,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 48.051
+    },
+    {
+      "id": "human-holdout-v3-131",
+      "gold": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 476,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 476,
+          "output_tokens": 0,
+          "state_tokens": 42,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 42.479
+    },
+    {
+      "id": "human-holdout-v3-132",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 550,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 550,
+          "output_tokens": 0,
+          "state_tokens": 79,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 55.383
+    },
+    {
+      "id": "human-holdout-v3-133",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "design",
+        "effort": "max"
+      },
+      "usage": {
+        "input_tokens": 546,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 546,
+          "output_tokens": 0,
+          "state_tokens": 77,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 55.275
+    },
+    {
+      "id": "human-holdout-v3-134",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 474,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 474,
+          "output_tokens": 0,
+          "state_tokens": 41,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.233
+    },
+    {
+      "id": "human-holdout-v3-135",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 474,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 474,
+          "output_tokens": 0,
+          "state_tokens": 41,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 42.725
+    },
+    {
+      "id": "human-holdout-v3-136",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 578,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 578,
+          "output_tokens": 0,
+          "state_tokens": 93,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 58.348
+    },
+    {
+      "id": "human-holdout-v3-137",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 482,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 482,
+          "output_tokens": 0,
+          "state_tokens": 45,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.967
+    },
+    {
+      "id": "human-holdout-v3-138",
+      "gold": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 484,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 484,
+          "output_tokens": 0,
+          "state_tokens": 46,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 43.635
+    },
+    {
+      "id": "human-holdout-v3-139",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 456,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 456,
+          "output_tokens": 0,
+          "state_tokens": 32,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 41.538
+    },
+    {
+      "id": "human-holdout-v3-140",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 502,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 502,
+          "output_tokens": 0,
+          "state_tokens": 55,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.044
+    },
+    {
+      "id": "human-holdout-v3-141",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 544,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 544,
+          "output_tokens": 0,
+          "state_tokens": 76,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 48.272
+    },
+    {
+      "id": "human-holdout-v3-142",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 654,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 654,
+          "output_tokens": 0,
+          "state_tokens": 131,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 64.398
+    },
+    {
+      "id": "human-holdout-v3-143",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 462,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 462,
+          "output_tokens": 0,
+          "state_tokens": 35,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 42.187
+    },
+    {
+      "id": "human-holdout-v3-144",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 494,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 494,
+          "output_tokens": 0,
+          "state_tokens": 51,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 50.853
+    },
+    {
+      "id": "human-holdout-v3-145",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 490,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 490,
+          "output_tokens": 0,
+          "state_tokens": 49,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 44.313
+    },
+    {
+      "id": "human-holdout-v3-146",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 534,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 534,
+          "output_tokens": 0,
+          "state_tokens": 71,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 48.266
+    },
+    {
+      "id": "human-holdout-v3-147",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 658,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 658,
+          "output_tokens": 0,
+          "state_tokens": 133,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 65.156
+    },
+    {
+      "id": "human-holdout-v3-148",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "usage": {
+        "input_tokens": 542,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 542,
+          "output_tokens": 0,
+          "state_tokens": 75,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 48.221
+    },
+    {
+      "id": "human-holdout-v3-149",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 676,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 676,
+          "output_tokens": 0,
+          "state_tokens": 142,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 64.167
+    },
+    {
+      "id": "human-holdout-v3-150",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high"
+      },
+      "usage": {
+        "input_tokens": 478,
+        "output_tokens": 0
+      },
+      "response": {
+        "status": 200,
+        "model": "laya-rl-agent",
+        "routing": {
+          "model": "english",
+          "repo": "convaiinnovations/laya",
+          "reason": "explicit model='english'",
+          "detection": null,
+          "workflow": null
+        },
+        "usage": {
+          "input_tokens": 478,
+          "output_tokens": 0,
+          "state_tokens": 43,
+          "state_tokens_dropped": 0,
+          "truncated": false,
+          "truncated_questions": []
+        }
+      },
+      "error": null,
+      "latency_ms": 42.788
+    }
+  ]
+}

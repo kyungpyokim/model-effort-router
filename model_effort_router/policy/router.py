@@ -52,9 +52,8 @@ def _make_backends(config, registry, user_config=None):
         if name == "none":
             continue
         try:
-            options = (
-                {"options": config.nimble} if name == "nimble" and config.nimble else {}
-            )
+            backend_options = getattr(config, name, None) if name in ("nimble", "laya") else None
+            options = {"options": backend_options} if backend_options else {}
             if name == "jev" and user_config:
                 options["api_key"] = user_config.get("jev", {}).get("api_key")
             if name == "openai_decisions" and user_config:

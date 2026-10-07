@@ -131,6 +131,7 @@ class SystemOneBackend:
     name = None
     calls_model = True
     provides_target = False
+    questions = QUESTIONS
 
     def __init__(self, transport=default_transport, model=None, env=None, api_key=None, **_):
         self._transport, self._model, self._env, self._api_key = transport, model, env, api_key
@@ -143,7 +144,7 @@ class SystemOneBackend:
         self.last_usage = None
         env = os.environ if self._env is None else self._env
         url, headers, model = self._endpoint(env)
-        questions = {**QUESTIONS, "target": TARGET_QUESTION} if self.provides_target else QUESTIONS
+        questions = {**self.questions, "target": TARGET_QUESTION} if self.provides_target else self.questions
         body = json.dumps({"state": state_text(task),
                            "model": model, "questions": questions}).encode()
         status, text = self._transport(url, headers, body, timeout_s)

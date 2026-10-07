@@ -142,6 +142,21 @@ Nimble defaults to model `nimble` at `http://127.0.0.1:11434/v1/systemone` and n
 
 Add the `difficulty` object to `.model-effort-router.json` in the repository root or to `~/.config/model-effort-router/config.json`. `difficulty.nimble.model` and `.url` override the defaults. Nimble URLs must use HTTP(S) and point to `localhost`, `127.0.0.1`, or `::1`; MER rejects non-loopback URLs, so Nimble requests stay on the machine. In the example above, a Nimble failure sends the task to hosted Jev through TypeSafe; configure Jev's API key if you want that fallback.
 
+For local classification with Laya, install its serving extra and bind the server to loopback:
+
+```sh
+python -m pip install 'laya[serve]'
+LAYA_HOST=127.0.0.1 laya-serve
+```
+
+Select it in `.model-effort-router.json` or the global config:
+
+```json
+{"difficulty": {"backend": "laya", "laya": {"model": "laya", "url": "http://127.0.0.1:8000/v1/systemone"}}}
+```
+
+Laya defaults to model `laya` at `http://127.0.0.1:8000/v1/systemone`. Select `difficulty.backend: "laya"`; optional `difficulty.laya.model` and `.url` override defaults, followed by `MER_LAYA_MODEL` and `MER_LAYA_URL` environment variables. URLs must use HTTP(S) and point to `localhost`, `127.0.0.1`, or `::1`. Set `MER_LAYA_API_KEY` only when the local server requires bearer authentication. The default `laya` model alias resolves to the English checkpoint; this setup does not automatically select the multilingual checkpoint. Configure `fallback` separately if you want another classifier after Laya fails. See the [Laya HTTP API documentation](https://nandhakishorm.github.io/laya/http-api/).
+
 ### Classifier performance
 
 On the 150-case v3 synthetic corpus, the recorded role/effort match rates were:
@@ -150,9 +165,11 @@ On the 150-case v3 synthetic corpus, the recorded role/effort match rates were:
 |---|---:|---:|---:|
 | Jev (`jev-latest`) | 141/150 (94.0%) | 119/150 (79.3%) | 111/150 (74.0%) |
 | Nimble | 124/150 (82.7%) | 101/150 (67.3%) | 85/150 (56.7%) |
+| Laya (`english`) | 90/150 (60.0%) | 38/150 (25.3%) | 30/150 (20.0%) |
+| Laya (`laya:322m-multilingual-mlx-fp16`, Ollama MLX) | 56/150 (37.3%) | 30/150 (20.0%) | 11/150 (7.3%) |
 | OpenAI Decisions API (`gpt-6-luna`) | 136/150 (90.7%) | 119/150 (79.3%) | 107/150 (71.3%) |
 
-The Decisions API is the endpoint; `gpt-6-luna` is its model. Jev had the highest recorded match rates on this corpus. All three results use the same previously evaluated cases, so treat them as agreement with the adjudicated labels, not a fresh independent measure of real-world accuracy. Nimble provides local inference; set its fallback to `none` if requests must stay on-device. See the [evaluation index](docs/evaluation/README.md) and [Decisions API run details](docs/evaluation/openai-decisions-20261007.md).
+The Decisions API is the endpoint; `gpt-6-luna` is its model. Jev had the highest recorded match rates on this corpus. All results use the same previously evaluated cases, so treat them as agreement with adjudicated labels, not a fresh independent measure of real-world accuracy. The English and multilingual Laya rows also use different checkpoints, serving runtimes, and question instructions, so their score difference cannot isolate the effect of multilingual support. Nimble provides local inference; set its fallback to `none` if requests must stay on-device. See the [evaluation index](docs/evaluation/README.md), [English Laya run](docs/evaluation/laya-20261008.md), [multilingual Laya run](docs/evaluation/laya-multilingual-20261008.md), and [Decisions API run](docs/evaluation/openai-decisions-20261007.md).
 
 ## Use
 

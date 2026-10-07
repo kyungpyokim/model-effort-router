@@ -69,6 +69,10 @@ Jev는 role 기준을 넘었고 effort와 joint는 각각 1건, 2건 모자라�
 
 같은 날 현재 체크아웃으로 v3를 재측정한 결과 Jev는 role 142/150, effort 119/150, joint 111/150이었다. Nimble은 124/150, 101/150, 85/150으로 같았고 양쪽 모두 실패 0건이었다. 이 재측정은 별도 표본이 아닌 같은 150건의 반복 실행이다. 원본은 `runs/role-effort-human-holdout-v3-rerun-current.json`에 있다.
 
+2026-10-08에 당시 Laya backend로 v3 150건을 측정했다. role 90/150, effort 38/150, 동시 30/150으로 다수결 일치율이 낮았으며 요청 오류는 없었다. 상세 점수, 지연시간, 분류별 혼동과 원시 근거는 [Laya 측정 보고서](laya-20261008.md)에 기록했다. 이미 여러 provider 측정에 사용된 코퍼스이므로 독립 정확도로 해석하지 않는다.
+
+같은 날 Ollama의 `laya:322m-multilingual-mlx-fp16`도 측정했다. 최초의 기본 질문은 서버 길이 한도를 넘겨 HTTP 400으로 거부됐다. Laya backend에만 짧은 질문 지시문을 적용하고 warmup을 통과한 뒤 150건을 재측정했다. role 56/150, effort 30/150, joint 11/150이며 실패 0건이다. 이 실행은 checkpoint, server/runtime, 질문 지시문이 영어 baseline과 달라 차이를 언어 지원 효과로 분리할 수 없다. [다국어 실행과 초기 거부 기록](laya-multilingual-20261008.md).
+
 2026-10-07에 같은 v3 코퍼스로 OpenAI Decisions API (`gpt-6-luna`)를 비교했다. 150회 모두 성공했으며 role 136/150 (90.7%), effort 119/150 (79.3%), joint 107/150 (71.3%)였다. 기존 holdout의 재사용이므로 독립 정확도가 아닌 다수결 라벨 일치율이다. [상세 결과와 원시 예측](openai-decisions-20261007.md).
 
 분류 backend를 실제 호출하면 설정에 따라 외부 서비스 또는 `codex exec`를 사용하고 사용량이 발생할 수 있다. 비교 API를 직접 실행하기 전에 대상 backend와 요청 텍스트 전송 여부를 확인한다. 이 저장소는 live 비교를 자동 실행하지 않는다.
