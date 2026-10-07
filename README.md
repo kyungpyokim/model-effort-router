@@ -103,14 +103,15 @@ Add the `difficulty` object to `.model-effort-router.json` in the repository roo
 
 ### Classifier performance
 
-On the latest 150-case synthetic holdout, Jev outperformed Nimble on role, effort, and exact joint classification:
+On the 150-case v3 synthetic corpus, the recorded role/effort match rates were:
 
 | Backend | Role | Effort | Role + effort |
 |---|---:|---:|---:|
 | Jev (`jev-latest`) | 141/150 (94.0%) | 119/150 (79.3%) | 111/150 (74.0%) |
 | Nimble | 124/150 (82.7%) | 101/150 (67.3%) | 85/150 (56.7%) |
+| OpenAI Decisions API (`gpt-6-luna`) | 136/150 (90.7%) | 119/150 (79.3%) | 107/150 (71.3%) |
 
-We recommend Jev when classification accuracy is the priority. Nimble provides local inference; set its fallback to `none` if requests must stay on-device. These results come from 150 synthetic cases and are directional, not a measure of real-world traffic. See the [evaluation report](docs/evaluation/README.md).
+The Decisions API is the endpoint; `gpt-6-luna` is its model. Jev had the highest recorded match rates on this corpus. All three results use the same previously evaluated cases, so treat them as agreement with the adjudicated labels, not a fresh independent measure of real-world accuracy. Nimble provides local inference; set its fallback to `none` if requests must stay on-device. See the [evaluation index](docs/evaluation/README.md) and [Decisions API run details](docs/evaluation/openai-decisions-20261007.md).
 
 ## Use
 

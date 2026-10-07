@@ -103,14 +103,15 @@ Nimble은 기본적으로 API 키 없이 `http://127.0.0.1:11434/v1/systemone`�
 
 ### 분류기 성능
 
-최신 합성 holdout 150건에서 Jev는 role, effort, 두 항목의 동시 정확도 모두 Nimble보다 높았습니다.
+합성 코퍼스 v3 150건에서 측정한 role/effort 라벨 일치율입니다.
 
 | Backend | Role | Effort | Role + effort |
 |---|---:|---:|---:|
 | Jev (`jev-latest`) | 141/150 (94.0%) | 119/150 (79.3%) | 111/150 (74.0%) |
 | Nimble | 124/150 (82.7%) | 101/150 (67.3%) | 85/150 (56.7%) |
+| OpenAI Decisions API (`gpt-6-luna`) | 136/150 (90.7%) | 119/150 (79.3%) | 107/150 (71.3%) |
 
-분류 정확도를 우선하면 Jev를 권장합니다. Nimble은 로컬 추론에 사용할 수 있으며, 요청이 기기 밖으로 나가지 않게 하려면 fallback을 `none`으로 설정하십시오. 이 결과는 합성 케이스 150건에서 나온 방향성 지표이며 실제 사용자 요청의 성능을 나타내지는 않습니다. 자세한 내용은 [평가 보고서](docs/evaluation/README.md)를 참고하십시오.
+Decisions API는 endpoint이고 `gpt-6-luna`는 해당 API에서 사용하는 모델입니다. 이 코퍼스에서는 Jev가 가장 높은 일치율을 기록했습니다. 세 결과는 같은 기존 평가 케이스를 사용했으므로 독립적인 실제 사용자 정확도가 아니라 판정 라벨과의 일치율로 해석해야 합니다. Nimble은 로컬 추론에 사용할 수 있으며, 요청이 기기 밖으로 나가지 않게 하려면 fallback을 `none`으로 설정하십시오. 자세한 내용은 [평가 인덱스](docs/evaluation/README.md)와 [Decisions API 측정 기록](docs/evaluation/openai-decisions-20261007.md)을 참고하십시오.
 
 ## 사용법
 

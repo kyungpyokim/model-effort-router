@@ -1,0 +1,3024 @@
+{
+  "started_at_utc": "2026-10-07T03:13:13.293346+00:00",
+  "model": "gpt-6-luna",
+  "endpoint": "POST https://api.openai.com/v1/decisions",
+  "backend": "openai_decisions",
+  "fallback": "none",
+  "corpus": "evaluation/corpus/role-effort-human-holdout-v3-adjudicated.jsonl",
+  "corpus_sha256": "9a9c4f4646452342e403a7a73815b64d36599106d7e794347343c7c44e1372ea",
+  "code_commit": "3dea669b72869a0918dc041695cf618355db8594",
+  "summary": {
+    "cases": 150,
+    "successful": 150,
+    "errors": 0,
+    "role_exact": 136,
+    "effort_exact": 119,
+    "joint_exact": 107,
+    "input_tokens": 85000,
+    "output_tokens": 0,
+    "estimated_standard_cost_usd": 0.0085,
+    "elapsed_s": 65.5
+  },
+  "cases": [
+    {
+      "id": "human-holdout-v3-001",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 576,
+        "output_tokens": 0
+      },
+      "latency_ms": 1653.8
+    },
+    {
+      "id": "human-holdout-v3-002",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.91
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 568,
+        "output_tokens": 0
+      },
+      "latency_ms": 1981.7
+    },
+    {
+      "id": "human-holdout-v3-003",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 541,
+        "output_tokens": 0
+      },
+      "latency_ms": 447.2
+    },
+    {
+      "id": "human-holdout-v3-004",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.42
+      },
+      "role_correct": false,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 570,
+        "output_tokens": 0
+      },
+      "latency_ms": 613.7
+    },
+    {
+      "id": "human-holdout-v3-005",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 550,
+        "output_tokens": 0
+      },
+      "latency_ms": 1332.1
+    },
+    {
+      "id": "human-holdout-v3-006",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high",
+        "confidence": 0.92
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 557,
+        "output_tokens": 0
+      },
+      "latency_ms": 614.1
+    },
+    {
+      "id": "human-holdout-v3-007",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high",
+        "confidence": 0.41
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 577,
+        "output_tokens": 0
+      },
+      "latency_ms": 437.1
+    },
+    {
+      "id": "human-holdout-v3-008",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 562,
+        "output_tokens": 0
+      },
+      "latency_ms": 485.0
+    },
+    {
+      "id": "human-holdout-v3-009",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.78
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 563,
+        "output_tokens": 0
+      },
+      "latency_ms": 452.8
+    },
+    {
+      "id": "human-holdout-v3-010",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 581,
+        "output_tokens": 0
+      },
+      "latency_ms": 487.9
+    },
+    {
+      "id": "human-holdout-v3-011",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 592,
+        "output_tokens": 0
+      },
+      "latency_ms": 457.9
+    },
+    {
+      "id": "human-holdout-v3-012",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 581,
+        "output_tokens": 0
+      },
+      "latency_ms": 818.2
+    },
+    {
+      "id": "human-holdout-v3-013",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 558,
+        "output_tokens": 0
+      },
+      "latency_ms": 334.2
+    },
+    {
+      "id": "human-holdout-v3-014",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 581,
+        "output_tokens": 0
+      },
+      "latency_ms": 261.0
+    },
+    {
+      "id": "human-holdout-v3-015",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "xhigh",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 571,
+        "output_tokens": 0
+      },
+      "latency_ms": 771.2
+    },
+    {
+      "id": "human-holdout-v3-016",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 0.9
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 567,
+        "output_tokens": 0
+      },
+      "latency_ms": 408.9
+    },
+    {
+      "id": "human-holdout-v3-017",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.61
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 567,
+        "output_tokens": 0
+      },
+      "latency_ms": 458.2
+    },
+    {
+      "id": "human-holdout-v3-018",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "medium",
+        "confidence": 0.71
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 547,
+        "output_tokens": 0
+      },
+      "latency_ms": 316.7
+    },
+    {
+      "id": "human-holdout-v3-019",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.94
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 581,
+        "output_tokens": 0
+      },
+      "latency_ms": 454.4
+    },
+    {
+      "id": "human-holdout-v3-020",
+      "gold": {
+        "role": "review",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 582,
+        "output_tokens": 0
+      },
+      "latency_ms": 577.9
+    },
+    {
+      "id": "human-holdout-v3-021",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 585,
+        "output_tokens": 0
+      },
+      "latency_ms": 447.5
+    },
+    {
+      "id": "human-holdout-v3-022",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 592,
+        "output_tokens": 0
+      },
+      "latency_ms": 511.1
+    },
+    {
+      "id": "human-holdout-v3-023",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 585,
+        "output_tokens": 0
+      },
+      "latency_ms": 425.0
+    },
+    {
+      "id": "human-holdout-v3-024",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 554,
+        "output_tokens": 0
+      },
+      "latency_ms": 498.3
+    },
+    {
+      "id": "human-holdout-v3-025",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 568,
+        "output_tokens": 0
+      },
+      "latency_ms": 510.7
+    },
+    {
+      "id": "human-holdout-v3-026",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium",
+        "confidence": 0.98
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 554,
+        "output_tokens": 0
+      },
+      "latency_ms": 350.8
+    },
+    {
+      "id": "human-holdout-v3-027",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 578,
+        "output_tokens": 0
+      },
+      "latency_ms": 365.0
+    },
+    {
+      "id": "human-holdout-v3-028",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 542,
+        "output_tokens": 0
+      },
+      "latency_ms": 458.7
+    },
+    {
+      "id": "human-holdout-v3-029",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.55
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 557,
+        "output_tokens": 0
+      },
+      "latency_ms": 473.8
+    },
+    {
+      "id": "human-holdout-v3-030",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 582,
+        "output_tokens": 0
+      },
+      "latency_ms": 361.8
+    },
+    {
+      "id": "human-holdout-v3-031",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.93
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 593,
+        "output_tokens": 0
+      },
+      "latency_ms": 292.3
+    },
+    {
+      "id": "human-holdout-v3-032",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 0.97
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 566,
+        "output_tokens": 0
+      },
+      "latency_ms": 429.3
+    },
+    {
+      "id": "human-holdout-v3-033",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 537,
+        "output_tokens": 0
+      },
+      "latency_ms": 484.0
+    },
+    {
+      "id": "human-holdout-v3-034",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 579,
+        "output_tokens": 0
+      },
+      "latency_ms": 265.4
+    },
+    {
+      "id": "human-holdout-v3-035",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 561,
+        "output_tokens": 0
+      },
+      "latency_ms": 412.8
+    },
+    {
+      "id": "human-holdout-v3-036",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.9
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 568,
+        "output_tokens": 0
+      },
+      "latency_ms": 275.3
+    },
+    {
+      "id": "human-holdout-v3-037",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 551,
+        "output_tokens": 0
+      },
+      "latency_ms": 304.3
+    },
+    {
+      "id": "human-holdout-v3-038",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 602,
+        "output_tokens": 0
+      },
+      "latency_ms": 463.6
+    },
+    {
+      "id": "human-holdout-v3-039",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "xhigh",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 559,
+        "output_tokens": 0
+      },
+      "latency_ms": 388.2
+    },
+    {
+      "id": "human-holdout-v3-040",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 598,
+        "output_tokens": 0
+      },
+      "latency_ms": 425.3
+    },
+    {
+      "id": "human-holdout-v3-041",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 548,
+        "output_tokens": 0
+      },
+      "latency_ms": 276.4
+    },
+    {
+      "id": "human-holdout-v3-042",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 575,
+        "output_tokens": 0
+      },
+      "latency_ms": 423.6
+    },
+    {
+      "id": "human-holdout-v3-043",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 535,
+        "output_tokens": 0
+      },
+      "latency_ms": 809.1
+    },
+    {
+      "id": "human-holdout-v3-044",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 597,
+        "output_tokens": 0
+      },
+      "latency_ms": 479.0
+    },
+    {
+      "id": "human-holdout-v3-045",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium",
+        "confidence": 0.98
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 588,
+        "output_tokens": 0
+      },
+      "latency_ms": 444.0
+    },
+    {
+      "id": "human-holdout-v3-046",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.43
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 561,
+        "output_tokens": 0
+      },
+      "latency_ms": 622.5
+    },
+    {
+      "id": "human-holdout-v3-047",
+      "gold": {
+        "role": "analysis",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "medium",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 545,
+        "output_tokens": 0
+      },
+      "latency_ms": 511.8
+    },
+    {
+      "id": "human-holdout-v3-048",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.44
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 584,
+        "output_tokens": 0
+      },
+      "latency_ms": 308.8
+    },
+    {
+      "id": "human-holdout-v3-049",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 0.69
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 534,
+        "output_tokens": 0
+      },
+      "latency_ms": 413.4
+    },
+    {
+      "id": "human-holdout-v3-050",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 584,
+        "output_tokens": 0
+      },
+      "latency_ms": 404.5
+    },
+    {
+      "id": "human-holdout-v3-051",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 557,
+        "output_tokens": 0
+      },
+      "latency_ms": 511.2
+    },
+    {
+      "id": "human-holdout-v3-052",
+      "gold": {
+        "role": "implementation",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "xhigh",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 594,
+        "output_tokens": 0
+      },
+      "latency_ms": 271.8
+    },
+    {
+      "id": "human-holdout-v3-053",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "lint",
+        "effort": "low",
+        "confidence": 0.95
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 545,
+        "output_tokens": 0
+      },
+      "latency_ms": 548.6
+    },
+    {
+      "id": "human-holdout-v3-054",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 0.98
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 574,
+        "output_tokens": 0
+      },
+      "latency_ms": 409.0
+    },
+    {
+      "id": "human-holdout-v3-055",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "lint",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 550,
+        "output_tokens": 0
+      },
+      "latency_ms": 307.8
+    },
+    {
+      "id": "human-holdout-v3-056",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "lint",
+        "effort": "low",
+        "confidence": 0.65
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 554,
+        "output_tokens": 0
+      },
+      "latency_ms": 512.0
+    },
+    {
+      "id": "human-holdout-v3-057",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 548,
+        "output_tokens": 0
+      },
+      "latency_ms": 494.6
+    },
+    {
+      "id": "human-holdout-v3-058",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 566,
+        "output_tokens": 0
+      },
+      "latency_ms": 429.9
+    },
+    {
+      "id": "human-holdout-v3-059",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.69
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 575,
+        "output_tokens": 0
+      },
+      "latency_ms": 420.7
+    },
+    {
+      "id": "human-holdout-v3-060",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 580,
+        "output_tokens": 0
+      },
+      "latency_ms": 304.6
+    },
+    {
+      "id": "human-holdout-v3-061",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.68
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 570,
+        "output_tokens": 0
+      },
+      "latency_ms": 286.8
+    },
+    {
+      "id": "human-holdout-v3-062",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 559,
+        "output_tokens": 0
+      },
+      "latency_ms": 316.0
+    },
+    {
+      "id": "human-holdout-v3-063",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 589,
+        "output_tokens": 0
+      },
+      "latency_ms": 409.2
+    },
+    {
+      "id": "human-holdout-v3-064",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 560,
+        "output_tokens": 0
+      },
+      "latency_ms": 410.1
+    },
+    {
+      "id": "human-holdout-v3-065",
+      "gold": {
+        "role": "plan",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "xhigh",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 557,
+        "output_tokens": 0
+      },
+      "latency_ms": 409.4
+    },
+    {
+      "id": "human-holdout-v3-066",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "design",
+        "effort": "xhigh",
+        "confidence": 0.69
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 562,
+        "output_tokens": 0
+      },
+      "latency_ms": 511.8
+    },
+    {
+      "id": "human-holdout-v3-067",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 565,
+        "output_tokens": 0
+      },
+      "latency_ms": 339.5
+    },
+    {
+      "id": "human-holdout-v3-068",
+      "gold": {
+        "role": "plan",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium",
+        "confidence": 0.54
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 576,
+        "output_tokens": 0
+      },
+      "latency_ms": 487.2
+    },
+    {
+      "id": "human-holdout-v3-069",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 567,
+        "output_tokens": 0
+      },
+      "latency_ms": 297.8
+    },
+    {
+      "id": "human-holdout-v3-070",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 556,
+        "output_tokens": 0
+      },
+      "latency_ms": 450.9
+    },
+    {
+      "id": "human-holdout-v3-071",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.78
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 544,
+        "output_tokens": 0
+      },
+      "latency_ms": 284.5
+    },
+    {
+      "id": "human-holdout-v3-072",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 612,
+        "output_tokens": 0
+      },
+      "latency_ms": 428.9
+    },
+    {
+      "id": "human-holdout-v3-073",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.61
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 571,
+        "output_tokens": 0
+      },
+      "latency_ms": 441.7
+    },
+    {
+      "id": "human-holdout-v3-074",
+      "gold": {
+        "role": "review",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium",
+        "confidence": 0.97
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 555,
+        "output_tokens": 0
+      },
+      "latency_ms": 307.1
+    },
+    {
+      "id": "human-holdout-v3-075",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 572,
+        "output_tokens": 0
+      },
+      "latency_ms": 346.2
+    },
+    {
+      "id": "human-holdout-v3-076",
+      "gold": {
+        "role": "review",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "xhigh",
+        "confidence": 0.98
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 558,
+        "output_tokens": 0
+      },
+      "latency_ms": 331.9
+    },
+    {
+      "id": "human-holdout-v3-077",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high",
+        "confidence": 0.95
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 554,
+        "output_tokens": 0
+      },
+      "latency_ms": 313.4
+    },
+    {
+      "id": "human-holdout-v3-078",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.98
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 551,
+        "output_tokens": 0
+      },
+      "latency_ms": 553.4
+    },
+    {
+      "id": "human-holdout-v3-079",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 547,
+        "output_tokens": 0
+      },
+      "latency_ms": 252.1
+    },
+    {
+      "id": "human-holdout-v3-080",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 581,
+        "output_tokens": 0
+      },
+      "latency_ms": 431.0
+    },
+    {
+      "id": "human-holdout-v3-081",
+      "gold": {
+        "role": "design",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 0.42
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 570,
+        "output_tokens": 0
+      },
+      "latency_ms": 366.4
+    },
+    {
+      "id": "human-holdout-v3-082",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 567,
+        "output_tokens": 0
+      },
+      "latency_ms": 711.0
+    },
+    {
+      "id": "human-holdout-v3-083",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium",
+        "confidence": 0.93
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 577,
+        "output_tokens": 0
+      },
+      "latency_ms": 298.4
+    },
+    {
+      "id": "human-holdout-v3-084",
+      "gold": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high",
+        "confidence": 0.92
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 580,
+        "output_tokens": 0
+      },
+      "latency_ms": 422.4
+    },
+    {
+      "id": "human-holdout-v3-085",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 571,
+        "output_tokens": 0
+      },
+      "latency_ms": 267.4
+    },
+    {
+      "id": "human-holdout-v3-086",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 553,
+        "output_tokens": 0
+      },
+      "latency_ms": 426.9
+    },
+    {
+      "id": "human-holdout-v3-087",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.69
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 565,
+        "output_tokens": 0
+      },
+      "latency_ms": 266.5
+    },
+    {
+      "id": "human-holdout-v3-088",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "xhigh",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 562,
+        "output_tokens": 0
+      },
+      "latency_ms": 275.9
+    },
+    {
+      "id": "human-holdout-v3-089",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.62
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 558,
+        "output_tokens": 0
+      },
+      "latency_ms": 497.3
+    },
+    {
+      "id": "human-holdout-v3-090",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 539,
+        "output_tokens": 0
+      },
+      "latency_ms": 302.7
+    },
+    {
+      "id": "human-holdout-v3-091",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 581,
+        "output_tokens": 0
+      },
+      "latency_ms": 316.1
+    },
+    {
+      "id": "human-holdout-v3-092",
+      "gold": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 573,
+        "output_tokens": 0
+      },
+      "latency_ms": 413.3
+    },
+    {
+      "id": "human-holdout-v3-093",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 600,
+        "output_tokens": 0
+      },
+      "latency_ms": 595.0
+    },
+    {
+      "id": "human-holdout-v3-094",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 558,
+        "output_tokens": 0
+      },
+      "latency_ms": 430.9
+    },
+    {
+      "id": "human-holdout-v3-095",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.78
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 567,
+        "output_tokens": 0
+      },
+      "latency_ms": 320.1
+    },
+    {
+      "id": "human-holdout-v3-096",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 543,
+        "output_tokens": 0
+      },
+      "latency_ms": 436.9
+    },
+    {
+      "id": "human-holdout-v3-097",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "lint",
+        "effort": "low",
+        "confidence": 0.31
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 545,
+        "output_tokens": 0
+      },
+      "latency_ms": 422.2
+    },
+    {
+      "id": "human-holdout-v3-098",
+      "gold": {
+        "role": "review",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.92
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 570,
+        "output_tokens": 0
+      },
+      "latency_ms": 663.0
+    },
+    {
+      "id": "human-holdout-v3-099",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 0.9
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 560,
+        "output_tokens": 0
+      },
+      "latency_ms": 576.3
+    },
+    {
+      "id": "human-holdout-v3-100",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 586,
+        "output_tokens": 0
+      },
+      "latency_ms": 285.2
+    },
+    {
+      "id": "human-holdout-v3-101",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.59
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 576,
+        "output_tokens": 0
+      },
+      "latency_ms": 463.6
+    },
+    {
+      "id": "human-holdout-v3-102",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 576,
+        "output_tokens": 0
+      },
+      "latency_ms": 297.9
+    },
+    {
+      "id": "human-holdout-v3-103",
+      "gold": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "medium",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 559,
+        "output_tokens": 0
+      },
+      "latency_ms": 425.2
+    },
+    {
+      "id": "human-holdout-v3-104",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "xhigh",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 599,
+        "output_tokens": 0
+      },
+      "latency_ms": 287.1
+    },
+    {
+      "id": "human-holdout-v3-105",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 558,
+        "output_tokens": 0
+      },
+      "latency_ms": 549.6
+    },
+    {
+      "id": "human-holdout-v3-106",
+      "gold": {
+        "role": "fix",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.97
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 570,
+        "output_tokens": 0
+      },
+      "latency_ms": 492.6
+    },
+    {
+      "id": "human-holdout-v3-107",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 566,
+        "output_tokens": 0
+      },
+      "latency_ms": 432.4
+    },
+    {
+      "id": "human-holdout-v3-108",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 554,
+        "output_tokens": 0
+      },
+      "latency_ms": 386.8
+    },
+    {
+      "id": "human-holdout-v3-109",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "medium",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 559,
+        "output_tokens": 0
+      },
+      "latency_ms": 429.2
+    },
+    {
+      "id": "human-holdout-v3-110",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "medium",
+        "confidence": 0.86
+      },
+      "role_correct": false,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 548,
+        "output_tokens": 0
+      },
+      "latency_ms": 420.9
+    },
+    {
+      "id": "human-holdout-v3-111",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 560,
+        "output_tokens": 0
+      },
+      "latency_ms": 484.3
+    },
+    {
+      "id": "human-holdout-v3-112",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "lint",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 544,
+        "output_tokens": 0
+      },
+      "latency_ms": 447.1
+    },
+    {
+      "id": "human-holdout-v3-113",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 554,
+        "output_tokens": 0
+      },
+      "latency_ms": 369.9
+    },
+    {
+      "id": "human-holdout-v3-114",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 550,
+        "output_tokens": 0
+      },
+      "latency_ms": 410.8
+    },
+    {
+      "id": "human-holdout-v3-115",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 604,
+        "output_tokens": 0
+      },
+      "latency_ms": 507.3
+    },
+    {
+      "id": "human-holdout-v3-116",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 550,
+        "output_tokens": 0
+      },
+      "latency_ms": 256.6
+    },
+    {
+      "id": "human-holdout-v3-117",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 549,
+        "output_tokens": 0
+      },
+      "latency_ms": 276.2
+    },
+    {
+      "id": "human-holdout-v3-118",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 583,
+        "output_tokens": 0
+      },
+      "latency_ms": 292.1
+    },
+    {
+      "id": "human-holdout-v3-119",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.85
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 547,
+        "output_tokens": 0
+      },
+      "latency_ms": 310.3
+    },
+    {
+      "id": "human-holdout-v3-120",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "lint",
+        "effort": "low",
+        "confidence": 0.97
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 548,
+        "output_tokens": 0
+      },
+      "latency_ms": 278.8
+    },
+    {
+      "id": "human-holdout-v3-121",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.97
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 580,
+        "output_tokens": 0
+      },
+      "latency_ms": 265.5
+    },
+    {
+      "id": "human-holdout-v3-122",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 545,
+        "output_tokens": 0
+      },
+      "latency_ms": 323.1
+    },
+    {
+      "id": "human-holdout-v3-123",
+      "gold": {
+        "role": "plan",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "xhigh",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 621,
+        "output_tokens": 0
+      },
+      "latency_ms": 458.3
+    },
+    {
+      "id": "human-holdout-v3-124",
+      "gold": {
+        "role": "lint",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "lint",
+        "effort": "low",
+        "confidence": 0.86
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 554,
+        "output_tokens": 0
+      },
+      "latency_ms": 408.9
+    },
+    {
+      "id": "human-holdout-v3-125",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 569,
+        "output_tokens": 0
+      },
+      "latency_ms": 266.8
+    },
+    {
+      "id": "human-holdout-v3-126",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.89
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 608,
+        "output_tokens": 0
+      },
+      "latency_ms": 346.4
+    },
+    {
+      "id": "human-holdout-v3-127",
+      "gold": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 583,
+        "output_tokens": 0
+      },
+      "latency_ms": 282.1
+    },
+    {
+      "id": "human-holdout-v3-128",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 0.97
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 547,
+        "output_tokens": 0
+      },
+      "latency_ms": 435.0
+    },
+    {
+      "id": "human-holdout-v3-129",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.99
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 573,
+        "output_tokens": 0
+      },
+      "latency_ms": 511.9
+    },
+    {
+      "id": "human-holdout-v3-130",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high",
+        "confidence": 0.97
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 577,
+        "output_tokens": 0
+      },
+      "latency_ms": 410.3
+    },
+    {
+      "id": "human-holdout-v3-131",
+      "gold": {
+        "role": "plan",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 555,
+        "output_tokens": 0
+      },
+      "latency_ms": 308.7
+    },
+    {
+      "id": "human-holdout-v3-132",
+      "gold": {
+        "role": "implementation",
+        "effort": "medium"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 584,
+        "output_tokens": 0
+      },
+      "latency_ms": 271.6
+    },
+    {
+      "id": "human-holdout-v3-133",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 560,
+        "output_tokens": 0
+      },
+      "latency_ms": 320.5
+    },
+    {
+      "id": "human-holdout-v3-134",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 557,
+        "output_tokens": 0
+      },
+      "latency_ms": 346.2
+    },
+    {
+      "id": "human-holdout-v3-135",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 555,
+        "output_tokens": 0
+      },
+      "latency_ms": 444.9
+    },
+    {
+      "id": "human-holdout-v3-136",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 564,
+        "output_tokens": 0
+      },
+      "latency_ms": 356.7
+    },
+    {
+      "id": "human-holdout-v3-137",
+      "gold": {
+        "role": "fix",
+        "effort": "xhigh"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high",
+        "confidence": 0.97
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 559,
+        "output_tokens": 0
+      },
+      "latency_ms": 446.3
+    },
+    {
+      "id": "human-holdout-v3-138",
+      "gold": {
+        "role": "fix",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 557,
+        "output_tokens": 0
+      },
+      "latency_ms": 374.5
+    },
+    {
+      "id": "human-holdout-v3-139",
+      "gold": {
+        "role": "analysis",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "analysis",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 542,
+        "output_tokens": 0
+      },
+      "latency_ms": 305.9
+    },
+    {
+      "id": "human-holdout-v3-140",
+      "gold": {
+        "role": "plan",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "plan",
+        "effort": "low",
+        "confidence": 0.85
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 566,
+        "output_tokens": 0
+      },
+      "latency_ms": 409.3
+    },
+    {
+      "id": "human-holdout-v3-141",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "low",
+        "confidence": 0.46
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 560,
+        "output_tokens": 0
+      },
+      "latency_ms": 335.6
+    },
+    {
+      "id": "human-holdout-v3-142",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.97
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 582,
+        "output_tokens": 0
+      },
+      "latency_ms": 483.8
+    },
+    {
+      "id": "human-holdout-v3-143",
+      "gold": {
+        "role": "review",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "low",
+        "confidence": 0.92
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 549,
+        "output_tokens": 0
+      },
+      "latency_ms": 512.8
+    },
+    {
+      "id": "human-holdout-v3-144",
+      "gold": {
+        "role": "implementation",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 0.33
+      },
+      "role_correct": false,
+      "effort_correct": true,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 559,
+        "output_tokens": 0
+      },
+      "latency_ms": 305.9
+    },
+    {
+      "id": "human-holdout-v3-145",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 558,
+        "output_tokens": 0
+      },
+      "latency_ms": 470.7
+    },
+    {
+      "id": "human-holdout-v3-146",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 0.94
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 577,
+        "output_tokens": 0
+      },
+      "latency_ms": 289.3
+    },
+    {
+      "id": "human-holdout-v3-147",
+      "gold": {
+        "role": "fix",
+        "effort": "low"
+      },
+      "prediction": {
+        "role": "fix",
+        "effort": "low",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 591,
+        "output_tokens": 0
+      },
+      "latency_ms": 469.0
+    },
+    {
+      "id": "human-holdout-v3-148",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 560,
+        "output_tokens": 0
+      },
+      "latency_ms": 431.6
+    },
+    {
+      "id": "human-holdout-v3-149",
+      "gold": {
+        "role": "implementation",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "implementation",
+        "effort": "medium",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": false,
+      "joint_correct": false,
+      "usage": {
+        "input_tokens": 590,
+        "output_tokens": 0
+      },
+      "latency_ms": 284.2
+    },
+    {
+      "id": "human-holdout-v3-150",
+      "gold": {
+        "role": "review",
+        "effort": "high"
+      },
+      "prediction": {
+        "role": "review",
+        "effort": "high",
+        "confidence": 1.0
+      },
+      "role_correct": true,
+      "effort_correct": true,
+      "joint_correct": true,
+      "usage": {
+        "input_tokens": 556,
+        "output_tokens": 0
+      },
+      "latency_ms": 512.9
+    }
+  ]
+}
