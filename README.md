@@ -65,6 +65,18 @@ Jev uses the TypeSafe `jev-latest` model by default. Store its API key in `~/.co
 
 The configured primary backend runs first; the fallback runs only if it fails.
 
+OpenAI Decisions API is also available as the opt-in `openai_decisions` backend (model `gpt-6-luna`):
+
+```json
+{"difficulty": {"backend": "openai_decisions", "fallback": "subscription", "timeout_s": 10}}
+```
+
+Set `OPENAI_API_KEY`, or store the key only in global `~/.config/model-effort-router/config.json`:
+
+```json
+{"openai": {"api_key": "your-openai-api-key"}}
+```
+
 For local classification with Nimble, install Ollama and ensure its local server is running, then pull the model:
 
 ```sh

@@ -65,6 +65,18 @@ Jev는 기본적으로 `jev-latest` 모델을 사용합니다. API 키는 저장
 
 설정된 주 backend를 먼저 호출하고, 실패한 경우에만 fallback을 호출합니다.
 
+OpenAI Decisions API도 선택형 `openai_decisions` backend로 사용할 수 있습니다(기본 모델 `gpt-6-luna`).
+
+```json
+{"difficulty": {"backend": "openai_decisions", "fallback": "subscription", "timeout_s": 10}}
+```
+
+`OPENAI_API_KEY` 환경변수를 설정하거나, 키를 저장소가 아닌 전역 `~/.config/model-effort-router/config.json`에 저장합니다.
+
+```json
+{"openai": {"api_key": "your-openai-api-key"}}
+```
+
 Nimble을 로컬 분류기로 사용하려면 Ollama를 설치하고 로컬 서버가 실행 중인지 확인한 뒤 모델을 받아옵니다.
 
 ```sh
