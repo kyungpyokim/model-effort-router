@@ -19,6 +19,7 @@ Navigation pointers:
 
 Retro: feed human review findings back into the next agent run.
 
+- Write pull request titles and descriptions in Korean; keep technical names and identifiers as written.
 - A finding that comes up twice in human review becomes a one-line rule here.
 - If a test, lint or `scripts/` check can catch it deterministically, add the check instead and drop the rule.
 - If an agent got lost looking for a file, add a navigation pointer above.
