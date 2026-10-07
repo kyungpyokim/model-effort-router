@@ -1,20 +1,29 @@
-import { tool } from "@opencode-ai/plugin";
-import type { Plugin } from "@opencode-ai/plugin";
+import { Plugin } from "@opencode/plugin";
 import { routeAdvice } from "./route";
 
-export const ModelEffortRouterPlugin: Plugin = async () => ({
-  tool: {
-    route_advice: tool({
-      description: "Return a Model Effort Router role, model, and effort recommendation for a task. This does not change the current OpenCode model or launch a worker.",
-      args: {
-        task: tool.schema.string().min(1).max(20_000),
-        role: tool.schema.enum(["implementation", "fix", "lint", "test", "plan", "design", "review", "analysis"]),
-        effort: tool.schema.enum(["low", "medium", "high", "xhigh"]),
-      },
-      async execute({ task, role, effort }, context) {
-        const advice = await routeAdvice(task, role, effort, context.directory);
-        return JSON.stringify(advice);
-      },
-    }),
+export default Plugin.define({
+  id: "model-effort-router",
+  async setup(ctx) {
+    await ctx.tool.transform((editor) => {
+      editor.add({
+        name: "mer",
+        description: "Recommend a role, model, and effort for a task using Model Effort Router.",
+        input: {
+          type: "object",
+          properties: {
+            task: { type: "string", minLength: 1, maxLength: 20_000 },
+            role: { type: "string", enum: ["implementation", "fix", "lint", "test", "plan", "design", "review", "analysis"] },
+            effort: { type: "string", enum: ["low", "medium", "high", "xhigh"] },
+          },
+          required: ["task", "role", "effort"],
+          additionalProperties: false,
+        },
+        async execute({ task, role, effort }, context) {
+          const session = await ctx.session.get({ sessionID: context.sessionID });
+          const advice = await routeAdvice(task, role, effort, session.location.directory);
+          return { content: JSON.stringify(advice) };
+        },
+      });
+    });
   },
 });

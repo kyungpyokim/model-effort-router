@@ -1,6 +1,6 @@
 # OpenCode Model Effort Router
 
-This local OpenCode plugin adds the `route_advice` tool. It asks the shared MER runtime for role, model, and effort advice; it does not change the current model, launch a worker, or classify the task on its own. OpenCode supplies `role` and `effort` to the tool.
+This local OpenCode plugin adds the `mer` tool. It asks the shared MER runtime for role, model, and effort advice; it does not change the current model, launch a worker, or classify the task on its own.
 
 ## Install for a project
 
@@ -18,12 +18,12 @@ cd plugins/opencode-model-effort-router
 bun install --frozen-lockfile
 ```
 
-Add the plugin path to the project's `opencode.json` (the V1 plugin API uses the singular `plugin` key):
+Add the plugin path to the project's `opencode.json`:
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["./plugins/opencode-model-effort-router"]
+  "plugins": ["./plugins/opencode-model-effort-router"]
 }
 ```
 
@@ -69,4 +69,4 @@ MER recommends the lane's `primary` model based on the routed role and returns `
 
 `primary` is MER's recommendation; `alternatives` are user-selectable options and do not trigger automatic model switching. `fallback` remains reserved for a confirmed pre-execution retry. OpenCode lists the MiMo free offer as potentially using prompts to improve the model during its free period. The Nemotron free endpoint is a trial; OpenCode says session data is logged to improve NVIDIA products and asks users not to submit personal or confidential data. Check the current [OpenCode Zen privacy terms](https://opencode.ai/docs/zen/#privacy) before sending sensitive work.
 
-The plugin uses OpenCode's stable V1 custom-tool API, pinned at `@opencode-ai/plugin` 1.18.35. OpenCode's V2 plugin API is beta and its package's published tool exports do not yet match the V2 documentation. This version provides route advice only; automatic model/variant selection and `mer run` remain unsupported.
+The plugin uses OpenCode's V2 plugin API, pinned to `@opencode/plugin` 2.0.24. It provides route advice only; automatic model/variant selection and `mer run` remain unsupported.

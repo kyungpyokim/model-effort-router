@@ -9,18 +9,21 @@ PLUGIN = ROOT / "plugins" / "opencode-model-effort-router"
 
 
 class OpenCodePluginBundleTest(unittest.TestCase):
-    def test_bundle_uses_shared_core_and_pins_stable_plugin_api(self):
+    def test_bundle_uses_shared_core_and_pins_current_plugin_api(self):
         package = json.loads((PLUGIN / "package.json").read_text())
-        self.assertEqual(package["dependencies"]["@opencode-ai/plugin"], "1.18.35")
+        self.assertEqual(package["version"], "0.8.1")
+        self.assertEqual(package["dependencies"]["@opencode/plugin"], "2.0.24")
         self.assertTrue((PLUGIN / "router.py").is_file())
         self.assertTrue((PLUGIN / "bin" / "mer").is_file())
         self.assertFalse((PLUGIN / "model_effort_router").exists())
 
-    def test_plugin_registers_only_a_route_advice_tool(self):
+    def test_plugin_registers_the_mer_tool_with_the_v2_api(self):
         source = (PLUGIN / "src" / "index.ts").read_text()
-        self.assertIn("import { tool } from \"@opencode-ai/plugin\"", source)
-        self.assertIn("export const ModelEffortRouterPlugin", source)
-        self.assertIn("route_advice:", source)
+        self.assertIn('import { Plugin } from "@opencode/plugin"', source)
+        self.assertIn('id: "model-effort-router"', source)
+        self.assertIn('name: "mer"', source)
+        self.assertIn('await ctx.tool.transform', source)
+        self.assertNotIn("route_advice", source)
         route = (PLUGIN / "src" / "route.ts").read_text()
         self.assertIn('"--host", "opencode"', route)
         self.assertIn('"--json"', route)

@@ -1,11 +1,11 @@
 {
   "name": "opencode-model-effort-router",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@opencode-ai/plugin": "1.18.35"
+    "@opencode/plugin": "2.0.24"
   },
   "scripts": {
     "test": "bun test src/*.test.ts"

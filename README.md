@@ -47,7 +47,7 @@ bun install --frozen-lockfile
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["./plugins/opencode-model-effort-router"]
+  "plugins": ["./plugins/opencode-model-effort-router"]
 }
 ```
 
@@ -156,7 +156,7 @@ python3 <plugin>/bin/mer route --host codex --role implementation --effort high 
 python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and fix the focused tests'
 ```
 
-`mer route` classifies/maps only. By default, `mer run` executes exactly one worker request. Reasoning roles run read-only. Antigravity can classify and provide advice, but worker execution is unsupported because Subagent isolation is unverified. OpenCode exposes route advice through a custom tool; it does not switch the active model or run workers. `mer chat` was removed; use the route result to ask Main to invoke the selected Subagent. Explicit `--role` and `--effort` bypass automatic hook eligibility and must be provided together.
+`mer route` classifies/maps only. By default, `mer run` executes exactly one worker request. Reasoning roles run read-only. Antigravity can classify and provide advice, but worker execution is unsupported because Subagent isolation is unverified. OpenCode exposes route advice through the `mer` tool; it does not switch the active model or run workers. `mer chat` was removed; use the route result to ask Main to invoke the selected Subagent. Explicit `--role` and `--effort` bypass automatic hook eligibility and must be provided together.
 
 After a run, MER compares the repository's changed paths before and after the worker. When changes are detected, text output reports the `door` (`one-way` for data migration, data loss, or payment risk; otherwise `two-way`) and estimated `blast_radius` (`local` or `broad`), plus changed-file and top-level-directory counts. JSON includes the same values under `change`, with the resulting `risk_flags`. Blast radius is a path-based estimate; review the actual changes to assess impact.
 

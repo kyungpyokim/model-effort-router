@@ -1,12 +1,37 @@
 import { describe, expect, it } from "bun:test";
-import { ModelEffortRouterPlugin } from "./index";
+import { fileURLToPath } from "node:url";
+import ModelEffortRouterPlugin from "./index";
 import { routeAdvice } from "./route";
 
 describe("OpenCode plugin tool schema", () => {
-  it("offers only efforts supported by the shared router", async () => {
-    const plugin = await ModelEffortRouterPlugin({} as never);
-    expect((plugin.tool.route_advice.args.effort as { options: string[] }).options)
-      .toEqual(["low", "medium", "high", "xhigh"]);
+  it("registers the visible mer tool with supported roles and efforts", async () => {
+    const registered: {
+      name: string;
+      input: { properties: Record<string, { enum?: string[] }> };
+      execute: (input: { task: string; role: string; effort: string }, context: unknown) => Promise<{ content?: string }>;
+    }[] = [];
+    const previousCorePath = process.env.MER_CORE_PATH;
+    process.env.MER_CORE_PATH = fileURLToPath(new URL("../../../", import.meta.url));
+    try {
+      await ModelEffortRouterPlugin.setup({
+        tool: {
+          transform: async (register) => register({ add: (definition) => registered.push(definition as never) }),
+        },
+        session: { get: async () => ({ location: { directory: process.cwd() } }) },
+      } as never);
+      expect(registered.map(({ name }) => name)).toEqual(["mer"]);
+      expect(registered[0].input.properties.role.enum)
+        .toEqual(["implementation", "fix", "lint", "test", "plan", "design", "review", "analysis"]);
+      expect(registered[0].input.properties.effort.enum).toEqual(["low", "medium", "high", "xhigh"]);
+      const result = await registered[0].execute(
+        { task: "Add an OpenCode plugin", role: "plan", effort: "medium" },
+        { sessionID: "test" },
+      );
+      expect(JSON.parse(result.content ?? "{}").role).toBe("plan");
+    } finally {
+      if (previousCorePath === undefined) delete process.env.MER_CORE_PATH;
+      else process.env.MER_CORE_PATH = previousCorePath;
+    }
   });
 });
 
