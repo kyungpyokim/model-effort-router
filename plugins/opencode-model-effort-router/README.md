@@ -44,6 +44,29 @@ The defaults use OpenCode Zen's `opencode/mimo-v2.6-flash-free` for execution an
 }
 ```
 
-OpenCode lists the MiMo free offer as potentially using prompts to improve the model during its free period. The Nemotron free endpoint is a trial; OpenCode says session data is logged to improve NVIDIA products and asks users not to submit personal or confidential data. Check the current [OpenCode Zen privacy terms](https://opencode.ai/docs/zen/#privacy) before sending sensitive work.
+MER recommends the lane's `primary` model based on the routed role and returns `model_options` with that recommendation followed by configured alternatives. Add models available in your OpenCode `/models` list to `alternatives`:
+
+```json
+{
+  "models": {
+    "opencode": {
+      "execution": {
+        "primary": "opencode/mimo-v2.6-flash-free",
+        "alternatives": ["provider/another-model"],
+        "fallback": null,
+        "efforts": ["low", "medium", "high", "xhigh"]
+      },
+      "reasoning": {
+        "primary": "opencode/nemotron-3-ultra-free",
+        "alternatives": ["provider/another-reasoning-model"],
+        "fallback": null,
+        "efforts": ["low", "medium", "high", "xhigh"]
+      }
+    }
+  }
+}
+```
+
+`primary` is MER's recommendation; `alternatives` are user-selectable options and do not trigger automatic model switching. `fallback` remains reserved for a confirmed pre-execution retry. OpenCode lists the MiMo free offer as potentially using prompts to improve the model during its free period. The Nemotron free endpoint is a trial; OpenCode says session data is logged to improve NVIDIA products and asks users not to submit personal or confidential data. Check the current [OpenCode Zen privacy terms](https://opencode.ai/docs/zen/#privacy) before sending sensitive work.
 
 The plugin uses OpenCode's stable V1 custom-tool API, pinned at `@opencode-ai/plugin` 1.18.35. OpenCode's V2 plugin API is beta and its package's published tool exports do not yet match the V2 documentation. This version provides route advice only; automatic model/variant selection and `mer run` remain unsupported.

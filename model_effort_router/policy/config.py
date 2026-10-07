@@ -111,6 +111,7 @@ def _validate_models(raw):
             if not isinstance(item, dict) or set(item) - {
                 "primary",
                 "fallback",
+                "alternatives",
                 "efforts",
             }:
                 raise ValueError(
@@ -126,6 +127,21 @@ def _validate_models(raw):
                     raise ValueError(
                         f"models.{host}.{lane}.{key} must be a valid model slug (1-128 ASCII characters)"
                     )
+            alternatives = item.get("alternatives", [])
+            if not isinstance(alternatives, list) or any(
+                not isinstance(model, str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", model)
+                for model in alternatives
+            ):
+                raise ValueError(
+                    f"models.{host}.{lane}.alternatives must be a list of valid model slugs"
+                )
+            if len(set(alternatives)) != len(alternatives) or item.get(
+                "primary"
+            ) in alternatives:
+                raise ValueError(
+                    f"models.{host}.{lane}.alternatives must be unique and exclude primary"
+                )
             efforts = item.get("efforts")
             if (
                 not isinstance(efforts, list)

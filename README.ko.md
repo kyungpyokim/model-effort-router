@@ -51,7 +51,7 @@ bun install --frozen-lockfile
 }
 ```
 
-OpenCode는 `route_advice` 도구로 role/model/effort 조언을 제공합니다. 현재 모델을 바꾸거나 worker를 실행하지 않습니다. 기본 조언 모델은 실행용 `opencode/mimo-v2.6-flash-free`, 추론용 `opencode/nemotron-3-ultra-free`입니다. 모델 ID는 OpenCode Zen 카탈로그에 맞췄으며, 제공 여부는 `/models`에서 확인할 수 있습니다.
+OpenCode는 `route_advice` 도구로 role/model/effort 조언과 `model_options` 후보를 제공합니다. 현재 모델을 바꾸거나 worker를 실행하지 않습니다. 기본 추천은 실행용 `opencode/mimo-v2.6-flash-free`, 추론용 `opencode/nemotron-3-ultra-free`이며, 대안 모델은 OpenCode 설정의 `alternatives`에 지정합니다. 자세한 내용은 [OpenCode 플러그인 가이드](plugins/opencode-model-effort-router/README.md)를 참고하십시오.
 
 Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지원하지 않습니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/), [OpenCode 플러그인 가이드](https://dev.opencode.ai/docs/plugins/)를 참고하십시오.
 
@@ -59,7 +59,7 @@ Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지
 
 분류기는 `role`과 `effort`를 반환하며, `confidence`와 `reason_code`는 선택 사항입니다. 역할은 `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, `analysis`입니다. 앞의 네 역할은 실행 모델을 사용하고, 나머지는 추론 모델을 사용합니다. 노력 수준은 `low`, `medium`, `high`, `xhigh`입니다. 독립적인 위험 감지는 안전 민감 검토/설계 요청을 최소 `high`까지 올릴 수 있지만, 역할이나 모델 레인은 변경하지 않습니다.
 
-기본값은 Codex 실행 모델 `gpt-6-luna`, 추론 모델 `gpt-6.1-sol`이며, Claude 실행 모델 `claude-sonnet-5-5`, 추론 모델 `claude-opus-5-5`입니다. 각 호스트/레인에는 설정 가능한 primary, fallback, 지원 effort가 있습니다. MER는 stderr에서 실행 fallback을 추론하지 않으며, worker가 시작되었을 수 있는 경우 재시도하지 않습니다. 명시적인 사전 실행 불가 신호가 있을 때만 fallback을 허용합니다. 분류기 provider는 설정된 다음 분류기로 넘어갈 수 있습니다. 모두 실패하면 CLI 라우팅은 오류를 반환하고, hook은 fail open으로 동작하여 사용자 요청을 막지 않습니다.
+기본값은 Codex 실행 모델 `gpt-6-luna`, 추론 모델 `gpt-6.1-sol`이며, Claude 실행 모델 `claude-sonnet-5-5`, 추론 모델 `claude-opus-5-5`입니다. 각 호스트/레인에는 설정 가능한 primary, alternatives, fallback, 지원 effort가 있습니다. `primary`는 추천 모델이며 `alternatives`는 사용자가 선택할 추가 후보입니다. MER는 stderr에서 실행 fallback을 추론하지 않으며, worker가 시작되었을 수 있는 경우 재시도하지 않습니다. 명시적인 사전 실행 불가 신호가 있을 때만 fallback을 허용합니다. 분류기 provider는 설정된 다음 분류기로 넘어갈 수 있습니다. 모두 실패하면 CLI 라우팅은 오류를 반환하고, hook은 fail open으로 동작하여 사용자 요청을 막지 않습니다.
 
 ## 분류기 backend 설정
 

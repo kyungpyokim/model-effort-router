@@ -114,7 +114,8 @@ def _response(plan):
     return {"role": d.role, "agent": plan.agent, "model": plan.model, "effort": plan.applied_effort,
             "requested_effort": plan.requested_effort, "risk_flags": list(plan.risk_flags),
             "classifier": d.backend, "confidence": d.confidence, "reason_code": d.reason_code,
-            "fallback_model": plan.fallback_model, "fallback_reason": plan.fallback_reason}
+            "fallback_model": plan.fallback_model, "fallback_reason": plan.fallback_reason,
+            "model_options": list(plan.model_options or ((plan.model,) if plan.model else ())) }
 
 
 def main(argv=None, *, env=None, runner=None, out=None):
