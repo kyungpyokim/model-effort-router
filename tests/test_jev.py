@@ -149,6 +149,33 @@ class JevContractTest(unittest.TestCase):
         self.assertTrue(JevBackend.provides_target)
         self.assertEqual(set(jev.QUESTIONS), {"role", "effort"})
 
+    def test_session_context_precedes_the_current_request_in_the_state(self):
+        t = FakeTransport(response("fix", "low"))
+        backend = JevBackend(transport=t, env={"TYPESAFE_API_KEY": "k"})
+        backend.classify(DifficultyInput("진행", ("a.py",), context="Session summary:\nplan X\n\nRecent turns:\n(none)"), 3)
+        backend.classify(DifficultyInput("진행"), 3)
+        with_ctx, without = (c[2]["state"] for c in t.calls)
+        self.assertEqual(with_ctx, "Session context:\nSession summary:\nplan X\n\nRecent turns:\n(none)"
+                                   "\n\nCurrent request:\n진행\n\nRelevant paths:\na.py")
+        self.assertEqual(without, "Task:\n진행\n\nRelevant paths:\n(none)")
+
+    def test_instructions_tie_followups_to_the_proposed_plan(self):
+        t = FakeTransport(response("fix", "low"))
+        JevBackend(transport=t, env={"TYPESAFE_API_KEY": "k"}).classify(DifficultyInput("x", context="c"), 3)
+        questions = t.calls[0][2]["questions"]
+        for name in ("role", "effort", "target"):
+            text = questions[name]["instructions"].lower()
+            self.assertIn("current request", text, name)
+            self.assertIn("session context", text, name)
+        target = questions["target"]
+        self.assertIn("진행", target["criteria"]["route"])
+        self.assertNotIn("진행", target["criteria"]["no_route"])
+        no_route = target["criteria"]["no_route"]
+        self.assertIn("승인", no_route)  # still an example, but only without a pending proposal
+        self.assertIn("no pending proposal or plan", no_route)
+        self.assertIn("nothing to execute", no_route)
+        self.assertIn("approvals", target["criteria"]["no_route"])
+
     def test_missing_or_invalid_target_answer_is_a_backend_error(self):
         for answers in ({"role": {"choice": "fix"}, "effort": {"choice": "low"}},
                         {"role": {"choice": "fix"}, "effort": {"choice": "low"}, "target": {"choice": "maybe"}},

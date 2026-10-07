@@ -20,6 +20,7 @@ class DifficultyInput:
     task: str
     paths: Tuple[str, ...] = ()
     repo_summary: str = ""
+    context: str = ""  # earlier-conversation summary + recent turns; interprets the task, is never classified itself
 
 
 @dataclass(frozen=True)

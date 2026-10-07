@@ -4,7 +4,7 @@ import json
 import os
 
 from .decision import DifficultyDecision, DifficultyInput
-from .jev import MAX_PATHS, MAX_TASK_CHARS, default_transport, parse_decision
+from .jev import default_transport, parse_decision, state_text
 from .jev import QUESTIONS as SYSTEMONE_QUESTIONS
 from .subscription import BackendOutputError
 
@@ -43,11 +43,10 @@ class OpenAIDecisionsBackend:
         key = self._api_key or env.get(KEY_ENV)
         if not key:
             raise RuntimeError(f"{KEY_ENV} is not set")
-        paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
         body = json.dumps(
             {
                 "model": self._model or DEFAULT_MODEL,
-                "input": f"Task:\n{task.task[:MAX_TASK_CHARS]}\n\nRelevant paths:\n{paths}",
+                "input": state_text(task),
                 "questions": QUESTIONS,
             }
         ).encode()

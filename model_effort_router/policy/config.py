@@ -10,11 +10,13 @@ from ..difficulty.decision import EFFORTS
 from ..difficulty.nimble import validate_options as validate_nimble
 
 MODES = ("auto", "manual", "off")
-SECTIONS = ("router", "difficulty", "models", "jev", "openai")
+MIN_CONTEXT_CHARS, MAX_CONTEXT_CHARS = 500, 20000
+SECTIONS = ("router", "difficulty", "models", "context", "jev", "openai")
 PASSTHROUGH_SECTIONS = ("gate",)  # owned by the independent mer-gate CLI
 DEFAULTS = {
     "router": {"mode": "auto"},
     "difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10},
+    "context": {"enabled": True, "max_chars": 6000},
     "models": {
         "codex": {
             "execution": {
@@ -83,6 +85,8 @@ class RouterConfig:
     timeout_s: float
     models: object
     nimble: Optional[dict] = None
+    context_enabled: bool = True
+    context_max_chars: int = 6000
 
 
 def _layer(value, name):
@@ -241,6 +245,14 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
                 raise ValueError(f"unknown difficulty.{key}: {difficulty[key]!r}")
         if difficulty["backend"] == "none":
             raise ValueError("difficulty.backend cannot be 'none'")
+    context = merged["context"]
+    if set(context) - {"enabled", "max_chars"}:
+        raise ValueError(f"unknown context settings: {sorted(set(context) - {'enabled', 'max_chars'})}")
+    if not isinstance(context["enabled"], bool):
+        raise ValueError("context.enabled must be true or false")
+    limit = context["max_chars"]
+    if isinstance(limit, bool) or not isinstance(limit, int) or not MIN_CONTEXT_CHARS <= limit <= MAX_CONTEXT_CHARS:
+        raise ValueError(f"context.max_chars must be an integer in [{MIN_CONTEXT_CHARS}, {MAX_CONTEXT_CHARS}]")
     models = MappingProxyType(
         {
             h: MappingProxyType(
@@ -258,4 +270,6 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         float(timeout),
         models,
         nimble,
+        context["enabled"],
+        limit,
     )

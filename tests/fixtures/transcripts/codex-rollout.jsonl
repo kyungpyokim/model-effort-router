@@ -1,0 +1,14 @@
+{"type": "session_meta", "payload": {"id": "s1"}}
+{"type": "response_item", "payload": {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "developer instructions"}], "internal_chat_message_metadata_passthrough": {}}}
+{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nrules\n</INSTRUCTIONS>"}, {"type": "input_text", "text": "<environment_context>\n  <cwd>/repo</cwd>\n  <shell>zsh</shell>\n</environment_context>"}]}}
+{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<user_instructions>\nbe terse\n</user_instructions>"}], "internal_chat_message_metadata_passthrough": {}}}
+{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Fix the flaky parser test."}], "internal_chat_message_metadata_passthrough": {}}}
+{"type": "response_item", "payload": {"type": "reasoning", "summary": []}}
+{"type": "response_item", "payload": {"type": "function_call", "name": "shell", "arguments": "{}"}}
+{"type": "response_item", "payload": {"type": "function_call_output", "output": "SECRET_TOOL_OUTPUT"}}
+{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<external_codex_apps_open_page>{\"page_id\": 1}</external_codex_apps_open_page>"}], "internal_chat_message_metadata_passthrough": {}}}
+{not json
+{"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Proposal: seed the RNG, then rerun the suite."}], "internal_chat_message_metadata_passthrough": {}}}
+{"type": "event_msg", "payload": {"type": "task_complete"}}
+{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "진행"}], "internal_chat_message_metadata_passthrough": {}}}
+{"type": "compacted", "payload": {}}

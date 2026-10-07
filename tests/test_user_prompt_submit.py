@@ -1,7 +1,12 @@
 import json
 import unittest
 
-from tests.hook_helpers import DEV, HookCase, run_script
+from model_effort_router.difficulty.subscription import GUARD_ENV
+from model_effort_router.context import summary
+from model_effort_router.context.transcripts import read_turns
+from model_effort_router.host import codex_hooks
+from tests.fake_registry import FakeBackend
+from tests.hook_helpers import DEV, PLUGIN, SID, HookCase, run_script
 
 
 class UserPromptSubmitTest(HookCase):
@@ -131,6 +136,102 @@ class UserPromptSubmitTest(HookCase):
                           stdin=json.dumps({"session_id": "s", "cwd": str(self.repo), "prompt": DEV}))
         self.assertEqual(proc.returncode, 0)
         self.assertIn("Role:", self.context(proc))
+
+
+class SessionContextTest(HookCase):
+    """In-process, with an injected spawner: no refresh process and no model CLI ever starts."""
+    BIG = "B" * summary.REFRESH_MIN_CHARS
+
+    def setUp(self):
+        super().setUp()
+        FakeBackend.inputs.clear()
+        self.fake = {"target": "route", "role": "fix", "effort": "low"}  # a target-deciding backend, as Jev is
+        self.spawned = []
+        self.transcript = self.root / "t.jsonl"
+
+    def write_transcript(self, *turns):
+        rows = [{"type": role, "message": {"content": text}} for role, text in turns]
+        self.transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+    def call(self, prompt="진행", host="claude", path=None, env_extra=None, spawn=None, version="0.160.1"):
+        data = {"session_id": SID, "cwd": str(self.repo), "prompt": prompt,
+                "transcript_path": str(path or self.transcript)}
+        env = self.env(MER_HOST=host, **(env_extra or {}))
+        return codex_hooks.user_prompt_submit(data, env, PLUGIN, spawn=spawn or (lambda *a: self.spawned.append(a)),
+                                              version_probe=lambda: version)
+
+    def test_summary_and_uncovered_turns_reach_the_classifier_without_the_current_prompt(self):
+        self.write_transcript(("user", "add retries"), ("assistant", "plan: retries param"), ("user", "진행"))
+        summary.save(str(self.state), SID, "goal: retries", summary.anchor_at(read_turns(str(self.transcript), "claude"), 1))
+        self.call("진행")
+        (seen,) = FakeBackend.inputs
+        self.assertEqual(seen.task, "진행")
+        self.assertEqual(seen.context, "Session summary:\ngoal: retries\n\nRecent turns:\nAssistant: plan: retries param")
+
+    def test_refresh_is_spawned_detached_when_enough_is_uncovered(self):
+        self.write_transcript(("user", "add retries"), ("assistant", self.BIG))
+        self.call()
+        self.assertEqual(self.spawned, [("claude", SID, str(self.transcript), str(self.state), self.spawned[0][4])])
+        self.assertEqual(self.spawned[0][4].get("MER_HOST"), "claude")
+
+    def test_no_spawn_when_little_is_uncovered_or_everything_is_covered(self):
+        self.write_transcript(("user", "add retries"), ("assistant", "short plan"))
+        self.call()
+        self.write_transcript(("user", self.BIG), ("assistant", self.BIG))
+        summary.save(str(self.state), SID, "s", summary.anchor_at(read_turns(str(self.transcript), "claude"), 2))
+        self.call()
+        self.assertEqual(self.spawned, [])
+
+    def test_disabled_or_off_or_guarded_does_nothing(self):
+        self.write_transcript(("user", "add retries"), ("assistant", self.BIG))
+        self.write_repo_config({"difficulty": {"backend": "fake"}, "context": {"enabled": False}})
+        self.call()
+        self.write_repo_config({"difficulty": {"backend": "fake"}, "router": {"mode": "off"}})
+        self.call()
+        self.write_repo_config({"difficulty": {"backend": "fake"}})
+        self.call(env_extra={GUARD_ENV: "1"})
+        self.assertEqual(self.spawned, [])
+        self.assertTrue(all(i.context == "" for i in FakeBackend.inputs))
+
+    def test_missing_or_unreadable_transcript_falls_back_to_the_prompt_alone(self):
+        self.call(path=self.root / "missing.jsonl")
+        self.call(host="opencode")
+        self.assertEqual([i.context for i in FakeBackend.inputs], ["", ""])
+        self.assertEqual(self.spawned, [])
+
+    def test_a_failing_spawner_never_breaks_routing(self):
+        self.write_transcript(("user", "add retries"), ("assistant", self.BIG))
+
+        def boom(*args):
+            raise OSError("cannot spawn")
+        out = self.call(spawn=boom)
+        self.assertIn("Role: fix", json.loads(out)["hookSpecificOutput"]["additionalContext"])
+
+    def test_codex_gets_context_and_a_background_refresh_when_due(self):
+        rows = [{"type": "response_item", "payload": {"type": "message", "role": role, "content": [{"type": kind, "text": text}]}}
+                for role, kind, text in (("user", "input_text", "add retries"), ("assistant", "output_text", self.BIG))]
+        self.transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+        self.call(host="codex")
+        self.assertIn("Assistant: " + "B" * 100, FakeBackend.inputs[0].context)
+        self.assertEqual([args[:4] for args in self.spawned], [("codex", SID, str(self.transcript), str(self.state))])
+
+    def test_codex_refresh_is_not_spawned_on_an_unverified_version(self):
+        rows = [{"type": "response_item", "payload": {"type": "message", "role": role, "content": [{"type": kind, "text": text}]}}
+                for role, kind, text in (("user", "input_text", "add retries"), ("assistant", "output_text", self.BIG))]
+        self.transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+        for version in ("0.159.0", None):
+            self.call(host="codex", version=version)
+        self.assertEqual(self.spawned, [])
+        self.assertIn("Assistant: " + "B" * 100, FakeBackend.inputs[-1].context)  # raw recent turns still flow
+        self.write_transcript(("user", "add retries"), ("assistant", self.BIG))
+        self.call(host="claude", version=None)  # Claude does not depend on the Codex version
+        self.assertEqual(len(self.spawned), 1)
+
+    def test_max_chars_bounds_the_context(self):
+        self.write_transcript(("user", "add retries"), ("assistant", "x" * 5000), ("user", "진행"))
+        self.write_repo_config({"difficulty": {"backend": "fake"}, "context": {"max_chars": 600}})
+        self.call()
+        self.assertLessEqual(len(FakeBackend.inputs[0].context), 600)
 
 
 if __name__ == "__main__":

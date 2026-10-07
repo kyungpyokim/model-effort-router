@@ -10,6 +10,8 @@ import shutil
 import signal
 import subprocess
 import tempfile
+from dataclasses import replace
+from functools import lru_cache
 
 from .decision import DifficultyDecision, DifficultyInput, EFFORTS, ROLES
 from ..events import iter_events
@@ -25,6 +27,13 @@ class BackendOutputError(ValueError):
     """Backend output could not be turned into a DifficultyDecision."""
 
 
+class CliAuthError(RuntimeError):
+    """The host CLI is not signed in (or its sign-in expired): a fix for the user, not a retry."""
+
+
+AUTH_FAILURE = re.compile(r"failed to authenticate|not logged in|unauthori[sz]ed|\b401\b", re.I)
+
+
 def _failure_detail(stdout, stderr):
     """Why a child failed: stderr, else the result/subtype of a JSON stdout (claude -p reports errors there).
     Other stdout is not echoed: codex streams events that can hold file contents."""
@@ -38,22 +47,24 @@ def _failure_detail(stdout, stderr):
     return text[:200] if isinstance(text, str) and text else "(no stderr)"
 
 
-def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace_s=1):  # hook budget: short grace
+def default_runner(cmd, *, stdin, env, timeout_s, cwd, label="classifier", grace_s=1, input_text=None):  # hook budget: short grace
     """Runs `cmd` in its own process group. On timeout or any interruption the group gets SIGTERM, then SIGKILL
-    after `grace_s`, so a child that cleans up its own children on SIGTERM (mer) gets the chance to."""
+    after `grace_s`, so a child that cleans up its own children on SIGTERM (mer) gets the chance to.
+    `input_text` is written to the child's stdin (instead of `stdin`), keeping large or private text out of argv."""
     proc = subprocess.Popen(
-        cmd, stdin=stdin, env=env, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        cmd, stdin=subprocess.PIPE if input_text is not None else stdin, env=env, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, start_new_session=True,  # own process group so a timeout can kill grandchildren
     )
     try:
-        stdout, stderr = proc.communicate(timeout=timeout_s)
+        stdout, stderr = proc.communicate(input=input_text, timeout=timeout_s)
     except subprocess.TimeoutExpired as exc:
         raise TimeoutError(f"{label} exceeded {timeout_s}s") from exc
     finally:  # timeout, KeyboardInterrupt, anything: never leave the group running
         if proc.poll() is None:
             _stop_group(proc, grace_s)
     if proc.returncode != 0:
-        raise RuntimeError(f"{label} exited {proc.returncode}: {_failure_detail(stdout, stderr)}")
+        detail = _failure_detail(stdout, stderr)
+        raise (CliAuthError if AUTH_FAILURE.search(detail) else RuntimeError)(f"{label} exited {proc.returncode}: {detail}")
     return stdout
 
 
@@ -70,15 +81,80 @@ def _stop_group(proc, grace_s):
             pass
 
 
+# Behavioural evidence, for this Codex version only (not a guarantee): with these flags `codex exec -s read-only` could
+# not read a canary file under a direct instruction, prompt injection, or explicit exec/spawn_agent bypass attempts, while
+# the no-flag positive control read it through a shell command. The web_search value was not verified. Older Codex may
+# reject unknown feature names and newer ones may rename them, so the flags and the session context sent to a Codex
+# agent are used only on a verified version; add a version here only after re-running the live canary check.
+VERIFIED_CODEX_VERSIONS = ("0.160.1",)
+CODEX_TOOLLESS_FLAGS = (
+    "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "view_image", "--disable", "browser_use",
+    "--disable", "browser_use_external", "--disable", "in_app_browser", "--disable", "computer_use",
+    "--disable", "image_generation", "--disable", "multi_agent", "--disable", "apps", "--disable", "plugins",
+    "--disable", "skill_search", "--disable", "tool_suggest", "--disable", "sleep_tool",
+    "-c", 'web_search="disabled"',
+)
+
+
+@lru_cache(maxsize=8)
+def _probe_version(path, mtime):  # mtime: part of the cache key, so an upgraded binary is probed again
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL,
+                             env={**os.environ, GUARD_ENV: "1"}).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"\b(\d+\.\d+\.\d+(?:[-+][\w.]+)?)\b", out)
+    return match.group(1) if match else None
+
+
+def codex_version():
+    """Version of the `codex` on PATH, or None (not installed, not runnable, or unparsable)."""
+    path = shutil.which("codex")
+    try:
+        return _probe_version(os.path.realpath(path), os.stat(path).st_mtime) if path else None
+    except OSError:
+        return None
+
+
+def codex_verified(probe=None):
+    return (probe or codex_version)() in VERIFIED_CODEX_VERSIONS
+
+
+def isolated_argv(host, prompt, model=None, toolless=True):  # prompt=None: the caller feeds it on stdin (`claude -p`, `codex exec -`)
+    """One-shot, tool-less model call through the host's subscription CLI. Claude: `claude -p`, as isolated and cheap as
+    --help allows: no tools (`--tools ""`), safe mode (no CLAUDE.md, skills, plugins, hooks, MCP, memory), no MCP servers,
+    nothing persisted. Codex: `codex exec` read-only, ephemeral, user config ignored, and (`toolless`, only for a verified
+    version: see VERIFIED_CODEX_VERSIONS) its shell and exec tools disabled with CODEX_TOOLLESS_FLAGS."""
+    if host == "claude":
+        return ["claude", "-p", "--output-format", "json", "--model", model or CLAUDE_MODEL,
+                "--permission-mode", "dontAsk", "--tools", "", "--safe-mode", "--strict-mcp-config", "--no-session-persistence",
+                *(["--", prompt] if prompt is not None else [])]
+    return ["codex", "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "-s", "read-only",
+            *(CODEX_TOOLLESS_FLAGS if toolless else ()), "-m", model or DEFAULT_MODEL, "-c", "model_reasoning_effort=low", "-" if prompt is None else prompt]  # "-": stdin
+
+
+def run_isolated(argv, runner, timeout_s, input_text=None):
+    """Runs `argv` with the guard env set (the nested CLI's own hook must no-op) in an empty per-call dir: no repo files
+    and no .codex/ or .claude/ hooks/agents for the child to load."""
+    env = {**os.environ, GUARD_ENV: "1"}
+    cwd = tempfile.mkdtemp(prefix="mer-classifier-")
+    try:
+        extra = {} if input_text is None else {"input_text": input_text}
+        return runner(argv, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd, **extra)
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
+
+
 def build_prompt(task: DifficultyInput) -> str:
     paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
+    context = f"Session context (earlier conversation; use it only to interpret the task):\n{task.context}\n\n" if task.context else ""
     return (
         "Classify the requested work. Role must be one of " + ", ".join(ROLES) + ". Effort must be one of "
         + ", ".join(EFFORTS) + ".\n"
         'Reply with ONLY JSON: {"role":"implementation","effort":"medium","confidence":0.8, '
         '"reason_code":"short_snake_case"}. Only role and effort are required.\n'
         "Do not run commands or edit files.\n\n"
-        f"Task:\n{task.task[:MAX_TASK_CHARS]}\n\nChanged/expected paths:\n{paths}\n\n"
+        f"{context}Task:\n{task.task[:MAX_TASK_CHARS]}\n\nChanged/expected paths:\n{paths}\n\n"
         f"Repo summary:\n{task.repo_summary[:MAX_TASK_CHARS] or '(none)'}\n"
     )
 
@@ -126,8 +202,9 @@ class SubscriptionBackend:
     name = "subscription"
     calls_model = True  # route events log its usage (explicit null when unreported)
 
-    def __init__(self, runner=default_runner, model=None, host=None):
+    def __init__(self, runner=default_runner, model=None, host=None, version_probe=None):
         self._runner = runner
+        self._version_probe = version_probe  # tests: () -> Codex version string or None
         self._host = host  # "claude" or codex (None): given by the caller; the env is only read in host/hosts.get
         self._model = model
         self.last_usage = None  # usage of the most recent call, for evaluation (not part of DifficultyDecision)
@@ -138,35 +215,16 @@ class SubscriptionBackend:
             raise ValueError(f"subscription classifier is not supported for {self._host}: tool isolation is unverified")
         if self._host == "claude":
             return self._classify_claude(task, timeout_s)
-        cmd = [
-            "codex", "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config",
-            "-s", "read-only",
-            "-m", self._model or DEFAULT_MODEL, "-c", "model_reasoning_effort=low",
-            build_prompt(task),
-        ]
-        env = {**os.environ, GUARD_ENV: "1"}
-        # Empty per-call dir: no repo files and no .codex/ hooks/agents for the nested exec to load.
-        cwd = tempfile.mkdtemp(prefix="mer-classifier-")
-        try:
-            stdout = self._runner(cmd, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd)
-        finally:
-            shutil.rmtree(cwd, ignore_errors=True)
+        verified = codex_verified(self._version_probe)  # unverified: no locked flags, and no transcript text for a shell-capable agent
+        argv = isolated_argv("codex", None, self._model, toolless=verified)
+        stdout = run_isolated(argv, self._runner, timeout_s, input_text=build_prompt(task if verified else replace(task, context="")))
         self.last_usage = parse_usage(stdout)
         return parse_output(stdout, self.name)
 
     def _classify_claude(self, task, timeout_s):
-        """`claude -p` on Haiku, as isolated and cheap as --help allows: no tools (`--tools ""`), safe mode (no CLAUDE.md,
-        skills, plugins, hooks, MCP, memory), no MCP servers, nothing persisted, an empty cwd, guard env set."""
+        """`claude -p` on Haiku with the isolation of `isolated_argv`."""
         from ..host import claude_exec  # lazy: claude_exec imports this module
-        cmd = ["claude", "-p", "--output-format", "json", "--model", self._model or CLAUDE_MODEL,
-               "--permission-mode", "dontAsk", "--tools", "", "--safe-mode", "--strict-mcp-config", "--no-session-persistence",
-               "--", build_prompt(task)]
-        env = {**os.environ, GUARD_ENV: "1"}
-        cwd = tempfile.mkdtemp(prefix="mer-classifier-")
-        try:
-            stdout = self._runner(cmd, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd)
-        finally:
-            shutil.rmtree(cwd, ignore_errors=True)
+        stdout = run_isolated(isolated_argv("claude", None, self._model), self._runner, timeout_s, input_text=build_prompt(task))
         try:
             stream = claude_exec.parse_stream(stdout)
         except claude_exec.ClaudeResultError as exc:
