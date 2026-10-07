@@ -47,8 +47,15 @@ def load_configs(cwd, env):
     return _load_json(Path(cwd) / REPO_CONFIG), _load_json(user_path)
 
 
-def _context_output(event, text):
-    return json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}})
+def _context_output(event, text, notice=None):
+    out = {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}
+    if notice:  # user-visible line; additionalContext only reaches the model
+        out["systemMessage"] = notice
+    return json.dumps(out)
+
+
+def _notice(plan):
+    return f"[model-effort-router] {plan.decision.role} → {plan.model} · effort {plan.applied_effort}"
 
 
 def _with_timeout(repo_cfg, timeout_s):
@@ -105,7 +112,7 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
             except Exception as exc:
                 _log_error(env, data, exc, "ContextRefresh")
     text = advice.render(plan, f'python3 {Path(plugin_root) / "bin" / "mer"}', host)
-    out = _context_output("UserPromptSubmit", text) if text else None
+    out = _context_output("UserPromptSubmit", text, _notice(plan)) if text else None
     if plan.mode != "off":  # routing turned off by the user: nothing to record
         _append(env, data, sdir, sid, route_log.route_event(
             plan, latency_ms=latency_ms, prompt=prompt, configured_backend=cfg.backend, timeout_clamped=clamped))
