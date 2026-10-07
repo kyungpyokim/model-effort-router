@@ -51,7 +51,7 @@ bun install --frozen-lockfile
 }
 ```
 
-OpenCode provides the `route_advice` custom tool. It returns role/model/effort advice plus `model_options`; the configured primary is recommended and alternatives are user-selectable. It does not switch the active model or launch a worker. See the [OpenCode plugin guide](plugins/opencode-model-effort-router/README.md) for model configuration.
+All host integrations can provide a primary model recommendation and configured alternatives. Codex, Claude, and Antigravity include them in hook advice; OpenCode returns them in `model_options`. These options do not switch a host's active model or trigger retries. See each plugin README for host-specific limits.
 
 Antigravity and OpenCode provide route advice only; worker execution is unsupported. Marketplace plugin installs do not install or update the shared runtime; rerun `python3 scripts/install_core.py` from this checkout when updating it. See the [Codex plugin guide](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace guide](https://code.claude.com/docs/en/plugin-marketplaces), and [Antigravity plugin guide](https://antigravity.google/docs/plugins/) for host-specific details.
 
@@ -59,7 +59,26 @@ Antigravity and OpenCode provide route advice only; worker execution is unsuppor
 
 The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, or `xhigh`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
 
-Defaults are Codex execution `gpt-6-luna`, reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5`, reasoning `claude-opus-5-5`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free`. Each host/lane has configurable primary, alternatives, fallback, and supported efforts. `primary` is the recommendation; `alternatives` are selectable options. MER never infers execution fallback from stderr or retries after a worker may have started; only an explicit pre-execution-unavailable signal permits it. Classifier providers may fall through to the configured next classifier. If all fail, CLI routing returns an error; hooks fail open and leave the user request unblocked.
+Defaults are Codex execution `gpt-6-luna`, reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5`, reasoning `claude-opus-5-5`; Antigravity delegated profile `gemini-3.8-flash`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free`. Each host/lane accepts `primary`, optional `alternatives`, `fallback`, and supported efforts. `primary` is recommended; alternatives are listed as user-selectable choices. For example:
+
+```json
+{
+  "models": {
+    "codex": {
+      "execution": {
+        "primary": "gpt-6-luna",
+        "alternatives": ["provider/model-id"]
+      },
+      "reasoning": {
+        "primary": "gpt-6.1-sol",
+        "alternatives": ["provider/another-model"]
+      }
+    }
+  }
+}
+```
+
+Replace the example IDs with models available to the host. OpenCode returns `model_options`; the other hooks include configured alternatives in their advice. Alternatives never trigger execution retries. MER never infers execution fallback from stderr or retries after a worker may have started; only an explicit pre-execution-unavailable signal permits it. Classifier providers may fall through to the configured next classifier. If all fail, CLI routing returns an error; hooks fail open and leave the user request unblocked.
 
 ## Classifier backend setup
 
