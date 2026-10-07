@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Optional, Tuple
 
+from .efforts import EFFORTS
+
 ROLES = ("implementation", "fix", "lint", "test", "plan", "design", "review", "analysis")
-EFFORTS = ("low", "medium", "high", "xhigh", "max")
 EXECUTION_ROLES = frozenset(("implementation", "fix", "lint", "test"))
 RISK_FLAGS = ("security", "auth", "payment", "data_migration", "data_loss", "concurrency")
 

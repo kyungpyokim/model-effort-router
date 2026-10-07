@@ -1,8 +1,9 @@
 """Abstract profiles: model tier + reasoning effort (spec 12). Both ordered low -> high."""
 from dataclasses import dataclass
 
+from ..difficulty.efforts import PROFILE_EFFORTS as EFFORTS
+
 TIERS = ("economy", "balanced", "frontier")
-EFFORTS = ("medium", "high", "xhigh", "max")
 
 
 @dataclass(frozen=True)
