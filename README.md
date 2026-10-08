@@ -244,3 +244,8 @@ python3 scripts/install_core.py
 python3 scripts/install_core.py --check
 MER_CORE_PATH="$PWD" python3 -m unittest discover -s tests
 ```
+
+Install the `pre-commit` CLI, run
+`npm --prefix plugins/opencode-model-effort-router ci`, and enable the repository
+hooks with `git config core.hooksPath .githooks`. The hooks run Ruff for Python files and
+the OpenCode package's ESLint and Prettier checks for TypeScript files.

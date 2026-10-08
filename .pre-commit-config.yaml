@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff
+        files: \.pyi?$
+        args: [--fix]
+      - id: ruff-format
+        files: \.pyi?$
+
+  - repo: local
+    hooks:
+      - id: opencode-eslint
+        name: OpenCode ESLint
+        entry: npm --prefix plugins/opencode-model-effort-router run lint
+        language: system
+        files: ^plugins/opencode-model-effort-router/src/.*\.(ts|tsx|js)$
+        pass_filenames: false
+      - id: opencode-prettier
+        name: OpenCode Prettier
+        entry: plugins/opencode-model-effort-router/node_modules/.bin/prettier --write
+        language: system
+        files: ^plugins/opencode-model-effort-router/src/.*\.(ts|tsx|js)$
