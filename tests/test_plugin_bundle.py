@@ -46,6 +46,8 @@ class PluginBundleTest(unittest.TestCase):
         scripts = ["bin/mer", "bin/mer-gate"]
         if plugin.name.startswith(("codex", "claude")):
             scripts.append("hooks/user_prompt_submit.py")
+        if plugin.name.startswith("claude"):
+            scripts.extend(["hooks/session_start.py", "hooks/post_model_switch.py"])
         return scripts
 
     def test_plugins_have_no_core_implementation(self):
@@ -109,8 +111,8 @@ class ModelEffortRouter:
     def run_gate(cls):
         return report(["gate", cls.gate_host, cls.runtime_api])
     @classmethod
-    def run_hook(cls, root):
-        return report(["hook", cls.host, str(root), cls.runtime_api])
+    def run_hook(cls, root, **kw):
+        return report(["hook", cls.host, str(root), cls.runtime_api, kw.get("event", "UserPromptSubmit")])
 """)
         for source in PLUGINS:
             plugin = shutil.copytree(source, self.root / source.name)
@@ -118,7 +120,9 @@ class ModelEffortRouter:
             expected = {
                 "bin/mer": ["cli", host, 1],
                 "bin/mer-gate": ["gate", None if host in ("antigravity", "opencode") else host, 1],
-                "hooks/user_prompt_submit.py": ["hook", host, str(plugin), 1],
+                "hooks/user_prompt_submit.py": ["hook", host, str(plugin), 1, "UserPromptSubmit"],
+                "hooks/session_start.py": ["hook", host, str(plugin), 1, "SessionStart"],
+                "hooks/post_model_switch.py": ["hook", host, str(plugin), 1, "PostModelSwitch"],
             }
             for script in self.scripts(plugin):
                 with self.subTest(host=host, script=script):

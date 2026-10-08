@@ -21,9 +21,16 @@ class ManifestTest(unittest.TestCase):
         manifest = json.loads((CLAUDE / ".claude-plugin" / "plugin.json").read_text())
         self.assertEqual(manifest["name"], "model-effort-router")
         hooks = json.loads((CLAUDE / "hooks" / "hooks.json").read_text())["hooks"]
-        self.assertEqual(set(hooks), {"UserPromptSubmit"})
+        self.assertEqual(set(hooks), {"UserPromptSubmit", "SessionStart", "PostModelSwitch"})
         cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/user_prompt_submit.py", cmd)
+        start = hooks["SessionStart"][0]["hooks"][0]
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py", start["command"])
+        self.assertLessEqual(start["timeout"], 10)
+        switch = hooks["PostModelSwitch"][0]
+        self.assertNotIn("matcher", switch)
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/post_model_switch.py", switch["hooks"][0]["command"])
+        self.assertLessEqual(switch["hooks"][0]["timeout"], 10)
         skill = (CLAUDE / "skills" / "classify" / "SKILL.md").read_text()
         self.assertIn("Subagent", skill)
         self.assertIn("neither changes Main's model", skill)
@@ -225,6 +232,93 @@ class HookTest(HookCase):
         self.assertIn("Main model claude-sonnet-5-5 ≠ routed claude-opus-5-5: spawn the Subagent", note)
         self.assertIn("Agent(subagent_type=", note)
         self.assertNotIn("proceeding without", miss["systemMessage"])
+
+    def start_session(self, **extra):
+        data = {"session_id": "s", "hook_event_name": "SessionStart", "source": "startup", **extra}
+        return run_script(
+            "hooks/session_start.py",
+            stdin=json.dumps(data),
+            env=self.env(MER_HOST="claude"),
+            cwd=str(self.root),
+            plugin=CLAUDE,
+        )
+
+    def switch_model(self, **extra):
+        data = {"session_id": "s", "hook_event_name": "PostModelSwitch", "source": "command", **extra}
+        return run_script(
+            "hooks/post_model_switch.py",
+            stdin=json.dumps(data),
+            env=self.env(MER_HOST="claude"),
+            cwd=str(self.root),
+            plugin=CLAUDE,
+        )
+
+    def test_post_model_switch_updates_the_model_without_any_output(self):
+        self.start_session(model="claude-sonnet-5-5")
+        proc = self.switch_model(from_model="claude-sonnet-5-5", to_model="claude-opus-5-5")
+        self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
+        self.assertIn(
+            "Main already runs claude-opus-5-5", self.first_prompt()["hookSpecificOutput"]["additionalContext"]
+        )
+
+    def test_post_model_switch_normalizes_snapshot_names_and_fails_open(self):
+        self.switch_model(to_model="claude-haiku-4-5-20251001")
+        (stored,) = [json.loads(p.read_text()) for p in self.state.glob("*.model")]
+        self.assertEqual(stored.pop("ts") > 0, True)
+        self.assertEqual(stored, {"model": "claude-haiku-4-5", "source": "switch"})
+        proc = run_script(
+            "hooks/post_model_switch.py",
+            stdin="not json",
+            env=self.env(MER_HOST="claude"),
+            cwd=str(self.root),
+            plugin=CLAUDE,
+        )
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+
+    def test_session_start_without_model_clears_a_switch_value(self):
+        self.switch_model(to_model="claude-opus-5-5")
+        self.start_session()
+        self.assertEqual(list(self.state.glob("*.model")), [])
+
+    def first_prompt(self):
+        data = {"session_id": "s", "cwd": str(self.repo), "prompt": PROMPT, "transcript_path": "/no/such.jsonl"}
+        return json.loads(self.submit(payload=data, env_extra={"MER_HOST": "claude"}).stdout)
+
+    def test_session_start_model_decides_the_first_prompt_before_any_transcript_exists(self):
+        proc = self.start_session(model="claude-opus-5-5")
+        self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
+        out = self.first_prompt()
+        self.assertIn("Main already runs claude-opus-5-5", out["hookSpecificOutput"]["additionalContext"])
+        self.start_session(model="claude-sonnet-5-5")
+        self.assertIn(
+            "Main model claude-sonnet-5-5 ≠ routed", self.first_prompt()["hookSpecificOutput"]["additionalContext"]
+        )
+
+    def test_session_start_without_model_clears_stale_value_and_stores_nothing_else(self):
+        self.start_session(model="claude-opus-5-5")
+        self.start_session()  # `claude -p`, /clear or a recovered conversation: no model field
+        note = self.first_prompt()["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("handle it directly when Main's model/effort already match", note)
+        stored = [p.read_text() for p in self.state.glob("*.model")]
+        self.assertEqual(stored, [])
+
+    def test_session_start_stores_only_the_model_name(self):
+        self.start_session(model="claude-opus-5-5", prompt="ZEBRA_PROMPT_MARKER", cwd="/secret")
+        files = list(self.state.iterdir())
+        (stored,) = [json.loads(p.read_text()) for p in files]
+        self.assertEqual(set(stored), {"model", "source", "ts"})
+        self.assertEqual((stored["model"], stored["source"]), ("claude-opus-5-5", "start"))
+        self.assertTrue(all(p.parent == self.state for p in files))
+
+    def test_session_start_fails_open_on_garbage(self):
+        proc = run_script(
+            "hooks/session_start.py",
+            stdin="not json",
+            env=self.env(MER_HOST="claude"),
+            cwd=str(self.root),
+            plugin=CLAUDE,
+        )
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
 
     def test_codex_hook_uses_codex_model_mapping_even_if_claude_env_is_set(self):
         proc = run_script(

@@ -105,6 +105,12 @@ class EntrypointsTest(unittest.TestCase):
                 self.assertEqual(os.environ["MER_HOST"], "codex")
                 main.assert_called_once_with("UserPromptSubmit", root)
 
+    def test_hook_forwards_a_non_default_event(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("model_effort_router.host.codex_hooks.main", return_value=0) as main:
+                entrypoints.hook("claude", Path("/p"), event="SessionStart")
+                main.assert_called_once_with("SessionStart", Path("/p"))
+
     def test_hook_swallows_ordinary_and_system_exit_errors(self):
         for error in (RuntimeError("boom"), SystemExit(2)):
             with self.subTest(error=type(error).__name__), patch.dict(os.environ, {}, clear=True):
