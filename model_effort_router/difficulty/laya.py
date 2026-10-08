@@ -1,4 +1,5 @@
 """Laya local SystemOne classifier. Configure via difficulty.laya, then MER_LAYA_* env vars."""
+
 from .jev import QUESTIONS, SystemOneBackend
 from .nimble import check_local_url, local_transport, validate_options as validate_local_options
 
@@ -26,10 +27,7 @@ def validate_options(raw):
 
 class LayaBackend(SystemOneBackend):
     name = "laya"
-    questions = {
-        name: {**question, "instructions": _INSTRUCTIONS[name]}
-        for name, question in QUESTIONS.items()
-    }
+    questions = {name: {**question, "instructions": _INSTRUCTIONS[name]} for name, question in QUESTIONS.items()}
 
     def __init__(self, transport=local_transport, model=None, env=None, options=None, **kwargs):
         super().__init__(transport, model, env, **kwargs)

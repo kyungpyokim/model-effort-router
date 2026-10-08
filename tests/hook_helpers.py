@@ -1,4 +1,5 @@
 """Run plugin scripts as Codex would: current python, JSON on stdin, clean MER_* env."""
+
 import json
 import os
 import subprocess
@@ -19,8 +20,13 @@ def run_script(rel, *, stdin="", env=None, cwd=None, argv=(), plugin=PLUGIN):
     base = {k: v for k, v in os.environ.items() if not k.startswith(("MER_", "XDG_"))}
     base.update({"MER_CORE_PATH": str(ROOT), **(env or {})})
     return subprocess.run(
-        [sys.executable, str(plugin / rel), *argv], input=stdin, capture_output=True, text=True,
-        env=base, cwd=cwd, timeout=60,
+        [sys.executable, str(plugin / rel), *argv],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        env=base,
+        cwd=cwd,
+        timeout=60,
     )
 
 
@@ -43,17 +49,38 @@ class HookCase(unittest.TestCase):
         (self.repo / ".model-effort-router.json").write_text(json.dumps(cfg))
 
     def env(self, **extra):
-        e = {"MER_STATE_DIR": str(self.state), "HOME": str(self.home), "PYTHONPATH": str(ROOT), "MER_CORE_PATH": str(ROOT),
-             "MER_TEST_REGISTRY_MODULE": "tests.fake_registry", "MER_TEST_FAKE_BACKEND": json.dumps(self.fake)}
+        e = {
+            "MER_STATE_DIR": str(self.state),
+            "HOME": str(self.home),
+            "PYTHONPATH": str(ROOT),
+            "MER_CORE_PATH": str(ROOT),
+            "MER_TEST_REGISTRY_MODULE": "tests.fake_registry",
+            "MER_TEST_FAKE_BACKEND": json.dumps(self.fake),
+        }
         e.update(extra)
         return e
 
     def submit(self, prompt=DEV, sid=SID, env_extra=None, payload=None):
-        payload = payload if payload is not None else {"session_id": sid, "cwd": str(self.repo),
-                   "hook_event_name": "UserPromptSubmit", "model": "gpt-6-luna",
-                   "permission_mode": "default", "transcript_path": "/x", "prompt": prompt}
-        return run_script("hooks/user_prompt_submit.py", stdin=payload if isinstance(payload, str) else json.dumps(payload),
-                          env=self.env(**(env_extra or {})), cwd=str(self.root), plugin=self.plugin)
+        payload = (
+            payload
+            if payload is not None
+            else {
+                "session_id": sid,
+                "cwd": str(self.repo),
+                "hook_event_name": "UserPromptSubmit",
+                "model": "gpt-6-luna",
+                "permission_mode": "default",
+                "transcript_path": "/x",
+                "prompt": prompt,
+            }
+        )
+        return run_script(
+            "hooks/user_prompt_submit.py",
+            stdin=payload if isinstance(payload, str) else json.dumps(payload),
+            env=self.env(**(env_extra or {})),
+            cwd=str(self.root),
+            plugin=self.plugin,
+        )
 
     def plugin_root(self):
         return self.plugin

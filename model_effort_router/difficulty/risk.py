@@ -1,4 +1,5 @@
 """Rule-based risk_flags detection. Always runs, independent of the backend (spec 7)."""
+
 import re
 
 from .decision import RISK_FLAGS

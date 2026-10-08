@@ -16,22 +16,47 @@ CHECK = Check("test", "python3 -m unittest", "AGENTS.md", False)
 PASSED, FAILED = {"status": "passed"}, {"status": "failed", "exit_code": 1}
 BUGGY = "def add(a, b):\n    return a - b\n\n\ndef sub(a, b):\n    return a - b\n"
 FIXED = BUGGY.replace("return a - b\n\n\ndef sub", "return a + b\n\n\ndef sub")
-OLD_TEST = ("import unittest\nfrom calc import sub\n\n\nclass T(unittest.TestCase):\n"
-            "    def test_sub(self):\n        self.assertEqual(sub(3, 1), 2)\n")
-ADD_TEST = ("import unittest\nfrom calc import add\n\n\nclass T(unittest.TestCase):\n"
-            "    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n")
+OLD_TEST = (
+    "import unittest\nfrom calc import sub\n\n\nclass T(unittest.TestCase):\n"
+    "    def test_sub(self):\n        self.assertEqual(sub(3, 1), 2)\n"
+)
+ADD_TEST = (
+    "import unittest\nfrom calc import add\n\n\nclass T(unittest.TestCase):\n"
+    "    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n"
+)
 
 
 class IsTestPathTest(unittest.TestCase):
     def test_test_files_by_language(self):
-        for path in ("test_calc.py", "pkg/calc_test.py", "tests/helpers.py", "a/tests/b/c.py",
-                     "app.test.ts", "web/app.spec.jsx", "x.test.mjs", "src/__tests__/a.ts",
-                     "pkg/calc_test.go", "calc_spec.rb", "spec/calc.rb", "test/calc.rb"):
+        for path in (
+            "test_calc.py",
+            "pkg/calc_test.py",
+            "tests/helpers.py",
+            "a/tests/b/c.py",
+            "app.test.ts",
+            "web/app.spec.jsx",
+            "x.test.mjs",
+            "src/__tests__/a.ts",
+            "pkg/calc_test.go",
+            "calc_spec.rb",
+            "spec/calc.rb",
+            "test/calc.rb",
+        ):
             self.assertTrue(probe.is_test_path(path), path)
 
     def test_everything_else_is_not_a_test(self):
-        for path in ("conftest.py", "tests/conftest.py", "src/app.py", "docs/test_notes.md", "calc.go",
-                     "tests/fixtures/data.py", "pkg/testdata/a_test.go", "tests/data.json", "app.ts", ""):
+        for path in (
+            "conftest.py",
+            "tests/conftest.py",
+            "src/app.py",
+            "docs/test_notes.md",
+            "calc.go",
+            "tests/fixtures/data.py",
+            "pkg/testdata/a_test.go",
+            "tests/data.json",
+            "app.ts",
+            "",
+        ):
             self.assertFalse(probe.is_test_path(path), path)
 
 
@@ -39,9 +64,21 @@ class IsTestSideTest(unittest.TestCase):
     """Everything a run changes on the test side goes over the snapshot; only product source stays at HEAD."""
 
     def test_test_side_paths(self):
-        for path in ("tests/test_a.py", "conftest.py", "tests/conftest.py", "tests/data/case.txt", "test/x.yml",
-                     "spec/support/y.json", "web/__tests__/z.snap", "web/__snapshots__/a.snap", "pkg/testdata/in.json",
-                     "tests/fixtures/data.py", "tests/helpers.py", "web/__tests__/util.ts", "spec/support/h.rb"):
+        for path in (
+            "tests/test_a.py",
+            "conftest.py",
+            "tests/conftest.py",
+            "tests/data/case.txt",
+            "test/x.yml",
+            "spec/support/y.json",
+            "web/__tests__/z.snap",
+            "web/__snapshots__/a.snap",
+            "pkg/testdata/in.json",
+            "tests/fixtures/data.py",
+            "tests/helpers.py",
+            "web/__tests__/util.ts",
+            "spec/support/h.rb",
+        ):
             self.assertTrue(probe.is_test_side(path), path)
 
     def test_product_source_is_not_test_side(self):
@@ -49,7 +86,13 @@ class IsTestSideTest(unittest.TestCase):
             self.assertFalse(probe.is_test_side(path), path)
 
     def test_code_under_a_bare_spec_test_or_fixtures_dir_is_product_source(self):
-        for path in ("app/spec/schema.py", "test/util.py", "fixtures/helper.py", "pkg/testdata/gen.go", "app/spec/types.ts"):
+        for path in (
+            "app/spec/schema.py",
+            "test/util.py",
+            "fixtures/helper.py",
+            "pkg/testdata/gen.go",
+            "app/spec/types.ts",
+        ):
             self.assertFalse(probe.is_test_side(path), path)
 
 
@@ -176,8 +219,10 @@ class VerdictTest(RepoCase):
         paths = self.apply_run()
         run = SpyRun(PASSED)
         r = self.probe(paths, run)
-        self.assertEqual((r["verdict"], r["reason"], r["tests"], len(run.seen)),
-                         ("passes_without_change", None, ["tests/test_new.py"], 1))
+        self.assertEqual(
+            (r["verdict"], r["reason"], r["tests"], len(run.seen)),
+            ("passes_without_change", None, ["tests/test_new.py"], 1),
+        )
 
     def test_failure_then_clean_control_is_fails_without_change(self):
         paths = self.apply_run()
@@ -195,7 +240,7 @@ class VerdictTest(RepoCase):
         self.assertTrue(0 < len(r["output_tail"]) <= probe.OUTPUT_TAIL_CHARS)
         self.assertTrue(tail.endswith(r["output_tail"]))
         r = self.probe(self.apply_run(), SpyRun({**FAILED, "output_tail": tail}, FAILED))
-        self.assertEqual((r["verdict"], r["output_tail"] == tail[-probe.OUTPUT_TAIL_CHARS:]), ("inconclusive", True))
+        self.assertEqual((r["verdict"], r["output_tail"] == tail[-probe.OUTPUT_TAIL_CHARS :]), ("inconclusive", True))
 
     def test_failure_that_also_fails_the_control_is_inconclusive(self):
         r = self.probe(self.apply_run(), SpyRun(FAILED, FAILED))
@@ -296,7 +341,9 @@ class SkipTest(RepoCase):
     def test_a_subdirectory_of_a_repository_is_skipped(self):
         write(self.repo, "sub/tests/test_a.py", "A = 1\n")
         run = SpyRun()
-        r = probe.probe_without_change(str(self.repo / "sub"), ["sub/calc.py", "sub/tests/test_a.py"], CHECK, 30, run=run)
+        r = probe.probe_without_change(
+            str(self.repo / "sub"), ["sub/calc.py", "sub/tests/test_a.py"], CHECK, 30, run=run
+        )
         self.assertEqual((r["verdict"], r["reason"], run.seen), ("skipped", "cwd is not the repository root", []))
 
 
@@ -365,20 +412,30 @@ class RealCommandTest(RepoCase):
         git(self.repo, "add", "-A")
         git(self.repo, "commit", "-q", "-m", "app")
         write(self.repo, "app/spec/schema.py", "def field_names():\n    return ['a']\n")
-        write(self.repo, "app/main.py", "from app.spec.schema import field_names\n\n\ndef names():\n    return field_names()\n")
-        write(self.repo, "tests/test_more.py",
-              "import unittest\nfrom app.main import names\n\n\nclass T(unittest.TestCase):\n    def test_names(self):\n"
-              "        self.assertEqual(names(), ['a'])\n")
+        write(
+            self.repo,
+            "app/main.py",
+            "from app.spec.schema import field_names\n\n\ndef names():\n    return field_names()\n",
+        )
+        write(
+            self.repo,
+            "tests/test_more.py",
+            "import unittest\nfrom app.main import names\n\n\nclass T(unittest.TestCase):\n    def test_names(self):\n"
+            "        self.assertEqual(names(), ['a'])\n",
+        )
         r = self.real(["app/main.py", "app/spec/schema.py", "tests/test_more.py"])
         self.assertEqual((r["verdict"], r["overlay"]), ("passes_without_change", ["tests/test_more.py"]))
 
     def test_new_test_data_is_part_of_the_snapshot(self):
         """A new test reading a new data file: with the data overlaid it passes, so it must not look like a catch."""
         write(self.repo, "tests/data/case.txt", "5\n")
-        write(self.repo, "tests/test_data.py",
-              "import os\nimport unittest\n\n\nclass T(unittest.TestCase):\n    def test_data(self):\n"
-              "        path = os.path.join(os.path.dirname(__file__), 'data', 'case.txt')\n"
-              "        self.assertEqual(open(path).read(), '5\\n')\n")
+        write(
+            self.repo,
+            "tests/test_data.py",
+            "import os\nimport unittest\n\n\nclass T(unittest.TestCase):\n    def test_data(self):\n"
+            "        path = os.path.join(os.path.dirname(__file__), 'data', 'case.txt')\n"
+            "        self.assertEqual(open(path).read(), '5\\n')\n",
+        )
         write(self.repo, "calc.py", BUGGY + "# touched\n")
         r = self.real(["calc.py", "tests/data/case.txt", "tests/test_data.py"])
         self.assertEqual(r["verdict"], "passes_without_change")
@@ -397,6 +454,7 @@ class GitDiffPathsTest(RepoCase):
 
     def test_non_ascii_paths_are_not_quoted(self):
         from model_effort_router import review as rv
+
         write(self.repo, "tests/test_é.py", "A = 1\n")
         write(self.repo, "calc.py", FIXED)
         d = rv.git_diff(str(self.repo))
@@ -407,6 +465,7 @@ class GitDiffPathsTest(RepoCase):
 
     def test_a_staged_rename_lists_the_old_and_the_new_path(self):
         from model_effort_router import review as rv
+
         git(self.repo, "mv", "tests/test_old.py", "tests/test_renamed.py")
         self.assertEqual(rv.git_diff(str(self.repo))["files"], ["tests/test_old.py", "tests/test_renamed.py"])
 

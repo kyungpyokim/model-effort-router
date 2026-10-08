@@ -3,6 +3,7 @@
 Only simple commands (no shell operators or globs) are taken from repo prose/CI/manifests; a check nobody
 declared stays None and is reported `not_run`, never passed.
 """
+
 import json
 import re
 from collections import namedtuple
@@ -99,11 +100,15 @@ def _package_json(root):
 
 def _pyproject(root):
     text = _read(root / "pyproject.toml")
-    return {k: c for k, marker, c in (
-        ("test", "[tool.pytest", "python3 -m pytest"),
-        ("lint", "[tool.ruff", "ruff check ."),
-        ("typecheck", "[tool.mypy", "mypy ."),
-    ) if marker in text}
+    return {
+        k: c
+        for k, marker, c in (
+            ("test", "[tool.pytest", "python3 -m pytest"),
+            ("lint", "[tool.ruff", "ruff check ."),
+            ("typecheck", "[tool.mypy", "mypy ."),
+        )
+        if marker in text
+    }
 
 
 def _makefile(root):
@@ -131,8 +136,10 @@ def discover(root, config=None):
         ("config", {k: (c, "config") for k, c in _validate_config(config).items()}),
         ("docs", _from_files(root, ("AGENTS.md", "CLAUDE.md"), _docs_candidates)),
         ("ci", _from_files(root, _ci_names(root), _ci_candidates)),
-        *((name, {k: (c, name) for k, c in fn(root).items()})
-          for name, fn in (("package.json", _package_json), ("pyproject.toml", _pyproject), ("Makefile", _makefile))),
+        *(
+            (name, {k: (c, name) for k, c in fn(root).items()})
+            for name, fn in (("package.json", _package_json), ("pyproject.toml", _pyproject), ("Makefile", _makefile))
+        ),
     ]
     out = {}
     for kind in KINDS:

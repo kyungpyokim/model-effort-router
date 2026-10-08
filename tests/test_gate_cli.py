@@ -19,8 +19,10 @@ class GateCliTest(HookCase):
         p = self.gate()
         out = json.loads(p.stdout)
         self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertEqual({k: v["status"] for k, v in out["checks"].items()},
-                         {"test": "not_run", "lint": "not_run", "typecheck": "not_run", "build": "not_run"})
+        self.assertEqual(
+            {k: v["status"] for k, v in out["checks"].items()},
+            {"test": "not_run", "lint": "not_run", "typecheck": "not_run", "build": "not_run"},
+        )
         self.assertEqual(out["overall"], "incomplete")
 
     def test_pass_fail_and_not_run_mix(self):
@@ -39,7 +41,7 @@ class GateCliTest(HookCase):
         self.assertEqual(json.loads(self.gate().stdout)["overall"], "passed")
 
     def test_timeout_is_failed(self):
-        self.cfg(test=f"{PY} -c \"import time; time.sleep(30)\"")
+        self.cfg(test=f'{PY} -c "import time; time.sleep(30)"')
         out = json.loads(self.gate("--timeout", "1").stdout)
         self.assertEqual(out["checks"]["test"]["status"], "failed")
         self.assertIn("timeout", out["checks"]["test"]["reason"])
@@ -72,18 +74,20 @@ class GateCliTest(HookCase):
         ucfg = self.home / "u.json"
         ucfg.write_text(json.dumps({"gate": {"checks": {"test": f"{PY} -c pass", "lint": f"{PY} -c pass"}}}))
         self.write_repo_config({"gate": {"checks": {"lint": f"{PY} -c 'import sys; sys.exit(1)'"}}})
-        p = run_script("bin/mer-gate", env=self.env(MER_USER_CONFIG=str(ucfg)),
-                       argv=["--cwd", str(self.repo)], cwd=str(self.root))
+        p = run_script(
+            "bin/mer-gate", env=self.env(MER_USER_CONFIG=str(ucfg)), argv=["--cwd", str(self.repo)], cwd=str(self.root)
+        )
         out = json.loads(p.stdout)["checks"]
         self.assertEqual(out["test"]["status"], "passed")
         self.assertEqual(out["lint"]["status"], "failed")
 
     def test_grandchild_killed_after_normal_exit(self):
         marker = self.root / "alive.txt"
-        script = f"import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(2); open({str(marker)!r},\'w\').write(\'x\')'])"
-        self.cfg(test=f"{PY} -c \"{script}\"")
+        script = f"import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(2); open({str(marker)!r},'w').write('x')'])"
+        self.cfg(test=f'{PY} -c "{script}"')
         self.gate()
         import time
+
         time.sleep(3)
         self.assertFalse(marker.exists())
 

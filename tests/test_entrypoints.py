@@ -46,7 +46,9 @@ class EntrypointsTest(unittest.TestCase):
 
     def test_cli_pins_host_at_call_time_and_returns_exit_code(self):
         with patch.dict(os.environ, {"MER_HOST": "codex"}):
-            with patch("model_effort_router.cli.main", side_effect=lambda: 7 if os.environ["MER_HOST"] == "claude" else 9):
+            with patch(
+                "model_effort_router.cli.main", side_effect=lambda: 7 if os.environ["MER_HOST"] == "claude" else 9
+            ):
                 self.assertEqual(entrypoints.cli("claude"), 7)
 
     def test_cli_propagates_errors(self):
@@ -57,7 +59,9 @@ class EntrypointsTest(unittest.TestCase):
 
     def test_gate_pins_explicit_host_and_returns_exit_code(self):
         with patch.dict(os.environ, {"MER_HOST": "claude"}):
-            with patch("model_effort_router.gate.run.main", side_effect=lambda: 3 if os.environ["MER_HOST"] == "codex" else 9) as main:
+            with patch(
+                "model_effort_router.gate.run.main", side_effect=lambda: 3 if os.environ["MER_HOST"] == "codex" else 9
+            ) as main:
                 self.assertEqual(entrypoints.gate("codex"), 3)
                 main.assert_called_once_with()
 
@@ -85,7 +89,9 @@ class EntrypointsTest(unittest.TestCase):
         from contextlib import redirect_stderr
 
         errors = io.StringIO()
-        with patch("model_effort_router.entrypoints.importlib.import_module", side_effect=ModuleNotFoundError("missing")):
+        with patch(
+            "model_effort_router.entrypoints.importlib.import_module", side_effect=ModuleNotFoundError("missing")
+        ):
             with redirect_stderr(errors):
                 self.assertEqual(entrypoints.cli("codex"), 2)
                 self.assertEqual(entrypoints.gate("codex"), 2)

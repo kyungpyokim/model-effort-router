@@ -20,12 +20,25 @@ class PluginBundleTest(unittest.TestCase):
         self.root = Path(self.tmp.name).resolve()
         self.runtime = self.root / "shared runtime"
         self.env = {k: v for k, v in os.environ.items() if not k.startswith(("MER_", "XDG_", "PYTHONPATH"))}
-        self.env = {**self.env, "HOME": str(self.root), "XDG_DATA_HOME": str(self.root / "data"),
-                    "MER_CORE_PATH": str(self.runtime), "MER_STATE_DIR": str(self.root / "state"), "MER_HOST": "claude"}
+        self.env = {
+            **self.env,
+            "HOME": str(self.root),
+            "XDG_DATA_HOME": str(self.root / "data"),
+            "MER_CORE_PATH": str(self.runtime),
+            "MER_STATE_DIR": str(self.root / "state"),
+            "MER_HOST": "claude",
+        }
 
     def run_loader(self, plugin, script, *args, env=None):
-        return subprocess.run([sys.executable, "-I", str(plugin / script), *args], cwd=self.root,
-                              env=self.env if env is None else env, input="{}", capture_output=True, text=True, timeout=30)
+        return subprocess.run(
+            [sys.executable, "-I", str(plugin / script), *args],
+            cwd=self.root,
+            env=self.env if env is None else env,
+            input="{}",
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
 
     def scripts(self, plugin):
         if plugin.name.startswith("opencode"):
@@ -79,7 +92,7 @@ class PluginBundleTest(unittest.TestCase):
         package = self.runtime / "model_effort_router"
         package.mkdir(parents=True)
         (package / "__init__.py").write_text("")
-        (package / "entrypoints.py").write_text('''import json
+        (package / "entrypoints.py").write_text("""import json
 from pathlib import Path
 RUNTIME_API = 1
 def report(args):
@@ -98,12 +111,15 @@ class ModelEffortRouter:
     @classmethod
     def run_hook(cls, root):
         return report(["hook", cls.host, str(root), cls.runtime_api])
-''')
+""")
         for source in PLUGINS:
             plugin = shutil.copytree(source, self.root / source.name)
             host = source.name.split("-")[0]
-            expected = {"bin/mer": ["cli", host, 1], "bin/mer-gate": ["gate", None if host in ("antigravity", "opencode") else host, 1],
-                        "hooks/user_prompt_submit.py": ["hook", host, str(plugin), 1]}
+            expected = {
+                "bin/mer": ["cli", host, 1],
+                "bin/mer-gate": ["gate", None if host in ("antigravity", "opencode") else host, 1],
+                "hooks/user_prompt_submit.py": ["hook", host, str(plugin), 1],
+            }
             for script in self.scripts(plugin):
                 with self.subTest(host=host, script=script):
                     result = self.run_loader(plugin, script)
@@ -114,11 +130,11 @@ class ModelEffortRouter:
         package = self.runtime / "model_effort_router"
         install(ROOT / "model_effort_router", self.runtime)
         entrypoints = package / "entrypoints.py"
-        entrypoints.write_text('''RUNTIME_API = 1
+        entrypoints.write_text("""RUNTIME_API = 1
 def cli(host, *, runtime_api=1): return 0
 def gate(host=None, *, runtime_api=1): return 0
 def hook(host, root, *, runtime_api=1): return 0
-''')
+""")
         for source in PLUGINS:
             plugin = shutil.copytree(source, self.root / source.name)
             for script in self.scripts(plugin):
@@ -178,8 +194,10 @@ def hook(host, root, *, runtime_api=1): return 0
                     self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 
     def test_default_xdg_runtime_and_relative_xdg_fallback(self):
-        for xdg, runtime in ((str(self.root / "xdg"), self.root / "xdg/model-effort-router/runtime"),
-                             ("relative", self.root / ".local/share/model-effort-router/runtime")):
+        for xdg, runtime in (
+            (str(self.root / "xdg"), self.root / "xdg/model-effort-router/runtime"),
+            ("relative", self.root / ".local/share/model-effort-router/runtime"),
+        ):
             install(ROOT / "model_effort_router", runtime)
             env = {k: v for k, v in self.env.items() if k != "MER_CORE_PATH"}
             env["XDG_DATA_HOME"] = xdg
@@ -237,9 +255,14 @@ def hook(host, root, *, runtime_api=1): return 0
         (fake / "__init__.py").write_text('raise RuntimeError("CWD CORE WAS IMPORTED")')
         (fake / "entrypoints.py").write_text('raise RuntimeError("CWD CORE WAS IMPORTED")')
         for plugin in PLUGINS:
-            result = subprocess.run([sys.executable, str(plugin / "bin/mer"), "run", "--help"],
-                                    cwd=self.root, env={**self.env, "PYTHONPATH": str(self.root)},
-                                    capture_output=True, text=True, timeout=30)
+            result = subprocess.run(
+                [sys.executable, str(plugin / "bin/mer"), "run", "--help"],
+                cwd=self.root,
+                env={**self.env, "PYTHONPATH": str(self.root)},
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
             self.assertEqual(result.returncode, 2, result.stderr)
             self.assertNotIn("CWD CORE", result.stderr)
 

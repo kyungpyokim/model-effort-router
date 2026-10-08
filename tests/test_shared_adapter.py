@@ -9,8 +9,7 @@ from model_effort_router.profiles.profiles import Profile
 
 class SharedAdapterTest(unittest.TestCase):
     def test_all_hosts_return_the_same_immutable_profile_type(self):
-        profiles = [adapter.resolve(Profile("economy", "medium"))
-                    for adapter in (codex, claude, antigravity)]
+        profiles = [adapter.resolve(Profile("economy", "medium")) for adapter in (codex, claude, antigravity)]
         for profile in profiles:
             self.assertIs(type(profile), type(profiles[0]))
             with self.assertRaises(FrozenInstanceError):
@@ -22,8 +21,9 @@ class SharedAdapterTest(unittest.TestCase):
         for count in range(1, len(order) + 1):
             for supported in combinations(order, count):
                 for requested in order:
-                    expected = next((effort for effort in supported
-                                     if order.index(effort) >= order.index(requested)), supported[-1])
+                    expected = next(
+                        (effort for effort in supported if order.index(effort) >= order.index(requested)), supported[-1]
+                    )
                     with self.subTest(requested=requested, supported=supported):
                         self.assertEqual(codex._apply_support(requested, tuple(reversed(supported))), expected)
 

@@ -11,6 +11,7 @@ subset of output (verified: total_tokens = input + output).
 Claude records (`host: claude`) have no rollouts: tokens come from the record's `model_usage` (Claude's per-model totals, subagents included; else its usage) and USD from the `cost_usd`
 the Claude Code results reported (live_runner sums the last `total_cost_usd` per session); unreported = unpriced.
 """
+
 import argparse
 import json
 import os
@@ -26,8 +27,12 @@ FIELDS = ("input", "cached_input", "cache_write", "output")
 
 def rollout_by_model(path):
     """{model: {input, cached_input, cache_write, output}} summed over the rollout's model calls."""
-    keys = {"input": "input_tokens", "cached_input": "cached_input_tokens",
-            "cache_write": "cache_write_input_tokens", "output": "output_tokens"}
+    keys = {
+        "input": "input_tokens",
+        "cached_input": "cached_input_tokens",
+        "cache_write": "cache_write_input_tokens",
+        "output": "output_tokens",
+    }
     out, model, prev = defaultdict(lambda: dict.fromkeys(FIELDS, 0)), None, dict.fromkeys(FIELDS, 0)
     for ev in usage._events(Path(path).read_text(encoding="utf-8", errors="replace")):
         payload = ev.get("payload") if isinstance(ev.get("payload"), dict) else {}
@@ -58,27 +63,47 @@ def usd(u, price):
     if not price:
         return None
     uncached = u["input"] - u["cached_input"] - u["cache_write"]
-    return (uncached * price["input"] + u["cached_input"] * price["cached_input"]
-            + u["cache_write"] * price.get("cache_write", price["input"]) + u["output"] * price["output"]) / 1e6
+    return (
+        uncached * price["input"]
+        + u["cached_input"] * price["cached_input"]
+        + u["cache_write"] * price.get("cache_write", price["input"])
+        + u["output"] * price["output"]
+    ) / 1e6
 
 
 def run_cost(record, sessions_dir, prices):
     if record.get("host") == "claude":
         classifier = usage.total_tokens(record["usage"]["classifier"]) if record["usage"].get("classifier") else 0
         cost, mu = record.get("cost_usd"), record.get("model_usage")
-        by_model = {m: u["input"] + u["output"] for m, u in mu.items()} if mu else {}  # includes subagent/side-call tokens
-        return {"case_id": record["case_id"], "run": record["run"], "mode": record["mode"],
-                "tokens": sum(by_model.values()) if mu else record["usage"]["total"] - classifier, "usd": cost,
-                "unpriced": [] if cost is not None else ["claude:no_cost"], "by_model": by_model, "classifier_tokens": classifier}
+        by_model = (
+            {m: u["input"] + u["output"] for m, u in mu.items()} if mu else {}
+        )  # includes subagent/side-call tokens
+        return {
+            "case_id": record["case_id"],
+            "run": record["run"],
+            "mode": record["mode"],
+            "tokens": sum(by_model.values()) if mu else record["usage"]["total"] - classifier,
+            "usd": cost,
+            "unpriced": [] if cost is not None else ["claude:no_cost"],
+            "by_model": by_model,
+            "classifier_tokens": classifier,
+        }
     by = run_by_model(record, sessions_dir)
     tokens = sum(u["input"] + u["output"] for u in by.values())
     costs = {m: usd(u, prices.get(m)) for m, u in by.items()}
     unpriced = sorted(m for m, c in costs.items() if c is None)
-    return {"case_id": record["case_id"], "run": record["run"], "mode": record["mode"], "tokens": tokens,
-            "usd": None if unpriced or not by else sum(costs.values()), "unpriced": unpriced,
-            "by_model": {m: u["input"] + u["output"] for m, u in by.items()},
-            "classifier_tokens": usage.total_tokens(record["usage"]["classifier"])
-            if record["usage"].get("classifier") else 0}
+    return {
+        "case_id": record["case_id"],
+        "run": record["run"],
+        "mode": record["mode"],
+        "tokens": tokens,
+        "usd": None if unpriced or not by else sum(costs.values()),
+        "unpriced": unpriced,
+        "by_model": {m: u["input"] + u["output"] for m, u in by.items()},
+        "classifier_tokens": usage.total_tokens(record["usage"]["classifier"])
+        if record["usage"].get("classifier")
+        else 0,
+    }
 
 
 def summarize(rows):
@@ -86,8 +111,10 @@ def summarize(rows):
     acc = defaultdict(list)
     for r in rows:
         acc[(r["case_id"], r["mode"])].append(r)
+
     def mean(xs):
         return sum(xs) / len(xs) if xs else None
+
     cases = sorted({c for c, _ in acc})
     modes = sorted({m for _, m in acc})
     table = {}
@@ -95,32 +122,55 @@ def summarize(rows):
         for m in modes:
             runs = acc.get((c, m), [])
             priced = [r["usd"] for r in runs if r["usd"] is not None]
-            table[(c, m)] = {"runs": len(runs), "tokens": mean([r["tokens"] for r in runs]),
-                             "usd": mean(priced) if len(priced) == len(runs) else None}
+            table[(c, m)] = {
+                "runs": len(runs),
+                "tokens": mean([r["tokens"] for r in runs]),
+                "usd": mean(priced) if len(priced) == len(runs) else None,
+            }
     complete = [c for c in cases if all(table[(c, m)]["usd"] is not None for m in modes)]
-    totals = {m: {"tokens": sum(table[(c, m)]["tokens"] for c in complete),
-                  "usd": sum(table[(c, m)]["usd"] for c in complete)} for m in modes}
+    totals = {
+        m: {
+            "tokens": sum(table[(c, m)]["tokens"] for c in complete),
+            "usd": sum(table[(c, m)]["usd"] for c in complete),
+        }
+        for m in modes
+    }
     return {"modes": modes, "cases": cases, "complete": complete, "table": table, "totals": totals}
 
 
 def to_markdown(s):
     modes = s["modes"]
     head = "| case | " + " | ".join(f"{m} tokens | {m} USD" for m in modes) + " |"
-    lines = [f"# Cost by model ({len(s['complete'])} cases in every mode)", "", head,
-             "|---|" + "---:|" * (2 * len(modes))]
+    lines = [
+        f"# Cost by model ({len(s['complete'])} cases in every mode)",
+        "",
+        head,
+        "|---|" + "---:|" * (2 * len(modes)),
+    ]
+
     def fmt(v, d):
         return "-" if v is None else f"{v:,.{d}f}"
+
     for c in s["cases"]:
-        lines.append(f"| {c} | " + " | ".join(f"{fmt(s['table'][(c, m)]['tokens'], 0)} | "
-                                              f"{fmt(s['table'][(c, m)]['usd'], 4)}" for m in modes) + " |")
-    lines.append("| **total** | " + " | ".join(f"{s['totals'][m]['tokens']:,.0f} | {s['totals'][m]['usd']:.4f}"
-                                              for m in modes) + " |")
+        lines.append(
+            f"| {c} | "
+            + " | ".join(f"{fmt(s['table'][(c, m)]['tokens'], 0)} | {fmt(s['table'][(c, m)]['usd'], 4)}" for m in modes)
+            + " |"
+        )
+    lines.append(
+        "| **total** | "
+        + " | ".join(f"{s['totals'][m]['tokens']:,.0f} | {s['totals'][m]['usd']:.4f}" for m in modes)
+        + " |"
+    )
     if len(modes) == 2:
         (a, b) = modes
         ta, tb = s["totals"][a], s["totals"][b]
         if ta["tokens"] and ta["usd"]:
-            lines += ["", f"{b} vs {a}: tokens {(tb['tokens'] - ta['tokens']) / ta['tokens']:+.0%}, "
-                          f"USD {(tb['usd'] - ta['usd']) / ta['usd']:+.0%}"]
+            lines += [
+                "",
+                f"{b} vs {a}: tokens {(tb['tokens'] - ta['tokens']) / ta['tokens']:+.0%}, "
+                f"USD {(tb['usd'] - ta['usd']) / ta['usd']:+.0%}",
+            ]
     return "\n".join(lines) + "\n"
 
 

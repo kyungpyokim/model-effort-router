@@ -71,11 +71,7 @@ def _usage(backends, selected):
         if getattr(backend, "name", None) == selected:
             break
     model_calls = [b for b in attempted if getattr(b, "calls_model", False)]
-    reported = [
-        b.last_usage
-        for b in model_calls
-        if isinstance(getattr(b, "last_usage", None), dict)
-    ]
+    reported = [b.last_usage for b in model_calls if isinstance(getattr(b, "last_usage", None), dict)]
     return (sum_usage(reported) if reported else None, len(reported) < len(model_calls))
 
 
@@ -97,14 +93,10 @@ def route(
     override, text = parse_override(message)
     if override.rejected:
         return RoutePlan(NO_ROUTE, "invalid_override", override_rejected=True)
-    cfg = resolve_config(
-        task=override.as_config(), repo=repo_config, user=user_config, registry=registry
-    )
+    cfg = resolve_config(task=override.as_config(), repo=repo_config, user=user_config, registry=registry)
     flags = detect_risk_flags(text, paths)
     role_override = role_override if role_override is not None else override.role
-    effort_override = (
-        effort_override if effort_override is not None else override.effort
-    )
+    effort_override = effort_override if effort_override is not None else override.effort
     phase_override = role_override is not None or effort_override is not None
     if phase_override and (role_override is None or effort_override is None):
         raise ValueError("--role and --effort must be provided together")
@@ -149,9 +141,7 @@ def route(
     try:
         mapped = cfg.models[host][lane]
     except KeyError as exc:
-        raise ValueError(
-            f"no model mapping configured for host {host!r} and lane {lane!r}"
-        ) from exc
+        raise ValueError(f"no model mapping configured for host {host!r} and lane {lane!r}") from exc
     if effort not in mapped["efforts"]:
         raise ValueError(
             f"{host} {lane} model {mapped['primary']} does not support requested effort {effort}; configure a capable primary"
@@ -160,23 +150,14 @@ def route(
         from ..adapters.antigravity import resolve_model
 
         primary = resolve_model(mapped["primary"], effort, mapped["efforts"]).model
-        fallback = (
-            resolve_model(mapped["fallback"], effort, mapped["efforts"]).model
-            if mapped["fallback"]
-            else None
-        )
+        fallback = resolve_model(mapped["fallback"], effort, mapped["efforts"]).model if mapped["fallback"] else None
         alternatives = tuple(
-            resolve_model(model, effort, mapped["efforts"]).model
-            for model in mapped.get("alternatives", [])
+            resolve_model(model, effort, mapped["efforts"]).model for model in mapped.get("alternatives", [])
         )
     else:
         primary, fallback = mapped["primary"], mapped["fallback"]
         alternatives = tuple(mapped.get("alternatives", []))
-    usage, missing = (
-        _usage(backends, decision.backend)
-        if decision.backend != "explicit"
-        else (None, False)
-    )
+    usage, missing = _usage(backends, decision.backend) if decision.backend != "explicit" else (None, False)
     return RoutePlan(
         ROUTE,
         cfg.mode,

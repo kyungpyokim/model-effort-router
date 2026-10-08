@@ -32,8 +32,13 @@ class NimbleProviderTest(unittest.TestCase):
         t = FakeTransport()
         NimbleBackend(transport=t, env=env, options=opts).classify(DifficultyInput(TASK), 2)
         self.assertEqual((t.calls[0][0], t.calls[0][2]["model"]), (opts["url"], "nimble:test"))
-        for url in ("https://api.typesafe.ai/v1/systemone", "http://example.com/x", "http://localhost.evil/x",
-                    "http://user:pass@localhost/x", "file:///etc/passwd"):
+        for url in (
+            "https://api.typesafe.ai/v1/systemone",
+            "http://example.com/x",
+            "http://localhost.evil/x",
+            "http://user:pass@localhost/x",
+            "file:///etc/passwd",
+        ):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 check_local_url(url)
 
@@ -48,8 +53,10 @@ class NimbleProviderTest(unittest.TestCase):
     def test_registry_and_config_keep_nimble_provider_swap_supported(self):
         self.assertIs(BACKENDS["nimble"], NimbleBackend)
         self.assertEqual(create("nimble", options={"model": "nimble:test"})._options["model"], "nimble:test")
-        config = resolve_config(repo={"difficulty": {"backend": "nimble", "nimble": {"model": "nimble:test"}}},
-                                registry={"nimble": NimbleBackend})
+        config = resolve_config(
+            repo={"difficulty": {"backend": "nimble", "nimble": {"model": "nimble:test"}}},
+            registry={"nimble": NimbleBackend},
+        )
         self.assertEqual(config.nimble, {"model": "nimble:test"})
         with self.assertRaises(ValueError):
             resolve_config(repo={"difficulty": {"backend": "nimble_jev"}}, registry={"nimble": NimbleBackend})
@@ -62,8 +69,11 @@ class NimbleProviderTest(unittest.TestCase):
         subscription.calls_model = True
         subscription.last_usage = None
         subscription.classify.return_value = DifficultyDecision("fix", "medium", "subscription")
-        plan = route(TASK, repo_config={"difficulty": {"backend": "nimble", "fallback": "subscription"}},
-                     registry={"nimble": lambda **kwargs: local, "subscription": lambda: subscription})
+        plan = route(
+            TASK,
+            repo_config={"difficulty": {"backend": "nimble", "fallback": "subscription"}},
+            registry={"nimble": lambda **kwargs: local, "subscription": lambda: subscription},
+        )
         self.assertEqual(plan.decision.backend, "subscription")
         subscription.classify.assert_called_once()
 

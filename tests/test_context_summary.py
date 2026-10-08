@@ -9,8 +9,12 @@ from model_effort_router.context import summary
 from model_effort_router.context.summary import Stored, anchor_at, build_context, pending
 from model_effort_router.context.transcripts import Turn, read_turns
 
-TURNS = (Turn("user", "u0 add retries"), Turn("assistant", "a1 plan: retries param"),
-         Turn("user", "u2 응 만들어줘"), Turn("assistant", "a3 done"))
+TURNS = (
+    Turn("user", "u0 add retries"),
+    Turn("assistant", "a1 plan: retries param"),
+    Turn("user", "u2 응 만들어줘"),
+    Turn("assistant", "a3 done"),
+)
 
 
 def ctx(turns, stored, max_chars=6000):
@@ -36,14 +40,22 @@ class StoreTest(unittest.TestCase):
     def test_sessions_do_not_share_a_summary_and_logs_are_untouched(self):
         summary.save(self.sdir, "a/b", "one", anchor_at(TURNS, 1))
         summary.save(self.sdir, "a_b", "two", anchor_at(TURNS, 2))
-        self.assertEqual((summary.load(self.sdir, "a/b").summary, summary.load(self.sdir, "a_b").summary), ("one", "two"))
+        self.assertEqual(
+            (summary.load(self.sdir, "a/b").summary, summary.load(self.sdir, "a_b").summary), ("one", "two")
+        )
         self.assertFalse(any(n.endswith(".log.jsonl") for n in os.listdir(self.sdir)))
 
     def test_missing_or_corrupt_store_loads_empty(self):
         self.assertEqual(summary.load(self.sdir, "s1"), Stored())
         os.makedirs(self.sdir)
-        for text in ("{not json", "[]", '{"summary": 5, "anchor": []}', '{"summary": "s", "anchor": "x"}',
-                     '{"summary": "s", "anchor": [1]}', '{"summary": "s", "anchor": ["a", "b", "c"]}'):
+        for text in (
+            "{not json",
+            "[]",
+            '{"summary": 5, "anchor": []}',
+            '{"summary": "s", "anchor": "x"}',
+            '{"summary": "s", "anchor": [1]}',
+            '{"summary": "s", "anchor": ["a", "b", "c"]}',
+        ):
             with open(summary.summary_path(self.sdir, "s1"), "w") as f:
                 f.write(text)
             with self.subTest(text=text):
@@ -73,9 +85,18 @@ class StoreTest(unittest.TestCase):
         os.utime(log, (stale, stale))
         summary.prune(self.sdir, keep=(summary.summary_path(self.sdir, "kept"), summary.lock_path(self.sdir, "kept")))
         left = set(os.listdir(self.sdir))
-        self.assertEqual(left, {os.path.basename(p) for p in (
-            summary.summary_path(self.sdir, "new"), summary.summary_path(self.sdir, "kept"),
-            summary.lock_path(self.sdir, "kept"))} | {os.path.basename(log)})
+        self.assertEqual(
+            left,
+            {
+                os.path.basename(p)
+                for p in (
+                    summary.summary_path(self.sdir, "new"),
+                    summary.summary_path(self.sdir, "kept"),
+                    summary.lock_path(self.sdir, "kept"),
+                )
+            }
+            | {os.path.basename(log)},
+        )
 
     def test_prune_on_a_missing_dir_is_harmless(self):
         summary.prune(os.path.join(self.sdir, "nope"))
@@ -87,7 +108,9 @@ class BuildContextTest(unittest.TestCase):
 
     def test_summary_and_only_uncovered_turns(self):
         got = ctx(TURNS, Stored("goal: retries", anchor_at(TURNS, 2)))
-        self.assertEqual(got, "Session summary:\ngoal: retries\n\nRecent turns:\nUser: u2 응 만들어줘\nAssistant: a3 done")
+        self.assertEqual(
+            got, "Session summary:\ngoal: retries\n\nRecent turns:\nUser: u2 응 만들어줘\nAssistant: a3 done"
+        )
         self.assertNotIn("u0", got)
 
     def test_without_summary_all_turns_are_recent(self):
@@ -95,7 +118,9 @@ class BuildContextTest(unittest.TestCase):
         self.assertTrue(got.startswith("Session summary:\n(none)\n\nRecent turns:\nUser: u0 add retries"))
 
     def test_summary_without_new_turns(self):
-        self.assertEqual(ctx(TURNS, Stored("goal", anchor_at(TURNS, 4))), "Session summary:\ngoal\n\nRecent turns:\n(none)")
+        self.assertEqual(
+            ctx(TURNS, Stored("goal", anchor_at(TURNS, 4))), "Session summary:\ngoal\n\nRecent turns:\n(none)"
+        )
 
     def test_budget_keeps_the_newest_turns_and_never_overflows(self):
         turns = tuple(Turn("user" if i % 2 == 0 else "assistant", f"t{i:02d} " + "x" * 300) for i in range(20))
@@ -141,6 +166,7 @@ class AnchorTest(unittest.TestCase):
                 with open(path, "w") as f:
                     for role, text in texts:
                         f.write(json.dumps({"type": role, "message": {"content": text}}) + "\n")
+
             history = [("user" if i % 2 == 0 else "assistant", f"turn {i:03d} " + "x" * 40) for i in range(60)]
             write(history)
             window = read_turns(path, "claude", max_bytes=1500)

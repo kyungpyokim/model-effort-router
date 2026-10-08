@@ -19,8 +19,9 @@ def case(id="c1", **over):
 
 
 def adjudicated(id="c1", a="fix", b="fix", final="fix", effort="medium", **over):
-    return case(id, status="adjudicated", labels=[label("a", a), label("b", b)],
-                final={"role": final, "effort": effort}, **over)
+    return case(
+        id, status="adjudicated", labels=[label("a", a), label("b", b)], final={"role": final, "effort": effort}, **over
+    )
 
 
 def write(rows):
@@ -67,8 +68,9 @@ class ValidateTest(unittest.TestCase):
 
     def test_adjudicated_needs_final_and_labeled_must_not_have_it(self):
         self.bad(case(status="adjudicated", labels=[label("a"), label("b")]), "final")
-        self.bad(case(status="labeled", labels=[label("a"), label("b")],
-                      final={"role": "fix", "effort": "low"}), "final")
+        self.bad(
+            case(status="labeled", labels=[label("a"), label("b")], final={"role": "fix", "effort": "low"}), "final"
+        )
 
 
 class LoadTest(unittest.TestCase):

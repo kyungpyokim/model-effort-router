@@ -38,13 +38,18 @@ class MiscTest(HookCase):
     def test_session_log_filename_safe_and_collision_free(self):
         import os
         from model_effort_router.logging import route_log
+
         d = str(self.state)
         self.assertEqual(os.path.dirname(route_log.log_path(d, "../../x")), d)
         self.assertNotEqual(route_log.log_path(d, "a/b"), route_log.log_path(d, "a_b"))
 
     def test_orchestration_is_gone(self):
-        for rel in ("model_effort_router/host/state.py", "model_effort_router/host/instructions.py",
-                    "model_effort_router/policy/stages.py", "plugins/codex-model-effort-router/hooks/pre_tool_use.py"):
+        for rel in (
+            "model_effort_router/host/state.py",
+            "model_effort_router/host/instructions.py",
+            "model_effort_router/policy/stages.py",
+            "plugins/codex-model-effort-router/hooks/pre_tool_use.py",
+        ):
             self.assertFalse((ROOT / rel).exists(), rel)
 
 

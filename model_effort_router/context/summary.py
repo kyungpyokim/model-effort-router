@@ -1,4 +1,5 @@
 """Per-session rolling summary (state dir, next to the route log) and the context text handed to the classifier."""
+
 import fcntl
 import hashlib
 import json
@@ -30,11 +31,11 @@ def digest(turn):
 
 def anchor_at(turns, end):
     """Anchor for "turns[:end] are covered". Two digests, so a repeated message ("진행") cannot match the wrong place."""
-    return tuple(digest(t) for t in turns[max(0, end - ANCHOR_TURNS):end])
+    return tuple(digest(t) for t in turns[max(0, end - ANCHOR_TURNS) : end])
 
 
 def _sibling(sdir, session_id, suffix):
-    return route_log.log_path(sdir, session_id)[:-len(".log.jsonl")] + suffix
+    return route_log.log_path(sdir, session_id)[: -len(".log.jsonl")] + suffix
 
 
 def summary_path(sdir, session_id):
@@ -50,8 +51,12 @@ def load(sdir, session_id):
         with open(summary_path(sdir, session_id), encoding="utf-8") as f:
             data = json.load(f)
         text, anchor = data["summary"], data["anchor"]
-        if isinstance(text, str) and isinstance(anchor, list) and len(anchor) <= ANCHOR_TURNS \
-                and all(isinstance(a, str) for a in anchor):
+        if (
+            isinstance(text, str)
+            and isinstance(anchor, list)
+            and len(anchor) <= ANCHOR_TURNS
+            and all(isinstance(a, str) for a in anchor)
+        ):
             return Stored(text, tuple(anchor))
     except (OSError, ValueError, KeyError, TypeError):
         pass
@@ -65,7 +70,9 @@ def save(sdir, session_id, text, anchor):
     tmp = f"{path}.{os.getpid()}.tmp"
     try:
         with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
-            json.dump({"summary": text, "anchor": list(anchor), "updated_at": round(time.time(), 3)}, f, ensure_ascii=False)
+            json.dump(
+                {"summary": text, "anchor": list(anchor), "updated_at": round(time.time(), 3)}, f, ensure_ascii=False
+            )
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -115,8 +122,8 @@ def pending(turns, stored):
     anchor = stored.anchor
     if anchor:
         for i in range(len(turns) - 1, len(anchor) - 2, -1):
-            if anchor_at(turns, i + 1)[-len(anchor):] == anchor:
-                return stored.summary, turns[i + 1:], i + 1
+            if anchor_at(turns, i + 1)[-len(anchor) :] == anchor:
+                return stored.summary, turns[i + 1 :], i + 1
     return stored.summary, turns, 0
 
 

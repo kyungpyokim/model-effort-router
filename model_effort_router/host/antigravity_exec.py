@@ -1,4 +1,5 @@
 """Strict Antigravity JSON result parser; automated run/resume remain unsupported."""
+
 import json
 from collections import namedtuple
 
@@ -13,11 +14,15 @@ class AntigravityResultError(ValueError):
 
 
 def session_argv(profile, prompt, sandbox, config=AntigravityConfig(), subagents=None):
-    raise ValueError("Antigravity mer run is unsupported because execution isolation is unverified; use mer route and a host-supported Subagent")
+    raise ValueError(
+        "Antigravity mer run is unsupported because execution isolation is unverified; use mer route and a host-supported Subagent"
+    )
 
 
 def resume_argv(profile, thread_id, prompt, config=AntigravityConfig(), subagents=None):
-    raise ValueError("Antigravity mer run/resume is unsupported because execution isolation is unverified; use mer route and a host-supported Subagent")
+    raise ValueError(
+        "Antigravity mer run/resume is unsupported because execution isolation is unverified; use mer route and a host-supported Subagent"
+    )
 
 
 def parse_stream(text) -> Stream:

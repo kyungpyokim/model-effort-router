@@ -1,4 +1,5 @@
 """`codex exec` command lines and `--json` stream parsing for mer-driven sessions (spec 3.4)."""
+
 import subprocess
 from collections import namedtuple
 
@@ -8,8 +9,12 @@ from ..difficulty.subscription import default_runner
 from . import session_env as session_env
 from ..events import iter_events as _events
 
-KEYS = {"input_tokens": "input", "cached_input_tokens": "cached_input",
-        "output_tokens": "output", "reasoning_output_tokens": "reasoning_output"}
+KEYS = {
+    "input_tokens": "input",
+    "cached_input_tokens": "cached_input",
+    "output_tokens": "output",
+    "reasoning_output_tokens": "reasoning_output",
+}
 Stream = namedtuple("Stream", "thread_id usage text")  # usage: cumulative for the thread, short keys, or None
 
 
@@ -26,7 +31,11 @@ def _base(verb, resolved, sandbox, subagents=None):
     cmd = ["codex", "exec"] + verb + ["--json", "--skip-git-repo-check"]
     if sandbox:
         cmd += ["-s", sandbox]
-    return cmd + ["-m", resolved.model, "-c", f"model_reasoning_effort={resolved.applied_effort}"] + agents_flags(subagents)
+    return (
+        cmd
+        + ["-m", resolved.model, "-c", f"model_reasoning_effort={resolved.applied_effort}"]
+        + agents_flags(subagents)
+    )
 
 
 def session_argv(profile, prompt, sandbox, config=CodexConfig(), subagents=None):
@@ -41,8 +50,9 @@ def resume_argv(profile, thread_id, prompt, config=CodexConfig(), subagents=None
 
 
 def run_subprocess(argv, *, cwd, env, timeout_s):
-    return default_runner(argv, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd, label="codex exec",
-                          grace_s=5)
+    return default_runner(
+        argv, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd, label="codex exec", grace_s=5
+    )
 
 
 def parse_stream(text) -> Stream:

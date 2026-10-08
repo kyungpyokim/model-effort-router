@@ -7,6 +7,7 @@ host raises before sending, and the fallback chain takes over; the config url is
 validated). Any loopback port is accepted. Options: config `difficulty.nimble` beats env
 (MER_NIMBLE_MODEL, MER_NIMBLE_URL) beats the defaults.
 """
+
 import urllib.parse
 import urllib.request
 
@@ -52,7 +53,9 @@ def validate_options(raw, name="nimble"):
                 raise ValueError(f"difficulty.{name}.{key} must be a non-empty string")
             out[key] = raw[key]
     if "url" in out:
-        check_local_url(out["url"], name)  # a bad url is a config error up front (checked again at send time: env, defaults)
+        check_local_url(
+            out["url"], name
+        )  # a bad url is a config error up front (checked again at send time: env, defaults)
     return out
 
 
@@ -66,4 +69,8 @@ class NimbleBackend(SystemOneBackend):
     def _endpoint(self, env):
         o = self._options
         url = check_local_url(o.get("url") or env.get(URL_ENV) or DEFAULT_URL)
-        return url, {"Content-Type": "application/json"}, self._model or o.get("model") or env.get(MODEL_ENV) or DEFAULT_MODEL
+        return (
+            url,
+            {"Content-Type": "application/json"},
+            self._model or o.get("model") or env.get(MODEL_ENV) or DEFAULT_MODEL,
+        )

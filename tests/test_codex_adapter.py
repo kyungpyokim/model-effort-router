@@ -47,8 +47,10 @@ class CodexAdapterTest(unittest.TestCase):
         self.assertEqual((r.requested_effort, r.applied_effort), ("xhigh", "high"))
 
     def test_model_name_configurable(self):
-        cfg = CodexConfig(tiers={"economy": "a", "balanced": "b", "frontier": "c"},
-                          model_efforts={"a": ("medium",), "b": ("high",), "c": ("xhigh",)})
+        cfg = CodexConfig(
+            tiers={"economy": "a", "balanced": "b", "frontier": "c"},
+            model_efforts={"a": ("medium",), "b": ("high",), "c": ("xhigh",)},
+        )
         self.assertEqual(resolve(Profile("balanced", "medium"), cfg).model, "b")
         self.assertEqual(resolve(Profile("balanced", "medium"), cfg).applied_effort, "high")
 

@@ -9,14 +9,18 @@ from model_effort_router.profiles.profiles import Profile
 
 class AdapterTest(unittest.TestCase):
     def test_default_models_and_abstract_efforts(self):
-        for tier, model in (("economy", "gemini-3.8-flash"), ("balanced", "claude-sonnet-5-5"),
-                            ("frontier", "claude-opus-5-5")):
-            for requested, applied in (("medium", "medium"), ("high", "high"),
-                                       ("xhigh", "high"), ("max", "high")):
+        for tier, model in (
+            ("economy", "gemini-3.8-flash"),
+            ("balanced", "claude-sonnet-5-5"),
+            ("frontier", "claude-opus-5-5"),
+        ):
+            for requested, applied in (("medium", "medium"), ("high", "high"), ("xhigh", "high"), ("max", "high")):
                 with self.subTest(tier=tier, requested=requested):
                     result = resolve(Profile(tier, requested))
-                    self.assertEqual((result.tier, result.model, result.requested_effort, result.applied_effort),
-                                     (tier, f"{model}-{applied}", requested, applied))
+                    self.assertEqual(
+                        (result.tier, result.model, result.requested_effort, result.applied_effort),
+                        (tier, f"{model}-{applied}", requested, applied),
+                    )
 
     def test_config_copies_and_freezes_maps(self):
         tiers = dict(AntigravityConfig().tiers)
@@ -33,14 +37,21 @@ class AdapterTest(unittest.TestCase):
             config.tiers = {}
 
     def test_configuration_validation(self):
-        cases = [{"tiers": {}}, {"efforts": {}}, {"tiers": None}, {"efforts": []}, {"model_efforts": None},
-                 {"tiers": dict.fromkeys(("economy", "balanced", "frontier"), "unknown")},
-                 {"efforts": {"medium": "medium", "high": "high", "xhigh": "xhigh", "max": "high"}},
-                 {"model_efforts": {"gemini-3.8-flash": "high"}},
-                 {"model_efforts": {"gemini-3.8-flash": ()}},
-                 {"model_efforts": {"gemini-3.8-flash": ("xhigh",)}},
-                 {"model_efforts": {"": ("high",)}}, {"model_efforts": {"--model": ("high",)}},
-                 {"model_efforts": {"model name": ("high",)}}]
+        cases = [
+            {"tiers": {}},
+            {"efforts": {}},
+            {"tiers": None},
+            {"efforts": []},
+            {"model_efforts": None},
+            {"tiers": dict.fromkeys(("economy", "balanced", "frontier"), "unknown")},
+            {"efforts": {"medium": "medium", "high": "high", "xhigh": "xhigh", "max": "high"}},
+            {"model_efforts": {"gemini-3.8-flash": "high"}},
+            {"model_efforts": {"gemini-3.8-flash": ()}},
+            {"model_efforts": {"gemini-3.8-flash": ("xhigh",)}},
+            {"model_efforts": {"": ("high",)}},
+            {"model_efforts": {"--model": ("high",)}},
+            {"model_efforts": {"model name": ("high",)}},
+        ]
         for kwargs in cases:
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 AntigravityConfig(**kwargs)
@@ -61,18 +72,31 @@ class ExecTest(unittest.TestCase):
 
     def test_invalid_envelopes_fail_closed(self):
         cases = [None, "", "not json", "[]", "null", "{}"]
-        cases += [json.dumps({**self.SUCCESS, key: value}) for key, value in
-                  (("status", "UNKNOWN"), ("conversation_id", ""), ("conversation_id", " "),
-                   ("conversation_id", 1), ("response", None), ("usage", []), ("usage", None))]
-        cases += [json.dumps({k: v for k, v in self.SUCCESS.items() if k != key})
-                  for key in self.SUCCESS]
+        cases += [
+            json.dumps({**self.SUCCESS, key: value})
+            for key, value in (
+                ("status", "UNKNOWN"),
+                ("conversation_id", ""),
+                ("conversation_id", " "),
+                ("conversation_id", 1),
+                ("response", None),
+                ("usage", []),
+                ("usage", None),
+            )
+        ]
+        cases += [json.dumps({k: v for k, v in self.SUCCESS.items() if k != key}) for key in self.SUCCESS]
         for text in cases:
             with self.subTest(text=text), self.assertRaises(ax.AntigravityResultError):
                 ax.parse_stream(text)
 
     def test_usage_is_validated_and_preserved_without_summing(self):
-        usage = {"input_tokens": 100, "output_tokens": 20, "thinking_tokens": 10,
-                 "cache_read_tokens": 50, "total_tokens": 120}
+        usage = {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "thinking_tokens": 10,
+            "cache_read_tokens": 50,
+            "total_tokens": 120,
+        }
         parsed = ax.parse_stream(json.dumps({**self.SUCCESS, "usage": usage}))
         self.assertEqual(parsed.usage, usage)
         self.assertEqual(ax.parse_stream(json.dumps({**self.SUCCESS, "usage": {}})).usage, {})

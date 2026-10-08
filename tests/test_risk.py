@@ -48,7 +48,12 @@ class ContentRiskTest(unittest.TestCase):
 
     def test_destructive_statements(self):
         cases = {
-            "data_loss": ["DROP TABLE users;", "alter table t drop column x", "TRUNCATE TABLE logs", "rm -rf /var/data"],
+            "data_loss": [
+                "DROP TABLE users;",
+                "alter table t drop column x",
+                "TRUNCATE TABLE logs",
+                "rm -rf /var/data",
+            ],
             "data_migration": ["ALTER TABLE users ADD COLUMN age int;"],
         }
         for flag, lines in cases.items():
@@ -57,7 +62,9 @@ class ContentRiskTest(unittest.TestCase):
                     self.assertIn(flag, detect_content_flags(line))
 
     def test_both_flags_come_back_in_canonical_order(self):
-        self.assertEqual(detect_content_flags("ALTER TABLE a ADD b int;\nDROP TABLE c;"), ("data_migration", "data_loss"))
+        self.assertEqual(
+            detect_content_flags("ALTER TABLE a ADD b int;\nDROP TABLE c;"), ("data_migration", "data_loss")
+        )
 
     def test_words_that_flag_a_request_do_not_flag_content(self):
         for text in ("with self.lock:", "charge = price * qty", "thread = Thread()", "migrate_users()", "login(user)"):

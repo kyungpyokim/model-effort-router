@@ -26,15 +26,23 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(usage.total_tokens(u(10, 9, 3, 2)), 13)  # cached is a subset of input, reasoning of output
 
     def test_exec_stream_takes_last_cumulative_usage_per_thread(self):
-        text = (FIX / "exec_router.jsonl").read_text() + json.dumps(
-            {"type": "turn.completed", "usage": {"input_tokens": 400000, "output_tokens": 1100}}) + "\nnot json\n"
+        text = (
+            (FIX / "exec_router.jsonl").read_text()
+            + json.dumps({"type": "turn.completed", "usage": {"input_tokens": 400000, "output_tokens": 1100}})
+            + "\nnot json\n"
+        )
         tid, total = usage.exec_stream_usage(text)
         self.assertEqual((tid, total), (ROOT, u(400000, 374784, 1100, 0)))
 
     def test_exec_stream_resume_is_cumulative_not_summed_and_threads_are_summed(self):
         def run(tid, i):
-            return json.dumps({"type": "thread.started", "thread_id": tid}) + "\n" + json.dumps(
-                {"type": "turn.completed", "usage": {"input_tokens": i, "output_tokens": i // 10}}) + "\n"
+            return (
+                json.dumps({"type": "thread.started", "thread_id": tid})
+                + "\n"
+                + json.dumps({"type": "turn.completed", "usage": {"input_tokens": i, "output_tokens": i // 10}})
+                + "\n"
+            )
+
         text = run("A", 100) + run("A", 250) + run("B", 40)  # A resumed: 250 is the session total
         self.assertEqual(usage.exec_stream_usage(text), ("A", u(290, 0, 29, 0)))
         self.assertEqual(usage.exec_stream_usage_by_thread(text), {"A": u(250, 0, 25, 0), "B": u(40, 0, 4, 0)})
@@ -66,8 +74,9 @@ class ParseTest(unittest.TestCase):
             for f in ROLL.glob("*.jsonl"):
                 shutil.copy(f, nested / f.name)
             found = sorted(p.name for p in usage.find_rollouts(d, ROOT))
-            self.assertEqual(found, ["rollout-implement.jsonl", "rollout-main.jsonl",
-                                     "rollout-plan.jsonl", "rollout-review.jsonl"])
+            self.assertEqual(
+                found, ["rollout-implement.jsonl", "rollout-main.jsonl", "rollout-plan.jsonl", "rollout-review.jsonl"]
+            )
             self.assertEqual(usage.find_rollouts(Path(d) / "missing", ROOT), [])
 
     def test_find_rollouts_skips_files_older_than_run_start_without_parsing_them(self):
@@ -76,8 +85,9 @@ class ParseTest(unittest.TestCase):
             shutil.copy(ROLL / "rollout-plan.jsonl", old)
             shutil.copy(ROLL / "rollout-review.jsonl", new)
             os.utime(old, (1000, 1000))
-            self.assertEqual([p.name for p in usage.find_rollouts(d, ROOT, since_mtime=time.time() - 60)],
-                             ["rollout-new.jsonl"])
+            self.assertEqual(
+                [p.name for p in usage.find_rollouts(d, ROOT, since_mtime=time.time() - 60)], ["rollout-new.jsonl"]
+            )
 
     def test_find_rollouts_accepts_several_thread_ids(self):
         found = {p.name for p in usage.find_rollouts(ROLL, {ROOT, "nope"})}
@@ -88,10 +98,13 @@ class ParseTest(unittest.TestCase):
         """Codex forks a spawned subagent's rollout with the parent's session_meta copied after its own."""
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "rollout-fork.jsonl"
-            p.write_text('{"type":"session_meta","payload":{"id":"child","session_id":"%s","thread_source":"subagent",'
-                         '"agent_path":"/root/tdd_review"}}\n' % ROOT
-                         + '{"type":"session_meta","payload":{"id":"%s","session_id":"%s","thread_source":"user"}}\n'
-                         % (ROOT, ROOT))
+            p.write_text(
+                '{"type":"session_meta","payload":{"id":"child","session_id":"%s","thread_source":"subagent",'
+                '"agent_path":"/root/tdd_review"}}\n'
+                % ROOT
+                + '{"type":"session_meta","payload":{"id":"%s","session_id":"%s","thread_source":"user"}}\n'
+                % (ROOT, ROOT)
+            )
             r = usage.read_rollout(p)
             self.assertEqual((r["id"], r["thread_source"], r["agent_path"]), ("child", "subagent", "/root/tdd_review"))
             agg = usage.aggregate('{"type":"thread.started","thread_id":"%s"}' % ROOT, [p])
@@ -100,8 +113,10 @@ class ParseTest(unittest.TestCase):
     def test_find_rollouts_reads_only_the_first_session_meta_line_to_filter(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "rollout-big.jsonl"
-            p.write_text('{"type":"session_meta","payload":{"session_id":"other"}}\n'
-                         + '{"type":"session_meta","payload":{"session_id":"%s"}}\n' % ROOT)
+            p.write_text(
+                '{"type":"session_meta","payload":{"session_id":"other"}}\n'
+                + '{"type":"session_meta","payload":{"session_id":"%s"}}\n' % ROOT
+            )
             self.assertEqual(usage.find_rollouts(d, ROOT), [])
 
 
@@ -110,8 +125,7 @@ class AggregateTest(unittest.TestCase):
         return sorted(ROLL.glob("rollout-*.jsonl"))
 
     def test_sums_orchestrator_classifier_and_each_stage(self):
-        agg = usage.aggregate((FIX / "exec_router.jsonl").read_text(), self.rollouts(),
-                              classifier=u(29757, 6912, 20))
+        agg = usage.aggregate((FIX / "exec_router.jsonl").read_text(), self.rollouts(), classifier=u(29757, 6912, 20))
         self.assertEqual(agg["orchestrator"], u(384934, 374784, 1085))
         self.assertEqual(agg["classifier"], u(29757, 6912, 20))
         self.assertEqual(set(agg["stages"]), {"plan", "implement", "review"})
@@ -142,8 +156,10 @@ class AggregateTest(unittest.TestCase):
     def test_subagent_rollout_without_usage_is_reported_not_zeroed(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "rollout-x.jsonl"
-            p.write_text('{"type":"session_meta","payload":{"id":"a","thread_source":"subagent",'
-                         '"agent_path":"/root/mer_review"}}\n')
+            p.write_text(
+                '{"type":"session_meta","payload":{"id":"a","thread_source":"subagent",'
+                '"agent_path":"/root/mer_review"}}\n'
+            )
             agg = usage.aggregate(None, [p, ROLL / "rollout-plan.jsonl"])
             self.assertEqual(agg["stages_without_usage"], ["review"])
             self.assertEqual(agg["subagent_rollouts"], 2)

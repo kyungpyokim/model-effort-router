@@ -21,7 +21,7 @@ class OpenCodePluginBundleTest(unittest.TestCase):
         self.assertIn('import { Plugin } from "@opencode/plugin"', source)
         self.assertIn('id: "model-effort-router"', source)
         self.assertIn('name: "mer"', source)
-        self.assertIn('await ctx.tool.transform', source)
+        self.assertIn("await ctx.tool.transform", source)
         self.assertNotIn("route_advice", source)
         route = (PLUGIN / "src" / "route.ts").read_text()
         self.assertIn('"--host"', route)

@@ -17,16 +17,21 @@ class OpenCodeHostTest(unittest.TestCase):
         self.assertEqual(config.models["opencode"]["reasoning"]["primary"], "opencode/nemotron-3-ultra-free")
 
     def test_explicit_route_returns_opencode_advice_without_classifier(self):
-        plan = route("Create an OpenCode plugin", host="opencode", explicit=True,
-                     role_override="plan", effort_override="medium")
-        self.assertEqual((plan.agent, plan.model, plan.applied_effort),
-                         ("reasoning", "opencode/nemotron-3-ultra-free", "medium"))
+        plan = route(
+            "Create an OpenCode plugin", host="opencode", explicit=True, role_override="plan", effort_override="medium"
+        )
+        self.assertEqual(
+            (plan.agent, plan.model, plan.applied_effort), ("reasoning", "opencode/nemotron-3-ultra-free", "medium")
+        )
 
     def test_worker_execution_is_rejected(self):
         result = io.StringIO()
         with redirect_stderr(result):
-            status = main(["run", "--host", "opencode", "--role", "plan", "--effort", "medium", "Plan"],
-                          env={"MER_TEST_FAKE_BACKEND": "{}"}, out=io.StringIO())
+            status = main(
+                ["run", "--host", "opencode", "--role", "plan", "--effort", "medium", "Plan"],
+                env={"MER_TEST_FAKE_BACKEND": "{}"},
+                out=io.StringIO(),
+            )
         self.assertEqual(status, 2)
         self.assertIn("OpenCode worker execution is unsupported", result.getvalue())
 

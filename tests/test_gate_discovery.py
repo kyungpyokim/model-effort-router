@@ -62,7 +62,9 @@ class DiscoveryTest(unittest.TestCase):
         self.assertIsNone(self.cmd("test"))
 
     def test_ci_file(self):
-        self.write(".github/workflows/ci.yml", "jobs:\n  t:\n    steps:\n      - run: go test ./...\n      - run: mypy src\n")
+        self.write(
+            ".github/workflows/ci.yml", "jobs:\n  t:\n    steps:\n      - run: go test ./...\n      - run: mypy src\n"
+        )
         self.assertEqual(self.cmd("test"), ("go test ./...", ".github/workflows/ci.yml"))
         self.assertEqual(self.cmd("typecheck"), ("mypy src", ".github/workflows/ci.yml"))
 
@@ -72,8 +74,12 @@ class DiscoveryTest(unittest.TestCase):
         self.assertEqual(self.cmd("test")[1], "AGENTS.md")
 
     def test_package_json_scripts(self):
-        self.write("package.json", json.dumps({"scripts": {
-            "test": "jest", "lint": "eslint .", "type-check": "tsc --noEmit", "build": "vite build"}}))
+        self.write(
+            "package.json",
+            json.dumps(
+                {"scripts": {"test": "jest", "lint": "eslint .", "type-check": "tsc --noEmit", "build": "vite build"}}
+            ),
+        )
         self.assertEqual(self.cmd("test"), ("npm test", "package.json"))
         self.assertEqual(self.cmd("lint"), ("npm run lint", "package.json"))
         self.assertEqual(self.cmd("typecheck"), ("npm run type-check", "package.json"))

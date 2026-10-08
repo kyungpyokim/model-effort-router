@@ -6,6 +6,7 @@ Decision rule (22.3): the router must keep quality AND cut total usage, otherwis
 Usage: python3 -m evaluation.baseline report RUNS.jsonl [--json OUT] [--md OUT]
        python3 -m evaluation.baseline mark RUNS.jsonl CASE_ID MODE yes|no [--run K]
 """
+
 import argparse
 import json
 import sys
@@ -66,9 +67,11 @@ def save_records(path, rows):
 
 def _signals(r):
     """Quality signals that are known (True = good). Unknown ones (None) are never compared."""
-    return {"requirements": r["requirements_met"],
-            "gate": None if r["gate_overall"] is None else r["gate_overall"] == "passed",
-            "review": None if r["review_verdict"] is None else r["review_verdict"] == "approved"}
+    return {
+        "requirements": r["requirements_met"],
+        "gate": None if r["gate_overall"] is None else r["gate_overall"] == "passed",
+        "review": None if r["review_verdict"] is None else r["review_verdict"] == "approved",
+    }
 
 
 def incomplete_reasons(r):
@@ -89,21 +92,29 @@ def compare_pair(base, router):
     better = any(rs[k] > bs[k] for k in shared)
     quality = "unknown" if not shared else "regressed" if worse else "improved" if better else "preserved"
     b, r = base["usage"]["total"], router["usage"]["total"]
-    return {"case_id": base["case_id"], "run": base.get("run", 1), "quality": quality, "usage_delta": r - b,
-            "usage_delta_pct": (r - b) / b * 100 if b else None,
-            "time_delta_s": round(router["wall_s"] - base["wall_s"], 3),
-            "fix_delta": router["fix_rounds"] - base["fix_rounds"],
-            "baseline_total": b, "router_total": r, "router_findings": router.get("review_findings"),
-            "incomplete": incomplete_reasons(base) + incomplete_reasons(router),
-            "requirements_judged": base["requirements_met"] is not None and router["requirements_met"] is not None}
+    return {
+        "case_id": base["case_id"],
+        "run": base.get("run", 1),
+        "quality": quality,
+        "usage_delta": r - b,
+        "usage_delta_pct": (r - b) / b * 100 if b else None,
+        "time_delta_s": round(router["wall_s"] - base["wall_s"], 3),
+        "fix_delta": router["fix_rounds"] - base["fix_rounds"],
+        "baseline_total": b,
+        "router_total": r,
+        "router_findings": router.get("review_findings"),
+        "incomplete": incomplete_reasons(base) + incomplete_reasons(router),
+        "requirements_judged": base["requirements_met"] is not None and router["requirements_met"] is not None,
+    }
 
 
 def _decide(pairs, agg):
     if not pairs:
         return INSUFFICIENT, "no case has both a baseline and a router run"
     if any(p["incomplete"] for p in pairs):
-        return INSUFFICIENT, "usage or outcome incomplete for some runs (" + \
-            "; ".join(f"{p['case_id']}: {','.join(p['incomplete'])}" for p in pairs if p["incomplete"]) + ")"
+        return INSUFFICIENT, "usage or outcome incomplete for some runs (" + "; ".join(
+            f"{p['case_id']}: {','.join(p['incomplete'])}" for p in pairs if p["incomplete"]
+        ) + ")"
     if not all(p["requirements_judged"] for p in pairs):
         return INSUFFICIENT, "requirements_met is unset for some runs; set it with `mark`"
     if agg["quality"]["regressed"]:
@@ -126,9 +137,19 @@ def _case_means(pairs):
     for case_id in dict.fromkeys(p["case_id"] for p in pairs):
         ps = [p for p in pairs if p["case_id"] == case_id]
         b, r = (sum(p[k] for p in ps) / len(ps) for k in ("baseline_total", "router_total"))
-        out.append({"case_id": case_id, "runs": len(ps), "baseline_mean": b, "router_mean": r, "usage_delta_mean": r - b,
-                    "usage_delta_pct": (r - b) / b * 100 if b else None,
-                    "quality": {q: sum(p["quality"] == q for p in ps) for q in ("preserved", "improved", "regressed", "unknown")}})
+        out.append(
+            {
+                "case_id": case_id,
+                "runs": len(ps),
+                "baseline_mean": b,
+                "router_mean": r,
+                "usage_delta_mean": r - b,
+                "usage_delta_pct": (r - b) / b * 100 if b else None,
+                "quality": {
+                    q: sum(p["quality"] == q for p in ps) for q in ("preserved", "improved", "regressed", "unknown")
+                },
+            }
+        )
     return out
 
 
@@ -149,39 +170,68 @@ def report(records):
     by = usable
     pairs = [compare_pair(m["baseline"], m["router"]) for m in by.values() if len(m) == 2]
     b_tot, r_tot = sum(p["baseline_total"] for p in pairs), sum(p["router_total"] for p in pairs)
-    agg = {"pairs": len(pairs), "unpaired": [c if run == 1 else f"{c}#r{run}" for (c, run), m in by.items() if len(m) < 2],
-           "quality": {q: sum(p["quality"] == q for p in pairs) for q in ("preserved", "improved", "regressed", "unknown")},
-           "usage": {"baseline": b_tot, "router": r_tot, "delta": r_tot - b_tot},
-           "time_delta_s": round(sum(p["time_delta_s"] for p in pairs), 3),
-           "fix_delta": sum(p["fix_delta"] for p in pairs),
-           "excluded": excluded,
-           "review_findings": sum(p["router_findings"] or 0 for p in pairs)}
+    agg = {
+        "pairs": len(pairs),
+        "unpaired": [c if run == 1 else f"{c}#r{run}" for (c, run), m in by.items() if len(m) < 2],
+        "quality": {
+            q: sum(p["quality"] == q for p in pairs) for q in ("preserved", "improved", "regressed", "unknown")
+        },
+        "usage": {"baseline": b_tot, "router": r_tot, "delta": r_tot - b_tot},
+        "time_delta_s": round(sum(p["time_delta_s"] for p in pairs), 3),
+        "fix_delta": sum(p["fix_delta"] for p in pairs),
+        "excluded": excluded,
+        "review_findings": sum(p["router_findings"] or 0 for p in pairs),
+    }
     verdict, why = _decide(pairs, agg)
-    return {"per_case": pairs, "per_case_mean": _case_means(pairs), "aggregate": agg,
-            "decision": {"verdict": verdict, "reason": why}}
+    return {
+        "per_case": pairs,
+        "per_case_mean": _case_means(pairs),
+        "aggregate": agg,
+        "decision": {"verdict": verdict, "reason": why},
+    }
 
 
 def to_markdown(rep):
     a, d = rep["aggregate"], rep["decision"]
-    lines = [f"# Baseline vs Router ({a['pairs']} paired cases)", "", f"Decision: **{d['verdict']}** - {d['reason']}", "",
-             f"Total usage: baseline {a['usage']['baseline']}, router {a['usage']['router']} "
-             f"(delta {a['usage']['delta']:+d}); time delta {a['time_delta_s']:+}s; fix-round delta {a['fix_delta']:+d}",
-             f"Quality: {a['quality']}", ""]
+    lines = [
+        f"# Baseline vs Router ({a['pairs']} paired cases)",
+        "",
+        f"Decision: **{d['verdict']}** - {d['reason']}",
+        "",
+        f"Total usage: baseline {a['usage']['baseline']}, router {a['usage']['router']} "
+        f"(delta {a['usage']['delta']:+d}); time delta {a['time_delta_s']:+}s; fix-round delta {a['fix_delta']:+d}",
+        f"Quality: {a['quality']}",
+        "",
+    ]
     lines += [f"Router review findings (total): {a['review_findings']}", ""]
     lines += ["| case | run | quality | usage delta | % | time delta s | fix delta |", "|---|---|---|---|---|---|---|"]
     for p in rep["per_case"]:
         pct = "-" if p["usage_delta_pct"] is None else f"{p['usage_delta_pct']:+.1f}"
-        lines.append(f"| {p['case_id']} | {p['run']} | {p['quality']} | {p['usage_delta']:+d} | {pct} | "
-                     f"{p['time_delta_s']:+} | {p['fix_delta']:+d} |")
-    lines += ["", "Per-case means (usage tokens):", "", "| case | runs | baseline | router | delta | % | quality |",
-              "|---|---|---|---|---|---|---|"]
+        lines.append(
+            f"| {p['case_id']} | {p['run']} | {p['quality']} | {p['usage_delta']:+d} | {pct} | "
+            f"{p['time_delta_s']:+} | {p['fix_delta']:+d} |"
+        )
+    lines += [
+        "",
+        "Per-case means (usage tokens):",
+        "",
+        "| case | runs | baseline | router | delta | % | quality |",
+        "|---|---|---|---|---|---|---|",
+    ]
     for m in rep["per_case_mean"]:
         pct = "-" if m["usage_delta_pct"] is None else f"{m['usage_delta_pct']:+.1f}"
-        lines.append(f"| {m['case_id']} | {m['runs']} | {m['baseline_mean']:.0f} | {m['router_mean']:.0f} | "
-                     f"{m['usage_delta_mean']:+.0f} | {pct} | {m['quality']} |")
+        lines.append(
+            f"| {m['case_id']} | {m['runs']} | {m['baseline_mean']:.0f} | {m['router_mean']:.0f} | "
+            f"{m['usage_delta_mean']:+.0f} | {pct} | {m['quality']} |"
+        )
     if a["excluded"]:
-        lines += ["", "Excluded: " + ", ".join(f"{e['case_id']}{'#r%d' % e['run'] if 'run' in e else ''} ({e['reason']})"
-                                                for e in a["excluded"])]
+        lines += [
+            "",
+            "Excluded: "
+            + ", ".join(
+                f"{e['case_id']}{'#r%d' % e['run'] if 'run' in e else ''} ({e['reason']})" for e in a["excluded"]
+            ),
+        ]
     if a["unpaired"]:
         lines += ["", f"Unpaired (excluded): {', '.join(a['unpaired'])}"]
     return "\n".join(lines) + "\n"
@@ -214,7 +264,10 @@ def main(argv=None):
                 print(f"duplicate {args.mode} runs for case {args.case_id!r}; remove extras first", file=sys.stderr)
                 return 1
             if not hit:
-                print(f"no {args.mode} run for case {args.case_id!r}" + (f" run {args.run}" if args.run else ""), file=sys.stderr)
+                print(
+                    f"no {args.mode} run for case {args.case_id!r}" + (f" run {args.run}" if args.run else ""),
+                    file=sys.stderr,
+                )
                 return 1
             hit[0]["requirements_met"] = args.met == "yes"
             save_records(args.runs, rows)
