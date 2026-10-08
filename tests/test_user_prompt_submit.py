@@ -32,8 +32,51 @@ class UserPromptSubmitTest(HookCase):
         self.assertIn("not run", advice)
         self.assertIn("full conversation", advice)
         self.assertIn("private reasoning", advice)
-        self.assertIn("does not change this Main turn", advice)
+        self.assertIn("change this Main turn's model/settings", advice)
+        self.assertIn("Main model gpt-6-luna ≠ routed gpt-6.1-sol", advice)
         self.assertNotIn("L1", advice)
+
+    def payload(self, **extra):
+        data = {"session_id": SID, "cwd": str(self.repo), "transcript_path": "/x", "prompt": DEV}
+        return {**data, **extra}
+
+    def test_matching_main_model_proceeds_in_main_and_tells_the_user(self):
+        self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
+        proc = self.submit(payload=self.payload(model="GPT-6.1-Sol"))
+        out = json.loads(proc.stdout)
+        self.assertIn(
+            "Main already runs gpt-6.1-sol; no Subagent needed", out["hookSpecificOutput"]["additionalContext"]
+        )
+        self.assertIn(
+            "Main cannot change its own effort; routed effort is medium", out["hookSpecificOutput"]["additionalContext"]
+        )
+        self.assertIn("Main already runs this model; proceeding without a Subagent", out["systemMessage"])
+        self.assertIn("routed effort medium", out["systemMessage"])
+        self.assertIn("gpt-6.1-sol · effort medium", out["systemMessage"])
+
+    def test_main_model_failure_is_logged_and_falls_back_to_legacy_advice(self):
+        self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
+        data = self.payload(model="gpt-6.1-sol", hook_event_name="UserPromptSubmit")
+        env = self.env()
+        with patch.object(codex_hooks, "main_model", side_effect=RuntimeError("SECRET")):
+            out = codex_hooks.user_prompt_submit(data, env, PLUGIN)
+        self.assertIn("handle it directly when Main's model/effort already match", out)
+        errors = [e for e in self.log_events() if e["event"] == "error"]
+        self.assertEqual([(e["type"], e["code"]) for e in errors], [("RuntimeError", "MainModel_failed")])
+        self.assertNotIn("SECRET", json.dumps(errors))
+
+    def test_no_route_never_reads_the_main_model(self):
+        with patch.object(codex_hooks, "main_model") as read:
+            self.submit("What is the capital of France?")
+        read.assert_not_called()
+
+    def test_mismatch_notice_and_unknown_model_keep_the_plain_notice(self):
+        self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
+        for extra in ({"model": "gpt-6-luna"}, {}):
+            out = json.loads(self.submit(payload=self.payload(**extra)).stdout)
+            self.assertNotIn("Main already runs", out["systemMessage"])
+        legacy = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("handle it directly when Main's model/effort already match", legacy)
 
     def test_active_project_name_is_passed_to_the_router_from_hook_cwd(self):
         data = {
