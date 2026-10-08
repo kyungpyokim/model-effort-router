@@ -196,6 +196,7 @@ def main(argv=None, *, env=None, runner=None, out=None):
                 explicit=not getattr(args, "automatic", False),
                 role_override=args.role,
                 effort_override=args.effort,
+                repo_summary=os.path.basename(os.path.normpath(cwd)),
             )
     except WorkerInterrupted as exc:
         print(f"mer: {exc}", file=sys.stderr)

@@ -94,7 +94,8 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
         return None
     sid = data["session_id"]
     sdir = route_log.state_dir(env)
-    repo_cfg, user_cfg = load_configs(data.get("cwd") or os.getcwd(), env)
+    cwd = data.get("cwd") or os.getcwd()
+    repo_cfg, user_cfg = load_configs(cwd, env)
     registry = _registry(env)
     cfg = resolve_config(repo=repo_cfg, user=user_cfg, registry=registry)
     clamped = cfg.timeout_s > MAX_BACKEND_TIMEOUT_S
@@ -106,7 +107,8 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
     plan = None
     try:
         plan = route(
-            prompt, repo_config=repo_cfg, user_config=user_cfg, registry=registry, host=host.name, context=context
+            prompt, repo_config=repo_cfg, user_config=user_cfg, registry=registry, host=host.name, context=context,
+            repo_summary=os.path.basename(os.path.normpath(cwd))
         )
         latency_ms = (time.monotonic() - started) * 1000
     except Exception as exc:  # fail open, but leave a trace: a routing error must not look like a dropped prompt

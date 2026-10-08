@@ -1,10 +1,12 @@
 import json
 import unittest
+from unittest.mock import patch
 
 from model_effort_router.difficulty.subscription import GUARD_ENV
 from model_effort_router.context import summary
 from model_effort_router.context.transcripts import read_turns
 from model_effort_router.host import codex_hooks
+from model_effort_router.policy.router import RoutePlan
 from tests.fake_registry import FakeBackend
 from tests.hook_helpers import DEV, PLUGIN, SID, HookCase, run_script
 
@@ -32,6 +34,20 @@ class UserPromptSubmitTest(HookCase):
         self.assertIn("private reasoning", advice)
         self.assertIn("does not change this Main turn", advice)
         self.assertNotIn("L1", advice)
+
+    def test_active_project_name_is_passed_to_the_router_from_hook_cwd(self):
+        data = {"session_id": SID, "cwd": str(self.repo), "transcript_path": "/missing",
+                "prompt": "현재 진행 상황 파악"}
+        with patch("model_effort_router.host.codex_hooks.route", return_value=RoutePlan("no_route", "auto")) as routed:
+            codex_hooks.user_prompt_submit(data, self.env(), self.plugin)
+        self.assertEqual(routed.call_args.kwargs["repo_summary"], self.repo.name)
+
+    def test_empty_hook_cwd_falls_back_to_process_cwd(self):
+        data = {"session_id": SID, "cwd": "", "transcript_path": "/missing", "prompt": "현재 진행 상황 파악"}
+        with patch("model_effort_router.host.codex_hooks.os.getcwd", return_value="/tmp/active-project"), \
+             patch("model_effort_router.host.codex_hooks.route", return_value=RoutePlan("no_route", "auto")) as routed:
+            codex_hooks.user_prompt_submit(data, self.env(), self.plugin)
+        self.assertEqual(routed.call_args.kwargs["repo_summary"], "active-project")
 
     def test_risk_floor_only_raises_effort_for_protected_roles(self):
         self.fake = {"role": "review", "effort": "low"}

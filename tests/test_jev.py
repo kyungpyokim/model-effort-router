@@ -145,9 +145,23 @@ class JevContractTest(unittest.TestCase):
         self.assertEqual(got.target, "no_route")
         question = t.calls[0][2]["questions"]["target"]
         self.assertEqual((question["type"], set(question["criteria"])), ("choice", {"route", "no_route"}))
-        self.assertIn("approvals", question["criteria"]["no_route"])
+        self.assertIn("acknowledgement or approval without an executable proposal", question["criteria"]["no_route"])
         self.assertTrue(JevBackend.provides_target)
         self.assertEqual(set(jev.QUESTIONS), {"role", "effort"})
+
+    def test_target_contract_uses_requested_project_outcome_and_context(self):
+        target = jev.TARGET_QUESTION
+        route = target["criteria"]["route"].lower()
+        no_route = target["criteria"]["no_route"].lower()
+        self.assertIn("investigate", route)
+        self.assertIn("analyze", route)
+        self.assertIn("explain", route)
+        self.assertIn("active project", route)
+        self.assertIn("unrelated to software", no_route)
+        self.assertIn("requested outcome", target["instructions"].lower())
+        self.assertIn("metadata only supplies an omitted subject", target["instructions"].lower())
+        self.assertIn("executable proposal in session context", route)
+        self.assertIn("without an executable proposal in session context", no_route)
 
     def test_session_context_precedes_the_current_request_in_the_state(self):
         t = FakeTransport(response("fix", "low"))
@@ -159,6 +173,16 @@ class JevContractTest(unittest.TestCase):
                                    "\n\nCurrent request:\n진행\n\nRelevant paths:\na.py")
         self.assertEqual(without, "Task:\n진행\n\nRelevant paths:\n(none)")
 
+    def test_state_includes_repo_summary_without_workspace_path(self):
+        state = jev.state_text(DifficultyInput("현재 진행 상황 파악", repo_summary="model-effort-router-next"))
+        self.assertIn("Active project:\nmodel-effort-router-next", state)
+        self.assertNotIn("/Users/", state)
+
+    def test_state_bounds_repo_summary(self):
+        state = jev.state_text(DifficultyInput("task", repo_summary="x" * (jev.MAX_TASK_CHARS * 2)))
+        self.assertIn("Active project:\n" + "x" * jev.MAX_TASK_CHARS, state)
+        self.assertNotIn("x" * (jev.MAX_TASK_CHARS + 1), state)
+
     def test_instructions_tie_followups_to_the_proposed_plan(self):
         t = FakeTransport(response("fix", "low"))
         JevBackend(transport=t, env={"TYPESAFE_API_KEY": "k"}).classify(DifficultyInput("x", context="c"), 3)
@@ -168,13 +192,9 @@ class JevContractTest(unittest.TestCase):
             self.assertIn("current request", text, name)
             self.assertIn("session context", text, name)
         target = questions["target"]
-        self.assertIn("진행", target["criteria"]["route"])
+        self.assertIn("follow-up authorizing an executable proposal", target["criteria"]["route"])
         self.assertNotIn("진행", target["criteria"]["no_route"])
-        no_route = target["criteria"]["no_route"]
-        self.assertIn("승인", no_route)  # still an example, but only without a pending proposal
-        self.assertIn("no pending proposal or plan", no_route)
-        self.assertIn("nothing to execute", no_route)
-        self.assertIn("approvals", target["criteria"]["no_route"])
+        self.assertIn("without an executable proposal", target["criteria"]["no_route"])
 
     def test_missing_or_invalid_target_answer_is_a_backend_error(self):
         for answers in ({"role": {"choice": "fix"}, "effort": {"choice": "low"}},

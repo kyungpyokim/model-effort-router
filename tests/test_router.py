@@ -10,8 +10,10 @@ class FakeBackend:
     def __init__(self, role="implementation", effort="medium", error=None, target=None, name="fake", provides_target=False, usage=None):
         self.role,self.effort,self.error,self.target,self.name,self.provides_target=role,effort,error,target,name,provides_target
         self.calls, self.calls_model, self.last_usage = 0, usage is not None, usage
+        self.last_task = None
     def classify(self, task, timeout_s):
         self.calls += 1
+        self.last_task = task
         if self.error:
             raise self.error
         return DifficultyDecision(self.role, self.effort, self.name, target=self.target)
@@ -35,6 +37,12 @@ class RouteTest(unittest.TestCase):
     def test_targeting_includes_code_analysis_and_skips_chat(self):
         self.assertEqual(classify_target("Why does parser.py crash?"),ROUTE)
         self.assertEqual(classify_target("What is the capital of France?"),NO_ROUTE)
+
+    def test_repo_summary_is_propagated_to_the_classifier_input(self):
+        backend = FakeBackend(target="route", provides_target=True)
+        route("현재 진행 상황 파악", registry=registry(backend), repo_config={"difficulty": {"backend": "fake"}},
+              repo_summary="model-effort-router-next")
+        self.assertEqual(backend.last_task.repo_summary, "model-effort-router-next")
 
 
 KOREAN = "원인 파악해"
