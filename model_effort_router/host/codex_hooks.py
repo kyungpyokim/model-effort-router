@@ -61,7 +61,7 @@ def _context_output(event, text, notice=None):
 
 def _notice(plan):
     if plan.target == NO_ROUTE and plan.mode == "auto":
-        return "[model-effort-router] No route selected; continue in the main agent."
+        return advice.NO_ROUTE_MESSAGE
     return f"[model-effort-router] {plan.decision.role} → {plan.agent} · {advice.effort_pair(plan.model, plan.applied_effort)}"
 
 

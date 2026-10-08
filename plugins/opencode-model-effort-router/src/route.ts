@@ -80,7 +80,9 @@ async function runRoute(
     throw new Error("mer route returned an invalid result");
   const advice = result as Record<string, unknown>;
   if (advice.route === "no_route")
-    return advice.mode === "auto" ? advice : null;
+    return advice.mode === "auto" && typeof advice.message === "string"
+      ? advice
+      : null;
   if (
     !["role", "agent", "model", "effort"].every(
       (key) => typeof advice[key] === "string",

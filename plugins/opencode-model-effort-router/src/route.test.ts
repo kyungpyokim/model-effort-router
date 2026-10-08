@@ -98,6 +98,7 @@ describe("OpenCode plugin tool schema", () => {
       expect(JSON.parse(automatic.content ?? "{}")).toMatchObject({
         route: "no_route",
         mode: "auto",
+        message: expect.stringContaining("main agent"),
       });
       await expect(
         registered[0].execute(
@@ -193,6 +194,7 @@ describe("routeAdvice", () => {
           JSON.stringify({
             route: "no_route",
             mode: "auto",
+            message: "no-route guidance",
           }),
           "",
         );
@@ -201,6 +203,7 @@ describe("routeAdvice", () => {
     expect(advice).toEqual({
       route: "no_route",
       mode: "auto",
+      message: "no-route guidance",
     });
     for (const mode of ["off", "manual"]) {
       const silent = await automaticRouteAdvice(

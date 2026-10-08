@@ -148,7 +148,7 @@ class EffortAgentTest(unittest.TestCase):
     def test_advice_tells_main_agent_to_continue_on_no_route(self):
         decision = DifficultyDecision("fix", "low", "x", target="no_route")
         note = advice.render(RoutePlan(NO_ROUTE, "auto", decision), "mer", hosts.CLAUDE)
-        self.assertIn("continue in the main agent", note)
+        self.assertEqual(note, advice.NO_ROUTE_MESSAGE)
         note = advice.render(
             RoutePlan(ROUTE, "auto", decision, (), "m", None, "execution", "low", "low"), "mer", hosts.CODEX
         )
@@ -206,7 +206,7 @@ class HookTest(HookCase):
     def test_guard_and_host_messages_are_silent_but_no_route_guides_main_agent(self):
         self.assertEqual(self.submit_claude(MER_CLASSIFIER="1").stdout, "")
         no_route = json.loads(self.submit_claude("What is the capital of France?").stdout)
-        self.assertIn("continue in the main agent", no_route["systemMessage"])
+        self.assertEqual(no_route["systemMessage"], advice.NO_ROUTE_MESSAGE)
         self.assertEqual([e["target"] for e in self.all_log_events()], ["no_route"])
         self.assertEqual(self.submit_claude("<task-notification>fix parser.py</task-notification>").stdout, "")
         self.assertEqual(len(self.all_log_events()), 1)

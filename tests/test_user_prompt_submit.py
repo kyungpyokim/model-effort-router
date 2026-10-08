@@ -5,7 +5,7 @@ from unittest.mock import patch
 from model_effort_router.difficulty.subscription import GUARD_ENV
 from model_effort_router.context import summary
 from model_effort_router.context.transcripts import read_turns
-from model_effort_router.host import codex_hooks
+from model_effort_router.host import advice, codex_hooks
 from model_effort_router.policy.router import RoutePlan
 from tests.fake_registry import FakeBackend
 from tests.hook_helpers import DEV, PLUGIN, SID, HookCase, run_script
@@ -110,7 +110,7 @@ class UserPromptSubmitTest(HookCase):
     def test_regex_gated_no_route_advises_main_agent_and_logs_without_prompt_text(self):
         proc = self.submit("What is the capital of France? ZEBRA_PROMPT_MARKER")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("continue in the main agent", self.context(proc))
+        self.assertEqual(self.context(proc), advice.NO_ROUTE_MESSAGE)
         (event,) = self.log_events()
         self.assertEqual((event["event"], event["target"]), ("route", "no_route"))
         self.assertNotIn("decision", event)
@@ -131,7 +131,7 @@ class UserPromptSubmitTest(HookCase):
         }
         proc = self.submit("Fix the bug in parser.py")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("continue in the main agent", self.context(proc))
+        self.assertEqual(self.context(proc), advice.NO_ROUTE_MESSAGE)
         (event,) = self.log_events()
         self.assertEqual(
             (event["target"], event["decision"]["backend"], event["classifier_usage"]["input_tokens"]),
