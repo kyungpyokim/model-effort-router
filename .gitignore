@@ -1,5 +1,6 @@
 .omc/
 __pycache__/
+.coverage
 plugins/opencode-model-effort-router/node_modules/
 
 # Phase 0 spike: throwaway scripts, nested fixture repo, raw host evidence (contains full host prompts)
