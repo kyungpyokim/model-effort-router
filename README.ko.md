@@ -244,3 +244,8 @@ python3 scripts/install_core.py
 python3 scripts/install_core.py --check
 MER_CORE_PATH="$PWD" python3 -m unittest discover -s tests
 ```
+
+`pre-commit` CLI를 설치하고 `npm --prefix plugins/opencode-model-effort-router ci`를
+실행한 뒤 `git config core.hooksPath .githooks`로 저장소 훅을 활성화하십시오.
+Python 파일에는 Ruff를, TypeScript 파일에는 OpenCode
+패키지의 ESLint와 Prettier를 실행합니다.

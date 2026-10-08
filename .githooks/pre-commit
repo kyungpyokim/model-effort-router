@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+global_hooks="$(git config --global --path --get core.hooksPath || true)"
+if [ -n "$global_hooks" ] && [ -x "$global_hooks/pre-commit" ] && [ ! "$global_hooks/pre-commit" -ef "$0" ]; then
+  "$global_hooks/pre-commit" "$@"
+fi
+
+exec pre-commit run

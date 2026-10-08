@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+global_hooks="$(git config --global --path --get core.hooksPath || true)"
+if [ -n "$global_hooks" ] && [ -x "$global_hooks/pre-push" ] && [ ! "$global_hooks/pre-push" -ef "$0" ]; then
+  exec "$global_hooks/pre-push" "$@"
+fi
