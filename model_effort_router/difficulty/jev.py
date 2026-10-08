@@ -59,24 +59,24 @@ QUESTIONS = {
 }
 # Asked only by backends with `provides_target` (JevBackend); Nimble's target accuracy is unmeasured.
 TARGET_QUESTION = {"type": "choice", "instructions": (
-    "Does the current request ask for development work? Judge the requested work, not keywords. "
-    "Short follow-ups in any language (for example 'find the cause', 'change that value', 'fix it') "
-    "that ask for work on the code or project in progress count as route." + CONTEXT_RULE
+    "Which outcome does the current request ask for? Judge the requested outcome, not keywords. "
+    "Active-project metadata only supplies an omitted subject. An acknowledgement or approval is route only "
+    "when it authorizes an executable proposal in session context." + CONTEXT_RULE
 ), "criteria": {
-    "route": ("The message asks for development work on code or the project: implement, fix, test, lint, "
-              "plan, design, review, or analyze/explain code, behavior, tooling, config, or this project. "
-              "A message that approves or continues a plan proposed in the session context "
-              "(for example '진행', '응 만들어줘', '둘 다 반영') is route."),
-    "no_route": ("Chit-chat, or acknowledgements and approvals with nothing to execute (for example 'ok', '승인', "
-                 "'고마워') because the session context has no pending proposal or plan to act on, "
-                 "or requests unrelated to software development."),
+    "route": ("The user asks for an outcome in the active project or its work: investigate, analyze or explain "
+              "status or behavior, implement, fix, test, lint, plan, design, or review. A follow-up authorizing "
+              "an executable proposal in session context is route."),
+    "no_route": ("Chit-chat or an acknowledgement or approval without an executable proposal in session context, "
+                 "or a request "
+                 "explicitly unrelated to software development."),
 }}
 
 
 def state_text(task):
     paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
+    project = f"Active project:\n{task.repo_summary[:MAX_TASK_CHARS]}\n\n" if task.repo_summary else ""
     head = f"Session context:\n{task.context}\n\nCurrent request:\n" if task.context else "Task:\n"
-    return f"{head}{task.task[:MAX_TASK_CHARS]}\n\nRelevant paths:\n{paths}"
+    return f"{project}{head}{task.task[:MAX_TASK_CHARS]}\n\nRelevant paths:\n{paths}"
 
 
 class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
