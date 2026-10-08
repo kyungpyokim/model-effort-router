@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,10 +13,13 @@ PLUGIN = ROOT / "plugins" / "antigravity-model-effort-router"
 
 
 class AntigravityBundleTest(unittest.TestCase):
-    def test_native_manifest_validates(self):
+    def test_native_manifest_has_expected_fields(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text())
         self.assertEqual(set(manifest), {"$schema", "name", "description"})
         self.assertEqual(manifest["name"], "model-effort-router")
+
+    @unittest.skipUnless(shutil.which("agy"), "Antigravity CLI is not installed")
+    def test_native_manifest_validates(self):
         checked = subprocess.run(["agy", "plugin", "validate", str(PLUGIN)], capture_output=True, text=True, timeout=30)
         self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
 
