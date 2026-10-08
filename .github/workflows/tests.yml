@@ -12,7 +12,38 @@ jobs:
       MER_CORE_PATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: "3.9"
       - run: python -m unittest discover -s tests
+      - run: python -m pip install ruff==0.15.20
+      - run: ruff check .
+      - name: Check changed Python formatting
+        env:
+          DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          if [[ -z "$DIFF_BASE" || "$DIFF_BASE" =~ ^0+$ ]]; then
+            DIFF_BASE="origin/${GITHUB_BASE_REF:-main}"
+          fi
+          python_files=$(git diff --name-only --diff-filter=ACMR "$DIFF_BASE...HEAD" -- '*.py')
+          if [[ -n "$python_files" ]]; then
+            while IFS= read -r file; do
+              ruff format --check "$file"
+            done <<< "$python_files"
+          fi
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: plugins/opencode-model-effort-router/package-lock.json
+      - run: npm ci
+        working-directory: plugins/opencode-model-effort-router
+      - run: npm run typecheck
+        working-directory: plugins/opencode-model-effort-router
+      - run: npm run lint
+        working-directory: plugins/opencode-model-effort-router
+      - run: npx prettier --check src
+        working-directory: plugins/opencode-model-effort-router
