@@ -2,9 +2,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from model_effort_router.host import advice, hosts
-from model_effort_router.host.main_model import main_model, normalize
+from model_effort_router.host.main_model import main_model, normalize, save_session_model
 from model_effort_router.difficulty.decision import DifficultyDecision
 from model_effort_router.policy.router import RoutePlan
 from model_effort_router.policy.targeting import ROUTE
@@ -34,8 +35,9 @@ def row(kind, **fields):
     return json.dumps({"type": kind, **fields})
 
 
-def assistant(model, sidechain=False):
-    return row("assistant", isSidechain=sidechain, message={"model": model, "content": []})
+def assistant(model, sidechain=False, ts=None):
+    extra = {"timestamp": ts} if ts else {}
+    return row("assistant", isSidechain=sidechain, message={"model": model, "content": []}, **extra)
 
 
 def attachment(model_id):
@@ -92,6 +94,91 @@ class MainModelTest(unittest.TestCase):
         ]
         path = self.transcript(assistant("claude-opus-5-5"), *quoted)
         self.assertEqual(main_model({"transcript_path": path}, "claude"), "claude-opus-5-5")
+
+    def test_session_start_model_is_the_fallback_only_without_transcript_evidence(self):
+        sdir = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, sdir, True)
+        save_session_model(sdir, "s1", "Claude-Sonnet-5-5")
+        data = {"session_id": "s1", "transcript_path": "/nope"}
+        self.assertEqual(main_model(data, "claude", sdir), "claude-sonnet-5-5")
+        self.assertIsNone(main_model(data, "claude"))  # no state dir: nothing to read
+        self.assertIsNone(main_model({**data, "session_id": "other"}, "claude", sdir))
+        newer = self.transcript(assistant("claude-opus-5-5"))
+        self.assertEqual(main_model({**data, "transcript_path": newer}, "claude", sdir), "claude-opus-5-5")
+        switch = row("user", message={"content": "<local-command-stdout>Set model to `x`</local-command-stdout>"})
+        pending = self.transcript(switch)
+        self.assertIsNone(main_model({**data, "transcript_path": pending}, "claude", sdir))
+
+    def test_session_start_without_a_valid_model_clears_the_stored_one(self):
+        sdir = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, sdir, True)
+        data = {"session_id": "s1", "transcript_path": "/nope"}
+        save_session_model(sdir, "s1", "claude-sonnet-5-5")
+        for raw in (None, "", 5, "<synthetic>"):
+            save_session_model(sdir, "s1", "claude-sonnet-5-5")
+            save_session_model(sdir, "s1", raw)
+            self.assertIsNone(main_model(data, "claude", sdir), raw)
+
+    def test_a_switch_value_beats_transcript_evidence_that_is_not_newer(self):
+        sdir = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, sdir, True)
+        data = {"session_id": "s1", "transcript_path": "/nope"}
+        save_session_model(sdir, "s1", "claude-haiku-4-5-20251001", "switch")
+        self.assertEqual(main_model(data, "claude", sdir), "claude-haiku-4-5")  # row not on disk yet
+        stale = self.transcript(assistant("claude-opus-5-5"))
+        self.assertEqual(main_model({**data, "transcript_path": stale}, "claude", sdir), "claude-haiku-4-5")
+        switch = row("user", message={"content": "<local-command-stdout>Set model to `x`</local-command-stdout>"})
+        both = self.transcript(assistant("claude-opus-5-5"), switch)
+        self.assertEqual(main_model({**data, "transcript_path": both}, "claude", sdir), "claude-haiku-4-5")
+
+    def stored_at(self, sdir, epoch, model="claude-haiku-4-5", source="switch"):
+        with patch("model_effort_router.host.main_model.time.time", return_value=epoch):
+            save_session_model(sdir, "s1", model, source)
+
+    def test_a_reply_after_the_switch_lets_the_transcript_win(self):
+        sdir = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, sdir, True)
+        self.stored_at(sdir, 1_000_000)  # 1970-01-12T13:46:40Z
+        data = {"session_id": "s1"}
+        after = self.transcript(assistant("claude-opus-5-5", ts="1970-01-12T13:46:41.000Z"))
+        self.assertEqual(main_model({**data, "transcript_path": after}, "claude", sdir), "claude-opus-5-5")
+        before = self.transcript(assistant("claude-opus-5-5", ts="1970-01-12T13:46:39.000Z"))
+        self.assertEqual(main_model({**data, "transcript_path": before}, "claude", sdir), "claude-haiku-4-5")
+        for bad in ("garbage", "", None):
+            path = self.transcript(assistant("claude-opus-5-5", ts=bad))
+            self.assertEqual(main_model({**data, "transcript_path": path}, "claude", sdir), "claude-haiku-4-5")
+        late = row(
+            "user",
+            message={"content": "<local-command-stdout>Set model to `x`</local-command-stdout>"},
+            timestamp="1970-01-12T13:50:00.000Z",
+        )
+        path = self.transcript(assistant("claude-opus-5-5", ts="1970-01-12T13:46:39.000Z"), late)
+        self.assertEqual(main_model({**data, "transcript_path": path}, "claude", sdir), "claude-haiku-4-5")
+        # a reply after the switch also beats a later-written (delayed) switch row
+        path = self.transcript(assistant("claude-opus-5-5", ts="1970-01-12T13:46:41.000Z"), late)
+        self.assertIsNone(main_model({**data, "transcript_path": path}, "claude", sdir))
+
+    def test_a_start_value_ignores_timestamps(self):
+        sdir = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, sdir, True)
+        self.stored_at(sdir, 1_000_000, source="start")
+        path = self.transcript(assistant("claude-opus-5-5", ts="1970-01-12T13:46:39.000Z"))
+        self.assertEqual(main_model({"session_id": "s1", "transcript_path": path}, "claude", sdir), "claude-opus-5-5")
+
+    def test_unknown_source_invalidates_the_stored_value(self):
+        sdir = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, sdir, True)
+        data = {"session_id": "s1", "transcript_path": "/nope"}
+        for source in ("resume", "", None, 5):
+            self.stored_at(sdir, 1_000_000, source=source)
+            self.assertIsNone(main_model(data, "claude", sdir), source)
+
+    def test_an_invalid_switch_target_removes_the_stored_value(self):
+        sdir = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, sdir, True)
+        save_session_model(sdir, "s1", "claude-opus-5-5", "switch")
+        save_session_model(sdir, "s1", None, "switch")
+        self.assertIsNone(main_model({"session_id": "s1", "transcript_path": "/nope"}, "claude", sdir))
 
     def test_claude_unknown_when_missing_garbage_or_empty(self):
         self.assertIsNone(main_model({"transcript_path": "/nope"}, "claude"))

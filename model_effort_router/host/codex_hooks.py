@@ -16,7 +16,7 @@ from ..policy.config import resolve_config
 from ..policy.router import route
 from ..policy.targeting import NO_ROUTE
 from . import advice, hosts
-from .main_model import main_model
+from .main_model import main_model, save_session_model
 
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
 USER_CONFIG_ENV = "MER_USER_CONFIG"
@@ -71,7 +71,7 @@ def _notice(plan, same_model=None):
 
 def _main_model(data, host, env):
     try:
-        return main_model(data, host.name)
+        return main_model(data, host.name, route_log.state_dir(env))
     except Exception as exc:  # unknown Main model: legacy advice
         _log_error(env, data, exc, "MainModel")
         return None
@@ -188,7 +188,17 @@ def _log_error(env, data, exc, event):
         pass  # nothing left to do: fail open silently
 
 
-HANDLERS = {"UserPromptSubmit": user_prompt_submit}
+def session_start(data, env, plugin_root):
+    """Claude: remember the session's model for the first prompt, whose transcript does not exist yet. No output."""
+    save_session_model(route_log.state_dir(env), data["session_id"], data.get("model"))
+
+
+def post_model_switch(data, env, plugin_root):
+    """Claude: record the new Main model at switch time. Must print nothing: hook stdout becomes model context."""
+    save_session_model(route_log.state_dir(env), data["session_id"], data.get("to_model"), "switch")
+
+
+HANDLERS = {"UserPromptSubmit": user_prompt_submit, "SessionStart": session_start, "PostModelSwitch": post_model_switch}
 
 
 def main(event, plugin_root, stdin=None, stdout=None, env=None):

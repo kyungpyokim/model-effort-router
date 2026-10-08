@@ -49,13 +49,13 @@ def gate(host=None, *, runtime_api=1):
     return main()
 
 
-def hook(host, plugin_root, *, runtime_api=1):
+def hook(host, plugin_root, *, runtime_api=1, event="UserPromptSubmit"):
     try:
         _check_api(runtime_api)
         os.environ["MER_HOST"] = host
         from .host.codex_hooks import main
 
-        return main("UserPromptSubmit", plugin_root)
+        return main(event, plugin_root)
     except BaseException:  # hook failures must never block the user's prompt
         return 0
 
@@ -76,5 +76,5 @@ class ModelEffortRouter:
         return gate(cls.gate_host, runtime_api=cls.runtime_api)
 
     @classmethod
-    def run_hook(cls, plugin_root):
-        return hook(cls.host, plugin_root, runtime_api=cls.runtime_api)
+    def run_hook(cls, plugin_root, **kwargs):
+        return hook(cls.host, plugin_root, runtime_api=cls.runtime_api, **kwargs)
