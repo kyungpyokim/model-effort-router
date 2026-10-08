@@ -191,6 +191,41 @@ class HookTest(HookCase):
         self.assertNotIn("L1", note)
         self.assertEqual(settings.read_bytes(), original_settings)
 
+    def transcript_with(self, model):
+        path = self.root / "t.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "type": "attachment",
+                    "isSidechain": False,
+                    "attachment": {"type": "model", "identity": {"modelId": model}},
+                }
+            )
+            + "\n"
+        )
+        return str(path)
+
+    def submit_with_transcript(self, model):
+        data = {
+            "session_id": "s",
+            "cwd": str(self.repo),
+            "prompt": PROMPT,
+            "transcript_path": self.transcript_with(model),
+        }
+        return self.submit(payload=data, env_extra={"MER_HOST": "claude"})
+
+    def test_main_model_from_a_real_format_transcript_selects_the_advice(self):
+        match = json.loads(self.submit_with_transcript("claude-opus-5-5[1m]").stdout)
+        self.assertIn(
+            "Main already runs claude-opus-5-5; no Subagent needed", match["hookSpecificOutput"]["additionalContext"]
+        )
+        self.assertIn("proceeding without a Subagent", match["systemMessage"])
+        miss = json.loads(self.submit_with_transcript("claude-sonnet-5-5").stdout)
+        note = miss["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Main model claude-sonnet-5-5 ≠ routed claude-opus-5-5: spawn the Subagent", note)
+        self.assertIn("Agent(subagent_type=", note)
+        self.assertNotIn("proceeding without", miss["systemMessage"])
+
     def test_codex_hook_uses_codex_model_mapping_even_if_claude_env_is_set(self):
         proc = run_script(
             "hooks/user_prompt_submit.py",

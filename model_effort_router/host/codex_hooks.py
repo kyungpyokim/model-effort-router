@@ -16,6 +16,7 @@ from ..policy.config import resolve_config
 from ..policy.router import route
 from ..policy.targeting import NO_ROUTE
 from . import advice, hosts
+from .main_model import main_model
 
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
 USER_CONFIG_ENV = "MER_USER_CONFIG"
@@ -59,10 +60,21 @@ def _context_output(event, text, notice=None):
     return json.dumps(out)
 
 
-def _notice(plan):
+def _notice(plan, same_model=None):
     if plan.target == NO_ROUTE and plan.mode == "auto":
         return advice.NO_ROUTE_MESSAGE
-    return f"[model-effort-router] {plan.decision.role} → {plan.agent} · {advice.effort_pair(plan.model, plan.applied_effort)}"
+    line = f"[model-effort-router] {plan.decision.role} → {plan.agent} · {advice.effort_pair(plan.model, plan.applied_effort)}"
+    if not same_model:
+        return line
+    return f"{line} — Main already runs this model; proceeding without a Subagent (routed effort {plan.applied_effort}; Main cannot change its own)"
+
+
+def _main_model(data, host, env):
+    try:
+        return main_model(data, host.name)
+    except Exception as exc:  # unknown Main model: legacy advice
+        _log_error(env, data, exc, "MainModel")
+        return None
 
 
 def _with_timeout(repo_cfg, timeout_s):
@@ -140,8 +152,9 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
                 spawn(host.name, sid, data["transcript_path"], sdir, env)
             except Exception as exc:
                 _log_error(env, data, exc, "ContextRefresh")
-    text = advice.render(plan, f"python3 {Path(plugin_root) / 'bin' / 'mer'}", host)
-    out = _context_output("UserPromptSubmit", text, _notice(plan)) if text else None
+    main = _main_model(data, host, env) if plan.target != NO_ROUTE else None
+    text = advice.render(plan, f"python3 {Path(plugin_root) / 'bin' / 'mer'}", host, main)
+    out = _context_output("UserPromptSubmit", text, _notice(plan, advice.matches(plan, main))) if text else None
     if plan.mode != "off":  # routing turned off by the user: nothing to record
         _append(
             env,
