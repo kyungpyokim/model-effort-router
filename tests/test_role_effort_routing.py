@@ -531,7 +531,10 @@ class CliAndHookTests(unittest.TestCase):
         out = io.StringIO()
         with patch("model_effort_router.cli.route", return_value=RoutePlan(NO_ROUTE, "auto", decision)):
             status = main(["route", "--automatic", "--json", "승인"], env={"HOME": "/nonexistent"}, out=out)
-        self.assertEqual((status, json.loads(out.getvalue())), (0, {"route": "no_route"}))
+        self.assertEqual(
+            (status, json.loads(out.getvalue())),
+            (0, {"route": "no_route", "mode": "auto"}),
+        )
 
     def test_chat_is_migration_error_and_does_not_start_a_session(self):
         self.assertEqual(main(["chat", "old flow"], env={}, out=io.StringIO()), 2)

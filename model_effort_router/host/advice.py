@@ -34,8 +34,10 @@ def _claude_invocation(plan):
 
 
 def render(plan, mer_cmd, host):
+    if plan.target == NO_ROUTE:
+        return "[model-effort-router] No route selected; continue in the main agent." if plan.mode == "auto" else None
     decision = plan.decision
-    if not decision or plan.target == NO_ROUTE:
+    if not decision:
         return None
     is_review = decision.role == "review"
     packet = (

@@ -2,6 +2,8 @@ import { Plugin } from "@opencode/plugin";
 import { automaticRouteAdvice, routeAdvice } from "./route";
 
 function appendAdvice(text: string, advice: Record<string, unknown>) {
+  if (advice.route === "no_route")
+    return `${text}\n\n[model-effort-router] No route selected; continue in the main agent.`;
   const models = Array.isArray(advice.model_options)
     ? advice.model_options.filter(
         (model): model is string => typeof model === "string",
@@ -29,6 +31,8 @@ function appendAdvice(text: string, advice: Record<string, unknown>) {
 }
 
 function routingBanner(advice: Record<string, unknown>) {
+  if (advice.route === "no_route")
+    return "[model-effort-router] No route selected; continue in the main agent.";
   return (
     `[model-effort-router] ${String(advice.role)} → ${String(advice.agent)}` +
     ` · ${String(advice.model)} · effort ${String(advice.effort)}`

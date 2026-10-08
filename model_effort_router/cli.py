@@ -212,7 +212,10 @@ def main(argv=None, *, env=None, runner=None, out=None):
         return 2
     if plan.decision is None or plan.target == NO_ROUTE:
         if args.command == "route" and args.automatic:
-            print(json.dumps({"route": "no_route"}) if args.json else "", file=out)
+            print(
+                json.dumps({"route": "no_route", "mode": plan.mode}) if args.json else "",
+                file=out,
+            )
             return 0
         print(
             "mer: routing is off or manual; provide an explicit --role and --effort",

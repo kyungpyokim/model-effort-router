@@ -95,7 +95,10 @@ describe("OpenCode plugin tool schema", () => {
         { task: "What is the capital of France?" },
         { sessionID: "test" },
       );
-      expect(automatic.content).toBe("null");
+      expect(JSON.parse(automatic.content ?? "{}")).toMatchObject({
+        route: "no_route",
+        mode: "auto",
+      });
       await expect(
         registered[0].execute(
           { task: "Review auth", mode: "explicit", role: "review" },
@@ -177,6 +180,39 @@ describe("routeAdvice", () => {
       "Fix auth and payment boundaries",
     ]);
     expect(advice?.effort).toBe("high");
+  });
+
+  it("preserves automatic no-route results but keeps off/manual silent", async () => {
+    const advice = await automaticRouteAdvice(
+      "What is the capital of France?",
+      "/work",
+      "/mer",
+      fakeExec((_info, callback) => {
+        callback(
+          null,
+          JSON.stringify({
+            route: "no_route",
+            mode: "auto",
+          }),
+          "",
+        );
+      }),
+    );
+    expect(advice).toEqual({
+      route: "no_route",
+      mode: "auto",
+    });
+    for (const mode of ["off", "manual"]) {
+      const silent = await automaticRouteAdvice(
+        "Fix the bug in parser.py",
+        "/work",
+        "/mer",
+        fakeExec((_info, callback) => {
+          callback(null, JSON.stringify({ route: "no_route", mode }), "");
+        }),
+      );
+      expect(silent).toBeNull();
+    }
   });
 
   it("surfaces subprocess failures and malformed output", async () => {
