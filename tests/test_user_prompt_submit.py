@@ -5,7 +5,7 @@ from unittest.mock import patch
 from model_effort_router.difficulty.subscription import GUARD_ENV
 from model_effort_router.context import summary
 from model_effort_router.context.transcripts import read_turns
-from model_effort_router.host import codex_hooks
+from model_effort_router.host import advice, codex_hooks
 from model_effort_router.policy.router import RoutePlan
 from tests.fake_registry import FakeBackend
 from tests.hook_helpers import DEV, PLUGIN, SID, HookCase, run_script
@@ -107,9 +107,10 @@ class UserPromptSubmitTest(HookCase):
             self.assertEqual((proc.returncode, proc.stdout), (0, ""), prompt)
         self.assertEqual(self.log_events(), [])
 
-    def test_regex_gated_prompt_is_silent_but_logged_without_prompt_text(self):
+    def test_regex_gated_no_route_advises_main_agent_and_logs_without_prompt_text(self):
         proc = self.submit("What is the capital of France? ZEBRA_PROMPT_MARKER")
-        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.context(proc), advice.NO_ROUTE_MESSAGE)
         (event,) = self.log_events()
         self.assertEqual((event["event"], event["target"]), ("route", "no_route"))
         self.assertNotIn("decision", event)
@@ -121,7 +122,7 @@ class UserPromptSubmitTest(HookCase):
         self.assertIn("analysis →", advice)
         self.assertEqual(self.log_events()[0]["target"], "route")
 
-    def test_backend_no_route_is_silent_and_logged_with_decision(self):
+    def test_backend_no_route_advises_main_agent_and_logs_decision(self):
         self.fake = {
             "role": "analysis",
             "effort": "low",
@@ -129,7 +130,8 @@ class UserPromptSubmitTest(HookCase):
             "usage": {"input_tokens": 3, "output_tokens": 1},
         }
         proc = self.submit("Fix the bug in parser.py")
-        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.context(proc), advice.NO_ROUTE_MESSAGE)
         (event,) = self.log_events()
         self.assertEqual(
             (event["target"], event["decision"]["backend"], event["classifier_usage"]["input_tokens"]),

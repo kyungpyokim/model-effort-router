@@ -16,6 +16,7 @@ from model_effort_router.difficulty.chain import ClassificationError, classify_w
 from model_effort_router.difficulty.decision import DifficultyDecision, ROLES
 from model_effort_router.flow import ModelUnavailableBeforeExecution, WorkerFallbackError, run_worker
 from model_effort_router.host import hosts
+from model_effort_router.host.advice import NO_ROUTE_MESSAGE
 from model_effort_router.host.codex_hooks import main as hook_main
 from model_effort_router.policy.config import resolve_config
 from model_effort_router.policy.overrides import parse_override
@@ -531,7 +532,17 @@ class CliAndHookTests(unittest.TestCase):
         out = io.StringIO()
         with patch("model_effort_router.cli.route", return_value=RoutePlan(NO_ROUTE, "auto", decision)):
             status = main(["route", "--automatic", "--json", "승인"], env={"HOME": "/nonexistent"}, out=out)
-        self.assertEqual((status, json.loads(out.getvalue())), (0, {"route": "no_route"}))
+        self.assertEqual(
+            (status, json.loads(out.getvalue())),
+            (
+                0,
+                {
+                    "route": "no_route",
+                    "mode": "auto",
+                    "message": NO_ROUTE_MESSAGE,
+                },
+            ),
+        )
 
     def test_chat_is_migration_error_and_does_not_start_a_session(self):
         self.assertEqual(main(["chat", "old flow"], env={}, out=io.StringIO()), 2)

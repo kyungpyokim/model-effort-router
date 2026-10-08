@@ -18,7 +18,7 @@ from .difficulty.decision import merge_risk_flags
 from .difficulty.risk import detect_risk_flags
 from .flow import WorkerInterrupted, run_low_first, run_worker
 from .host import hosts
-from .host.advice import effort_pair
+from .host.advice import NO_ROUTE_MESSAGE, effort_pair
 from .host.codex_hooks import _registry, load_configs
 from .logging import route_log
 from .policy.overrides import parse_override
@@ -212,7 +212,13 @@ def main(argv=None, *, env=None, runner=None, out=None):
         return 2
     if plan.decision is None or plan.target == NO_ROUTE:
         if args.command == "route" and args.automatic:
-            print(json.dumps({"route": "no_route"}) if args.json else "", file=out)
+            response = {"route": "no_route", "mode": plan.mode}
+            if plan.mode == "auto":
+                response["message"] = NO_ROUTE_MESSAGE
+            print(
+                json.dumps(response) if args.json else "",
+                file=out,
+            )
             return 0
         print(
             "mer: routing is off or manual; provide an explicit --role and --effort",

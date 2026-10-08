@@ -14,6 +14,7 @@ from ..difficulty.subscription import GUARD_ENV, SubscriptionBackend, codex_veri
 from ..logging import route_log
 from ..policy.config import resolve_config
 from ..policy.router import route
+from ..policy.targeting import NO_ROUTE
 from . import advice, hosts
 
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
@@ -59,6 +60,8 @@ def _context_output(event, text, notice=None):
 
 
 def _notice(plan):
+    if plan.target == NO_ROUTE and plan.mode == "auto":
+        return advice.NO_ROUTE_MESSAGE
     return f"[model-effort-router] {plan.decision.role} → {plan.agent} · {advice.effort_pair(plan.model, plan.applied_effort)}"
 
 

@@ -4,6 +4,7 @@ import re
 
 from ..policy.targeting import NO_ROUTE
 
+NO_ROUTE_MESSAGE = "[model-effort-router] No route selected; continue in the main agent."
 _CLAUDE_ALIAS = re.compile(
     r"^(?:claude-)?(sonnet|opus|haiku|fable)(?:-|$)"
 )  # the Agent call's model parameter takes aliases only
@@ -34,8 +35,10 @@ def _claude_invocation(plan):
 
 
 def render(plan, mer_cmd, host):
+    if plan.target == NO_ROUTE:
+        return NO_ROUTE_MESSAGE if plan.mode == "auto" else None
     decision = plan.decision
-    if not decision or plan.target == NO_ROUTE:
+    if not decision:
         return None
     is_review = decision.role == "review"
     packet = (
