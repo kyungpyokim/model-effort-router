@@ -348,6 +348,14 @@ class CliAndHookTests(unittest.TestCase):
         self.assertEqual((payload["role"], payload["agent"], payload["effort"]), ("test", "execution", "medium"))
         self.assertEqual(main(["route", "--role", "test", "Run tests"], env={"HOME": "/nonexistent"}, out=io.StringIO()), 2)
 
+    def test_cli_passes_active_project_name_from_cwd_to_the_router(self):
+        with tempfile.TemporaryDirectory(prefix="router-project-") as cwd:
+            with patch("model_effort_router.cli.route", return_value=RoutePlan(NO_ROUTE, "auto")) as routed:
+                status = main(["route", "--automatic", "--json", "--cwd", cwd, "현재 진행 상황 파악"],
+                              env={"HOME": "/nonexistent"}, out=io.StringIO())
+        self.assertEqual(status, 0)
+        self.assertEqual(routed.call_args.kwargs["repo_summary"], pathlib.Path(cwd).name)
+
     def test_hook_is_fail_open_on_classifier_failure_and_advisory_only(self):
         out = io.StringIO()
         env = {"MER_USER_CONFIG": "/nonexistent", "HOME": "/nonexistent"}
