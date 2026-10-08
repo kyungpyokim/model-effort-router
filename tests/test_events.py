@@ -9,8 +9,7 @@ class EventsTests(unittest.TestCase):
         self.assertEqual(list(iter_events(text)), [{"type": "a"}, {"type": "b"}])
 
     def test_preserves_empty_and_nested_objects(self):
-        self.assertEqual(list(iter_events('{}\n{"item":{"text":"hello"}}\n')),
-                         [{}, {"item": {"text": "hello"}}])
+        self.assertEqual(list(iter_events('{}\n{"item":{"text":"hello"}}\n')), [{}, {"item": {"text": "hello"}}])
 
     def test_empty_stream(self):
         self.assertEqual(list(iter_events("")), [])

@@ -9,11 +9,23 @@ from evaluation import baseline
 
 
 def rec(case="c1", mode="baseline", total=1000, gate="passed", review=None, fix=0, req=True, wall=60.0):
-    return {"case_id": case, "mode": mode, "gate_overall": gate, "review_verdict": review, "fix_rounds": fix,
-            "requirements_met": req, "wall_s": wall,
-            "usage": {"orchestrator": {"input": total, "cached_input": 0, "output": 0, "reasoning_output": 0},
-                      "classifier": None, "stages": {}, "total": total,
-                      "subagent_rollouts": 0, "stages_without_usage": []}}
+    return {
+        "case_id": case,
+        "mode": mode,
+        "gate_overall": gate,
+        "review_verdict": review,
+        "fix_rounds": fix,
+        "requirements_met": req,
+        "wall_s": wall,
+        "usage": {
+            "orchestrator": {"input": total, "cached_input": 0, "output": 0, "reasoning_output": 0},
+            "classifier": None,
+            "stages": {},
+            "total": total,
+            "subagent_rollouts": 0,
+            "stages_without_usage": [],
+        },
+    }
 
 
 def router(case="c1", active=True, children=2, missing=(), findings=1, **kw):
@@ -47,7 +59,9 @@ class ValidateRecordTest(unittest.TestCase):
 
     def test_unknown_review_verdict_is_valid_and_counts_as_not_approved(self):
         self.assertEqual(baseline.validate_record(router(review="unknown"))["review_verdict"], "unknown")
-        self.assertEqual(baseline.compare_pair(rec(review="approved"), router(review="unknown"))["quality"], "regressed")
+        self.assertEqual(
+            baseline.compare_pair(rec(review="approved"), router(review="unknown"))["quality"], "regressed"
+        )
 
     def test_run_defaults_to_one_and_must_be_a_positive_int(self):
         self.assertEqual(baseline.validate_record(rec())["run"], 1)
@@ -78,13 +92,16 @@ class ComparePairTest(unittest.TestCase):
         self.assertEqual(baseline.compare_pair(rec(), router(review="changes_requested"))["quality"], "preserved")
 
     def test_unknown_when_no_shared_signal(self):
-        self.assertEqual(baseline.compare_pair(rec(gate=None, req=None), router(gate=None, req=None))["quality"],
-                         "unknown")
+        self.assertEqual(
+            baseline.compare_pair(rec(gate=None, req=None), router(gate=None, req=None))["quality"], "unknown"
+        )
 
 
 class ReportTest(unittest.TestCase):
     def test_auto_allowed_when_quality_kept_and_usage_cut(self):
-        rep = baseline.report([rec("a", total=1000), router("a", total=800), rec("b", total=500), router("b", total=400)])
+        rep = baseline.report(
+            [rec("a", total=1000), router("a", total=800), rec("b", total=500), router("b", total=400)]
+        )
         self.assertEqual(rep["decision"]["verdict"], "auto_allowed")
         self.assertEqual(rep["aggregate"]["usage"], {"baseline": 1500, "router": 1200, "delta": -300})
         self.assertEqual(rep["aggregate"]["quality"], {"preserved": 2, "improved": 0, "regressed": 0, "unknown": 0})
@@ -98,14 +115,16 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(rep["decision"]["verdict"], "do_not_default_to_auto")
 
     def test_insufficient_without_manual_requirements_flag_or_pairs(self):
-        self.assertEqual(baseline.report([rec("a", req=None), router("a", total=1)])["decision"]["verdict"],
-                         "insufficient_data")
+        self.assertEqual(
+            baseline.report([rec("a", req=None), router("a", total=1)])["decision"]["verdict"], "insufficient_data"
+        )
         self.assertEqual(baseline.report([])["decision"]["verdict"], "insufficient_data")
         self.assertEqual(baseline.report([rec("a")])["aggregate"]["unpaired"], ["a"])
 
     def test_inactive_router_pair_is_excluded_so_it_cannot_pass_as_a_second_baseline(self):
-        rep = baseline.report([rec("a", total=1000), router("a", total=1, active=False),
-                               rec("b", total=1000), router("b", total=800)])
+        rep = baseline.report(
+            [rec("a", total=1000), router("a", total=1, active=False), rec("b", total=1000), router("b", total=800)]
+        )
         self.assertEqual(rep["aggregate"]["pairs"], 1)
         self.assertEqual(rep["aggregate"]["excluded"], [{"case_id": "a", "reason": "router_inactive"}])
         self.assertEqual(rep["decision"]["verdict"], "insufficient_data")
@@ -121,14 +140,16 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(rep["decision"]["verdict"], "insufficient_data")
 
     def test_never_auto_allowed_when_anything_was_excluded(self):
-        rep = baseline.report([rec("a", total=1000), router("a", total=100),
-                               rec("b", total=1000), router("b", total=1, active=False)])
+        rep = baseline.report(
+            [rec("a", total=1000), router("a", total=100), rec("b", total=1000), router("b", total=1, active=False)]
+        )
         self.assertEqual(rep["decision"]["verdict"], "insufficient_data")
         self.assertIn("router_inactive", rep["decision"]["reason"])
 
     def test_excluded_does_not_hide_a_real_regression(self):
-        rep = baseline.report([rec("a", total=1000), router("a", total=100, gate="failed"),
-                               rec("b"), router("b", active=False)])
+        rep = baseline.report(
+            [rec("a", total=1000), router("a", total=100, gate="failed"), rec("b"), router("b", active=False)]
+        )
         self.assertEqual(rep["decision"]["verdict"], "do_not_default_to_auto")
 
     def test_insufficient_when_every_router_run_inactive(self):
@@ -177,22 +198,36 @@ class ReportTest(unittest.TestCase):
 
 class RepeatTest(unittest.TestCase):
     def runs(self):
-        return [{**rec("a", total=1000), "run": 1}, {**router("a", total=900), "run": 1},
-                {**rec("a", total=2000), "run": 2}, {**router("a", total=1000), "run": 2},
-                rec("b", total=500), router("b", total=400)]  # no run field = run 1
+        return [
+            {**rec("a", total=1000), "run": 1},
+            {**router("a", total=900), "run": 1},
+            {**rec("a", total=2000), "run": 2},
+            {**router("a", total=1000), "run": 2},
+            rec("b", total=500),
+            router("b", total=400),
+        ]  # no run field = run 1
 
     def test_pairs_by_case_and_run_with_per_case_means_and_totals(self):
         rep = baseline.report(self.runs())
         self.assertEqual([(p["case_id"], p["run"]) for p in rep["per_case"]], [("a", 1), ("a", 2), ("b", 1)])
         self.assertEqual(rep["aggregate"]["usage"], {"baseline": 3500, "router": 2300, "delta": -1200})
         a = rep["per_case_mean"][0]
-        self.assertEqual((a["case_id"], a["runs"], a["baseline_mean"], a["router_mean"], a["usage_delta_mean"]),
-                         ("a", 2, 1500, 950, -550))
+        self.assertEqual(
+            (a["case_id"], a["runs"], a["baseline_mean"], a["router_mean"], a["usage_delta_mean"]),
+            ("a", 2, 1500, 950, -550),
+        )
         self.assertIn("Per-case means", baseline.to_markdown(rep))
 
     def test_run_two_without_partner_is_unpaired_and_exclusions_name_the_run(self):
-        rep = baseline.report([rec("a"), router("a"), {**rec("a"), "run": 2}, {**router("a", active=False), "run": 3},
-                               {**rec("a"), "run": 3}])
+        rep = baseline.report(
+            [
+                rec("a"),
+                router("a"),
+                {**rec("a"), "run": 2},
+                {**router("a", active=False), "run": 3},
+                {**rec("a"), "run": 3},
+            ]
+        )
         self.assertEqual(rep["aggregate"]["unpaired"], ["a#r2"])
         self.assertEqual(rep["aggregate"]["excluded"], [{"case_id": "a", "run": 3, "reason": "router_inactive"}])
 
@@ -222,7 +257,10 @@ class MarkRunTest(unittest.TestCase):
 
     def test_mark_with_run_touches_only_that_run(self):
         self.assertEqual(self.cli("mark", str(self.path), "a", "baseline", "no", "--run", "2"), 0)
-        got = {(r["mode"], r.get("run", 1)): r["requirements_met"] for r in map(json.loads, self.path.read_text().splitlines())}
+        got = {
+            (r["mode"], r.get("run", 1)): r["requirements_met"]
+            for r in map(json.loads, self.path.read_text().splitlines())
+        }
         self.assertEqual(got, {("baseline", 1): None, ("baseline", 2): False, ("router", 1): None})
         self.assertEqual(self.cli("mark", str(self.path), "a", "baseline", "no", "--run", "9"), 1)
 

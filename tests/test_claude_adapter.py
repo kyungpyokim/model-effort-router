@@ -7,16 +7,24 @@ from model_effort_router.profiles.profiles import Profile
 
 class ResolveTest(unittest.TestCase):
     def test_default_tiers_and_efforts(self):
-        for tier, model in (("economy", "claude-sonnet-5-5"), ("balanced", "claude-sonnet-5-5"), ("frontier", "claude-opus-5-5")):
+        for tier, model in (
+            ("economy", "claude-sonnet-5-5"),
+            ("balanced", "claude-sonnet-5-5"),
+            ("frontier", "claude-opus-5-5"),
+        ):
             for effort, host in (("medium", "medium"), ("high", "high"), ("xhigh", "high"), ("max", "max")):
                 r = resolve(Profile(tier, effort))
                 self.assertEqual((r.tier, r.model, r.requested_effort, r.applied_effort), (tier, model, host, host))
 
     def test_same_resolved_shape_as_codex(self):
         from dataclasses import fields
+
         def names(r):
             return [f.name for f in fields(r)]
-        self.assertEqual(names(resolve(Profile("economy", "medium"))), names(codex_resolve(Profile("economy", "medium"))))
+
+        self.assertEqual(
+            names(resolve(Profile("economy", "medium"))), names(codex_resolve(Profile("economy", "medium")))
+        )
 
     def test_model_without_supported_efforts_omits_the_effort(self):
         cfg = ClaudeConfig(tiers={"economy": HAIKU, "balanced": "claude-sonnet-5-5", "frontier": "claude-opus-5-5"})
@@ -24,8 +32,10 @@ class ResolveTest(unittest.TestCase):
         self.assertEqual((r.model, r.requested_effort, r.applied_effort), (HAIKU, "high", None))
 
     def test_nearest_higher_supported_effort_else_highest(self):
-        cfg = ClaudeConfig(model_efforts={"claude-sonnet-5-5": ("high", "max"), "claude-opus-5-5": ("low",), HAIKU: ()},
-                           efforts={"medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"})
+        cfg = ClaudeConfig(
+            model_efforts={"claude-sonnet-5-5": ("high", "max"), "claude-opus-5-5": ("low",), HAIKU: ()},
+            efforts={"medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"},
+        )
         self.assertEqual(resolve(Profile("balanced", "medium"), cfg).applied_effort, "high")
         self.assertEqual(resolve(Profile("frontier", "xhigh"), cfg).applied_effort, "low")
         self.assertEqual(resolve(Profile("balanced", "xhigh"), cfg).applied_effort, "max")

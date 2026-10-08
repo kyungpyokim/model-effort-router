@@ -71,15 +71,19 @@ class CoreInstallTest(unittest.TestCase):
         self.assertTrue((self.source / "entrypoints.py").exists())
 
     def test_runtime_path_uses_absolute_override_or_xdg_default(self):
-        self.assertEqual(install_core.runtime_path({"HOME": str(self.root)}),
-                         self.root / ".local/share/model-effort-router/runtime")
+        self.assertEqual(
+            install_core.runtime_path({"HOME": str(self.root)}), self.root / ".local/share/model-effort-router/runtime"
+        )
         self.assertEqual(install_core.runtime_path({"MER_CORE_PATH": str(self.runtime)}), self.runtime)
-        self.assertEqual(install_core.runtime_path({"XDG_DATA_HOME": str(self.root)}),
-                         self.root / "model-effort-router/runtime")
+        self.assertEqual(
+            install_core.runtime_path({"XDG_DATA_HOME": str(self.root)}), self.root / "model-effort-router/runtime"
+        )
         with self.assertRaises(ValueError):
             install_core.runtime_path({"MER_CORE_PATH": "relative"})
-        self.assertEqual(install_core.runtime_path({"HOME": str(self.root), "XDG_DATA_HOME": "relative"}),
-                         self.root / ".local/share/model-effort-router/runtime")
+        self.assertEqual(
+            install_core.runtime_path({"HOME": str(self.root), "XDG_DATA_HOME": "relative"}),
+            self.root / ".local/share/model-effort-router/runtime",
+        )
 
     def test_installer_cli_installs_and_checks_in_temporary_home(self):
         with patch.dict(os.environ, {"MER_CORE_PATH": str(self.runtime)}), redirect_stdout(io.StringIO()):

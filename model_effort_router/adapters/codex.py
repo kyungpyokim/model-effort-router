@@ -18,9 +18,7 @@ _MODEL_EFFORTS = MappingProxyType(
     }
 )
 # Default tier models -- to confirm at install time (spec 12).
-_TIERS = MappingProxyType(
-    {"economy": "gpt-6-luna", "balanced": "gpt-6-luna", "frontier": "gpt-6.1-sol"}
-)
+_TIERS = MappingProxyType({"economy": "gpt-6-luna", "balanced": "gpt-6-luna", "frontier": "gpt-6.1-sol"})
 _EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"})
 
 
@@ -28,9 +26,7 @@ _EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "xhigh
 class CodexConfig:
     tiers: Mapping[str, str] = field(default_factory=lambda: _TIERS)
     efforts: Mapping[str, str] = field(default_factory=lambda: _EFFORTS)
-    model_efforts: Mapping[str, Tuple[str, ...]] = field(
-        default_factory=lambda: _MODEL_EFFORTS
-    )
+    model_efforts: Mapping[str, Tuple[str, ...]] = field(default_factory=lambda: _MODEL_EFFORTS)
 
     def __post_init__(self):
         if set(self.tiers) != set(TIERS):
@@ -39,22 +35,16 @@ class CodexConfig:
             raise ValueError(f"efforts must define exactly {EFFORTS}")
         for abstract, host in self.efforts.items():
             if host not in EFFORT_ORDER:
-                raise ValueError(
-                    f"efforts[{abstract!r}]={host!r} is not one of {EFFORT_ORDER}"
-                )
+                raise ValueError(f"efforts[{abstract!r}]={host!r} is not one of {EFFORT_ORDER}")
         for model, supported in self.model_efforts.items():
             if not isinstance(supported, (tuple, list)) or not supported:
-                raise ValueError(
-                    f"model {model!r}: supported efforts must be a non-empty list"
-                )
+                raise ValueError(f"model {model!r}: supported efforts must be a non-empty list")
             unknown = [e for e in supported if e not in EFFORT_ORDER]
             if unknown:
                 raise ValueError(f"model {model!r}: unknown efforts {unknown}")
         for tier, model in self.tiers.items():
             if model not in self.model_efforts:
-                raise ValueError(
-                    f"tier {tier!r} uses model {model!r} with no supported-effort data"
-                )
+                raise ValueError(f"tier {tier!r} uses model {model!r} with no supported-effort data")
 
 
 def resolve(profile: Profile, config: CodexConfig = CodexConfig()) -> ResolvedProfile:

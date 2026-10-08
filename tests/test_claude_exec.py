@@ -13,47 +13,99 @@ from model_effort_router.profiles.profiles import Profile
 
 _TMP = tempfile.TemporaryDirectory()
 
+
 def setUpModule():
     os.environ["CLAUDE_CONFIG_DIR"] = _TMP.name
+
 
 def tearDownModule():
     os.environ.pop("CLAUDE_CONFIG_DIR", None)
     _TMP.cleanup()
 
+
 P = Profile("frontier", "high")
 FULL = ClaudeConfig(context="full")
 LEAN_FLAGS = ["--strict-mcp-config"]
 
+
 def result(sid="S1", text="done", i=10, created=20, read=300, o=5, **over):
-    body = {"type": "result", "subtype": "success", "is_error": False, "session_id": sid, "result": text,
-            "usage": {"input_tokens": i, "cache_creation_input_tokens": created, "cache_read_input_tokens": read,
-                      "output_tokens": o}, "total_cost_usd": 0.01}
+    body = {
+        "type": "result",
+        "subtype": "success",
+        "is_error": False,
+        "session_id": sid,
+        "result": text,
+        "usage": {
+            "input_tokens": i,
+            "cache_creation_input_tokens": created,
+            "cache_read_input_tokens": read,
+            "output_tokens": o,
+        },
+        "total_cost_usd": 0.01,
+    }
     body.update(over)
     return json.dumps(body)
+
 
 class ArgvTest(unittest.TestCase):
     def test_implement_argv(self):
         argv = cx.session_argv(P, "do it", "workspace-write", FULL)
-        self.assertEqual(argv, ["claude", "-p", "--output-format", "json", "--model", "claude-opus-5-5", "--effort", "high",
-                                "--permission-mode", "auto", "--", "do it"])
+        self.assertEqual(
+            argv,
+            [
+                "claude",
+                "-p",
+                "--output-format",
+                "json",
+                "--model",
+                "claude-opus-5-5",
+                "--effort",
+                "high",
+                "--permission-mode",
+                "auto",
+                "--",
+                "do it",
+            ],
+        )
 
     def test_subagent_mapping(self):
-        self.assertEqual(cx.session_argv(P, "p", "workspace-write", FULL, subagents=0)[-4:-1], ["--disallowedTools", "Agent", "--"])
+        self.assertEqual(
+            cx.session_argv(P, "p", "workspace-write", FULL, subagents=0)[-4:-1], ["--disallowedTools", "Agent", "--"]
+        )
         for n in (None, 1, 3):  # no hard cap exists: allowed stays allowed, the prompt hint carries the limit
             self.assertNotIn("--disallowedTools", cx.session_argv(P, "p", "workspace-write", subagents=n))
             self.assertNotIn("--disallowedTools", cx.resume_argv(P, "S", "p", subagents=n))
 
     def test_resume_argv_adds_resume_before_the_prompt(self):
         argv = cx.resume_argv(Profile("balanced", "high"), "S1", "fix it", FULL, subagents=0)
-        self.assertEqual(argv[:8], ["claude", "-p", "--output-format", "json", "--model", "claude-sonnet-5-5", "--effort", "high"])
-        self.assertEqual(argv[8:], ["--permission-mode", "auto", "--disallowedTools", "Agent", "--resume", "S1", "--", "fix it"])
+        self.assertEqual(
+            argv[:8], ["claude", "-p", "--output-format", "json", "--model", "claude-sonnet-5-5", "--effort", "high"]
+        )
+        self.assertEqual(
+            argv[8:], ["--permission-mode", "auto", "--disallowedTools", "Agent", "--resume", "S1", "--", "fix it"]
+        )
 
     def test_read_only_review_argv_always_denies_agent(self):
         for n in (None, 0, 1):
             argv = cx.session_argv(P, "review", "read-only", FULL, subagents=n)
-            self.assertEqual(argv[8:], ["--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--allowedTools",
-                                        "Read,Grep,Glob", "--disallowedTools", "Agent", "--strict-mcp-config",
-                                        "--setting-sources", "user", "--", "review"])
+            self.assertEqual(
+                argv[8:],
+                [
+                    "--permission-mode",
+                    "dontAsk",
+                    "--tools",
+                    "Read,Grep,Glob",
+                    "--allowedTools",
+                    "Read,Grep,Glob",
+                    "--disallowedTools",
+                    "Agent",
+                    "--strict-mcp-config",
+                    "--setting-sources",
+                    "user",
+                    "--",
+                    "review",
+                ],
+            )
 
     def test_read_only_sessions_restrict_the_tool_set_itself_and_isolate_settings(self):
         argv = cx.session_argv(P, "p", "read-only", FULL)
@@ -63,22 +115,52 @@ class ArgvTest(unittest.TestCase):
         self.assertEqual(argv[argv.index("--setting-sources") + 1], "user")  # no project/local permissions or hooks
         for tool in ("Edit", "Write", "Bash"):
             self.assertNotIn(tool, " ".join(argv[:-2]))
-        self.assertNotIn("--tools", cx.session_argv(P, "p", "workspace-write", FULL))  # implement keeps the full tool set
+        self.assertNotIn(
+            "--tools", cx.session_argv(P, "p", "workspace-write", FULL)
+        )  # implement keeps the full tool set
 
     def test_lean_is_the_default_and_adds_the_context_flags_to_every_session(self):
         self.assertEqual(ClaudeConfig().context, "lean")
         impl = cx.session_argv(P, "do it", "workspace-write", subagents=0)
-        self.assertEqual(impl[8:], ["--permission-mode", "auto", "--disallowedTools", "Agent", *LEAN_FLAGS, "--", "do it"])
+        self.assertEqual(
+            impl[8:], ["--permission-mode", "auto", "--disallowedTools", "Agent", *LEAN_FLAGS, "--", "do it"]
+        )
         res = cx.resume_argv(P, "S1", "fix", subagents=0)
-        self.assertEqual(res[8:], ["--permission-mode", "auto", "--disallowedTools", "Agent", *LEAN_FLAGS, "--resume", "S1", "--", "fix"])
+        self.assertEqual(
+            res[8:],
+            ["--permission-mode", "auto", "--disallowedTools", "Agent", *LEAN_FLAGS, "--resume", "S1", "--", "fix"],
+        )
         ro = cx.session_argv(P, "r", "read-only")
-        self.assertEqual(ro[8:], ["--permission-mode", "dontAsk", "--tools", "Read,Grep,Glob", "--allowedTools", "Read,Grep,Glob",
-                                  "--disallowedTools", "Agent", "--strict-mcp-config", "--setting-sources", "user", "--settings",
-                                  '{"disableAllHooks": true}', "--", "r"])
+        self.assertEqual(
+            ro[8:],
+            [
+                "--permission-mode",
+                "dontAsk",
+                "--tools",
+                "Read,Grep,Glob",
+                "--allowedTools",
+                "Read,Grep,Glob",
+                "--disallowedTools",
+                "Agent",
+                "--strict-mcp-config",
+                "--setting-sources",
+                "user",
+                "--settings",
+                '{"disableAllHooks": true}',
+                "--",
+                "r",
+            ],
+        )
 
     def test_lean_never_uses_safe_mode_bare_or_setting_sources_for_implement(self):
-        for argv in (cx.session_argv(P, "p", "workspace-write"), cx.resume_argv(P, "S", "p"), cx.session_argv(P, "p", "read-only")):
-            self.assertFalse([a for a in argv if a in ("--safe-mode", "--bare")])  # they would drop CLAUDE.md / need an API key
+        for argv in (
+            cx.session_argv(P, "p", "workspace-write"),
+            cx.resume_argv(P, "S", "p"),
+            cx.session_argv(P, "p", "read-only"),
+        ):
+            self.assertFalse(
+                [a for a in argv if a in ("--safe-mode", "--bare")]
+            )  # they would drop CLAUDE.md / need an API key
             self.assertIn("--strict-mcp-config", argv)
         for argv in (cx.session_argv(P, "p", "workspace-write"), cx.resume_argv(P, "S", "p")):
             self.assertNotIn("--setting-sources", argv)  # all sources load: ~/.claude/rules and user settings survive
@@ -90,48 +172,81 @@ class ArgvTest(unittest.TestCase):
             self.assertEqual(sources, ["user"])
             self.assertFalse({"project", "local"} & set(sources))
         lean = cx.session_argv(P, "p", "read-only")
-        self.assertEqual(lean[lean.index("--settings") + 1], '{"disableAllHooks": true}')  # a reviewed change cannot run hooks
+        self.assertEqual(
+            lean[lean.index("--settings") + 1], '{"disableAllHooks": true}'
+        )  # a reviewed change cannot run hooks
         self.assertNotIn("--settings", cx.session_argv(P, "p", "read-only", FULL))  # full: exactly the old argv
 
     def test_lean_implement_switches_enabled_plugins_off_via_settings(self):
         cfg = ClaudeConfig(plugins_off=lambda: {"superpowers@m": False, "caveman@m": False})
         for argv in (cx.session_argv(P, "p", "workspace-write", cfg), cx.resume_argv(P, "S", "p", cfg)):
-            self.assertEqual(json.loads(argv[argv.index("--settings") + 1]), {"enabledPlugins": {"superpowers@m": False, "caveman@m": False}})
+            self.assertEqual(
+                json.loads(argv[argv.index("--settings") + 1]),
+                {"enabledPlugins": {"superpowers@m": False, "caveman@m": False}},
+            )
             self.assertLess(argv.index("--settings"), argv.index("--"))
             self.assertIn("--strict-mcp-config", argv)
-        self.assertNotIn("--settings", cx.session_argv(P, "p", "workspace-write", ClaudeConfig(plugins_off=lambda: {})))  # none enabled
-        self.assertNotIn("--settings", cx.session_argv(P, "p", "workspace-write", ClaudeConfig(context="full", plugins_off=lambda: {"x": False})))
+        self.assertNotIn(
+            "--settings", cx.session_argv(P, "p", "workspace-write", ClaudeConfig(plugins_off=lambda: {}))
+        )  # none enabled
+        self.assertNotIn(
+            "--settings",
+            cx.session_argv(P, "p", "workspace-write", ClaudeConfig(context="full", plugins_off=lambda: {"x": False})),
+        )
 
     def test_plugins_off_reads_user_project_and_local_settings_and_never_crashes(self):
-        files = {"/u/settings.json": json.dumps({"enabledPlugins": {"a@m": True, "b@m": False, "c@m": "yes"}, "hooks": {}}),
-                 "/w/.claude/settings.json": json.dumps({"enabledPlugins": {"d@m": True}}),
-                 "/w/.claude/settings.local.json": json.dumps({"enabledPlugins": {"a@m": True, "e@m": True}})}
+        files = {
+            "/u/settings.json": json.dumps({"enabledPlugins": {"a@m": True, "b@m": False, "c@m": "yes"}, "hooks": {}}),
+            "/w/.claude/settings.json": json.dumps({"enabledPlugins": {"d@m": True}}),
+            "/w/.claude/settings.local.json": json.dumps({"enabledPlugins": {"a@m": True, "e@m": True}}),
+        }
 
         def read(path):
             return files[path]  # KeyError for anything unlisted
 
         with unittest.mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": "/u"}):
-            self.assertEqual(cx.plugins_off("/w", lambda p: files.get(p) or (_ for _ in ()).throw(OSError(p))),
-                             {"a@m": False, "d@m": False, "e@m": False})  # only value true counts, deduplicated
+            self.assertEqual(
+                cx.plugins_off("/w", lambda p: files.get(p) or (_ for _ in ()).throw(OSError(p))),
+                {"a@m": False, "d@m": False, "e@m": False},
+            )  # only value true counts, deduplicated
             self.assertEqual(cx.plugins_off(None, lambda p: files[p]), {"a@m": False})  # no cwd: user settings only
+
             def boom(p):
                 raise OSError("nope")
-            for bad in (boom, lambda p: "{not json", lambda p: "[]", lambda p: "null", lambda p: json.dumps({"enabledPlugins": "x"}),
-                        lambda p: json.dumps({"enabledPlugins": ["a"]}), lambda p: json.dumps({})):
+
+            for bad in (
+                boom,
+                lambda p: "{not json",
+                lambda p: "[]",
+                lambda p: "null",
+                lambda p: json.dumps({"enabledPlugins": "x"}),
+                lambda p: json.dumps({"enabledPlugins": ["a"]}),
+                lambda p: json.dumps({}),
+            ):
                 self.assertEqual(cx.plugins_off("/w", bad), {})
+
             def partial(p):
                 return files[p] if p == "/w/.claude/settings.json" else (_ for _ in ()).throw(OSError(p))
-            self.assertEqual(cx.plugins_off("/w", partial), {"d@m": False})  # one bad/missing file does not hide the others
+
+            self.assertEqual(
+                cx.plugins_off("/w", partial), {"d@m": False}
+            )  # one bad/missing file does not hide the others
 
     def test_plugins_off_default_reader_uses_claude_config_dir_and_real_files(self):
-        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as w, unittest.mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": d}):
+        with (
+            tempfile.TemporaryDirectory() as d,
+            tempfile.TemporaryDirectory() as w,
+            unittest.mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": d}),
+        ):
             pathlib = __import__("pathlib")
             pathlib.Path(d, "settings.json").write_text('{"enabledPlugins": {"x@m": true}}')
             pathlib.Path(w, ".claude").mkdir()
             pathlib.Path(w, ".claude", "settings.local.json").write_text('{"enabledPlugins": {"y@m": true}}')
             self.assertEqual(cx.plugins_off(w), {"x@m": False, "y@m": False})
             argv = cx.session_argv(P, "p", "workspace-write", ClaudeConfig(plugins_off=lambda: cx.plugins_off(w)))
-            self.assertEqual(json.loads(argv[argv.index("--settings") + 1]), {"enabledPlugins": {"x@m": False, "y@m": False}})
+            self.assertEqual(
+                json.loads(argv[argv.index("--settings") + 1]), {"enabledPlugins": {"x@m": False, "y@m": False}}
+            )
 
     def test_settings_default_reader_closes_file(self):
         with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": d}):
@@ -155,14 +270,20 @@ class ArgvTest(unittest.TestCase):
         for argv in (cx.session_argv(P, "p", "workspace-write", FULL), cx.resume_argv(P, "S", "p", FULL)):
             self.assertNotIn("--setting-sources", argv)
             self.assertNotIn("--strict-mcp-config", argv)
-        self.assertEqual(cx.session_argv(P, "p", "read-only", FULL)[-5:-2], ["--strict-mcp-config", "--setting-sources", "user"])
+        self.assertEqual(
+            cx.session_argv(P, "p", "read-only", FULL)[-5:-2], ["--strict-mcp-config", "--setting-sources", "user"]
+        )
 
     def test_context_validated(self):
         with self.assertRaises(ValueError):
             ClaudeConfig(context="all")
 
     def test_no_safety_bypass_anywhere(self):
-        for argv in (cx.session_argv(P, "p", "workspace-write"), cx.session_argv(P, "p", "read-only"), cx.resume_argv(P, "S", "p")):
+        for argv in (
+            cx.session_argv(P, "p", "workspace-write"),
+            cx.session_argv(P, "p", "read-only"),
+            cx.resume_argv(P, "S", "p"),
+        ):
             self.assertFalse([a for a in argv if "bypass" in a.lower() or "dangerously" in a.lower()])
 
     def test_model_without_effort_support_gets_no_effort_flag(self):
@@ -207,13 +328,21 @@ class ParseTest(unittest.TestCase):
 
     def test_malformed_or_unknown_shapes_raise_value_errors(self):
         good = json.loads(result())
-        bad = ["", "not json", "[]", "null", json.dumps({**good, "type": "assistant"}),
-               json.dumps({k: v for k, v in good.items() if k != "session_id"}),
-               json.dumps({**good, "session_id": ""}), json.dumps({**good, "result": None}),
-               json.dumps({**good, "usage": "x"}), json.dumps({k: v for k, v in good.items() if k != "is_error"}),
-               json.dumps({**good, "usage": {**good["usage"], "output_tokens": "5"}}),
-               json.dumps({**good, "usage": {**good["usage"], "output_tokens": -1}}),
-               json.dumps({**good, "usage": {**good["usage"], "input_tokens": True}})]
+        bad = [
+            "",
+            "not json",
+            "[]",
+            "null",
+            json.dumps({**good, "type": "assistant"}),
+            json.dumps({k: v for k, v in good.items() if k != "session_id"}),
+            json.dumps({**good, "session_id": ""}),
+            json.dumps({**good, "result": None}),
+            json.dumps({**good, "usage": "x"}),
+            json.dumps({k: v for k, v in good.items() if k != "is_error"}),
+            json.dumps({**good, "usage": {**good["usage"], "output_tokens": "5"}}),
+            json.dumps({**good, "usage": {**good["usage"], "output_tokens": -1}}),
+            json.dumps({**good, "usage": {**good["usage"], "input_tokens": True}}),
+        ]
         for text in bad:
             with self.subTest(text=text[:40]), self.assertRaises(ValueError):
                 cx.parse_stream(text)
@@ -225,7 +354,6 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(t.delta("S", u), u)  # a resume reports its own usage again, not a running total
         self.assertIsNone(t.delta("S", None))
         self.assertIsNot(t.delta("S", u), u)
-
 
 
 class ResolvedModelArgvTest(unittest.TestCase):
@@ -248,9 +376,11 @@ class ClassifierTest(unittest.TestCase):
 
     def classify(self, host=None, env=None):
         seen = {}
+
         def runner(cmd, *, stdin, env, timeout_s, cwd, input_text=None):
             seen.update(cmd=cmd, env=env, cwd=cwd, input_text=input_text)
             return result(text=self.ANSWER, i=400, created=0, read=100, o=30)
+
         backend = SubscriptionBackend(runner=runner, host=host)
         with mock.patch.dict(os.environ, env or {}, clear=False):
             decision = backend.classify(DifficultyInput("Review the auth diff"), 10)
@@ -271,16 +401,20 @@ class ClassifierTest(unittest.TestCase):
 
     def test_claude_usage_is_normalized_to_shared_keys(self):
         backend, _, _ = self.classify(host="claude")
-        self.assertEqual(backend.last_usage, {"input_tokens": 500, "cached_input_tokens": 100, "output_tokens": 30,
-                                             "reasoning_output_tokens": 0})
+        self.assertEqual(
+            backend.last_usage,
+            {"input_tokens": 500, "cached_input_tokens": 100, "output_tokens": 30, "reasoning_output_tokens": 0},
+        )
 
     def test_host_is_explicit_and_not_inferred_inside_backend(self):
         stream = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": self.ANSWER}})
         for host, command in ((None, "codex"), ("codex", "codex"), ("claude", "claude")):
             seen = {}
+
             def runner(cmd, **kwargs):
                 seen["cmd"] = cmd
                 return result(text=self.ANSWER) if cmd[0] == "claude" else stream
+
             with self.subTest(host=host), mock.patch.dict(os.environ, {"MER_HOST": "claude"}):
                 SubscriptionBackend(runner=runner, host=host).classify(DifficultyInput("x"), 5)
             self.assertEqual(seen["cmd"][0], command)

@@ -1,4 +1,5 @@
 """Strict first-line `/router` controls, including an explicit single-phase role/effort."""
+
 from dataclasses import dataclass
 
 from ..difficulty.decision import EFFORTS, ROLES

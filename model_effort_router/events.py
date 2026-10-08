@@ -1,4 +1,5 @@
 """JSONL event iteration shared by host execution and evaluation."""
+
 import json
 
 

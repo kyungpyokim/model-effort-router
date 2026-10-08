@@ -13,13 +13,18 @@ VERIFIED on real Codex 0.159.2 rollouts (see _token_count_total):
 Also verified from spike evidence: exec stream `turn.completed.usage`, rollout `session_meta.payload`
 (`session_id` = root thread, `thread_source`, `agent_path`, `parent_thread_id`).
 """
+
 import json
 from pathlib import Path
 
 from model_effort_router.events import iter_events as _events
 
-KEYS = {"input_tokens": "input", "cached_input_tokens": "cached_input",
-        "output_tokens": "output", "reasoning_output_tokens": "reasoning_output"}
+KEYS = {
+    "input_tokens": "input",
+    "cached_input_tokens": "cached_input",
+    "output_tokens": "output",
+    "reasoning_output_tokens": "reasoning_output",
+}
 STAGE_PREFIX = "mer_"
 
 
@@ -77,14 +82,18 @@ def read_rollout(path):
         counted = _token_count_total(ev)
         if counted is not None:
             last = counted
-    return {"id": meta.get("id"), "session_id": meta.get("session_id"),
-            "thread_source": meta.get("thread_source"), "agent_path": meta.get("agent_path"),
-            "usage": normalize(last) if last is not None else None}  # None = no token_count seen
+    return {
+        "id": meta.get("id"),
+        "session_id": meta.get("session_id"),
+        "thread_source": meta.get("thread_source"),
+        "agent_path": meta.get("agent_path"),
+        "usage": normalize(last) if last is not None else None,
+    }  # None = no token_count seen
 
 
 def stage_of(agent_path):
     name = str(agent_path or "").rsplit("/", 1)[-1].lower().replace("-", "_")
-    return name[len(STAGE_PREFIX):] if name.startswith(STAGE_PREFIX) else "other"
+    return name[len(STAGE_PREFIX) :] if name.startswith(STAGE_PREFIX) else "other"
 
 
 def _first_session_id(path):
@@ -136,7 +145,16 @@ def aggregate(exec_text, rollout_paths, classifier=None, extra_main=None):
             stages[stage] = add(stages.get(stage, normalize(None)), r["usage"])
         elif exec_text is None and r["usage"] is not None:
             main = add(main, r["usage"])
-    total = total_tokens(main) + sum(total_tokens(s) for s in stages.values()) + \
-        (total_tokens(classifier) if classifier else 0)
-    return {"orchestrator": main, "classifier": classifier, "stages": stages, "total": total,
-            "subagent_rollouts": children, "stages_without_usage": missing}
+    total = (
+        total_tokens(main)
+        + sum(total_tokens(s) for s in stages.values())
+        + (total_tokens(classifier) if classifier else 0)
+    )
+    return {
+        "orchestrator": main,
+        "classifier": classifier,
+        "stages": stages,
+        "total": total,
+        "subagent_rollouts": children,
+        "stages_without_usage": missing,
+    }

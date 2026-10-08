@@ -1,6 +1,7 @@
 """Host transcript file -> ordered (role, text) turns. User and assistant text only: tool calls and results, reasoning,
 attachments and host-injected messages never reach a classifier or summarizer. Tolerates malformed lines and refuses
 anything that is not a plain regular file (symlink, FIFO, directory)."""
+
 import json
 import os
 import re
@@ -13,11 +14,18 @@ Turn = namedtuple("Turn", "role text")
 HARNESS_MESSAGE = re.compile(
     r"\s*(?:Another Claude session sent a message:\s*)?(?:\[SYSTEM NOTIFICATION[^\]]*\]\s*)?"
     r"<(?:agent-message|cross-session-message|task-notification|bash-input|bash-stdout|bash-stderr"
-    r"|local-command-stdout|local-command-caveat|command-name)\b")
-SYSTEM_REMINDER = re.compile(r"<system-reminder>.*?(?:</system-reminder>|\Z)", re.DOTALL)  # anywhere in the text, even unclosed
-CODEX_INJECTED = re.compile(r"\s*(?:# AGENTS\.md instructions\b|<[a-z]+(?:_[a-z]+)+[ >])")  # instructions, <environment_context>, ...
+    r"|local-command-stdout|local-command-caveat|command-name)\b"
+)
+SYSTEM_REMINDER = re.compile(
+    r"<system-reminder>.*?(?:</system-reminder>|\Z)", re.DOTALL
+)  # anywhere in the text, even unclosed
+CODEX_INJECTED = re.compile(
+    r"\s*(?:# AGENTS\.md instructions\b|<[a-z]+(?:_[a-z]+)+[ >])"
+)  # instructions, <environment_context>, ...
 MAX_TURN_CHARS = 4000
-MAX_READ_BYTES = 16 * 1024 * 1024  # ponytail: a larger file is read from its tail, so turn counts drift; page by offset if that bites
+MAX_READ_BYTES = (
+    16 * 1024 * 1024
+)  # ponytail: a larger file is read from its tail, so turn counts drift; page by offset if that bites
 
 
 def clip(text, limit):
@@ -25,20 +33,28 @@ def clip(text, limit):
     if len(text) <= limit:
         return text
     head = limit * 3 // 4
-    return text[:head] + "…" + text[len(text) - (limit - head - 1):]
+    return text[:head] + "…" + text[len(text) - (limit - head - 1) :]
 
 
 def _texts(content, kinds):
     if isinstance(content, str):
         return [content]
     if isinstance(content, list):
-        return [b["text"] for b in content if isinstance(b, dict) and b.get("type") in kinds and isinstance(b.get("text"), str)]
+        return [
+            b["text"]
+            for b in content
+            if isinstance(b, dict) and b.get("type") in kinds and isinstance(b.get("text"), str)
+        ]
     return []
 
 
 def _turn(role, texts, injected=None):
     if role == "user":
-        texts = [SYSTEM_REMINDER.sub("", t) for t in texts if not HARNESS_MESSAGE.match(t) and not (injected and injected.match(t))]
+        texts = [
+            SYSTEM_REMINDER.sub("", t)
+            for t in texts
+            if not HARNESS_MESSAGE.match(t) and not (injected and injected.match(t))
+        ]
     text = "\n".join(t for t in texts if t.strip()).strip()
     return Turn(role, clip(text, MAX_TURN_CHARS)) if text else None
 
@@ -46,7 +62,12 @@ def _turn(role, texts, injected=None):
 def _claude(row):
     role = row.get("type")
     message = row.get("message")
-    if role not in ("user", "assistant") or row.get("isMeta") or row.get("isSidechain") or not isinstance(message, dict):
+    if (
+        role not in ("user", "assistant")
+        or row.get("isMeta")
+        or row.get("isSidechain")
+        or not isinstance(message, dict)
+    ):
         return None
     if row.get("isCompactSummary"):  # the host's own compaction summary: context, not something the user said
         role = "assistant"

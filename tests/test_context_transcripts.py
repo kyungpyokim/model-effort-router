@@ -13,22 +13,30 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "transcripts"
 class ReadTurnsTest(unittest.TestCase):
     def test_claude_keeps_only_user_and_assistant_text(self):
         got = read_turns(str(FIXTURES / "claude-session.jsonl"), "claude")
-        self.assertEqual(got, (
-            Turn("user", "Add a retry option to the fetch helper."),
-            Turn("assistant", "Plan: add a retries parameter, then update the two callers."),
-            Turn("user", "Please also add a --timeout flag.\n\nThanks."),  # a reminder-only user turn is dropped entirely
-            Turn("user", "응 만들어줘"),
-            Turn("assistant", "Earlier work: the fetch helper was refactored."),
-            Turn("assistant", "Done. Added retries."),
-        ))
+        self.assertEqual(
+            got,
+            (
+                Turn("user", "Add a retry option to the fetch helper."),
+                Turn("assistant", "Plan: add a retries parameter, then update the two callers."),
+                Turn(
+                    "user", "Please also add a --timeout flag.\n\nThanks."
+                ),  # a reminder-only user turn is dropped entirely
+                Turn("user", "응 만들어줘"),
+                Turn("assistant", "Earlier work: the fetch helper was refactored."),
+                Turn("assistant", "Done. Added retries."),
+            ),
+        )
 
     def test_codex_keeps_only_real_user_and_assistant_messages(self):
         got = read_turns(str(FIXTURES / "codex-rollout.jsonl"), "codex")
-        self.assertEqual(got, (
-            Turn("user", "Fix the flaky parser test."),
-            Turn("assistant", "Proposal: seed the RNG, then rerun the suite."),
-            Turn("user", "진행"),
-        ))
+        self.assertEqual(
+            got,
+            (
+                Turn("user", "Fix the flaky parser test."),
+                Turn("assistant", "Proposal: seed the RNG, then rerun the suite."),
+                Turn("user", "진행"),
+            ),
+        )
 
     def test_tool_output_never_appears(self):
         for name, host in (("claude-session.jsonl", "claude"), ("codex-rollout.jsonl", "codex")):

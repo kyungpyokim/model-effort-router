@@ -18,8 +18,7 @@ QUESTIONS = [
         "type": "choice",
         "instructions": question["instructions"],
         "choices": [
-            {"value": value, "description": description}
-            for value, description in question["criteria"].items()
+            {"value": value, "description": description} for value, description in question["criteria"].items()
         ],
     }
     for name, question in SYSTEMONE_QUESTIONS.items()
@@ -92,6 +91,4 @@ class OpenAIDecisionsBackend:
         except (ValueError, KeyError, TypeError, AttributeError) as exc:
             if isinstance(exc, BackendOutputError):
                 raise
-            raise BackendOutputError(
-                f"{self.name} response missing role/effort answers"
-            ) from exc
+            raise BackendOutputError(f"{self.name} response missing role/effort answers") from exc

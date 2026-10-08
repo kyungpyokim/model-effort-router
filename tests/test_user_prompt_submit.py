@@ -36,16 +36,22 @@ class UserPromptSubmitTest(HookCase):
         self.assertNotIn("L1", advice)
 
     def test_active_project_name_is_passed_to_the_router_from_hook_cwd(self):
-        data = {"session_id": SID, "cwd": str(self.repo), "transcript_path": "/missing",
-                "prompt": "현재 진행 상황 파악"}
+        data = {
+            "session_id": SID,
+            "cwd": str(self.repo),
+            "transcript_path": "/missing",
+            "prompt": "현재 진행 상황 파악",
+        }
         with patch("model_effort_router.host.codex_hooks.route", return_value=RoutePlan("no_route", "auto")) as routed:
             codex_hooks.user_prompt_submit(data, self.env(), self.plugin)
         self.assertEqual(routed.call_args.kwargs["repo_summary"], self.repo.name)
 
     def test_empty_hook_cwd_falls_back_to_process_cwd(self):
         data = {"session_id": SID, "cwd": "", "transcript_path": "/missing", "prompt": "현재 진행 상황 파악"}
-        with patch("model_effort_router.host.codex_hooks.os.getcwd", return_value="/tmp/active-project"), \
-             patch("model_effort_router.host.codex_hooks.route", return_value=RoutePlan("no_route", "auto")) as routed:
+        with (
+            patch("model_effort_router.host.codex_hooks.os.getcwd", return_value="/tmp/active-project"),
+            patch("model_effort_router.host.codex_hooks.route", return_value=RoutePlan("no_route", "auto")) as routed,
+        ):
             codex_hooks.user_prompt_submit(data, self.env(), self.plugin)
         self.assertEqual(routed.call_args.kwargs["repo_summary"], "active-project")
 

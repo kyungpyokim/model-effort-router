@@ -20,16 +20,58 @@ TURNS = read_turns(CLAUDE, "claude")
 
 
 def claude_result(text):
-    return json.dumps({"type": "result", "is_error": False, "session_id": "x", "result": text,
-                       "usage": {"input_tokens": 11, "cache_read_input_tokens": 5, "output_tokens": 7}})
+    return json.dumps(
+        {
+            "type": "result",
+            "is_error": False,
+            "session_id": "x",
+            "result": text,
+            "usage": {"input_tokens": 11, "cache_read_input_tokens": 5, "output_tokens": 7},
+        }
+    )
 
 
-CODEX_LOCKED = ['--disable', 'shell_tool', '--disable', 'unified_exec', '--disable', 'view_image', '--disable', 'browser_use', '--disable', 'browser_use_external', '--disable', 'in_app_browser', '--disable', 'computer_use', '--disable', 'image_generation', '--disable', 'multi_agent', '--disable', 'apps', '--disable', 'plugins', '--disable', 'skill_search', '--disable', 'tool_suggest', '--disable', 'sleep_tool', '-c', 'web_search="disabled"']  # the flags verified on Codex 0.160.1, written out so a drift in the constant is caught
+CODEX_LOCKED = [
+    "--disable",
+    "shell_tool",
+    "--disable",
+    "unified_exec",
+    "--disable",
+    "view_image",
+    "--disable",
+    "browser_use",
+    "--disable",
+    "browser_use_external",
+    "--disable",
+    "in_app_browser",
+    "--disable",
+    "computer_use",
+    "--disable",
+    "image_generation",
+    "--disable",
+    "multi_agent",
+    "--disable",
+    "apps",
+    "--disable",
+    "plugins",
+    "--disable",
+    "skill_search",
+    "--disable",
+    "tool_suggest",
+    "--disable",
+    "sleep_tool",
+    "-c",
+    'web_search="disabled"',
+]  # the flags verified on Codex 0.160.1, written out so a drift in the constant is caught
 
 
 def codex_stream(text, usage=None):
-    return (json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": text}}) + "\n"
-            + json.dumps({"type": "turn.completed", "usage": usage or {"input_tokens": 1, "output_tokens": 1}}) + "\n")
+    return (
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": text}})
+        + "\n"
+        + json.dumps({"type": "turn.completed", "usage": usage or {"input_tokens": 1, "output_tokens": 1}})
+        + "\n"
+    )
 
 
 class FakeRunner:
@@ -37,7 +79,9 @@ class FakeRunner:
         self.stdout, self.error, self.calls = stdout, error, []
 
     def __call__(self, cmd, *, stdin, env, timeout_s, cwd, **kw):
-        self.calls.append({"cmd": cmd, "env": env, "timeout_s": timeout_s, "cwd": cwd, "cwd_files": os.listdir(cwd), **kw})
+        self.calls.append(
+            {"cmd": cmd, "env": env, "timeout_s": timeout_s, "cwd": cwd, "cwd_files": os.listdir(cwd), **kw}
+        )
         if self.error:
             raise self.error
         return self.stdout
@@ -51,8 +95,16 @@ class RefreshTest(unittest.TestCase):
         self.env = {"PATH": os.environ.get("PATH", "")}
 
     def run_refresh(self, host, path, runner, sid="s1", min_chars=1, version="0.160.1"):
-        self.assertEqual(refresh.main([host, sid, path, self.sdir], runner=runner, env=self.env, min_chars=min_chars,
-                                      version_probe=lambda: version), 0)
+        self.assertEqual(
+            refresh.main(
+                [host, sid, path, self.sdir],
+                runner=runner,
+                env=self.env,
+                min_chars=min_chars,
+                version_probe=lambda: version,
+            ),
+            0,
+        )
 
     def log_events(self, sid="s1"):
         p = route_log.log_path(self.sdir, sid)
@@ -84,15 +136,28 @@ class RefreshTest(unittest.TestCase):
         runner = FakeRunner(claude_result("S"))
         self.run_refresh("claude", CLAUDE, runner)
         prompt = runner.calls[0]["input_text"].lower()
-        for word in ("goals", "decisions", "constraints", "plans awaiting approval", "open questions",
-                     "work in progress", "plain text", str(refresh.SUMMARY_MAX_CHARS), "data"):
+        for word in (
+            "goals",
+            "decisions",
+            "constraints",
+            "plans awaiting approval",
+            "open questions",
+            "work in progress",
+            "plain text",
+            str(refresh.SUMMARY_MAX_CHARS),
+            "data",
+        ):
             self.assertIn(word, prompt)
 
     def test_codex_folds_turns_through_the_locked_down_exec(self):
         TURNS_CODEX = read_turns(CODEX, "codex")
-        runner = FakeRunner(codex_stream("CODEX SUMMARY", {"input_tokens": 30, "cached_input_tokens": 10, "output_tokens": 4}))
+        runner = FakeRunner(
+            codex_stream("CODEX SUMMARY", {"input_tokens": 30, "cached_input_tokens": 10, "output_tokens": 4})
+        )
         self.run_refresh("codex", CODEX, runner)
-        self.assertEqual(summary.load(self.sdir, "s1"), Stored("CODEX SUMMARY", anchor_at(TURNS_CODEX, len(TURNS_CODEX))))
+        self.assertEqual(
+            summary.load(self.sdir, "s1"), Stored("CODEX SUMMARY", anchor_at(TURNS_CODEX, len(TURNS_CODEX)))
+        )
         (call,) = runner.calls
         cmd = call["cmd"]
         self.assertEqual(cmd[:2], ["codex", "exec"])
@@ -101,7 +166,7 @@ class RefreshTest(unittest.TestCase):
             self.assertIn(flag, cmd)
         self.assertEqual(cmd[cmd.index("-s") + 1], "read-only")
         for i in range(0, len(CODEX_LOCKED), 2):  # every locked flag, as an adjacent pair
-            self.assertIn(CODEX_LOCKED[i:i + 2], [cmd[j:j + 2] for j in range(len(cmd) - 1)])
+            self.assertIn(CODEX_LOCKED[i : i + 2], [cmd[j : j + 2] for j in range(len(cmd) - 1)])
         self.assertIn("진행", call["input_text"])
         self.assertNotIn("진행", " ".join(cmd))
         self.assertEqual(call["env"][GUARD_ENV], "1")
@@ -118,8 +183,10 @@ class RefreshTest(unittest.TestCase):
                 self.assertEqual(runner.calls, [])
         self.assertEqual(summary.load(self.sdir, "s1"), Stored())
         events = self.log_events()
-        self.assertEqual(events and {k: v for e in events for k, v in e.items() if k != "ts"},
-                         {"event": "error", "code": "context_refresh_failed", "reason": "codex_unverified_version"})
+        self.assertEqual(
+            events and {k: v for e in events for k, v in e.items() if k != "ts"},
+            {"event": "error", "code": "context_refresh_failed", "reason": "codex_unverified_version"},
+        )
         self.assertEqual(len(events), 3)
 
     def test_the_version_gate_does_not_touch_claude(self):
@@ -149,8 +216,11 @@ class RefreshTest(unittest.TestCase):
     def test_failures_keep_the_old_summary_and_log_the_error_type_only(self):
         old = Stored("OLD", anchor_at(TURNS, 1))
         summary.save(self.sdir, "s1", old.summary, old.anchor)
-        for runner in (FakeRunner(error=TimeoutError("secret prompt text")), FakeRunner("not json"),
-                       FakeRunner(claude_result("   "))):
+        for runner in (
+            FakeRunner(error=TimeoutError("secret prompt text")),
+            FakeRunner("not json"),
+            FakeRunner(claude_result("   ")),
+        ):
             self.run_refresh("claude", CLAUDE, runner)
         self.assertEqual(summary.load(self.sdir, "s1"), old)
         events = self.log_events()
@@ -161,15 +231,23 @@ class RefreshTest(unittest.TestCase):
         self.assertNotIn("secret", json.dumps(events))
 
     def test_auth_failure_is_logged_as_auth_failed_without_its_message(self):
-        self.run_refresh("claude", CLAUDE, FakeRunner(error=CliAuthError("claude exited 1: Failed to authenticate: secret")))
+        self.run_refresh(
+            "claude", CLAUDE, FakeRunner(error=CliAuthError("claude exited 1: Failed to authenticate: secret"))
+        )
         [event] = self.log_events()
-        self.assertEqual((event["code"], event["reason"], event["type"]), ("context_refresh_failed", "auth_failed", "CliAuthError"))
+        self.assertEqual(
+            (event["code"], event["reason"], event["type"]), ("context_refresh_failed", "auth_failed", "CliAuthError")
+        )
         self.assertNotIn("secret", json.dumps(event))
 
     def test_nothing_to_do_never_calls_the_cli(self):
         summary.save(self.sdir, "s1", "S", anchor_at(TURNS, len(TURNS)))
-        cases = [("claude", CLAUDE, {}), ("antigravity", CLAUDE, {}), ("claude", "/missing.jsonl", {}),
-                 ("claude", CLAUDE, {GUARD_ENV: "1"})]
+        cases = [
+            ("claude", CLAUDE, {}),
+            ("antigravity", CLAUDE, {}),
+            ("claude", "/missing.jsonl", {}),
+            ("claude", CLAUDE, {GUARD_ENV: "1"}),
+        ]
         for host, path, extra in cases:
             runner = FakeRunner(claude_result("S2"))
             self.env = {**extra}
@@ -202,8 +280,13 @@ class RefreshTest(unittest.TestCase):
                 with summary.locked(self.sdir, "s1") as got:
                     held.append(not got)
                 return fn(*args, **kw)
+
             return wrapped
-        with mock.patch.object(refresh, "read_turns", probe(real_read)), mock.patch.object(summary, "load", probe(real_load)):
+
+        with (
+            mock.patch.object(refresh, "read_turns", probe(real_read)),
+            mock.patch.object(summary, "load", probe(real_load)),
+        ):
             self.run_refresh("claude", CLAUDE, FakeRunner(claude_result("S")))
         self.assertTrue(held and all(held), held)
 
@@ -226,7 +309,9 @@ class LongBacklogTest(unittest.TestCase):
             texts = [f"turn-{i:02d} " + "y" * 2900 for i in range(14)]  # ~41k chars > MAX_INPUT_CHARS
             with open(path, "w") as f:
                 for i, text in enumerate(texts):
-                    f.write(json.dumps({"type": "user" if i % 2 == 0 else "assistant", "message": {"content": text}}) + "\n")
+                    f.write(
+                        json.dumps({"type": "user" if i % 2 == 0 else "assistant", "message": {"content": text}}) + "\n"
+                    )
             turns = read_turns(path, "claude")
             runner = FakeRunner(claude_result("S1"))
             env = {}
@@ -254,7 +339,10 @@ class SpawnTest(unittest.TestCase):
             seen.update(argv=argv, **kw)
 
         refresh.spawn("claude", "s1", "/t.jsonl", "/state", {"PYTHONPATH": "/other", "KEEP": "1"}, popen=popen)
-        self.assertEqual(seen["argv"], [sys.executable, "-m", "model_effort_router.context.refresh", "claude", "s1", "/t.jsonl", "/state"])
+        self.assertEqual(
+            seen["argv"],
+            [sys.executable, "-m", "model_effort_router.context.refresh", "claude", "s1", "/t.jsonl", "/state"],
+        )
         self.assertTrue(seen["start_new_session"] and seen["close_fds"])
         for stream in ("stdin", "stdout", "stderr"):
             self.assertEqual(seen[stream], refresh.subprocess.DEVNULL)

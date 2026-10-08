@@ -1,4 +1,5 @@
 """Classifier output contract and independently detected safety flags."""
+
 from dataclasses import dataclass
 from math import isfinite
 from typing import Optional, Tuple
@@ -40,8 +41,10 @@ class DifficultyDecision:
         if not isinstance(self.backend, str) or not self.backend:
             raise ValueError("backend is required")
         if self.confidence is not None and (
-            isinstance(self.confidence, bool) or not isinstance(self.confidence, (int, float))
-            or not isfinite(self.confidence) or not 0 <= self.confidence <= 1
+            isinstance(self.confidence, bool)
+            or not isinstance(self.confidence, (int, float))
+            or not isfinite(self.confidence)
+            or not 0 <= self.confidence <= 1
         ):
             raise ValueError(f"confidence must be finite and in [0, 1], got {self.confidence!r}")
         if self.reason_code is not None and not isinstance(self.reason_code, str):

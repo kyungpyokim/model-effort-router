@@ -24,7 +24,5 @@ def register(name, factory, registry=BACKENDS):
 def create(name, registry=BACKENDS, **options):
     """`options` (e.g. a backend's validated config) are passed to the factory only when given."""
     if name == "nimble_jev":
-        raise ValueError(
-            "difficulty.backend 'nimble_jev' was removed; use 'nimble' with fallback 'jev'"
-        )
+        raise ValueError("difficulty.backend 'nimble_jev' was removed; use 'nimble' with fallback 'jev'")
     return registry[name](**options)  # KeyError for unknown names

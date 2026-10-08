@@ -1,4 +1,5 @@
 """Append-only JSONL route log, one file per session (spec 21). Never stores prompt text, only hash + length."""
+
 import hashlib
 import json
 import os
@@ -35,8 +36,14 @@ def prompt_fingerprint(prompt):
 
 def error_event(exc, *, latency_ms, prompt, configured_backend, timeout_clamped=False):
     """A prompt whose routing raised: type name only, since messages can carry config or prompt text."""
-    ev = {"event": "route", "target": "error", "error_type": type(exc).__name__, "configured_backend": configured_backend,
-          "latency_ms": round(latency_ms, 1), **prompt_fingerprint(prompt)}
+    ev = {
+        "event": "route",
+        "target": "error",
+        "error_type": type(exc).__name__,
+        "configured_backend": configured_backend,
+        "latency_ms": round(latency_ms, 1),
+        **prompt_fingerprint(prompt),
+    }
     if timeout_clamped:
         ev["timeout_clamped"] = True
     return ev
@@ -44,9 +51,14 @@ def error_event(exc, *, latency_ms, prompt, configured_backend, timeout_clamped=
 
 def route_event(plan, *, latency_ms, prompt, configured_backend, timeout_clamped=False):
     decision = plan.decision
-    ev = {"event": "route", "target": plan.target, "mode": plan.mode,
-          "override_rejected": plan.override_rejected, "latency_ms": round(latency_ms, 1),
-          **prompt_fingerprint(prompt)}
+    ev = {
+        "event": "route",
+        "target": plan.target,
+        "mode": plan.mode,
+        "override_rejected": plan.override_rejected,
+        "latency_ms": round(latency_ms, 1),
+        **prompt_fingerprint(prompt),
+    }
     if timeout_clamped:
         ev["timeout_clamped"] = True
     if plan.classifier_usage_missing:
@@ -55,10 +67,15 @@ def route_event(plan, *, latency_ms, prompt, configured_backend, timeout_clamped
         ev["classifier_usage"] = dict(plan.classifier_usage)  # token counts only
     if decision:
         ev["decision"] = {
-            "role": decision.role, "effort": plan.applied_effort or decision.effort, "backend": decision.backend,
-            "confidence": decision.confidence, "reason_code": decision.reason_code,
-            "risk_flags": list(plan.risk_flags), "model": plan.model,
-            "requested_effort": plan.requested_effort or decision.effort, "applied_effort": plan.applied_effort,
+            "role": decision.role,
+            "effort": plan.applied_effort or decision.effort,
+            "backend": decision.backend,
+            "confidence": decision.confidence,
+            "reason_code": decision.reason_code,
+            "risk_flags": list(plan.risk_flags),
+            "model": plan.model,
+            "requested_effort": plan.requested_effort or decision.effort,
+            "applied_effort": plan.applied_effort,
         }
         if decision.target:
             ev["decision"]["target"] = decision.target

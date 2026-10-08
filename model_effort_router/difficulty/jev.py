@@ -1,4 +1,5 @@
 """TypeSafe `systemone` classifier using a direct role/effort contract."""
+
 import json
 import os
 import threading
@@ -26,50 +27,78 @@ CONTEXT_RULE = (
 )
 
 QUESTIONS = {
-    "role": {"type": "choice", "instructions": (
-        "Which single role best describes the main deliverable of the current request? "
-        "Judge the requested output, not keywords in the text." + CONTEXT_RULE
-    ), "criteria": {
-        "implementation": "Add new behavior or a feature.",
-        "fix": "Repair a bug or failure in existing behavior.",
-        "lint": "Fix only spelling, typos, formatting, style, or static-analysis issues such as unused imports.",
-        "test": "Writing, changing, or running tests is the main goal.",
-        "plan": "Produce a plan for work before executing it.",
-        "design": "A structure, interface, or architecture proposal is the requested deliverable.",
-        "review": "Inspect existing changes or code and report findings without modifying them.",
-        "analysis": ("Explain causes or behavior, or answer in chat only (translation, wording, naming, "
-                     "or a short message) without implementing or editing project files."),
-    }},
-    "effort": {"type": "choice", "instructions": (
-        "Choose the reasoning effort from how hard the decisions are, not from how much code "
-        "must be read. Judge it independently of role, file count, or keywords: planning or "
-        "reviewing a change needs the same effort as making it." + CONTEXT_RULE
-    ), "criteria": {
-        "low": ("One function, option, or explanation is involved and the request states or clearly "
-                "implies the approach, even if that code must be read first."),
-        "medium": ("Existing parts are connected or changed by established patterns, edge cases need "
-                   "judgment, or missing details must be gathered before deciding."),
-        "high": ("Correctness depends on interacting guarantees such as concurrency, consistency, "
-                 "compatibility, or security, or real design tradeoffs or uncertain diagnosis remain."),
-        "xhigh": ("Rare timing-dependent failures across several subsystems, or changes where a mistake "
-                  "would corrupt or lose production data, bypass security, or cause irreversible harm."),
-        "max": ("The broadest and most demanding reasoning is needed: several interacting systems, substantial "
-                "uncertainty, and high consequences require sustained analysis beyond xhigh."),
-    }},
+    "role": {
+        "type": "choice",
+        "instructions": (
+            "Which single role best describes the main deliverable of the current request? "
+            "Judge the requested output, not keywords in the text." + CONTEXT_RULE
+        ),
+        "criteria": {
+            "implementation": "Add new behavior or a feature.",
+            "fix": "Repair a bug or failure in existing behavior.",
+            "lint": "Fix only spelling, typos, formatting, style, or static-analysis issues such as unused imports.",
+            "test": "Writing, changing, or running tests is the main goal.",
+            "plan": "Produce a plan for work before executing it.",
+            "design": "A structure, interface, or architecture proposal is the requested deliverable.",
+            "review": "Inspect existing changes or code and report findings without modifying them.",
+            "analysis": (
+                "Explain causes or behavior, or answer in chat only (translation, wording, naming, "
+                "or a short message) without implementing or editing project files."
+            ),
+        },
+    },
+    "effort": {
+        "type": "choice",
+        "instructions": (
+            "Choose the reasoning effort from how hard the decisions are, not from how much code "
+            "must be read. Judge it independently of role, file count, or keywords: planning or "
+            "reviewing a change needs the same effort as making it." + CONTEXT_RULE
+        ),
+        "criteria": {
+            "low": (
+                "One function, option, or explanation is involved and the request states or clearly "
+                "implies the approach, even if that code must be read first."
+            ),
+            "medium": (
+                "Existing parts are connected or changed by established patterns, edge cases need "
+                "judgment, or missing details must be gathered before deciding."
+            ),
+            "high": (
+                "Correctness depends on interacting guarantees such as concurrency, consistency, "
+                "compatibility, or security, or real design tradeoffs or uncertain diagnosis remain."
+            ),
+            "xhigh": (
+                "Rare timing-dependent failures across several subsystems, or changes where a mistake "
+                "would corrupt or lose production data, bypass security, or cause irreversible harm."
+            ),
+            "max": (
+                "The broadest and most demanding reasoning is needed: several interacting systems, substantial "
+                "uncertainty, and high consequences require sustained analysis beyond xhigh."
+            ),
+        },
+    },
 }
 # Asked only by backends with `provides_target` (JevBackend); Nimble's target accuracy is unmeasured.
-TARGET_QUESTION = {"type": "choice", "instructions": (
-    "Which outcome does the current request ask for? Judge the requested outcome, not keywords. "
-    "Active-project metadata only supplies an omitted subject. An acknowledgement or approval is route only "
-    "when it authorizes an executable proposal in session context." + CONTEXT_RULE
-), "criteria": {
-    "route": ("The user asks for an outcome in the active project or its work: investigate, analyze or explain "
-              "status or behavior, implement, fix, test, lint, plan, design, or review. A follow-up authorizing "
-              "an executable proposal in session context is route."),
-    "no_route": ("Chit-chat or an acknowledgement or approval without an executable proposal in session context, "
-                 "or a request "
-                 "explicitly unrelated to software development."),
-}}
+TARGET_QUESTION = {
+    "type": "choice",
+    "instructions": (
+        "Which outcome does the current request ask for? Judge the requested outcome, not keywords. "
+        "Active-project metadata only supplies an omitted subject. An acknowledgement or approval is route only "
+        "when it authorizes an executable proposal in session context." + CONTEXT_RULE
+    ),
+    "criteria": {
+        "route": (
+            "The user asks for an outcome in the active project or its work: investigate, analyze or explain "
+            "status or behavior, implement, fix, test, lint, plan, design, or review. A follow-up authorizing "
+            "an executable proposal in session context is route."
+        ),
+        "no_route": (
+            "Chit-chat or an acknowledgement or approval without an executable proposal in session context, "
+            "or a request "
+            "explicitly unrelated to software development."
+        ),
+    },
+}
 
 
 def state_text(task):
@@ -101,11 +130,13 @@ def _post(url, headers, body, timeout_s, opener=None):
 
 def default_transport(url, headers, body, timeout_s, opener=None):
     out = {}
+
     def call():
         try:
             out["ok"] = _post(url, headers, body, timeout_s, opener)
         except Exception as exc:
             out["err"] = exc
+
     worker = threading.Thread(target=call, daemon=True)
     worker.start()
     worker.join(timeout_s)
@@ -120,9 +151,14 @@ def parse_decision(data, backend):
     if not isinstance(data, dict):
         raise BackendOutputError("classifier response is not an object")
     try:
-        return DifficultyDecision(role=data["role"], effort=data["effort"], backend=backend,
-                                  confidence=data.get("confidence"), reason_code=data.get("reason_code"),
-                                  target=data.get("target"))
+        return DifficultyDecision(
+            role=data["role"],
+            effort=data["effort"],
+            backend=backend,
+            confidence=data.get("confidence"),
+            reason_code=data.get("reason_code"),
+            target=data.get("target"),
+        )
     except (KeyError, TypeError, ValueError) as exc:
         raise BackendOutputError(f"{backend} returned an invalid role/effort decision") from exc
 
@@ -145,8 +181,7 @@ class SystemOneBackend:
         env = os.environ if self._env is None else self._env
         url, headers, model = self._endpoint(env)
         questions = {**self.questions, "target": TARGET_QUESTION} if self.provides_target else self.questions
-        body = json.dumps({"state": state_text(task),
-                           "model": model, "questions": questions}).encode()
+        body = json.dumps({"state": state_text(task), "model": model, "questions": questions}).encode()
         status, text = self._transport(url, headers, body, timeout_s)
         if not 200 <= status < 300:
             raise RuntimeError(f"{self.name} HTTP {status}")
@@ -154,8 +189,14 @@ class SystemOneBackend:
             data = json.loads(text)
             used = data.get("usage")
             if isinstance(used, dict):
-                self.last_usage = {k: v for k, v in used.items() if k in ("input_tokens", "output_tokens")
-                                   and isinstance(v, int) and not isinstance(v, bool) and v >= 0}
+                self.last_usage = {
+                    k: v
+                    for k, v in used.items()
+                    if k in ("input_tokens", "output_tokens")
+                    and isinstance(v, int)
+                    and not isinstance(v, bool)
+                    and v >= 0
+                }
             answers = data["answers"]
             parsed = {key: answers[key].get("choice") for key in ("role", "effort")}
             if self.provides_target:
@@ -181,5 +222,8 @@ class JevBackend(SystemOneBackend):
         key = self._api_key or env.get(KEY_ENV)
         if not key:
             raise MissingKeyError(f"{KEY_ENV} is not set")
-        return URL, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, \
-            self._model or env.get(MODEL_ENV) or DEFAULT_MODEL
+        return (
+            URL,
+            {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            self._model or env.get(MODEL_ENV) or DEFAULT_MODEL,
+        )

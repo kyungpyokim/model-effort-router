@@ -107,8 +107,13 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
     plan = None
     try:
         plan = route(
-            prompt, repo_config=repo_cfg, user_config=user_cfg, registry=registry, host=host.name, context=context,
-            repo_summary=os.path.basename(os.path.normpath(cwd))
+            prompt,
+            repo_config=repo_cfg,
+            user_config=user_cfg,
+            registry=registry,
+            host=host.name,
+            context=context,
+            repo_summary=os.path.basename(os.path.normpath(cwd)),
         )
         latency_ms = (time.monotonic() - started) * 1000
     except Exception as exc:  # fail open, but leave a trace: a routing error must not look like a dropped prompt

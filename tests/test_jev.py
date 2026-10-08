@@ -69,9 +69,7 @@ class JevContractTest(unittest.TestCase):
     def test_environment_key_remains_fallback(self):
         seen = {}
         backend = JevBackend(
-            transport=lambda url, headers, body, timeout: (
-                seen.update(headers=headers) or (200, json.dumps(response()))
-            ),
+            transport=lambda url, headers, body, timeout: seen.update(headers=headers) or (200, json.dumps(response())),
             env={"TYPESAFE_API_KEY": "env-key"},
         )
         backend.classify(DifficultyInput("x"), 1)
@@ -166,11 +164,16 @@ class JevContractTest(unittest.TestCase):
     def test_session_context_precedes_the_current_request_in_the_state(self):
         t = FakeTransport(response("fix", "low"))
         backend = JevBackend(transport=t, env={"TYPESAFE_API_KEY": "k"})
-        backend.classify(DifficultyInput("진행", ("a.py",), context="Session summary:\nplan X\n\nRecent turns:\n(none)"), 3)
+        backend.classify(
+            DifficultyInput("진행", ("a.py",), context="Session summary:\nplan X\n\nRecent turns:\n(none)"), 3
+        )
         backend.classify(DifficultyInput("진행"), 3)
         with_ctx, without = (c[2]["state"] for c in t.calls)
-        self.assertEqual(with_ctx, "Session context:\nSession summary:\nplan X\n\nRecent turns:\n(none)"
-                                   "\n\nCurrent request:\n진행\n\nRelevant paths:\na.py")
+        self.assertEqual(
+            with_ctx,
+            "Session context:\nSession summary:\nplan X\n\nRecent turns:\n(none)"
+            "\n\nCurrent request:\n진행\n\nRelevant paths:\na.py",
+        )
         self.assertEqual(without, "Task:\n진행\n\nRelevant paths:\n(none)")
 
     def test_state_includes_repo_summary_without_workspace_path(self):
@@ -197,9 +200,11 @@ class JevContractTest(unittest.TestCase):
         self.assertIn("without an executable proposal", target["criteria"]["no_route"])
 
     def test_missing_or_invalid_target_answer_is_a_backend_error(self):
-        for answers in ({"role": {"choice": "fix"}, "effort": {"choice": "low"}},
-                        {"role": {"choice": "fix"}, "effort": {"choice": "low"}, "target": {"choice": "maybe"}},
-                        {"role": {"choice": "fix"}, "effort": {"choice": "low"}, "target": "route"}):
+        for answers in (
+            {"role": {"choice": "fix"}, "effort": {"choice": "low"}},
+            {"role": {"choice": "fix"}, "effort": {"choice": "low"}, "target": {"choice": "maybe"}},
+            {"role": {"choice": "fix"}, "effort": {"choice": "low"}, "target": "route"},
+        ):
             backend = JevBackend(transport=FakeTransport({"answers": answers}), env={"TYPESAFE_API_KEY": "k"})
             with self.subTest(answers=answers), self.assertRaises(BackendOutputError):
                 backend.classify(DifficultyInput("x"), 1)

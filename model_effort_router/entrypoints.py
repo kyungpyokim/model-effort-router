@@ -1,4 +1,5 @@
 """Shared process entrypoints for plugins sharing one installed core."""
+
 import importlib
 import os
 import sys
@@ -13,15 +14,19 @@ class RuntimeCompatibilityError(RuntimeError):
 
 def _check_api(runtime_api):
     if runtime_api != RUNTIME_API:
-        raise RuntimeCompatibilityError("Plugin and shared core APIs differ; update all plugins and the shared core together")
+        raise RuntimeCompatibilityError(
+            "Plugin and shared core APIs differ; update all plugins and the shared core together"
+        )
 
 
 def _load_main(module):
     try:
         return importlib.import_module(module, __package__).main
     except ImportError:
-        print("Shared core is incomplete; reinstall it with python3 scripts/install_core.py from a matching checkout.",
-              file=sys.stderr)
+        print(
+            "Shared core is incomplete; reinstall it with python3 scripts/install_core.py from a matching checkout.",
+            file=sys.stderr,
+        )
         return None
 
 
@@ -49,6 +54,7 @@ def hook(host, plugin_root, *, runtime_api=1):
         _check_api(runtime_api)
         os.environ["MER_HOST"] = host
         from .host.codex_hooks import main
+
         return main("UserPromptSubmit", plugin_root)
     except BaseException:  # hook failures must never block the user's prompt
         return 0

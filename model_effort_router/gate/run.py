@@ -1,4 +1,5 @@
 """Run discovered checks and print JSON: passed / failed / not_run per check (spec 15). CLI: bin/mer-gate."""
+
 import argparse
 import json
 import os
@@ -27,12 +28,23 @@ def run_check(check, cwd, timeout_s):
         argv = check.command if check.shell else shlex.split(check.command)
         start = time.monotonic()
         proc = subprocess.Popen(
-            argv, shell=check.shell, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, errors="replace", start_new_session=True,
+            argv,
+            shell=check.shell,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            start_new_session=True,
         )
     except (OSError, ValueError) as exc:
-        return {"status": "failed", "command": check.command, "source": check.source,
-                "reason": f"could not start: {type(exc).__name__}"}
+        return {
+            "status": "failed",
+            "command": check.command,
+            "source": check.source,
+            "reason": f"could not start: {type(exc).__name__}",
+        }
     reason, out = None, ""
     try:
         try:
@@ -46,9 +58,14 @@ def run_check(check, cwd, timeout_s):
                 out = ""
     finally:
         _kill_group(proc)  # also reaps grandchildren left behind after a normal exit
-    result = {"status": "passed" if proc.returncode == 0 and not reason else "failed",
-              "command": check.command, "source": check.source, "exit_code": proc.returncode,
-              "duration_s": round(time.monotonic() - start, 2), "output_tail": (out or "")[-TAIL_CHARS:]}
+    result = {
+        "status": "passed" if proc.returncode == 0 and not reason else "failed",
+        "command": check.command,
+        "source": check.source,
+        "exit_code": proc.returncode,
+        "duration_s": round(time.monotonic() - start, 2),
+        "output_tail": (out or "")[-TAIL_CHARS:],
+    }
     if reason:
         result["reason"] = reason
     return result
@@ -56,8 +73,10 @@ def run_check(check, cwd, timeout_s):
 
 def run_gate(cwd, config_checks, timeout_s):
     found = discover(cwd, config_checks)
-    checks = {k: run_check(c, cwd, timeout_s) if c else
-              {"status": "not_run", "reason": "no command discovered"} for k, c in found.items()}
+    checks = {
+        k: run_check(c, cwd, timeout_s) if c else {"status": "not_run", "reason": "no command discovered"}
+        for k, c in found.items()
+    }
     statuses = {c["status"] for c in checks.values()}
     overall = "failed" if "failed" in statuses else "incomplete" if "not_run" in statuses else "passed"
     return {"checks": checks, "overall": overall}

@@ -6,6 +6,7 @@
 Label file rows: {id, labeler, role, effort}. In a .tsv the labeler is the file's `labeler` column.
 Merge validates through evaluation.cases.
 """
+
 import csv
 import json
 import sys
@@ -31,8 +32,15 @@ def read_labels(path):
             if reader.fieldnames != expected:
                 raise corpus.CorpusError(f"{path}: expected TSV columns {expected}, got {reader.fieldnames}")
             rows = list(reader)
-        return [{"id": r["id"], "labeler": (r.get("labeler") or "").strip(),
-                 "role": (r.get("role") or "").strip(), "effort": (r.get("effort") or "").strip()} for r in rows]
+        return [
+            {
+                "id": r["id"],
+                "labeler": (r.get("labeler") or "").strip(),
+                "role": (r.get("role") or "").strip(),
+                "effort": (r.get("effort") or "").strip(),
+            }
+            for r in rows
+        ]
     with open(path, encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
 

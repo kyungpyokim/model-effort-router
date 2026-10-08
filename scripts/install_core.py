@@ -1,4 +1,5 @@
 """Install the one shared router core; plugin bundles contain only host integration."""
+
 import argparse
 import filecmp
 import os
@@ -22,23 +23,30 @@ def runtime_path(env=None):
 
 
 def _files(package):
-    return sorted(p.relative_to(package).as_posix() for p in package.rglob("*")
-                  if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc")
+    return sorted(
+        p.relative_to(package).as_posix()
+        for p in package.rglob("*")
+        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
+    )
 
 
 def check(source, runtime):
     target = Path(runtime) / "model_effort_router"
     if target.is_symlink():
         return ["symlink: model_effort_router"]
-    symlinks = [f"symlink: model_effort_router/{name}" for name in ("__init__.py", "entrypoints.py")
-                if (target / name).is_symlink()]
+    symlinks = [
+        f"symlink: model_effort_router/{name}"
+        for name in ("__init__.py", "entrypoints.py")
+        if (target / name).is_symlink()
+    ]
     if symlinks:
         return symlinks
     src, dst = set(_files(Path(source))), set(_files(target))
-    return ([f"missing: {p}" for p in sorted(src - dst)]
-            + [f"extra: {p}" for p in sorted(dst - src)]
-            + [f"differs: {p}" for p in sorted(src & dst)
-               if not filecmp.cmp(Path(source) / p, target / p, shallow=False)])
+    return (
+        [f"missing: {p}" for p in sorted(src - dst)]
+        + [f"extra: {p}" for p in sorted(dst - src)]
+        + [f"differs: {p}" for p in sorted(src & dst) if not filecmp.cmp(Path(source) / p, target / p, shallow=False)]
+    )
 
 
 def install(source, runtime):

@@ -7,12 +7,28 @@ from model_effort_router.logging import route_log
 from model_effort_router.policy.router import RoutePlan, route
 from model_effort_router.policy.targeting import NO_ROUTE
 
-STREAM = "\n".join([
-    json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": '{"role":"implementation","effort":"medium"}'}}),
-    json.dumps({"type": "turn.completed", "usage": {"input_tokens": 29757, "cached_input_tokens": 6912,
-                                                      "cache_write_input_tokens": 0, "output_tokens": 20,
-                                                      "reasoning_output_tokens": 0}}),
-])
+STREAM = "\n".join(
+    [
+        json.dumps(
+            {
+                "type": "item.completed",
+                "item": {"type": "agent_message", "text": '{"role":"implementation","effort":"medium"}'},
+            }
+        ),
+        json.dumps(
+            {
+                "type": "turn.completed",
+                "usage": {
+                    "input_tokens": 29757,
+                    "cached_input_tokens": 6912,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 20,
+                    "reasoning_output_tokens": 0,
+                },
+            }
+        ),
+    ]
+)
 
 
 class NoRouteEventTest(unittest.TestCase):
@@ -20,12 +36,16 @@ class NoRouteEventTest(unittest.TestCase):
         plan = RoutePlan(NO_ROUTE, "auto", DifficultyDecision("analysis", "low", "jev", target="no_route"))
         ev = route_log.route_event(plan, latency_ms=1, prompt="p", configured_backend="jev")
         self.assertEqual(ev["target"], "no_route")
-        self.assertEqual((ev["decision"]["target"], ev["decision"]["effort"], ev["decision"]["requested_effort"]),
-                         ("no_route", "low", "low"))
+        self.assertEqual(
+            (ev["decision"]["target"], ev["decision"]["effort"], ev["decision"]["requested_effort"]),
+            ("no_route", "low", "low"),
+        )
 
     def test_decision_without_target_has_no_target_key(self):
         plan = route("x", role_override="fix", effort_override="low", explicit=True)
-        self.assertNotIn("target", route_log.route_event(plan, latency_ms=1, prompt="p", configured_backend="a")["decision"])
+        self.assertNotIn(
+            "target", route_log.route_event(plan, latency_ms=1, prompt="p", configured_backend="a")["decision"]
+        )
 
 
 class ClassifierUsageInRouteTest(unittest.TestCase):
@@ -40,16 +60,19 @@ class ClassifierUsageInRouteTest(unittest.TestCase):
 
     def route(self, *backends):
         registry = {b.name: (lambda b=b: b) for b in backends}
-        cfg = {"difficulty": {"backend": backends[0].name,
-                              "fallback": backends[1].name if len(backends) > 1 else "none"}}
+        cfg = {
+            "difficulty": {"backend": backends[0].name, "fallback": backends[1].name if len(backends) > 1 else "none"}
+        }
         return route("Fix the bug in parser.py", repo_config=cfg, registry=registry)
 
     def test_usage_summed_across_primary_and_fallback_including_failed_primary(self):
         u1 = {"input_tokens": 10, "output_tokens": 1, "junk": "x"}
         u2 = {"input_tokens": 5, "cached_input_tokens": 2, "output_tokens": 3}
         plan = self.route(self.B("a", u1, RuntimeError("bad")), self.B("b", u2))
-        self.assertEqual(plan.classifier_usage, {"input_tokens": 15, "cached_input_tokens": 2,
-                                                 "output_tokens": 4, "reasoning_output_tokens": 0})
+        self.assertEqual(
+            plan.classifier_usage,
+            {"input_tokens": 15, "cached_input_tokens": 2, "output_tokens": 4, "reasoning_output_tokens": 0},
+        )
         ev = route_log.route_event(plan, latency_ms=1, prompt="p", configured_backend="a")
         self.assertEqual(ev["classifier_usage"], plan.classifier_usage)
 

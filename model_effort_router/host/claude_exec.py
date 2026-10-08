@@ -15,6 +15,7 @@ Read-only sessions (review/plan) never load project or local settings, in either
 a `.claude/settings.local.json` whose hooks, apiKeyHelper, env or extra directories would otherwise run or redirect them;
 lean also disables all their hooks.
 """
+
 import json
 import os
 import subprocess
@@ -25,7 +26,9 @@ from ..adapters.common import ResolvedProfile
 from ..difficulty.subscription import default_runner
 from . import session_env as session_env
 
-Stream = namedtuple("Stream", "thread_id usage text extra", defaults=(None,))  # usage: THIS invocation's, short keys, or None
+Stream = namedtuple(
+    "Stream", "thread_id usage text extra", defaults=(None,)
+)  # usage: THIS invocation's, short keys, or None
 READ_ONLY_TOOLS = "Read,Grep,Glob"
 
 
@@ -47,14 +50,18 @@ def _base(resolved, extra):
 
 
 def _user_settings_path():
-    return os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude"), "settings.json")
+    return os.path.join(
+        os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude"), "settings.json"
+    )
 
 
 def _settings(cwd=None, read=None):
     """Parsed settings dicts in precedence order (user, then cwd/.claude/settings.json, then settings.local.json).
     A missing, unreadable or invalid file is skipped (never an error). `read(path) -> text` is injectable."""
     read = read or _read_settings
-    paths = [_user_settings_path()] + ([os.path.join(cwd, ".claude", n) for n in ("settings.json", "settings.local.json")] if cwd else [])
+    paths = [_user_settings_path()] + (
+        [os.path.join(cwd, ".claude", n) for n in ("settings.json", "settings.local.json")] if cwd else []
+    )
     out = []
     for path in paths:
         try:
@@ -99,8 +106,14 @@ def isolation(config, read_only):
         if read_only:
             return ["--strict-mcp-config", "--setting-sources", "user", "--settings", '{"disableAllHooks": true}']
         off = (config.plugins_off or plugins_off)()
-        return ["--strict-mcp-config",
-                *(["--settings", json.dumps({"enabledPlugins": off}, sort_keys=True, separators=(",", ":"))] if off else [])]
+        return [
+            "--strict-mcp-config",
+            *(
+                ["--settings", json.dumps({"enabledPlugins": off}, sort_keys=True, separators=(",", ":"))]
+                if off
+                else []
+            ),
+        ]
     return ["--strict-mcp-config", "--setting-sources", "user"] if read_only else []
 
 
@@ -117,20 +130,31 @@ def session_argv(profile, prompt, sandbox, config=ClaudeConfig(), subagents=None
     else:
         # --tools restricts the tool SET itself (--allowedTools only pre-approves: settings could still allow Edit/Bash);
         # no MCP servers, and user settings only in full context, so nothing else can grant a tool
-        extra = ["--permission-mode", "dontAsk", "--tools", READ_ONLY_TOOLS, "--allowedTools", READ_ONLY_TOOLS,
-                 "--disallowedTools", "Agent"] + isolation(config, True)
+        extra = [
+            "--permission-mode",
+            "dontAsk",
+            "--tools",
+            READ_ONLY_TOOLS,
+            "--allowedTools",
+            READ_ONLY_TOOLS,
+            "--disallowedTools",
+            "Agent",
+        ] + isolation(config, True)
     return _prompted(_base(resolved, extra), prompt)
 
 
 def resume_argv(profile, session_id, prompt, config=ClaudeConfig(), subagents=None):
-    extra = ["--permission-mode", "auto"] + agents_flags(subagents) + isolation(config, False) + ["--resume", session_id]
+    extra = (
+        ["--permission-mode", "auto"] + agents_flags(subagents) + isolation(config, False) + ["--resume", session_id]
+    )
     resolved = profile if isinstance(profile, ResolvedProfile) else resolve(profile, config)
     return _prompted(_base(resolved, extra), prompt)
 
 
 def run_subprocess(argv, *, cwd, env, timeout_s):
-    return default_runner(argv, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd, label="claude -p",
-                          grace_s=5)
+    return default_runner(
+        argv, stdin=subprocess.DEVNULL, env=env, timeout_s=timeout_s, cwd=cwd, label="claude -p", grace_s=5
+    )
 
 
 def _count(usage, key, required):
@@ -157,12 +181,30 @@ def parse_stream(text) -> Stream:
     sid, result, usage = data.get("session_id"), data.get("result"), data.get("usage")
     if not isinstance(sid, str) or not sid or not isinstance(result, str) or not isinstance(usage, dict):
         raise ClaudeResultError("claude result lacks session_id, result or usage")
-    fresh, created, read = (_count(usage, "input_tokens", True), _count(usage, "cache_creation_input_tokens", False),
-                            _count(usage, "cache_read_input_tokens", False))
-    extra = {k: data[k] for k, ok in (("total_cost_usd", lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)),
-                                     ("modelUsage", lambda v: isinstance(v, dict))) if k in data and ok(data[k])}
-    return Stream(sid, {"input": fresh + created + read, "cached_input": read,
-                        "output": _count(usage, "output_tokens", True), "reasoning_output": 0}, result, extra or None)
+    fresh, created, read = (
+        _count(usage, "input_tokens", True),
+        _count(usage, "cache_creation_input_tokens", False),
+        _count(usage, "cache_read_input_tokens", False),
+    )
+    extra = {
+        k: data[k]
+        for k, ok in (
+            ("total_cost_usd", lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)),
+            ("modelUsage", lambda v: isinstance(v, dict)),
+        )
+        if k in data and ok(data[k])
+    }
+    return Stream(
+        sid,
+        {
+            "input": fresh + created + read,
+            "cached_input": read,
+            "output": _count(usage, "output_tokens", True),
+            "reasoning_output": 0,
+        },
+        result,
+        extra or None,
+    )
 
 
 class UsageTracker:

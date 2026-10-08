@@ -3,6 +3,7 @@
 Runs the gate's own test command on a temp snapshot (HEAD + this run's test files). Reports only; the user's
 working tree and .git are never written, and the probe never raises.
 """
+
 import os
 import shutil
 import subprocess
@@ -52,8 +53,13 @@ def is_test_side(path):
 
 def result(verdict, reason=None, overlay=(), duration_s=0.0, output_tail=None):
     """`overlay`: every path laid over the snapshot; `tests`: the test files among them."""
-    out = {"verdict": verdict, "reason": reason, "tests": [p for p in overlay if is_test_path(p)],
-           "overlay": list(overlay), "duration_s": duration_s}
+    out = {
+        "verdict": verdict,
+        "reason": reason,
+        "tests": [p for p in overlay if is_test_path(p)],
+        "overlay": list(overlay),
+        "duration_s": duration_s,
+    }
     if output_tail:
         out["output_tail"] = output_tail[-OUTPUT_TAIL_CHARS:]
     return out
@@ -74,8 +80,13 @@ def _extract_tar(fileobj, dest):
 
 
 def _extract_head(cwd, dest):
-    proc = subprocess.Popen(["git", "archive", "--format=tar", "HEAD"], cwd=cwd, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(
+        ["git", "archive", "--format=tar", "HEAD"],
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
     try:
         _extract_tar(proc.stdout, dest)
         proc.stdout.read()  # the tar end marker is not consumed; drain so git does not die on a closed pipe
@@ -139,12 +150,20 @@ def _probe(cwd, changed_paths, overlay, check, timeout_s, run):
     if first["status"] == "passed":
         return result("passes_without_change", overlay=overlay)
     if first.get("reason"):  # timeout or could not start: not a real test failure
-        return result("inconclusive", f"the test command did not finish: {first['reason']}", overlay,
-                      output_tail=first.get("output_tail"))
+        return result(
+            "inconclusive",
+            f"the test command did not finish: {first['reason']}",
+            overlay,
+            output_tail=first.get("output_tail"),
+        )
     # the snapshot has no ignored files (.venv, node_modules): a failure only counts when plain HEAD passes
     if _run_in_snapshot(cwd, [], check, timeout_s, run)["status"] != "passed":
-        return result("inconclusive", "the test command also fails on the unchanged pre-change code", overlay,
-                      output_tail=first.get("output_tail"))
+        return result(
+            "inconclusive",
+            "the test command also fails on the unchanged pre-change code",
+            overlay,
+            output_tail=first.get("output_tail"),
+        )
     return result("fails_without_change", overlay=overlay, output_tail=first.get("output_tail"))
 
 

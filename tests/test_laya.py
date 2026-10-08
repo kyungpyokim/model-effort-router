@@ -40,9 +40,19 @@ class LayaTest(unittest.TestCase):
         self.assertEqual(QUESTIONS, original)
 
     def test_invalid_options_are_rejected_by_backend_and_config(self):
-        for options in ([], False, 0, "", {"unknown": True}, {"model": " "}, {"url": 8000},
-                        {"url": "file:///tmp/x"}, {"url": "http://localhost.evil/x"},
-                        {"url": "http://user:pass@localhost/x"}, {"url": "http://[invalid/x"}):
+        for options in (
+            [],
+            False,
+            0,
+            "",
+            {"unknown": True},
+            {"model": " "},
+            {"url": 8000},
+            {"url": "file:///tmp/x"},
+            {"url": "http://localhost.evil/x"},
+            {"url": "http://user:pass@localhost/x"},
+            {"url": "http://[invalid/x"},
+        ):
             with self.subTest(options=options):
                 with self.assertRaisesRegex(ValueError, "laya"):
                     LayaBackend(options=options)
@@ -54,9 +64,14 @@ class LayaTest(unittest.TestCase):
         self.assertEqual((cfg.context_enabled, cfg.context_max_chars, cfg.laya), (False, 500, None))
 
     def test_environment_and_unauthenticated_defaults(self):
-        for env, url, model in (({}, DEFAULT_URL, DEFAULT_MODEL),
-                                ({"MER_LAYA_URL": "http://localhost:8001/v1/systemone", "MER_LAYA_MODEL": "custom"},
-                                 "http://localhost:8001/v1/systemone", "custom")):
+        for env, url, model in (
+            ({}, DEFAULT_URL, DEFAULT_MODEL),
+            (
+                {"MER_LAYA_URL": "http://localhost:8001/v1/systemone", "MER_LAYA_MODEL": "custom"},
+                "http://localhost:8001/v1/systemone",
+                "custom",
+            ),
+        ):
             with self.subTest(env=env):
                 transport = FakeTransport(response(target="no_route"))
                 decision = LayaBackend(transport=transport, env=env).classify(DifficultyInput("x"), 1)
@@ -77,10 +92,14 @@ class LayaTest(unittest.TestCase):
 
     def test_config_precedes_environment_and_config_rejects_external_url(self):
         transport = FakeTransport()
-        LayaBackend(transport=transport, env={"MER_LAYA_MODEL": "env", "MER_LAYA_URL": "http://localhost:8001/v1/systemone"},
-                    options={"model": "local", "url": "http://127.0.0.1:9000/v1/systemone"}).classify(DifficultyInput("x"), 1)
-        self.assertEqual((transport.calls[0][0], transport.calls[0][2]["model"]),
-                         ("http://127.0.0.1:9000/v1/systemone", "local"))
+        LayaBackend(
+            transport=transport,
+            env={"MER_LAYA_MODEL": "env", "MER_LAYA_URL": "http://localhost:8001/v1/systemone"},
+            options={"model": "local", "url": "http://127.0.0.1:9000/v1/systemone"},
+        ).classify(DifficultyInput("x"), 1)
+        self.assertEqual(
+            (transport.calls[0][0], transport.calls[0][2]["model"]), ("http://127.0.0.1:9000/v1/systemone", "local")
+        )
         with self.assertRaises(ValueError):
             LayaBackend(options={"url": "https://remote.example/v1/systemone"})
 
@@ -92,22 +111,37 @@ class LayaTest(unittest.TestCase):
         backup = mock.Mock(name="backup")
         backup.name, backup.calls_model, backup.last_usage = "backup", True, None
         backup.classify.return_value = DifficultyDecision("fix", "medium", "backup")
-        plan = route("x", repo_config={"difficulty": {"backend": "laya", "fallback": "backup"}},
-                     registry={"laya": lambda **kw: local, "backup": lambda: backup}, explicit=True)
+        plan = route(
+            "x",
+            repo_config={"difficulty": {"backend": "laya", "fallback": "backup"}},
+            registry={"laya": lambda **kw: local, "backup": lambda: backup},
+            explicit=True,
+        )
         self.assertEqual(plan.decision.backend, "backup")
 
         transport = FakeTransport()
         backup.classify.side_effect = ConnectionRefusedError()
-        plan = route("x", repo_config={"difficulty": {"backend": "backup", "fallback": "laya",
-                     "laya": {"model": "configured", "url": "http://localhost:9001/v1/systemone"}}},
-                     registry={"backup": lambda: backup,
-                               "laya": lambda **kw: LayaBackend(transport=transport, env={}, **kw)}, explicit=True)
+        plan = route(
+            "x",
+            repo_config={
+                "difficulty": {
+                    "backend": "backup",
+                    "fallback": "laya",
+                    "laya": {"model": "configured", "url": "http://localhost:9001/v1/systemone"},
+                }
+            },
+            registry={"backup": lambda: backup, "laya": lambda **kw: LayaBackend(transport=transport, env={}, **kw)},
+            explicit=True,
+        )
         self.assertEqual(plan.decision.backend, "laya")
-        self.assertEqual((transport.calls[0][0], transport.calls[0][2]["model"]),
-                         ("http://localhost:9001/v1/systemone", "configured"))
+        self.assertEqual(
+            (transport.calls[0][0], transport.calls[0][2]["model"]),
+            ("http://localhost:9001/v1/systemone", "configured"),
+        )
 
     def test_local_http_server_receives_systemone_contract(self):
         received = {}
+
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 received["path"] = self.path
@@ -117,20 +151,32 @@ class LayaTest(unittest.TestCase):
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)
+
             def log_message(self, *args):
                 pass
+
         server = HTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
             with tempfile.TemporaryDirectory() as directory:
-                Path(directory, ".model-effort-router.json").write_text(json.dumps({"difficulty": {
-                    "backend": "laya", "laya": {"url": f"http://127.0.0.1:{server.server_port}/v1/systemone"}
-                }}))
+                Path(directory, ".model-effort-router.json").write_text(
+                    json.dumps(
+                        {
+                            "difficulty": {
+                                "backend": "laya",
+                                "laya": {"url": f"http://127.0.0.1:{server.server_port}/v1/systemone"},
+                            }
+                        }
+                    )
+                )
                 output = io.StringIO()
                 with mock.patch.dict("os.environ", {}, clear=True):
-                    status = main(["route", "--json", "--host", "codex", "--cwd", directory, "Fix local task"],
-                                  env={"MER_USER_CONFIG": str(Path(directory, "absent.json"))}, out=output)
+                    status = main(
+                        ["route", "--json", "--host", "codex", "--cwd", directory, "Fix local task"],
+                        env={"MER_USER_CONFIG": str(Path(directory, "absent.json"))},
+                        out=output,
+                    )
                 self.assertEqual(status, 0)
                 result = json.loads(output.getvalue())
                 self.assertEqual((result["classifier"], result["role"], result["effort"]), ("laya", "fix", "medium"))

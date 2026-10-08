@@ -14,7 +14,6 @@ class EffortRegistryTests(unittest.TestCase):
 
     def test_opencode_schema_matches_canonical_efforts(self):
         source = Path(__file__).parents[1] / "plugins/opencode-model-effort-router/src/index.ts"
-        match = re.search(r'effort:\s*\{\s*type:\s*"string",\s*enum:\s*(\[[^\]]*\])',
-                          source.read_text())
+        match = re.search(r'effort:\s*\{\s*type:\s*"string",\s*enum:\s*(\[[^\]]*\])', source.read_text())
         self.assertIsNotNone(match)
         self.assertEqual(tuple(ast.literal_eval(match.group(1))), EFFORTS)

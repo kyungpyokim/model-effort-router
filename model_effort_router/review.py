@@ -1,4 +1,5 @@
 """Independent review input/output (spec 16): git diff, prompt, verdict parsing."""
+
 import json
 import re
 import subprocess
@@ -20,8 +21,9 @@ def parse_verdict(text):
 
 
 def _git(args, cwd):
-    p = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, errors="replace",
-                       stdin=subprocess.DEVNULL, timeout=60)
+    p = subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, errors="replace", stdin=subprocess.DEVNULL, timeout=60
+    )
     return p.returncode, p.stdout
 
 
@@ -41,9 +43,14 @@ def git_diff(cwd):
             return {"is_repo": False}
         base = ["HEAD"] if _git(["rev-parse", "--verify", "-q", "HEAD"], cwd)[0] == 0 else []
         literal = ["-c", "core.quotePath=false"]  # non-ASCII names as they are, not "\303\251"; the probe matches paths
-        return {"is_repo": True, "diff": _git(["diff", *base], cwd)[1],
-                "files": _git([*literal, "diff", "--name-only", "--no-renames", *base], cwd)[1].split("\n")[:-1],
-                "untracked": _git([*literal, "ls-files", "--others", "--exclude-standard", "--full-name"], cwd)[1].split("\n")[:-1]}
+        return {
+            "is_repo": True,
+            "diff": _git(["diff", *base], cwd)[1],
+            "files": _git([*literal, "diff", "--name-only", "--no-renames", *base], cwd)[1].split("\n")[:-1],
+            "untracked": _git([*literal, "ls-files", "--others", "--exclude-standard", "--full-name"], cwd)[1].split(
+                "\n"
+            )[:-1],
+        }
     except (OSError, subprocess.SubprocessError):
         return {"is_repo": False}
 
@@ -67,12 +74,16 @@ _PROBE_NOTES = {  # only verdicts that are facts for the reviewer; skipped/incon
 def review_prompt(request, diff, gate, probe=None):
     note = _PROBE_NOTES.get((probe or {}).get("verdict"))
     tail = (probe or {}).get("output_tail")
-    if note and tail and probe["verdict"] == "fails_without_change":  # assertion failure vs ImportError / missing fixture
+    if (
+        note and tail and probe["verdict"] == "fails_without_change"
+    ):  # assertion failure vs ImportError / missing fixture
         note += f"\nLast output of that run:\n{tail[-PROBE_TAIL_MAX:]}"
     note_block = f"{note}\n\n" if note else ""
-    return (f"Independently review this change against the request. Check requirements met, omissions, logic "
-            f"errors, regressions, edge cases, security, needless changes, missing tests, tests that would still pass without "
-            f"the change, state changed before an error is raised. Do not edit files. Do the "
-            f"review yourself in this session: do not spawn subagents or delegate to other agents.\n\n"
-            f"Request:\n{request}\n\n{_diff_section(diff)}\nTest Gate result:\n{json.dumps(gate, indent=2)}\n\n{note_block}"
-            "End your answer with exactly these two lines:\nVERDICT: approved|changes_requested\nFINDINGS: <n>")
+    return (
+        f"Independently review this change against the request. Check requirements met, omissions, logic "
+        f"errors, regressions, edge cases, security, needless changes, missing tests, tests that would still pass without "
+        f"the change, state changed before an error is raised. Do not edit files. Do the "
+        f"review yourself in this session: do not spawn subagents or delegate to other agents.\n\n"
+        f"Request:\n{request}\n\n{_diff_section(diff)}\nTest Gate result:\n{json.dumps(gate, indent=2)}\n\n{note_block}"
+        "End your answer with exactly these two lines:\nVERDICT: approved|changes_requested\nFINDINGS: <n>"
+    )

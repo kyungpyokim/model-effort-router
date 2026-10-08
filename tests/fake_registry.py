@@ -1,4 +1,5 @@
 """Test-only backend registry hook (loaded via MER_TEST_REGISTRY_MODULE, never shipped)."""
+
 import json
 
 from model_effort_router.difficulty.decision import DifficultyDecision
@@ -20,8 +21,13 @@ class FakeBackend:
         if self.spec.get("raise"):
             raise RuntimeError("fake backend failure")
         return DifficultyDecision(
-            self.spec.get("role", "implementation"), self.spec.get("effort", "medium"), "fake",
-            confidence=self.spec.get("confidence"), target=self.spec.get("target"), reason_code=f"timeout_{timeout_s:g}")
+            self.spec.get("role", "implementation"),
+            self.spec.get("effort", "medium"),
+            "fake",
+            confidence=self.spec.get("confidence"),
+            target=self.spec.get("target"),
+            reason_code=f"timeout_{timeout_s:g}",
+        )
 
 
 def register(registry, env):

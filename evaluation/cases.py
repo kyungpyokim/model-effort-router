@@ -1,4 +1,5 @@
 """Role/effort corpus loader and labeler agreement. Usage: python3 -m evaluation.cases FILE."""
+
 import json
 import sys
 
@@ -26,8 +27,7 @@ def _check_verdict(obj, where, *, labeler=False):
         raise CorpusError(f"{where}: role must be one of {ROLES}, got {role!r}")
     if effort not in EFFORTS:
         raise CorpusError(f"{where}: effort must be one of {EFFORTS}, got {effort!r}")
-    return {"role": role, "effort": effort,
-            **({"labeler": obj["labeler"]} if labeler else {})}
+    return {"role": role, "effort": effort, **({"labeler": obj["labeler"]} if labeler else {})}
 
 
 def validate_case(row):
@@ -51,7 +51,11 @@ def validate_case(row):
     labels = row.get("labels", [])
     if not isinstance(labels, list):
         raise CorpusError(f"{where}: labels must be a list")
-    out = {**row, "paths": list(paths), "labels": [_check_verdict(line, f"{where} label", labeler=True) for line in labels]}
+    out = {
+        **row,
+        "paths": list(paths),
+        "labels": [_check_verdict(line, f"{where} label", labeler=True) for line in labels],
+    }
     if status == "draft":
         if labels:
             raise CorpusError(f"{where}: a draft must not carry labels")
@@ -107,9 +111,14 @@ def agreement(rows):
             role_mismatches.append(r["id"])
         if not effort_ok:
             effort_mismatches.append(r["id"])
-    return {"compared": compared, "role_exact": role_exact, "effort_exact": effort_exact,
-            "joint_exact": joint_exact, "role_mismatches": role_mismatches,
-            "effort_mismatches": effort_mismatches}
+    return {
+        "compared": compared,
+        "role_exact": role_exact,
+        "effort_exact": effort_exact,
+        "joint_exact": joint_exact,
+        "role_mismatches": role_mismatches,
+        "effort_mismatches": effort_mismatches,
+    }
 
 
 def main(argv=None):
@@ -123,8 +132,11 @@ def main(argv=None):
         print(f"invalid corpus: {exc}", file=sys.stderr)
         return 1
     by_status = {s: sum(r["status"] == s for r in rows) for s in STATUSES}
-    print(json.dumps({"cases": len(rows), "by_status": by_status, "agreement": agreement(rows)},
-                     ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {"cases": len(rows), "by_status": by_status, "agreement": agreement(rows)}, ensure_ascii=False, indent=2
+        )
+    )
     return 0
 
 
