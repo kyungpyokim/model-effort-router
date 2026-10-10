@@ -94,6 +94,20 @@ def _codex_invocation(plan):
     )
 
 
+def _reply_tag(plan, host, main_model, spawns):
+    """Codex: the app shows no hook output, so Main names the model in its reply's first line."""
+    if host.name != "codex":
+        return ""
+    main = f"`[main: {normalize(main_model)}]`"
+    if not spawns:
+        return f" Start your reply with the line {main} (the Codex app does not show hook messages)."
+    return (
+        f" Start your reply with one line naming the model that did the work: "
+        f"`[routed: {effort_pair(plan.model, plan.applied_effort)}]` if the Subagent ran, or {main} "
+        "if you handled it in Main (the Codex app does not show hook messages)."
+    )
+
+
 def _header(plan, decision):
     return f"[model-effort-router] {decision.role} → {plan.agent} · {effort_pair(plan.model, plan.applied_effort)}."
 
@@ -128,6 +142,7 @@ def render(plan, mer_cmd, host, main_model=None):
         return (
             f"{_header(plan, decision)} Main already runs {normalize(main_model)}; no Subagent needed. "
             f"Proceed directly in Main (Main cannot change its own effort; routed effort is {plan.applied_effort})."
+            + _reply_tag(plan, host, main_model, spawns=False)
         )
     if same is False:
         invocation = _claude_invocation(plan) if host.name == "claude" else _codex_invocation(plan)
@@ -138,6 +153,7 @@ def render(plan, mer_cmd, host, main_model=None):
             "Handle it in Main only if the user explicitly told Main to do it this turn; otherwise, if you skip "
             "routing, add one line `skipped routing: <reason>` to your response. "
             "The hook provides advice only; it does not invoke the Subagent or change this Main turn's model/settings."
+            + _reply_tag(plan, host, main_model, spawns=True)
             + other
         )
     return (

@@ -242,6 +242,7 @@ Jev 인증 정보는 전역 사용자 설정에만 둘 수 있습니다. 자세�
 - `subagent_start`에는 `correlation.expected`(세션의 마지막 `route`)와 `correlation.matched`가 붙습니다. `matched_on`은 비교한 항목입니다. Codex는 `["model"]`(Subagent가 보고한 모델과 라우팅된 모델), Claude는 `["agent_type"]`(agent type과 `model-effort-router:effort-<effort>`; Claude payload에는 모델이 없습니다)입니다. effort는 어느 쪽에서도 검증하지 않습니다. 비교할 수 없으면 `matched`는 `null`입니다: 이전 route 없음, 모델/agent type 누락, route가 `inline_same_model`, Claude route가 haiku(effort agent 없음)인 경우입니다.
 - `subagent_stop`은 같은 `agent_id`의 `subagent_start`가 가진 `correlation`을 복사하며, 없으면 `null`입니다.
 - Subagent 이벤트는 Codex의 `turn_id`를 `agent_turn_id`로 기록합니다. 이는 child turn이며 route의 `turn_id`와 다릅니다.
+- Codex 앱은 hook 출력을 표시하지 않습니다. 그래서 Codex advice는 Main에게 답변 첫 줄을 Subagent가 실행됐으면 `[routed: <model> · effort <effort>]`, Main이 직접 처리했으면 `[main: <model>]`로 시작하라고 지시합니다. 모델에 대한 지시일 뿐 보장은 아니며, 기록은 로그가 기준입니다.
 - 한계: 마지막 route는 로그 끝 64KB 안에서만 찾으며, 라우팅이 `off`인 프롬프트는 `route` 이벤트를 쓰지 않으므로 그 뒤 시작한 Subagent는 이전에 기록된 route와 비교됩니다.
 
 ```bash
