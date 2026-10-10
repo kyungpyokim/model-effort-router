@@ -16,7 +16,7 @@ from ..policy.config import resolve_config
 from ..policy.router import route
 from ..policy.targeting import NO_ROUTE
 from . import advice, hosts
-from .main_model import main_model, save_session_model
+from .main_model import main_model, normalize, save_session_model
 
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
 USER_CONFIG_ENV = "MER_USER_CONFIG"
@@ -162,7 +162,14 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
             sdir,
             sid,
             route_log.route_event(
-                plan, latency_ms=latency_ms, prompt=prompt, configured_backend=cfg.backend, timeout_clamped=clamped
+                plan,
+                latency_ms=latency_ms,
+                prompt=prompt,
+                configured_backend=cfg.backend,
+                timeout_clamped=clamped,
+                host=host.name,
+                turn_id=data.get("turn_id"),
+                advice=advice.summary(plan, host, main),
             ),
         )
     return out
@@ -198,7 +205,84 @@ def post_model_switch(data, env, plugin_root):
     save_session_model(route_log.state_dir(env), data["session_id"], data.get("to_model"), "switch")
 
 
-HANDLERS = {"UserPromptSubmit": user_prompt_submit, "SessionStart": session_start, "PostModelSwitch": post_model_switch}
+MATCHED_ON = {"claude": ["agent_type"], "codex": ["model"]}  # the only fields each host's payload lets us compare
+NO_CORRELATION = {"expected": None, "matched": None, "matched_on": []}
+
+
+def _expected_matches(expected, host, agent_type, model):
+    """True/False when the started Subagent equals/differs from the routed one; None when nothing is comparable.
+    Always None after an inline_same_model route: no Subagent was asked for, so none can follow the advice."""
+    if expected.get("action") == "inline_same_model":
+        return None
+    if host == "claude":  # the payload has no model; effort is not checked on either host
+        wanted = (expected.get("invocation") or {}).get("subagent_type")
+        return agent_type == wanted if wanted and agent_type else None
+    routed, actual = normalize(expected.get("model")), normalize(model)
+    return routed == actual if routed and actual else None
+
+
+def _from_route(route_ev, host, agent_type, model):
+    advice_ev = route_ev.get("advice") if route_ev else None
+    if not isinstance(advice_ev, dict) or "routed_model" not in advice_ev:
+        return NO_CORRELATION
+    expected = {
+        "model": advice_ev["routed_model"],
+        "effort": advice_ev["routed_effort"],
+        "agent": advice_ev["agent"],
+        "action": advice_ev["action"],
+        "invocation": advice_ev["invocation"],
+    }
+    return {
+        "expected": expected,
+        "matched": _expected_matches(expected, host, agent_type, model),
+        "matched_on": MATCHED_ON[host],
+    }
+
+
+def _correlation(name, sdir, sid, host, data, model):
+    """A start links to the session's latest route; a stop copies its own start's link (matched by agent_id)."""
+    if name == "subagent_stop":
+        start = route_log.last_event(sdir, sid, "subagent_start", agent_id=data.get("agent_id"))
+        found = start.get("correlation") if start and data.get("agent_id") else None
+        return found if isinstance(found, dict) else NO_CORRELATION
+    return _from_route(route_log.last_event(sdir, sid, "route"), host, data.get("agent_type"), model)
+
+
+def _subagent_event(name, data, env):
+    """Record a Subagent lifecycle event. Ids, type and model only, never the Subagent's output. No stdout."""
+    sid = data.get("session_id")
+    if not sid:
+        return
+    sdir, host = route_log.state_dir(env), hosts.get(env=env).name
+    model = data.get("model") if isinstance(data.get("model"), str) else None
+    ev = {
+        "event": name,
+        "host": host,
+        "agent_id": data.get("agent_id"),
+        "agent_type": data.get("agent_type"),
+        "model": model,
+    }
+    if data.get("turn_id") is not None:
+        ev["agent_turn_id"] = data["turn_id"]  # Codex: the child's turn, not the route's
+    ev["correlation"] = _correlation(name, sdir, sid, host, data, model)
+    route_log.append(sdir, sid, ev)
+
+
+def subagent_start(data, env, plugin_root):
+    _subagent_event("subagent_start", data, env)
+
+
+def subagent_stop(data, env, plugin_root):
+    _subagent_event("subagent_stop", data, env)
+
+
+HANDLERS = {
+    "UserPromptSubmit": user_prompt_submit,
+    "SessionStart": session_start,
+    "PostModelSwitch": post_model_switch,
+    "SubagentStart": subagent_start,
+    "SubagentStop": subagent_stop,
+}
 
 
 def main(event, plugin_root, stdin=None, stdout=None, env=None):

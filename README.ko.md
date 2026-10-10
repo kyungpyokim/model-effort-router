@@ -235,6 +235,19 @@ Legacy L1-L5, tier/profile, session, escalation 및 `nimble_jev` 설정은 마�
 
 Jev 인증 정보는 전역 사용자 설정에만 둘 수 있습니다. 자세한 방법은 [분류기 backend 설정](#분류기-backend-설정)을 참고하십시오. 저장소 설정에는 이 인증 정보를 둘 수 없습니다.
 
+## 워크플로우 로그
+
+세션마다 `~/.local/state/model-effort-router/<session>-<hash>.log.jsonl`에 기록됩니다(`MER_STATE_DIR`로 변경 가능). 흐름은 `route`(결정과 `advice`: `spawn`, `inline_same_model`, `advise`, `no_route`, 라우팅된 모델과 Main에 지시한 호출) -> `subagent_start` -> `run`(`mer` worker 실행) -> `subagent_stop` 순서입니다. 프롬프트와 Subagent 출력은 저장하지 않습니다.
+
+- `subagent_start`에는 `correlation.expected`(세션의 마지막 `route`)와 `correlation.matched`가 붙습니다. `matched_on`은 비교한 항목입니다. Codex는 `["model"]`(Subagent가 보고한 모델과 라우팅된 모델), Claude는 `["agent_type"]`(agent type과 `model-effort-router:effort-<effort>`; Claude payload에는 모델이 없습니다)입니다. effort는 어느 쪽에서도 검증하지 않습니다. 비교할 수 없으면 `matched`는 `null`입니다: 이전 route 없음, 모델/agent type 누락, route가 `inline_same_model`, Claude route가 haiku(effort agent 없음)인 경우입니다.
+- `subagent_stop`은 같은 `agent_id`의 `subagent_start`가 가진 `correlation`을 복사하며, 없으면 `null`입니다.
+- Subagent 이벤트는 Codex의 `turn_id`를 `agent_turn_id`로 기록합니다. 이는 child turn이며 route의 `turn_id`와 다릅니다.
+- 한계: 마지막 route는 로그 끝 64KB 안에서만 찾으며, 라우팅이 `off`인 프롬프트는 `route` 이벤트를 쓰지 않으므로 그 뒤 시작한 Subagent는 이전에 기록된 route와 비교됩니다.
+
+```bash
+jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.action,model:(.model // .advice.routed_model),matched:.correlation.matched}' ~/.local/state/model-effort-router/<session>-*.log.jsonl
+```
+
 ## Runtime 개발
 
 `model_effort_router/`가 공유 runtime source입니다. Plugin에는 host integration만 포함됩니다. 개발 시 `MER_CORE_PATH="$PWD"`를 사용하십시오. 다음 명령으로 설치하고 검증합니다:
