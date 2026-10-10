@@ -45,7 +45,7 @@ class PluginBundleTest(unittest.TestCase):
             return ["bin/mer"]
         scripts = ["bin/mer", "bin/mer-gate"]
         if plugin.name.startswith(("codex", "claude")):
-            scripts.append("hooks/user_prompt_submit.py")
+            scripts.extend(["hooks/user_prompt_submit.py", "hooks/subagent_start.py", "hooks/subagent_stop.py"])
         if plugin.name.startswith("claude"):
             scripts.extend(["hooks/session_start.py", "hooks/post_model_switch.py"])
         return scripts
@@ -61,10 +61,12 @@ class PluginBundleTest(unittest.TestCase):
         self.assertEqual(manifest["name"], "model-effort-router")
         self.assertEqual((manifest["skills"], manifest["hooks"]), ("./skills/", "./hooks/hooks.json"))
         hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())["hooks"]
-        self.assertEqual(set(hooks), {"UserPromptSubmit"})
+        self.assertEqual(set(hooks), {"UserPromptSubmit", "SubagentStart", "SubagentStop"})
         cmds = [h["command"] for g in hooks.values() for e in g for h in e["hooks"]]
         self.assertTrue(all("${CLAUDE_PLUGIN_ROOT}/hooks/" in c for c in cmds))
         self.assertGreaterEqual(hooks["UserPromptSubmit"][0]["hooks"][0]["timeout"], 20)
+        for event in ("SubagentStart", "SubagentStop"):
+            self.assertEqual(hooks[event][0]["hooks"][0]["timeout"], 10)
         self.assertFalse((PLUGIN / "hooks" / "pre_tool_use.py").exists())
         for plugin in PLUGINS:
             with self.subTest(plugin=plugin.name):
@@ -123,6 +125,8 @@ class ModelEffortRouter:
                 "hooks/user_prompt_submit.py": ["hook", host, str(plugin), 1, "UserPromptSubmit"],
                 "hooks/session_start.py": ["hook", host, str(plugin), 1, "SessionStart"],
                 "hooks/post_model_switch.py": ["hook", host, str(plugin), 1, "PostModelSwitch"],
+                "hooks/subagent_start.py": ["hook", host, str(plugin), 1, "SubagentStart"],
+                "hooks/subagent_stop.py": ["hook", host, str(plugin), 1, "SubagentStop"],
             }
             for script in self.scripts(plugin):
                 with self.subTest(host=host, script=script):

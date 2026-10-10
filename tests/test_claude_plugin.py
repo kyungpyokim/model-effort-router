@@ -21,7 +21,13 @@ class ManifestTest(unittest.TestCase):
         manifest = json.loads((CLAUDE / ".claude-plugin" / "plugin.json").read_text())
         self.assertEqual(manifest["name"], "model-effort-router")
         hooks = json.loads((CLAUDE / "hooks" / "hooks.json").read_text())["hooks"]
-        self.assertEqual(set(hooks), {"UserPromptSubmit", "SessionStart", "PostModelSwitch"})
+        self.assertEqual(
+            set(hooks), {"UserPromptSubmit", "SessionStart", "PostModelSwitch", "SubagentStart", "SubagentStop"}
+        )
+        for event, script in (("SubagentStart", "subagent_start"), ("SubagentStop", "subagent_stop")):
+            entry = hooks[event][0]["hooks"][0]
+            self.assertIn(f"${{CLAUDE_PLUGIN_ROOT}}/hooks/{script}.py", entry["command"])
+            self.assertEqual(entry["timeout"], 10)
         cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/user_prompt_submit.py", cmd)
         start = hooks["SessionStart"][0]["hooks"][0]

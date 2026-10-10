@@ -235,6 +235,19 @@ Legacy L1-L5, tier/profile, session, escalation, and `nimble_jev` settings are r
 
 Jev credentials belong only in the global user config; see [Classifier backend setup](#classifier-backend-setup). Repository config cannot provide this credential.
 
+## Workflow log
+
+Each session appends to `~/.local/state/model-effort-router/<session>-<hash>.log.jsonl` (override with `MER_STATE_DIR`). The workflow reads in order: `route` (decision plus `advice`: `spawn`, `inline_same_model`, `advise`, or `no_route`, with the routed model and the invocation Main was told to make) -> `subagent_start` -> `run` (`mer` worker runs) -> `subagent_stop`. Prompts and Subagent output are never stored.
+
+- A `subagent_start` carries `correlation.expected` (the session's latest logged `route`) and `correlation.matched`. `matched_on` says what was compared: `["model"]` on Codex (the Subagent's reported model against the routed model), `["agent_type"]` on Claude (the agent type against `model-effort-router:effort-<effort>`; Claude's payload has no model). Effort is never verified. `matched` is `null` when nothing is comparable: no prior route, the model or agent type is missing, the route was `inline_same_model`, or the Claude route is haiku (no effort agent).
+- A `subagent_stop` copies the `correlation` of the `subagent_start` with the same `agent_id`; without one it is `null`.
+- Subagent events record Codex's `turn_id` as `agent_turn_id`: it is the child's turn, not the route's `turn_id`.
+- Limits: only the last 64 KB of the log is searched for the latest route, and prompts with routing `off` write no `route` event, so a Subagent started after one is compared with the previous logged route.
+
+```bash
+jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.action,model:(.model // .advice.routed_model),matched:.correlation.matched}' ~/.local/state/model-effort-router/<session>-*.log.jsonl
+```
+
 ## Runtime development
 
 `model_effort_router/` is the shared runtime source. Plugins contain host integration only. Use `MER_CORE_PATH="$PWD"` for development. Install and verify with:

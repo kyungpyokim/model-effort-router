@@ -30,6 +30,28 @@ def append(state_dir, session_id, event):
         f.write(line + "\n")
 
 
+TAIL_BYTES = 64 * 1024  # bounded read: the latest event sits at the end of an append-only file
+
+
+def last_event(state_dir, session_id, name, **fields):
+    """Most recent event called `name` (with equal `fields`) within the log's tail, else None. Never raises."""
+    try:
+        with open(log_path(state_dir, session_id), "rb") as f:
+            size = f.seek(0, os.SEEK_END)
+            f.seek(max(0, size - TAIL_BYTES - 1))  # one byte of look-behind: a cut line always has a partial head
+            lines = f.read().split(b"\n")  # bytes, not str.splitlines: U+2028 or \x85 inside a value is not a break
+        for raw in reversed(lines[1:] if size > TAIL_BYTES else lines):
+            try:
+                ev = json.loads(raw.decode("utf-8", "replace"))
+            except ValueError:
+                continue
+            if isinstance(ev, dict) and ev.get("event") == name and all(ev.get(k) == v for k, v in fields.items()):
+                return ev
+    except Exception:
+        pass
+    return None
+
+
 def prompt_fingerprint(prompt):
     return {"prompt_sha": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12], "prompt_len": len(prompt)}
 
@@ -49,7 +71,9 @@ def error_event(exc, *, latency_ms, prompt, configured_backend, timeout_clamped=
     return ev
 
 
-def route_event(plan, *, latency_ms, prompt, configured_backend, timeout_clamped=False):
+def route_event(
+    plan, *, latency_ms, prompt, configured_backend, timeout_clamped=False, host=None, turn_id=None, advice=None
+):
     decision = plan.decision
     ev = {
         "event": "route",
@@ -61,6 +85,7 @@ def route_event(plan, *, latency_ms, prompt, configured_backend, timeout_clamped
     }
     if timeout_clamped:
         ev["timeout_clamped"] = True
+    ev.update({k: v for k, v in (("host", host), ("turn_id", turn_id), ("advice", advice)) if v is not None})
     if plan.classifier_usage_missing:
         ev["classifier_usage"] = None  # a model was called but its usage is unknown (absent key = no model call)
     elif plan.classifier_usage:

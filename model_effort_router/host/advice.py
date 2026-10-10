@@ -1,6 +1,7 @@
 """Main-agent guidance; hooks do not mutate the active model or create Subagents."""
 
 import re
+from types import SimpleNamespace
 
 from ..policy.targeting import NO_ROUTE
 from .main_model import normalize
@@ -11,28 +12,44 @@ _CLAUDE_ALIAS = re.compile(
 )  # the Agent call's model parameter takes aliases only
 
 
+_CLAUDE, _CODEX = SimpleNamespace(name="claude"), SimpleNamespace(name="codex")
+
+
 def effort_pair(model, effort):
     """The one display form for a routed model and effort, shared by every host surface."""
     return f"{model} · effort {effort}"
 
 
-def _claude_invocation(plan):
+def _invocation_args(plan, host):
+    """The one description of the call Main is told to make; the advice text and the log both build from it.
+    None when no call applies (a Claude model without an Agent alias)."""
+    if host.name != "claude":
+        return {"model": plan.model, "reasoning_effort": plan.applied_effort}
     alias = _CLAUDE_ALIAS.match(plan.model or "")
     if not alias:
+        return None
+    # haiku has no supported efforts (adapters/claude.py), so no effort agent applies
+    agent = None if alias[1] == "haiku" else f"model-effort-router:effort-{plan.applied_effort}"
+    return {"subagent_type": agent, "model": alias[1]}
+
+
+def _claude_invocation(plan):
+    args = _invocation_args(plan, _CLAUDE)
+    if args is None:
         return (
             f"invoke: {plan.model} has no Agent model alias, so handle the task directly or use a project agent "
             "in .claude/agents/ with `model:` set. "
         )
-    if alias[1] == "haiku":  # no supported efforts (adapters/claude.py), so no effort agent applies
-        return 'invoke: Agent(model="haiku"); effort does not apply to haiku. '
+    if args["subagent_type"] is None:
+        return f'invoke: Agent(model="{args["model"]}"); effort does not apply to haiku. '
     pinned = (
         ""
-        if plan.model == alias[1]
-        else (f" (`{alias[1]}` runs Claude Code's current {alias[1]} model, which may differ from {plan.model})")
+        if plan.model == args["model"]
+        else (
+            f" (`{args['model']}` runs Claude Code's current {args['model']} model, which may differ from {plan.model})"
+        )
     )
-    return (
-        f'invoke: Agent(subagent_type="model-effort-router:effort-{plan.applied_effort}", model="{alias[1]}"){pinned}. '
-    )
+    return f'invoke: Agent(subagent_type="{args["subagent_type"]}", model="{args["model"]}"){pinned}. '
 
 
 def matches(plan, main_model):
@@ -41,9 +58,37 @@ def matches(plan, main_model):
     return None if main is None else main == normalize(plan.model)
 
 
+def _same_model(plan, host, main_model):
+    """True/False/None as `matches`, but None when Claude has no Agent alias to spawn with (a flat spawn order would contradict the invocation)."""
+    same = matches(plan, main_model)
+    if same is False and host.name == "claude" and not _CLAUDE_ALIAS.match(plan.model or ""):
+        return None
+    return same
+
+
+def summary(plan, host, main_model=None):
+    """What `render` told Main, as data: the log and the text derive from the same values and cannot disagree."""
+    if plan.target == NO_ROUTE:
+        return {"action": "no_route"}  # the mode is logged separately
+    if not plan.decision:
+        return {"action": "off"}
+    same = _same_model(plan, host, main_model)
+    action = "inline_same_model" if same else "spawn" if same is False else "advise"
+    spawns = action != "inline_same_model" and (action == "spawn" or host.name == "claude")
+    return {
+        "action": action,
+        "main_model": normalize(main_model),
+        "routed_model": plan.model,
+        "routed_effort": plan.applied_effort,
+        "agent": plan.agent,
+        "invocation": _invocation_args(plan, host) if spawns else None,
+    }
+
+
 def _codex_invocation(plan):
+    args = _invocation_args(plan, _CODEX)
     return (
-        f'invoke: spawn_agent(model="{plan.model}", reasoning_effort="{plan.applied_effort}", '
+        f'invoke: spawn_agent(model="{args["model"]}", reasoning_effort="{args["reasoning_effort"]}", '
         'fork_turns="none", message=<Context Packet>). This router advice asks for the model/reasoning_effort '
         "to be set. "
     )
@@ -78,9 +123,7 @@ def render(plan, mer_cmd, host, main_model=None):
         else ""
     )
     invocation = _claude_invocation(plan) if host.name == "claude" else ""
-    same = matches(plan, main_model)
-    if same is False and host.name == "claude" and not _CLAUDE_ALIAS.match(plan.model or ""):
-        same = None  # no Agent alias to spawn with, so a flat "spawn" order would contradict the invocation
+    same = _same_model(plan, host, main_model)
     if same:
         return (
             f"{_header(plan, decision)} Main already runs {normalize(main_model)}; no Subagent needed. "
