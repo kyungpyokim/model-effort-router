@@ -209,6 +209,17 @@ class AdviceMatchTest(unittest.TestCase):
             note,
         )
         self.assertIn("asks for the model/reasoning_effort", note)
+        self.assertIn(
+            "Start your reply with one line naming the model that did the work: "
+            "`[routed: gpt-6.1-sol · effort medium]` if the Subagent ran, or `[main: gpt-6-luna]`",
+            note,
+        )
+
+    def test_codex_same_model_tags_reply_with_main_and_claude_gets_no_tag(self):
+        note = advice.render(plan("gpt-6.1-sol", "medium"), "mer", hosts.CODEX, main_model="gpt-6.1-sol")
+        self.assertIn("Start your reply with the line `[main: gpt-6.1-sol]`", note)
+        for main in ("claude-sonnet-5-5", "claude-opus-5-5"):
+            self.assertNotIn("Start your reply", advice.render(plan(), "mer", hosts.CLAUDE, main_model=main))
 
     def test_match_says_proceed_in_main_with_routed_effort(self):
         note = advice.render(plan(effort="xhigh"), "mer", hosts.CLAUDE, main_model="claude-opus-5-5")
