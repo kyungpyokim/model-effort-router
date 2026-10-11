@@ -120,17 +120,22 @@ def _codex_invocation(plan):
     )
 
 
+_APPS = {"codex": "the Codex app", "claude": "the Claude desktop app"}
+_FIRST_LINE = "before any tool call, start your first message of this turn with"
+
+
 def _reply_tag(plan, host, main_model, spawns):
-    """Codex: the app shows no hook output, so Main names the model in its final answer's first line."""
-    if host.name != "codex":
+    """The apps show no hook output, so Main names the model in the first line it writes this turn, before any tool call."""
+    app = _APPS.get(host.name)
+    if app is None:
         return ""
     main = f"`[main: {normalize(main_model)}]`"
     if not spawns:
-        return f"Required: begin your final answer with the line {main} (the Codex app does not show hook messages). "
+        return f"Required: {_FIRST_LINE} the line {main} ({app} does not show hook messages). "
     return (
-        "Required: begin your final answer with one line naming the model that did the work: "
-        f"`[routed: {effort_pair(plan.model, plan.applied_effort)}]` if the Subagent ran, or {main} "
-        "if you handled it in Main (the Codex app does not show hook messages). "
+        f"Required: {_FIRST_LINE} one line naming the model that will do the work: "
+        f"`[routed: {effort_pair(plan.model, plan.applied_effort)}]` if you spawn the Subagent, or {main} "
+        f"if you handle it in Main ({app} does not show hook messages). "
     )
 
 
@@ -229,10 +234,10 @@ def render_policy(lanes, host, main_model=None):
         stub = SimpleNamespace(model=model, applied_effort="<effort>")
         calls.append(f"{lane}: " + (_claude_invocation(stub) if host.name == "claude" else _codex_invocation(stub)))
     tag = (
-        "Required: begin your final answer with one line naming the model that did the work: "
-        "`[routed: <lane model> · effort <effort>]` if the Subagent ran, or "
-        f"`[main: {normalize(main_model) or '<your model>'}]` if you handled it in Main (the Codex app does not show hook messages). "
-        if host.name == "codex"
+        f"Required: {_FIRST_LINE} one line naming the model that will do the work: "
+        "`[routed: <lane model> · effort <effort>]` if you spawn the Subagent, or "
+        f"`[main: {normalize(main_model) or '<your model>'}]` if you handle it in Main ({_APPS[host.name]} does not show hook messages). "
+        if host.name in _APPS
         else ""
     )
     main = f" ({normalize(main_model)})" if normalize(main_model) else ""
