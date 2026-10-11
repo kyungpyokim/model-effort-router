@@ -90,7 +90,9 @@ The classifier backend decides the request's role and effort. It is separate fro
 }
 ```
 
-With `backend: jev`, every prompt that is not host-generated is sent to the Jev API, which decides eligibility (`route` or `no_route`), role and effort. The keyword rules only gate the fallback backend when Jev fails.
+With `backend: jev`, every prompt that is not host-generated is sent to the Jev API, which decides eligibility (`route` or `no_route`), role and effort. There is no keyword prefilter: whichever classifier is configured judges every non-blank prompt (a non-Jev backend always routes, so chit-chat costs one classifier call too).
+
+`fallback` may also be a list, tried in order after `backend`, e.g. `"fallback": ["openai_decisions", "nimble"]`. The `timeout_s` of each backend is capped so the whole chain fits the hook's 30 second limit (12s each for one or two backends, 8s for three).
 
 **Session context (Claude and Codex hooks).** So that short follow-ups such as "go ahead" are classified by the work they continue, the hook also sends Jev a session summary and the most recent user/assistant turns (text only, never tool output) next to the current prompt. The summary is produced in the background by the host's own CLI (`claude -p` on Haiku; `codex exec` on the economy model with its shell and exec tools disabled; the text goes on stdin) and stored under the state directory (summary files unused for 14 days are deleted); it lags one turn, and the newest turns are sent raw. The hook never waits for it. Disable it with `{"context": {"enabled": false}}` in repository or user config; `context.max_chars` (default 6000) bounds the summary plus recent turns. With `context.enabled: false`, only the current prompt is sent. The background summary needs the standalone `claude` CLI to be signed in (`claude auth login`); a session inside the Claude desktop app does not lend its sign-in to it, and without it the summary is skipped and an error event is logged. Codex summaries need the `codex` CLI signed in (`codex login`).
 

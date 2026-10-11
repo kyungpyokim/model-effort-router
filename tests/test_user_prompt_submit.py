@@ -150,16 +150,16 @@ class UserPromptSubmitTest(HookCase):
             self.assertEqual((proc.returncode, proc.stdout), (0, ""), prompt)
         self.assertEqual(self.log_events(), [])
 
-    def test_regex_gated_no_route_advises_main_agent_and_logs_without_prompt_text(self):
-        proc = self.submit("What is the capital of France? ZEBRA_PROMPT_MARKER")
+    def test_blank_prompt_is_no_route_without_a_classifier_call(self):
+        proc = self.submit("   ")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(self.context(proc), advice.NO_ROUTE_MESSAGE)
         (event,) = self.log_events()
         self.assertEqual((event["event"], event["target"]), ("route", "no_route"))
         self.assertNotIn("decision", event)
-        self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(event))
+        self.assertIsNone(event.get("classifier_usage"))
 
-    def test_backend_target_routes_korean_follow_up_the_regex_would_drop(self):
+    def test_backend_target_routes_korean_follow_up(self):
         self.fake = {"role": "analysis", "effort": "low", "target": "route"}
         advice = self.context(self.submit("원인 파악해"))
         self.assertIn("analysis →", advice)
@@ -379,14 +379,14 @@ class ClassifierFallbackNoticeTest(HookCase):
         (event,) = self.log_events()
         self.assertEqual(event["classifier_causes"], ["fake:HTTP 503"])
 
-    def test_primary_failure_then_regex_no_route_is_shown(self):
+    def test_primary_failure_then_fallback_classifies_even_chit_chat(self):
         self.fake = {"status": 503, "target": "route"}
         out = self.out("thanks, sounds good")
-        line = "classifier fallback: fake failed (HTTP 503) → keyword gate decided no_route"
+        line = "classifier fallback: fake failed (HTTP 503) → classified by fake2"
         self.assertIn(line, out["systemMessage"])
         self.assertIn(line, out["hookSpecificOutput"]["additionalContext"])
         (event,) = self.log_events()
-        self.assertEqual((event["target"], event["classifier_causes"]), ("no_route", ["fake:HTTP 503"]))
+        self.assertEqual((event["target"], event["classifier_causes"]), ("route", ["fake:HTTP 503"]))
 
     def test_total_failure_is_shown_and_still_logged_as_error(self):
         self.fake = {"status": 503, "target": "route", "second": {"raise": True}}

@@ -217,7 +217,7 @@ class SystemOneBackend:
 
 class JevBackend(SystemOneBackend):
     name = "jev"
-    provides_target = True  # its decision carries the routing target; the router asks it before the regex gate
+    provides_target = True  # its decision carries the routing target; the router asks it first
 
     def _endpoint(self, env):
         key = self._api_key or env.get(KEY_ENV)

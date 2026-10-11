@@ -21,7 +21,7 @@ from model_effort_router.host.codex_hooks import main as hook_main
 from model_effort_router.policy.config import resolve_config
 from model_effort_router.policy.overrides import parse_override
 from model_effort_router.policy.router import RoutePlan, route
-from model_effort_router.policy.targeting import classify_target, NO_ROUTE, ROUTE
+from model_effort_router.policy.targeting import NO_ROUTE, ROUTE
 from model_effort_router.difficulty.subscription import DifficultyInput, SubscriptionBackend, build_prompt
 
 
@@ -111,11 +111,6 @@ class RouteContractTests(unittest.TestCase):
     def test_explicit_opencode_route_detects_korean_auth_and_payment_risks(self):
         plan = route("인증/결제 신뢰경계 검토", role_override="review", effort_override="medium", host="opencode")
         self.assertEqual(plan.risk_flags, ("auth", "payment"))
-
-    def test_no_route_policy_still_routes_code_analysis_and_design(self):
-        self.assertEqual(classify_target("Why does parser.py fail?"), ROUTE)
-        self.assertEqual(classify_target("Analyze the cause of race condition in worker.py"), ROUTE)
-        self.assertEqual(classify_target("What is the capital of France?"), NO_ROUTE)
 
     def test_legacy_configuration_and_nimble_jev_give_migration_errors(self):
         with self.assertRaisesRegex(ValueError, "session/profile"):
