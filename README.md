@@ -235,6 +235,14 @@ Legacy L1-L5, tier/profile, session, escalation, and `nimble_jev` settings are r
 
 Jev credentials belong only in the global user config; see [Classifier backend setup](#classifier-backend-setup). Repository config cannot provide this credential.
 
+### Experimental: policy mode
+
+`router.mode = "policy"` skips the classifier. The `UserPromptSubmit` hook injects the static model map (execution and reasoning lanes with their supported efforts) and Main itself picks the lane and effort and decides whether to spawn a Subagent. It makes no model call. Codex and Claude only; other hosts stay silent.
+
+- Enable: set `{"router": {"mode": "policy"}}` in the global user config, or start a prompt with `/router policy`. Switch back with `"mode": "auto"` (the default). An explicit `/router role=<role> effort=<effort>` keeps its normal behavior.
+- This is an A/B experiment against `auto`; the losing mode will be removed after the comparison.
+- Compare the two from the workflow logs: `python3 scripts/compare_modes.py [--since <unix ts>]` prints routed prompts, spawn-advised count, Subagent starts, match counts, median hook latency, and classifier tokens per mode and host.
+
 ## Workflow log
 
 Each session appends to `~/.local/state/model-effort-router/<session>-<hash>.log.jsonl` (override with `MER_STATE_DIR`). The workflow reads in order: `route` (decision plus `advice`: `spawn`, `inline_same_model`, `advise`, or `no_route`, with the routed model and the invocation Main was told to make) -> `subagent_start` -> `run` (`mer` worker runs) -> `subagent_stop`. Prompts and Subagent output are never stored.

@@ -274,6 +274,22 @@ class SessionContextTest(HookCase):
         self.call()
         self.assertEqual(self.spawned, [])
 
+    def test_prompt_override_to_policy_skips_context_and_summary(self):
+        self.write_transcript(("user", "add retries"), ("assistant", self.BIG))
+        self.call("/router policy\nadd retries to parser.py")
+        self.assertEqual((self.spawned, FakeBackend.inputs), ([], []))
+
+    def test_prompt_override_to_auto_under_global_policy_reads_context(self):
+        self.write_repo_config({"difficulty": {"backend": "fake"}, "router": {"mode": "policy"}})
+        self.write_transcript(("user", "add retries"), ("assistant", "plan: retries param"), ("user", "진행"))
+        self.call("/router auto\n진행")
+        self.assertIn("plan: retries param", FakeBackend.inputs[0].context)
+
+    def test_prompt_override_to_manual_skips_context_and_summary(self):
+        self.write_transcript(("user", "add retries"), ("assistant", self.BIG))
+        self.call("/router manual\n진행")
+        self.assertEqual((self.spawned, FakeBackend.inputs), ([], []))
+
     def test_disabled_or_off_or_guarded_does_nothing(self):
         self.write_transcript(("user", "add retries"), ("assistant", self.BIG))
         self.write_repo_config({"difficulty": {"backend": "fake"}, "context": {"enabled": False}})

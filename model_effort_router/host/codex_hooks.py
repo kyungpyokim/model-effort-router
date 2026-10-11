@@ -13,6 +13,7 @@ from ..difficulty.registry import BACKENDS
 from ..difficulty.subscription import GUARD_ENV, SubscriptionBackend, codex_verified
 from ..logging import route_log
 from ..policy.config import resolve_config
+from ..policy.overrides import parse_override
 from ..policy.router import route
 from ..policy.targeting import NO_ROUTE
 from . import advice, hosts
@@ -112,7 +113,7 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
     cwd = data.get("cwd") or os.getcwd()
     repo_cfg, user_cfg = load_configs(cwd, env)
     registry = _registry(env)
-    cfg = resolve_config(repo=repo_cfg, user=user_cfg, registry=registry)
+    cfg = resolve_config(task=parse_override(prompt)[0].as_config(), repo=repo_cfg, user=user_cfg, registry=registry)
     clamped = cfg.timeout_s > MAX_BACKEND_TIMEOUT_S
     if clamped:
         repo_cfg = _with_timeout(repo_cfg, MAX_BACKEND_TIMEOUT_S)
@@ -153,8 +154,15 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
             except Exception as exc:
                 _log_error(env, data, exc, "ContextRefresh")
     main = _main_model(data, host, env) if plan.target != NO_ROUTE else None
-    text = advice.render(plan, f"python3 {Path(plugin_root) / 'bin' / 'mer'}", host, main)
-    out = _context_output("UserPromptSubmit", text, _notice(plan, advice.matches(plan, main))) if text else None
+    policy = advice.is_policy(plan)
+    lanes = cfg.models[host.name] if policy else None
+    text = (
+        advice.render_policy(lanes, host, main)
+        if policy
+        else advice.render(plan, f"python3 {Path(plugin_root) / 'bin' / 'mer'}", host, main)
+    )
+    notice = advice.policy_notice(lanes) if policy else _notice(plan, advice.matches(plan, main)) if text else None
+    out = _context_output("UserPromptSubmit", text, notice) if text else None
     if plan.mode != "off":  # routing turned off by the user: nothing to record
         _append(
             env,
@@ -169,7 +177,7 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
                 timeout_clamped=clamped,
                 host=host.name,
                 turn_id=data.get("turn_id"),
-                advice=advice.summary(plan, host, main),
+                advice=advice.policy_summary(lanes, main) if policy else advice.summary(plan, host, main),
             ),
         )
     return out
@@ -214,6 +222,15 @@ def _expected_matches(expected, host, agent_type, model):
     Always None after an inline_same_model route: no Subagent was asked for, so none can follow the advice."""
     if expected.get("action") == "inline_same_model":
         return None
+    if (
+        expected.get("action") == "policy"
+    ):  # experimental: any lane model (Codex) or router effort agent (Claude) counts
+        if host == "claude":  # a haiku lane is spawned without an effort agent, so nothing is comparable
+            if any(advice.is_haiku(m) for m in expected["models"]) or not isinstance(agent_type, str) or not agent_type:
+                return None
+            return agent_type.startswith("model-effort-router:effort-")
+        actual = normalize(model)
+        return actual in expected["models"] if actual else None
     if host == "claude":  # the payload has no model; effort is not checked on either host
         wanted = (expected.get("invocation") or {}).get("subagent_type")
         return agent_type == wanted if wanted and agent_type else None
@@ -223,6 +240,13 @@ def _expected_matches(expected, host, agent_type, model):
 
 def _from_route(route_ev, host, agent_type, model):
     advice_ev = route_ev.get("advice") if route_ev else None
+    if isinstance(advice_ev, dict) and advice_ev.get("action") == "policy":
+        expected = {"action": "policy", "models": [normalize(m) for m in advice_ev["lanes"].values()]}
+        return {
+            "expected": expected,
+            "matched": _expected_matches(expected, host, agent_type, model),
+            "matched_on": MATCHED_ON[host],
+        }
     if not isinstance(advice_ev, dict) or "routed_model" not in advice_ev:
         return NO_CORRELATION
     expected = {

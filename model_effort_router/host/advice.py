@@ -165,3 +165,57 @@ def render(plan, mer_cmd, host, main_model=None):
         "Integrate the result, then decide whether another worker is needed. The hook provides advice only; it does not inspect Main's conversation or invoke the Subagent, and does not change this Main turn's model/settings."
         + other
     )
+
+
+# --- experimental router.mode=policy (A/B vs auto): no classifier, Main reads the lane table and decides ---
+
+
+def is_policy(plan):
+    """A policy-mode plan that Main decides; an explicit role/effort override carries a decision and renders normally."""
+    return plan.mode == "policy" and plan.decision is None and plan.target != NO_ROUTE
+
+
+def is_haiku(model):
+    alias = _CLAUDE_ALIAS.match(model or "")
+    return bool(alias) and alias[1] == "haiku"
+
+
+def policy_lanes(lanes):
+    return {lane: lanes[lane]["primary"] for lane in ("execution", "reasoning")}
+
+
+def policy_summary(lanes, main_model=None):
+    return {"action": "policy", "main_model": normalize(main_model), "lanes": policy_lanes(lanes)}
+
+
+def policy_notice(lanes):
+    models = policy_lanes(lanes)
+    return f"[model-effort-router] policy · execution → {models['execution']} · reasoning → {models['reasoning']}"
+
+
+def render_policy(lanes, host, main_model=None):
+    rows, calls = [], []
+    for lane, roles in (
+        ("execution", "implementation, fix, lint, test"),
+        ("reasoning", "plan, design, review, analysis"),
+    ):
+        model, efforts = lanes[lane]["primary"], "/".join(lanes[lane]["efforts"])
+        rows.append(f"{lane} ({roles}) → {model} [efforts: {efforts}]")
+        stub = SimpleNamespace(model=model, applied_effort="<effort>")
+        calls.append(f"{lane}: " + (_claude_invocation(stub) if host.name == "claude" else _codex_invocation(stub)))
+    tag = (
+        "Required: begin your final answer with one line naming the model that did the work: "
+        "`[routed: <lane model> · effort <effort>]` if the Subagent ran, or "
+        f"`[main: {normalize(main_model) or '<your model>'}]` if you handled it in Main (the Codex app does not show hook messages). "
+        if host.name == "codex"
+        else ""
+    )
+    main = f" ({normalize(main_model)})" if normalize(main_model) else ""
+    return (
+        f"[model-effort-router] policy: {tag}Pick the lane for this task: {'; '.join(rows)}. "
+        "Pick an effort that lane supports. "
+        f"If the lane's model is Main's model{main}, or the task is trivial (a quick lookup or status check), "
+        f"handle it in Main. Otherwise spawn a Subagent. {''.join(calls)}"
+        "Build a compact Context Packet with task, context, decisions, constraints, relevant_files, expected_result. "
+        "The hook provides advice only; it does not invoke the Subagent or change this Main turn's model/settings."
+    )
