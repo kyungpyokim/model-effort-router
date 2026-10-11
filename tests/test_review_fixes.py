@@ -12,6 +12,13 @@ class TimeoutClampTest(HookCase):
         self.assertTrue(ev["timeout_clamped"])
         self.assertEqual(ev["decision"]["reason_code"], "timeout_12")
 
+    def test_three_backend_chain_gets_a_smaller_per_backend_timeout(self):
+        self.write_repo_config({"difficulty": {"backend": "fake", "fallback": ["fake", "fake"], "timeout_s": 10}})
+        self.submit()
+        ev = [e for e in self.log_events() if e["event"] == "route"][0]
+        self.assertTrue(ev["timeout_clamped"])
+        self.assertEqual(ev["decision"]["reason_code"], "timeout_8")
+
     def test_small_timeout_untouched(self):
         self.write_repo_config({"difficulty": {"backend": "fake", "timeout_s": 5}})
         self.submit()

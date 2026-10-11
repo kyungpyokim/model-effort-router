@@ -23,7 +23,7 @@ from .main_model import main_model, normalize, save_session_model
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
 USER_CONFIG_ENV = "MER_USER_CONFIG"
 REPO_CONFIG = ".model-effort-router.json"
-MAX_BACKEND_TIMEOUT_S = 12  # backend + fallback must fit in the 30s hook timeout with margin
+MAX_CHAIN_TIMEOUT_S = 24  # the whole backend chain must fit in the 30s hook timeout with margin
 
 
 def _registry(env, classifier_host=None):
@@ -115,9 +115,10 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
     repo_cfg, user_cfg = load_configs(cwd, env)
     registry = _registry(env)
     cfg = resolve_config(task=parse_override(prompt)[0].as_config(), repo=repo_cfg, user=user_cfg, registry=registry)
-    clamped = cfg.timeout_s > MAX_BACKEND_TIMEOUT_S
+    limit = MAX_CHAIN_TIMEOUT_S // max(len(cfg.chain), 2)  # per backend: 12s for one or two, 8s for three
+    clamped = cfg.timeout_s > limit
     if clamped:
-        repo_cfg = _with_timeout(repo_cfg, MAX_BACKEND_TIMEOUT_S)
+        repo_cfg = _with_timeout(repo_cfg, limit)
     started = time.monotonic()
     host = hosts.get(env=env)
     context, due = _session_context(data, host, sdir, sid, prompt, cfg, env, version_probe)

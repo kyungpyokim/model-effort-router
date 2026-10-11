@@ -154,6 +154,28 @@ class TargetFromBackendTest(unittest.TestCase):
             p = self.plan(text, first, second)
             self.assertEqual((p.target, p.decision.backend), (ROUTE, "second"))
 
+    def test_fallback_list_is_tried_in_order_and_each_failure_is_recorded(self):
+        first = FakeBackend(error=RuntimeError(), name="first", provides_target=True)
+        second = FakeBackend(error=RuntimeError(), name="second")
+        third = FakeBackend("fix", name="third")
+        reg = {"first": lambda: first, "second": lambda: second, "third": lambda: third}
+        cfg = {"difficulty": {"backend": "first", "fallback": ["second", "third"]}}
+        p = route(KOREAN, registry=reg, repo_config=cfg)
+        self.assertEqual(
+            (p.target, p.decision.backend, first.calls, second.calls, third.calls), (ROUTE, "third", 1, 1, 1)
+        )
+        self.assertEqual(p.classifier_causes, ("first:RuntimeError", "second:RuntimeError"))
+
+    def test_fallback_list_validation(self):
+        reg = {"first": lambda: FakeBackend(name="first")}
+        for bad in ([], [1], ["first", None], 5):
+            with self.assertRaisesRegex(ValueError, "difficulty.fallback"):
+                route("fix x", registry=reg, repo_config={"difficulty": {"backend": "first", "fallback": bad}})
+        with self.assertRaisesRegex(ValueError, "unknown difficulty.fallback: 'nope'"):
+            route(
+                "fix x", registry=reg, repo_config={"difficulty": {"backend": "first", "fallback": ["first", "nope"]}}
+            )
+
     def test_target_backend_answer_without_a_target_routes(self):
         p = self.plan(KOREAN, FakeBackend(name="first", provides_target=True))
         self.assertEqual((p.target, p.decision.backend), (ROUTE, "first"))

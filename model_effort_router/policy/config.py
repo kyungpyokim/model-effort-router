@@ -82,13 +82,19 @@ DEFAULTS = {
 class RouterConfig:
     mode: str
     backend: str
-    fallback: str
+    fallback: object  # a backend name, or a list of names tried in order
     timeout_s: float
     models: object
     nimble: Optional[dict] = None
     context_enabled: bool = True
     context_max_chars: int = 6000
     laya: Optional[dict] = None
+
+    @property
+    def chain(self):
+        """Classifier backends in the order they are tried; "none" slots are dropped."""
+        fallback = [self.fallback] if isinstance(self.fallback, str) else list(self.fallback)
+        return tuple(name for name in (self.backend, *fallback) if name != "none")
 
 
 def _layer(value, name):
@@ -190,18 +196,21 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         raise ValueError(f"router.mode must be one of {MODES}, got {router.get('mode')!r}")
     if set(difficulty) - {"backend", "fallback", "timeout_s", "nimble", "laya"}:
         raise ValueError("legacy or unknown difficulty settings; remove level thresholds and nimble_jev policy")
-    for key in ("backend", "fallback"):
-        if not isinstance(difficulty.get(key), str):
-            raise ValueError(f"difficulty.{key} must be a string")
+    if not isinstance(difficulty.get("backend"), str):
+        raise ValueError("difficulty.backend must be a string")
+    fallback = difficulty.get("fallback")
+    names = [fallback] if isinstance(fallback, str) else fallback
+    if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
+        raise ValueError("difficulty.fallback must be a string or a non-empty list of strings")
     timeout = difficulty.get("timeout_s")
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not isfinite(timeout) or timeout <= 0:
         raise ValueError("difficulty.timeout_s must be a positive finite number")
-    if difficulty["backend"] == "nimble_jev" or difficulty["fallback"] == "nimble_jev":
+    if "nimble_jev" in (difficulty["backend"], *names):
         raise ValueError("difficulty backend 'nimble_jev' was removed; use 'nimble' with fallback 'jev'")
     if registry is not None and router["mode"] == "auto":
-        for key in ("backend", "fallback"):
-            if difficulty[key] != "none" and difficulty[key] not in registry:
-                raise ValueError(f"unknown difficulty.{key}: {difficulty[key]!r}")
+        for key, name in (("backend", difficulty["backend"]), *(("fallback", n) for n in names)):
+            if name != "none" and name not in registry:
+                raise ValueError(f"unknown difficulty.{key}: {name!r}")
         if difficulty["backend"] == "none":
             raise ValueError("difficulty.backend cannot be 'none'")
     context = merged["context"]

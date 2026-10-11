@@ -49,9 +49,7 @@ class _Broken:
 
 def _make_backends(config, registry, user_config=None):
     out = []
-    for name in (config.backend, config.fallback):
-        if name == "none":
-            continue
+    for name in config.chain:
         try:
             backend_options = getattr(config, name, None) if name in ("nimble", "laya") else None
             options = {"options": backend_options} if backend_options else {}
