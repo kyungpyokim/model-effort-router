@@ -14,11 +14,12 @@ export async function routeAdvice(
   cwd: string,
   executable = MER_BIN,
   run: ExecFile = execFile,
+  sessionID?: string,
 ) {
   return runRoute(
     task,
     cwd,
-    ["--role", role, "--effort", effort],
+    ["--role", role, "--effort", effort, ...sessionArgs(sessionID)],
     executable,
     run,
   );
@@ -29,8 +30,33 @@ export async function automaticRouteAdvice(
   cwd: string,
   executable = MER_BIN,
   run: ExecFile = execFile,
+  sessionID?: string,
 ) {
-  return runRoute(task, cwd, ["--automatic"], executable, run);
+  return runRoute(
+    task,
+    cwd,
+    ["--automatic", ...sessionArgs(sessionID)],
+    executable,
+    run,
+  );
+}
+
+// Lets `mer route` record the route in this session's log, which `mer report` reads.
+function sessionArgs(sessionID?: string) {
+  return sessionID ? ["--session", sessionID] : [];
+}
+
+export async function routeReport(
+  cwd: string,
+  session?: string,
+  limit?: number,
+  executable = MER_BIN,
+  run: ExecFile = execFile,
+) {
+  const argv = ["report"];
+  if (session) argv.push("--session", session);
+  if (limit !== undefined) argv.push("--limit", String(limit));
+  return execMer("mer report", argv, cwd, executable, run);
 }
 
 async function runRoute(
@@ -53,23 +79,7 @@ async function runRoute(
     "--",
     task,
   ];
-  const stdout = await new Promise<string>((resolve, reject) => {
-    run(
-      executable,
-      argv,
-      { cwd, timeout: ROUTE_TIMEOUT_MS, maxBuffer: MAX_OUTPUT_BYTES },
-      (error, output, stderr) => {
-        if (error) {
-          const detail = String(stderr || error.message)
-            .trim()
-            .slice(0, 500);
-          reject(new Error(`mer route failed: ${detail}`));
-          return;
-        }
-        resolve(String(output));
-      },
-    );
-  });
+  const stdout = await execMer("mer route", argv, cwd, executable, run);
   let result: unknown;
   try {
     result = JSON.parse(stdout);
@@ -93,4 +103,30 @@ async function runRoute(
     );
   }
   return advice;
+}
+
+function execMer(
+  label: string,
+  argv: string[],
+  cwd: string,
+  executable: string,
+  run: ExecFile,
+) {
+  return new Promise<string>((resolve, reject) => {
+    run(
+      executable,
+      argv,
+      { cwd, timeout: ROUTE_TIMEOUT_MS, maxBuffer: MAX_OUTPUT_BYTES },
+      (error, output, stderr) => {
+        if (error) {
+          const detail = String(stderr || error.message)
+            .trim()
+            .slice(0, 500);
+          reject(new Error(`${label} failed: ${detail}`));
+          return;
+        }
+        resolve(String(output));
+      },
+    );
+  });
 }

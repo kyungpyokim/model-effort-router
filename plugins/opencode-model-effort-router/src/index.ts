@@ -1,5 +1,5 @@
 import { Plugin } from "@opencode/plugin";
-import { automaticRouteAdvice, routeAdvice } from "./route";
+import { automaticRouteAdvice, routeAdvice, routeReport } from "./route";
 
 function appendAdvice(text: string, advice: Record<string, unknown>) {
   if (advice.route === "no_route")
@@ -48,6 +48,9 @@ export default Plugin.define({
         const advice = await automaticRouteAdvice(
           event.prompt.text,
           session.location.directory,
+          undefined,
+          undefined,
+          event.sessionID,
         );
         if (!advice) return;
         event.prompt.text = appendAdvice(event.prompt.text, advice);
@@ -125,14 +128,43 @@ export default Plugin.define({
               role,
               effort,
               session.location.directory,
+              undefined,
+              undefined,
+              context.sessionID,
             );
           } else {
             advice = await automaticRouteAdvice(
               task,
               session.location.directory,
+              undefined,
+              undefined,
+              context.sessionID,
             );
           }
           return { content: JSON.stringify(advice) };
+        },
+      });
+      editor.add({
+        name: "mer_report",
+        description:
+          "Show which model and effort each routed request used, with token usage, from the router logs. Omit session to include every session.",
+        input: {
+          type: "object",
+          properties: {
+            session: { type: "string", minLength: 1, maxLength: 200 },
+            limit: { type: "integer", minimum: 1, maximum: 200 },
+          },
+          additionalProperties: false,
+        },
+        async execute(rawInput, context) {
+          const { session, limit } = rawInput as {
+            session?: string;
+            limit?: number;
+          };
+          const info = await ctx.session.get({ sessionID: context.sessionID });
+          return {
+            content: await routeReport(info.location.directory, session, limit),
+          };
         },
       });
     });

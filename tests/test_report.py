@@ -57,6 +57,18 @@ class ReportTest(unittest.TestCase):
             self.assertNotIn("aaaaaaaa", only_b)
             self.assertIn("   1  claude-opus-5-5  high", only_b)
 
+    def test_route_with_session_is_logged_and_reported(self):
+        with tempfile.TemporaryDirectory() as sdir:
+            env = {"MER_STATE_DIR": sdir, "HOME": sdir}
+            out = io.StringIO()
+            argv = ["route", "--host", "opencode", "--role", "review", "--effort", "high", "--json"]
+            self.assertEqual(main([*argv, "--session", "ses_abc", "check it"], env=env, out=out), 0)
+            self.assertEqual(main([*argv, "check it"], env=env, out=io.StringIO()), 0)  # no session: no log
+            self.assertEqual(len(list(Path(sdir).glob("*.log.jsonl"))), 1)
+            text = self.report(sdir, "--session", "ses_abc")
+            self.assertIn("review/explicit", text)
+            self.assertIn("  high  ", text)
+
     def test_empty_log_dir(self):
         with tempfile.TemporaryDirectory() as sdir:
             self.assertIn("no routed requests", self.report(sdir))
