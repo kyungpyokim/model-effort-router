@@ -237,7 +237,7 @@ Jev 인증 정보는 전역 사용자 설정에만 둘 수 있습니다. 자세�
 
 ### 실험: policy 모드
 
-`router.mode = "policy"`는 분류기를 건너뜁니다. `UserPromptSubmit` hook이 정적 모델 맵(execution/reasoning lane과 지원하는 effort)을 주입하고, lane과 effort 선택 및 Subagent 생성 여부는 Main이 직접 결정합니다. 모델 호출은 하지 않습니다. Codex와 Claude에서만 동작하며 다른 host는 아무 안내도 하지 않습니다.
+`router.mode = "policy"`는 분류기를 건너뜁니다. `UserPromptSubmit` hook이 정적 모델 맵(execution/reasoning lane과 지원하는 effort)을 주입하고, lane과 effort 선택 및 Subagent 생성 여부는 Main이 직접 결정합니다. 빈 프롬프트가 아니면 항상 정책을 주입합니다(키워드 사전 필터 없음, 사소한 요청은 Main이 직접 거릅니다). 모델 호출은 하지 않습니다. Codex와 Claude에서만 동작하며 다른 host는 아무 안내도 하지 않습니다.
 
 - 활성화: 전역 사용자 설정에 `{"router": {"mode": "policy"}}`를 넣거나 프롬프트를 `/router policy`로 시작합니다. `"mode": "auto"`(기본값)로 되돌리면 해제됩니다. 명시적 `/router role=<role> effort=<effort>`는 기존 동작을 유지합니다.
 - `auto`와 비교하기 위한 A/B 실험이며, 비교 후 진 쪽 모드는 제거될 예정입니다.

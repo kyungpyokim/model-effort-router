@@ -237,7 +237,7 @@ Jev credentials belong only in the global user config; see [Classifier backend s
 
 ### Experimental: policy mode
 
-`router.mode = "policy"` skips the classifier. The `UserPromptSubmit` hook injects the static model map (execution and reasoning lanes with their supported efforts) and Main itself picks the lane and effort and decides whether to spawn a Subagent. It makes no model call. Codex and Claude only; other hosts stay silent.
+`router.mode = "policy"` skips the classifier. The `UserPromptSubmit` hook injects the static model map (execution and reasoning lanes with their supported efforts) and Main itself picks the lane and effort and decides whether to spawn a Subagent. Every non-blank prompt gets the policy (no keyword prefilter; Main skips trivial requests itself). It makes no model call. Codex and Claude only; other hosts stay silent.
 
 - Enable: set `{"router": {"mode": "policy"}}` in the global user config, or start a prompt with `/router policy`. Switch back with `"mode": "auto"` (the default). An explicit `/router role=<role> effort=<effort>` keeps its normal behavior.
 - This is an A/B experiment against `auto`; the losing mode will be removed after the comparison.

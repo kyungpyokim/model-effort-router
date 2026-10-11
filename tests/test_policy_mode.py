@@ -30,8 +30,10 @@ class PolicyRouteTest(unittest.TestCase):
         plan = route(DEV, user_config=POLICY, registry={"jev": boom, "nimble": boom})
         self.assertEqual((plan.target, plan.mode, plan.decision), (ROUTE, "policy", None))
 
-    def test_chitchat_is_no_route_and_prompt_override_enables_policy(self):
-        self.assertEqual(route("thanks!", user_config=POLICY, registry={}).target, NO_ROUTE)
+    def test_every_nonblank_prompt_routes_and_prompt_override_enables_policy(self):
+        for prompt in ("thanks!", "유져 늘었는지 서버 파악해봐"):  # no keyword prefilter: Main skips trivial ones
+            self.assertEqual(route(prompt, user_config=POLICY, registry={}).target, ROUTE)
+        self.assertEqual(route("   ", user_config=POLICY, registry={}).target, NO_ROUTE)
         plan = route("/router policy\n" + DEV, registry={"jev": boom, "nimble": boom})
         self.assertEqual((plan.target, plan.mode), (ROUTE, "policy"))
 
@@ -145,7 +147,7 @@ class PolicyHookTest(HookCase):
         self.assertIsNone(self.start(CLAUDE, "claude")["matched"])
 
     def test_no_route_prompt_is_silent(self):
-        proc, ev = self.route(prompt="thanks")
+        proc, ev = self.route(prompt="   ")
         self.assertEqual((proc.stdout, ev["advice"]), ("", {"action": "no_route"}))
 
 
