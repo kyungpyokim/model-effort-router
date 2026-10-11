@@ -340,7 +340,7 @@ class HookTest(HookCase):
 
     def test_guard_and_host_messages_are_silent_but_no_route_guides_main_agent(self):
         self.assertEqual(self.submit_claude(MER_CLASSIFIER="1").stdout, "")
-        no_route = json.loads(self.submit_claude("What is the capital of France?").stdout)
+        no_route = json.loads(self.submit_claude("   ").stdout)
         self.assertEqual(no_route["systemMessage"], advice.NO_ROUTE_MESSAGE)
         self.assertEqual([e["target"] for e in self.all_log_events()], ["no_route"])
         self.assertEqual(self.submit_claude("<task-notification>fix parser.py</task-notification>").stdout, "")

@@ -22,7 +22,7 @@ def fallback_line(plan):
     if not plan.classifier_causes:
         return ""
     failed = ", ".join(f"{n} failed ({d})" for n, d in map(_split_cause, plan.classifier_causes))
-    by = "keyword gate decided no_route" if plan.target == NO_ROUTE else f"classified by {plan.decision.backend}"
+    by = "no_route" if plan.target == NO_ROUTE else f"classified by {plan.decision.backend}"
     return f"[model-effort-router] classifier fallback: {failed} → {by}"
 
 

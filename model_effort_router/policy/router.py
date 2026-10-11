@@ -16,7 +16,7 @@ from ..difficulty.risk import detect_risk_flags
 from ..difficulty.usage import sum_usage
 from .config import resolve_config
 from .overrides import parse_override
-from .targeting import NO_ROUTE, ROUTE, classify_target
+from .targeting import NO_ROUTE, ROUTE
 
 
 @dataclass(frozen=True)
@@ -110,6 +110,8 @@ def route(
     if cfg.mode == "policy" and not phase_override:  # experimental: no classifier, Main picks the lane
         # no keyword prefilter either: it misses most non-English prompts, and Main already skips trivial ones
         return RoutePlan(ROUTE if text.strip() else NO_ROUTE, "policy")
+    if not phase_override and not text.strip():
+        return RoutePlan(NO_ROUTE, cfg.mode)
     backends = _make_backends(cfg, registry, user_config)
     task = DifficultyInput(text, tuple(paths), repo_summary=repo_summary, context=context)
     causes = ()
@@ -119,16 +121,16 @@ def route(
         decision, causes = classify_with_fallback(task, backends, cfg.timeout_s)
     else:
         decision, rest, asked, causes = None, backends, False, ()
-        # Only the first (primary) slot may decide eligibility; target answers from fallback-slot backends are ignored (the regex decides).
+        # Only the first (primary) slot may decide eligibility; target answers from fallback-slot backends are ignored.
         if backends and getattr(backends[0], "provides_target", False):
             asked = True  # ask it ALONE first
             try:
                 decision, causes = classify_with_fallback(task, backends[:1], cfg.timeout_s)
-            except ClassificationError as exc:  # failed: the regex gates the fallback, so chit-chat never pays for it
+            except ClassificationError as exc:  # failed: the fallback classifies the prompt instead
                 rest, causes = backends[1:], exc.causes
         target = decision.target if decision else None
-        if target is None:
-            target = classify_target(text, paths)
+        if target is None:  # no keyword prefilter: the classifier judges every non-blank prompt
+            target = ROUTE
         if target == NO_ROUTE:  # keep what the target backend spent (and its decision) for the log
             usage, missing = _usage(backends[:1], backends[0].name) if asked else (None, False)
             return RoutePlan(
