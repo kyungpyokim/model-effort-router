@@ -9,6 +9,7 @@ from pathlib import Path
 
 from ..context import refresh, summary
 from ..context.transcripts import HARNESS_MESSAGE, MAX_TURN_CHARS, Turn, clip, read_turns
+from ..difficulty.chain import ClassificationError
 from ..difficulty.registry import BACKENDS
 from ..difficulty.subscription import GUARD_ENV, SubscriptionBackend, codex_verified
 from ..logging import route_log
@@ -146,7 +147,10 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
                 timeout_clamped=clamped,
             ),
         )
-        return None
+        if not isinstance(exc, ClassificationError):
+            return None
+        line = advice.failure_line(exc.causes)
+        return _context_output("UserPromptSubmit", advice.tell_user(line), line)
     finally:  # after routing, detached: the hook never waits for the summarizer
         if due and (plan.mode if plan else cfg.mode) != "off":
             try:
@@ -162,6 +166,9 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
         else advice.render(plan, f"python3 {Path(plugin_root) / 'bin' / 'mer'}", host, main)
     )
     notice = advice.policy_notice(lanes) if policy else _notice(plan, advice.matches(plan, main)) if text else None
+    fallback = advice.fallback_line(plan)
+    if fallback and text:
+        text, notice = f"{text} {advice.tell_user(fallback)}", "\n".join(filter(None, (notice, fallback)))
     out = _context_output("UserPromptSubmit", text, notice) if text else None
     if plan.mode != "off":  # routing turned off by the user: nothing to record
         _append(

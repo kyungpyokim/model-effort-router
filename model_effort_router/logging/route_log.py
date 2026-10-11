@@ -68,6 +68,8 @@ def error_event(exc, *, latency_ms, prompt, configured_backend, timeout_clamped=
     }
     if timeout_clamped:
         ev["timeout_clamped"] = True
+    if getattr(exc, "causes", ()):
+        ev["classifier_causes"] = list(exc.causes)
     return ev
 
 
@@ -90,6 +92,8 @@ def route_event(
         ev["classifier_usage"] = None  # a model was called but its usage is unknown (absent key = no model call)
     elif plan.classifier_usage:
         ev["classifier_usage"] = dict(plan.classifier_usage)  # token counts only
+    if plan.classifier_causes:
+        ev["classifier_causes"] = list(plan.classifier_causes)  # names, types, HTTP statuses only
     if decision:
         ev["decision"] = {
             "role": decision.role,

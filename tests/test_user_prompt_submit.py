@@ -113,7 +113,7 @@ class UserPromptSubmitTest(HookCase):
     def test_classifier_failure_is_fail_open_and_recorded_without_prompt(self):
         self.fake = {"raise": True}
         proc = self.submit()
-        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
+        self.assertEqual(proc.returncode, 0)
         (event,) = self.log_events()
         self.assertEqual(
             (event["event"], event["target"], event["error_type"]), ("route", "error", "ClassificationError")
@@ -355,3 +355,72 @@ class SessionContextTest(HookCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClassifierFallbackNoticeTest(HookCase):
+    def setUp(self):
+        super().setUp()
+        self.write_repo_config({"difficulty": {"backend": "fake", "fallback": "fake2"}})
+
+    def out(self, prompt=DEV):
+        proc = self.submit(prompt)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout) if proc.stdout else None
+
+    def test_fallback_classification_is_shown_to_user_and_model_and_logged(self):
+        self.fake = {"status": 503, "target": "route", "second": {"role": "review", "effort": "medium"}}
+        out = self.out()
+        line = "[model-effort-router] classifier fallback: fake failed (HTTP 503) → classified by fake2"
+        self.assertIn(line, out["systemMessage"])
+        context = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Required: tell the user in one line", context)
+        self.assertLess(context.index("[routed:"), context.index("Required: tell the user"))  # reply tag stays first
+        self.assertIn(line, context)
+        (event,) = self.log_events()
+        self.assertEqual(event["classifier_causes"], ["fake:HTTP 503"])
+
+    def test_primary_failure_then_regex_no_route_is_shown(self):
+        self.fake = {"status": 503, "target": "route"}
+        out = self.out("thanks, sounds good")
+        line = "classifier fallback: fake failed (HTTP 503) → keyword gate decided no_route"
+        self.assertIn(line, out["systemMessage"])
+        self.assertIn(line, out["hookSpecificOutput"]["additionalContext"])
+        (event,) = self.log_events()
+        self.assertEqual((event["target"], event["classifier_causes"]), ("no_route", ["fake:HTTP 503"]))
+
+    def test_total_failure_is_shown_and_still_logged_as_error(self):
+        self.fake = {"status": 503, "target": "route", "second": {"raise": True}}
+        out = self.out()
+        line = (
+            "[model-effort-router] classifier failed: fake (HTTP 503), fake2 (RuntimeError); "
+            "no routing advice this turn."
+        )
+        self.assertEqual(out["systemMessage"], line)
+        self.assertIn(line, out["hookSpecificOutput"]["additionalContext"])
+        (event,) = self.log_events()
+        self.assertEqual((event["target"], event["error_type"]), ("error", "ClassificationError"))
+        self.assertEqual(event["classifier_causes"], ["fake:HTTP 503", "fake2:RuntimeError"])
+        self.assertNotIn("fake backend failure", json.dumps(out) + json.dumps(event))
+
+    def test_primary_failure_without_fallback_reports_failure(self):
+        self.write_repo_config({"difficulty": {"backend": "fake"}})
+        self.fake = {"status": 503, "target": "route"}
+        out = self.out()
+        self.assertIn("classifier failed: fake (HTTP 503)", out["systemMessage"])
+
+    def test_non_classification_error_stays_silent(self):
+        self.fake = {"effort": "max"}
+        self.write_repo_config(
+            {
+                "difficulty": {"backend": "fake"},
+                "models": {"codex": {"execution": {"primary": "gpt-6-luna", "efforts": ["low"]}}},
+            }
+        )
+        self.assertIsNone(self.out())
+
+    def test_normal_success_has_no_fallback_line(self):
+        self.fake = {"role": "review", "effort": "medium"}
+        out = self.out()
+        self.assertNotIn("fallback", out["systemMessage"])
+        self.assertNotIn("Required: tell the user", out["hookSpecificOutput"]["additionalContext"])
+        self.assertNotIn("classifier_causes", self.log_events()[0])

@@ -6,6 +6,7 @@ import threading
 import urllib.error
 import urllib.request
 
+from .chain import HttpStatusError
 from .decision import TARGETS, DifficultyDecision, DifficultyInput
 from .subscription import MAX_PATHS, MAX_TASK_CHARS, BackendOutputError
 
@@ -184,7 +185,7 @@ class SystemOneBackend:
         body = json.dumps({"state": state_text(task), "model": model, "questions": questions}).encode()
         status, text = self._transport(url, headers, body, timeout_s)
         if not 200 <= status < 300:
-            raise RuntimeError(f"{self.name} HTTP {status}")
+            raise HttpStatusError(self.name, status)
         try:
             data = json.loads(text)
             used = data.get("usage")

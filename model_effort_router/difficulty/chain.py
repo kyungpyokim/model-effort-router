@@ -4,11 +4,26 @@ from .decision import DifficultyDecision
 
 
 class ClassificationError(RuntimeError):
-    pass
+    def __init__(self, message, causes=()):
+        super().__init__(message)
+        self.causes = tuple(causes)  # "name:Type" or "name:HTTP 503"; never exception messages
 
 
-def classify_with_fallback(task, backends, timeout_s):
-    causes = []
+class HttpStatusError(RuntimeError):
+    """A non-2xx classifier response; the status survives into the fallback cause."""
+
+    def __init__(self, name, status):
+        super().__init__(f"{name} HTTP {status}")
+        self.status = status
+
+
+def _cause(name, exc):
+    return f"{name}:HTTP {exc.status}" if isinstance(exc, HttpStatusError) else f"{name}:{type(exc).__name__}"
+
+
+def classify_with_fallback(task, backends, timeout_s, prior=()):
+    """`prior`: causes of backends that already failed before this call; they lead the returned/raised causes."""
+    causes = list(prior)
     for backend in backends:
         name = getattr(backend, "name", "?")
         try:
@@ -17,5 +32,5 @@ def classify_with_fallback(task, backends, timeout_s):
                 return result, tuple(causes)
             causes.append(f"{name}:InvalidResult")
         except Exception as exc:
-            causes.append(f"{name}:{type(exc).__name__}")
-    raise ClassificationError("all classifiers failed: " + (", ".join(causes) or "no classifier configured"))
+            causes.append(_cause(name, exc))
+    raise ClassificationError("all classifiers failed: " + (", ".join(causes) or "no classifier configured"), causes)
