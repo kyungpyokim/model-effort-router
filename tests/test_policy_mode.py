@@ -58,7 +58,7 @@ class PolicyAdviceTest(unittest.TestCase):
         ):
             self.assertIn(part, text)
 
-    def test_claude_text_has_no_tag(self):
+    def test_claude_text_has_the_desktop_app_tag(self):
         text = advice.render_policy(self.lanes["claude"], CLAUDE_HOST, "claude-opus-5-5")
         for part in (
             "claude-sonnet-5-5",
@@ -66,7 +66,9 @@ class PolicyAdviceTest(unittest.TestCase):
             'Agent(subagent_type="model-effort-router:effort-<effort>"',
         ):
             self.assertIn(part, text)
-        self.assertNotIn("[routed:", text)
+        self.assertIn("`[routed: <lane model> · effort <effort>]`", text)
+        self.assertIn("`[main: claude-opus-5-5]`", text)
+        self.assertIn("the Claude desktop app does not show hook messages", text)
 
     def test_unknown_main_model_uses_placeholder(self):
         text = advice.render_policy(self.lanes["codex"], CODEX, None)

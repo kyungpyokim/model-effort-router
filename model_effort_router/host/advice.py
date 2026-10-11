@@ -120,17 +120,21 @@ def _codex_invocation(plan):
     )
 
 
+_APPS = {"codex": "the Codex app", "claude": "the Claude desktop app"}
+
+
 def _reply_tag(plan, host, main_model, spawns):
-    """Codex: the app shows no hook output, so Main names the model in its final answer's first line."""
-    if host.name != "codex":
+    """The apps show no hook output, so Main names the model in its final answer's first line."""
+    app = _APPS.get(host.name)
+    if app is None:
         return ""
     main = f"`[main: {normalize(main_model)}]`"
     if not spawns:
-        return f"Required: begin your final answer with the line {main} (the Codex app does not show hook messages). "
+        return f"Required: begin your final answer with the line {main} ({app} does not show hook messages). "
     return (
         "Required: begin your final answer with one line naming the model that did the work: "
         f"`[routed: {effort_pair(plan.model, plan.applied_effort)}]` if the Subagent ran, or {main} "
-        "if you handled it in Main (the Codex app does not show hook messages). "
+        f"if you handled it in Main ({app} does not show hook messages). "
     )
 
 
@@ -231,8 +235,8 @@ def render_policy(lanes, host, main_model=None):
     tag = (
         "Required: begin your final answer with one line naming the model that did the work: "
         "`[routed: <lane model> · effort <effort>]` if the Subagent ran, or "
-        f"`[main: {normalize(main_model) or '<your model>'}]` if you handled it in Main (the Codex app does not show hook messages). "
-        if host.name == "codex"
+        f"`[main: {normalize(main_model) or '<your model>'}]` if you handled it in Main ({_APPS[host.name]} does not show hook messages). "
+        if host.name in _APPS
         else ""
     )
     main = f" ({normalize(main_model)})" if normalize(main_model) else ""
