@@ -235,6 +235,14 @@ Legacy L1-L5, tier/profile, session, escalation 및 `nimble_jev` 설정은 마�
 
 Jev 인증 정보는 전역 사용자 설정에만 둘 수 있습니다. 자세한 방법은 [분류기 backend 설정](#분류기-backend-설정)을 참고하십시오. 저장소 설정에는 이 인증 정보를 둘 수 없습니다.
 
+### 실험: policy 모드
+
+`router.mode = "policy"`는 분류기를 건너뜁니다. `UserPromptSubmit` hook이 정적 모델 맵(execution/reasoning lane과 지원하는 effort)을 주입하고, lane과 effort 선택 및 Subagent 생성 여부는 Main이 직접 결정합니다. 모델 호출은 하지 않습니다. Codex와 Claude에서만 동작하며 다른 host는 아무 안내도 하지 않습니다.
+
+- 활성화: 전역 사용자 설정에 `{"router": {"mode": "policy"}}`를 넣거나 프롬프트를 `/router policy`로 시작합니다. `"mode": "auto"`(기본값)로 되돌리면 해제됩니다. 명시적 `/router role=<role> effort=<effort>`는 기존 동작을 유지합니다.
+- `auto`와 비교하기 위한 A/B 실험이며, 비교 후 진 쪽 모드는 제거될 예정입니다.
+- 워크플로우 로그로 비교합니다: `python3 scripts/compare_modes.py [--since <unix ts>]`가 모드와 host별로 라우팅된 프롬프트 수, spawn 안내 수, Subagent 시작 수, 일치 횟수, hook 지연 중앙값, 분류기 토큰을 출력합니다.
+
 ## 워크플로우 로그
 
 세션마다 `~/.local/state/model-effort-router/<session>-<hash>.log.jsonl`에 기록됩니다(`MER_STATE_DIR`로 변경 가능). 흐름은 `route`(결정과 `advice`: `spawn`, `inline_same_model`, `advise`, `no_route`, 라우팅된 모델과 Main에 지시한 호출) -> `subagent_start` -> `run`(`mer` worker 실행) -> `subagent_stop` 순서입니다. 프롬프트와 Subagent 출력은 저장하지 않습니다.

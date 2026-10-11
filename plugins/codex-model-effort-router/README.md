@@ -32,3 +32,11 @@ Each session appends to `~/.local/state/model-effort-router/<session>-<hash>.log
 ```bash
 jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.action,model:(.model // .advice.routed_model),matched:.correlation.matched}' ~/.local/state/model-effort-router/<session>-*.log.jsonl
 ```
+
+### Experimental: policy mode
+
+`router.mode = "policy"` skips the classifier. The `UserPromptSubmit` hook injects the static model map (execution and reasoning lanes with their supported efforts) and Main itself picks the lane and effort and decides whether to spawn a Subagent. It makes no model call. Codex and Claude only; other hosts stay silent.
+
+- Enable: set `{"router": {"mode": "policy"}}` in the global user config, or start a prompt with `/router policy`. Switch back with `"mode": "auto"` (the default). An explicit `/router role=<role> effort=<effort>` keeps its normal behavior.
+- This is an A/B experiment against `auto`; the losing mode will be removed after the comparison.
+- Compare the two from the workflow logs: `python3 scripts/compare_modes.py [--since <unix ts>]` prints routed prompts, spawn-advised count, Subagent starts, match counts, median hook latency, and classifier tokens per mode and host.

@@ -10,7 +10,7 @@ from ..difficulty.decision import EFFORTS
 from ..difficulty.laya import validate_options as validate_laya
 from ..difficulty.nimble import validate_options as validate_nimble
 
-MODES = ("auto", "manual", "off")
+MODES = ("auto", "manual", "off", "policy")  # "policy": experimental, no classifier (Main picks the lane)
 MIN_CONTEXT_CHARS, MAX_CONTEXT_CHARS = 500, 20000
 SECTIONS = ("router", "difficulty", "models", "context", "jev", "openai")
 PASSTHROUGH_SECTIONS = ("gate",)  # owned by the independent mer-gate CLI

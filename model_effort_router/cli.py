@@ -221,7 +221,7 @@ def main(argv=None, *, env=None, runner=None, out=None):
             )
             return 0
         print(
-            "mer: routing is off or manual; provide an explicit --role and --effort",
+            "mer: routing is off, manual, or policy; provide an explicit --role and --effort",
             file=sys.stderr,
         )
         return 2
