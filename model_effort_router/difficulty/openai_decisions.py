@@ -3,6 +3,7 @@
 import json
 import os
 
+from .chain import HttpStatusError
 from .decision import DifficultyDecision, DifficultyInput
 from .jev import default_transport, parse_decision, state_text
 from .jev import QUESTIONS as SYSTEMONE_QUESTIONS
@@ -56,7 +57,7 @@ class OpenAIDecisionsBackend:
             timeout_s,
         )
         if not 200 <= status < 300:
-            raise RuntimeError(f"{self.name} HTTP {status}")
+            raise HttpStatusError(self.name, status)
         try:
             data = json.loads(text)
             usage = data.get("usage")

@@ -1,5 +1,5 @@
 import unittest
-from model_effort_router.difficulty.chain import ClassificationError, classify_with_fallback
+from model_effort_router.difficulty.chain import ClassificationError, HttpStatusError, classify_with_fallback
 from model_effort_router.difficulty.decision import DifficultyDecision
 from model_effort_router.difficulty.registry import create, register
 
@@ -26,6 +26,16 @@ class FallbackChainTest(unittest.TestCase):
             None, [Backend("first", error=TimeoutError()), Backend("second", result)], 2
         )
         self.assertEqual((actual.backend, causes), ("second", ("first:TimeoutError",)))
+
+    def test_http_status_is_recorded_in_cause_without_message_text(self):
+        error = HttpStatusError("first", 503)
+        self.assertIsInstance(error, RuntimeError)
+        result = DifficultyDecision("analysis", "high", "second")
+        _, causes = classify_with_fallback(None, [Backend("first", error=error), Backend("second", result)], 2)
+        self.assertEqual(causes, ("first:HTTP 503",))
+        with self.assertRaises(ClassificationError) as caught:
+            classify_with_fallback(None, [Backend("a", error=error), Backend("b", error=ValueError("secret"))], 2)
+        self.assertEqual(caught.exception.causes, ("a:HTTP 503", "b:ValueError"))
 
     def test_invalid_primary_result_falls_through_to_valid_secondary(self):
         result = DifficultyDecision("analysis", "high", "second")

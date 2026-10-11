@@ -12,6 +12,31 @@ _CLAUDE_ALIAS = re.compile(
 )  # the Agent call's model parameter takes aliases only
 
 
+def _split_cause(cause):
+    name, _, detail = cause.partition(":")
+    return name, detail
+
+
+def fallback_line(plan):
+    """One user-visible line saying why the classifier fell back; "" when it did not."""
+    if not plan.classifier_causes:
+        return ""
+    failed = ", ".join(f"{n} failed ({d})" for n, d in map(_split_cause, plan.classifier_causes))
+    by = "keyword gate decided no_route" if plan.target == NO_ROUTE else f"classified by {plan.decision.backend}"
+    return f"[model-effort-router] classifier fallback: {failed} → {by}"
+
+
+def failure_line(causes):
+    """One user-visible line for a routing turn where every classifier failed."""
+    failed = ", ".join(f"{n} ({d})" for n, d in map(_split_cause, causes)) or "none configured"
+    return f"[model-effort-router] classifier failed: {failed}; no routing advice this turn."
+
+
+def tell_user(line):
+    """Suffix for additionalContext (after any reply-tag instruction): the Codex and Claude desktop apps show no systemMessage."""
+    return f"Required: tell the user in one line that the router classifier had a problem: {line} "
+
+
 _CLAUDE, _CODEX = SimpleNamespace(name="claude"), SimpleNamespace(name="codex")
 
 

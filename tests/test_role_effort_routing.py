@@ -518,7 +518,7 @@ class CliAndHookTests(unittest.TestCase):
                 ),
                 0,
             )
-        self.assertEqual(out.getvalue(), "")
+        self.assertIn("classifier failed", out.getvalue())  # shown to the user; routing itself stays fail-open
         # The route advice has no host-setting mutation command and does not execute a Subagent.
         plan = route("fix parser.py", explicit=True, role_override="fix", effort_override="medium")
         from model_effort_router.host.advice import render

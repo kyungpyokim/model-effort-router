@@ -35,6 +35,7 @@ class RoutePlan:
     override_rejected: bool = False
     fallback_reason: Optional[str] = None
     model_options: tuple = ()
+    classifier_causes: tuple = ()  # failed classifier attempts ("jev:HTTP 503") before this plan was decided
 
 
 class _Broken:
@@ -56,6 +57,8 @@ def _make_backends(config, registry, user_config=None):
             options = {"options": backend_options} if backend_options else {}
             if name == "jev" and user_config:
                 options["api_key"] = user_config.get("jev", {}).get("api_key")
+                if user_config.get("jev", {}).get("model"):
+                    options["model"] = user_config["jev"]["model"]
             if name == "openai_decisions" and user_config:
                 options["api_key"] = user_config.get("openai", {}).get("api_key")
             out.append(create(name, registry, **options))
@@ -109,27 +112,35 @@ def route(
         return RoutePlan(ROUTE if text.strip() else NO_ROUTE, "policy")
     backends = _make_backends(cfg, registry, user_config)
     task = DifficultyInput(text, tuple(paths), repo_summary=repo_summary, context=context)
+    causes = ()
     if phase_override:
         decision = DifficultyDecision(role_override, effort_override, "explicit")
     elif explicit:
-        decision, _causes = classify_with_fallback(task, backends, cfg.timeout_s)
+        decision, causes = classify_with_fallback(task, backends, cfg.timeout_s)
     else:
-        decision, rest, asked = None, backends, False
+        decision, rest, asked, causes = None, backends, False, ()
         # Only the first (primary) slot may decide eligibility; target answers from fallback-slot backends are ignored (the regex decides).
         if backends and getattr(backends[0], "provides_target", False):
             asked = True  # ask it ALONE first
             try:
-                decision, _causes = classify_with_fallback(task, backends[:1], cfg.timeout_s)
-            except ClassificationError:  # failed: the regex gates the fallback, so chit-chat never pays for it
-                rest = backends[1:]
+                decision, causes = classify_with_fallback(task, backends[:1], cfg.timeout_s)
+            except ClassificationError as exc:  # failed: the regex gates the fallback, so chit-chat never pays for it
+                rest, causes = backends[1:], exc.causes
         target = decision.target if decision else None
         if target is None:
             target = classify_target(text, paths)
         if target == NO_ROUTE:  # keep what the target backend spent (and its decision) for the log
             usage, missing = _usage(backends[:1], backends[0].name) if asked else (None, False)
-            return RoutePlan(NO_ROUTE, cfg.mode, decision, classifier_usage=usage, classifier_usage_missing=missing)
+            return RoutePlan(
+                NO_ROUTE,
+                cfg.mode,
+                decision,
+                classifier_usage=usage,
+                classifier_usage_missing=missing,
+                classifier_causes=causes,
+            )
         if decision is None:
-            decision, _causes = classify_with_fallback(task, rest, cfg.timeout_s)
+            decision, causes = classify_with_fallback(task, rest, cfg.timeout_s, causes)
     flags = merge_risk_flags(flags)
     effort = decision.effort
     safety_floor = (
@@ -176,4 +187,5 @@ def route(
         False,
         None,
         (primary, *alternatives),
+        classifier_causes=causes,
     )

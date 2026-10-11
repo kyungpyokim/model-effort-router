@@ -156,10 +156,16 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
                 if name != "user":
                     raise ValueError(f"{section} credentials are only allowed in global user config")
                 credentials = source[section]
-                if set(credentials) - {"api_key"} or (
-                    "api_key" in credentials and not isinstance(credentials["api_key"], str)
+                allowed = {"api_key", "model"} if section == "jev" else {"api_key"}
+                model = credentials.get("model")
+                if (
+                    set(credentials) - allowed
+                    or not isinstance(credentials.get("api_key", ""), str)
+                    or ("model" in credentials and not (isinstance(model, str) and model))
                 ):
-                    raise ValueError(f"user {section} config only accepts a string api_key")
+                    raise ValueError(
+                        f"user {section} config accepts only a string api_key (and, for jev, a non-empty string model)"
+                    )
         for key in SECTIONS:
             if key in ("jev", "openai"):
                 continue

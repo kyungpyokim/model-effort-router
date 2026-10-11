@@ -212,3 +212,40 @@ class JevContractTest(unittest.TestCase):
     def test_missing_key_fails_for_provider_fallback(self):
         with self.assertRaises(MissingKeyError):
             JevBackend(env={}).classify(DifficultyInput("x"), 1)
+
+    def test_http_failure_exposes_status(self):
+        backend = JevBackend(transport=FakeTransport(status=503), env={"JEV_API_KEY": "k"}, api_key="k")
+        with self.assertRaises(RuntimeError) as caught:
+            backend.classify(DifficultyInput("x"), 1)
+        self.assertEqual(caught.exception.status, 503)
+
+    def sent_model(self, user, env=None):
+        seen = {}
+
+        def factory(**options):
+            return JevBackend(
+                transport=lambda url, headers, body, timeout: (
+                    seen.update(body=json.loads(body)) or (200, json.dumps(response()))
+                ),
+                env={"TYPESAFE_API_KEY": "k", **(env or {})},
+                **options,
+            )
+
+        cfg = resolve_config(repo={"difficulty": {"backend": "jev"}}, user=user)
+        _make_backends(cfg, {"jev": factory}, user)[0].classify(DifficultyInput("x"), 1)
+        return seen["body"]["model"]
+
+    def test_config_model_beats_env_and_env_beats_default(self):
+        user = {"jev": {"api_key": "k", "model": "jev-1.13-free"}}
+        self.assertEqual(self.sent_model(user, {"MER_JEV_MODEL": "env-model"}), "jev-1.13-free")
+        self.assertEqual(self.sent_model({"jev": {"api_key": "k"}}, {"MER_JEV_MODEL": "env-model"}), "env-model")
+        self.assertEqual(self.sent_model({"jev": {"api_key": "k"}}), "jev-latest")
+
+    def test_invalid_or_repo_level_model_is_rejected(self):
+        for bad in ("", 3, None):
+            with self.subTest(model=bad), self.assertRaisesRegex(ValueError, "model"):
+                resolve_config(user={"jev": {"model": bad}})
+        with self.assertRaisesRegex(ValueError, "global user config"):
+            resolve_config(repo={"jev": {"model": "x"}})
+        with self.assertRaisesRegex(ValueError, "api_key"):
+            resolve_config(user={"openai": {"api_key": "k", "model": "x"}})
