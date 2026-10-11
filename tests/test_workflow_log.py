@@ -100,6 +100,20 @@ class WorkflowLogTest(HookCase):
         orphan = self.sub("stop", agent_id="other")
         self.assertEqual(orphan["correlation"], {"expected": None, "matched": None, "matched_on": []})
 
+    def test_stop_without_agent_type_is_not_logged(self):
+        self.route()
+        before = self.log_events()
+        for agent_type in ("", None):
+            proc = run_script(
+                "hooks/subagent_stop.py",
+                stdin=json.dumps({"session_id": SID, "agent_id": "x", "agent_type": agent_type}),
+                env=self.env(MER_HOST="claude"),
+                cwd=str(self.root),
+                plugin=CLAUDE,
+            )
+            self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
+        self.assertEqual(self.log_events(), before)
+
     def test_inline_same_model_route_never_claims_a_match(self):
         self.route(model="gpt-6.1-sol")
         start = self.sub("start", model="gpt-6.1-sol")

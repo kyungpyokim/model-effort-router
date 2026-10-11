@@ -297,6 +297,8 @@ def subagent_start(data, env, plugin_root):
 
 
 def subagent_stop(data, env, plugin_root):
+    if not data.get("agent_type"):
+        return  # Claude's internal agents stop with an empty agent_type and never start: no Subagent to record
     _subagent_event("subagent_stop", data, env)
 
 
