@@ -105,7 +105,8 @@ def route(
     if cfg.mode == "manual" and not phase_override:
         return RoutePlan(NO_ROUTE, "manual")
     if cfg.mode == "policy" and not phase_override:  # experimental: no classifier, Main picks the lane
-        return RoutePlan(classify_target(text, paths), "policy")
+        # no keyword prefilter either: it misses most non-English prompts, and Main already skips trivial ones
+        return RoutePlan(ROUTE if text.strip() else NO_ROUTE, "policy")
     backends = _make_backends(cfg, registry, user_config)
     task = DifficultyInput(text, tuple(paths), repo_summary=repo_summary, context=context)
     if phase_override:
