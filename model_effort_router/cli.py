@@ -132,6 +132,9 @@ def _parser():
                 action="store_true",
                 help="explicit user approval for max in this run",
             )
+    report = sub.add_parser("report", help="show the model, effort, and token usage recorded in the session logs")
+    report.add_argument("--session", help="session id prefix; default is every session")
+    report.add_argument("--limit", type=int, default=20, help="most recent rows to list (default 20)")
     old = sub.add_parser("chat", help="removed; use mer route and ask Main to call a Subagent")
     old.add_argument("request", nargs="?")
     return parser
@@ -165,6 +168,10 @@ def main(argv=None, *, env=None, runner=None, out=None):
             file=sys.stderr,
         )
         return 2
+    if args.command == "report":
+        from .report import main as report_main
+
+        return report_main(args, env=env, out=out)
     if args.command == "run":
         if any(not isfinite(v) or v <= 0 for v in (args.timeout, args.verify_timeout)):
             print("mer: timeouts must be positive and finite", file=sys.stderr)
