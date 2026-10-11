@@ -255,7 +255,7 @@ Jev 인증 정보는 전역 사용자 설정에만 둘 수 있습니다. 자세�
 - `subagent_stop`은 같은 `agent_id`의 `subagent_start`가 가진 `correlation`을 복사하며, 없으면 `null`입니다.
 - Subagent 이벤트는 Codex의 `turn_id`를 `agent_turn_id`로 기록합니다. 이는 child turn이며 route의 `turn_id`와 다릅니다.
 - 분류기 fallback: 분류기가 실패해 라우팅이 fallback으로 넘어가면 `route` 이벤트에 `classifier_causes`(예: `["jev:HTTP 503"]`, backend 이름, 오류 타입, HTTP 상태 코드만 기록하며 오류 메시지는 기록하지 않음)가 남고 `no_route`와 모든 분류기가 실패한 경우에도 기록됩니다. hook은 `[model-effort-router] classifier fallback: jev failed (HTTP 503) → classified by openai_decisions`를 표시하고, 모든 분류기가 실패하면 `classifier failed: ...; no routing advice this turn.`을 표시합니다. Codex와 Claude 데스크톱 앱은 hook 메시지를 표시하지 않으므로 advice가 Main에게 사용자에게 알리라고도 지시합니다.
-- Codex 앱과 Claude 데스크톱 앱은 hook 출력을 표시하지 않습니다. 그래서 advice는 Main에게 최종 답변 첫 줄을 Subagent가 실행됐으면 `[routed: <model> · effort <effort>]`, Main이 직접 처리했으면 `[main: <model>]`로 시작하라고 지시합니다. 모델에 대한 지시일 뿐 보장은 아니며, 기록은 로그가 기준입니다. Codex advice는 또한 `spawn_agent`에 `agent_type`을 넘기지 말라고 지시합니다. role 설정(`.codex/agents/*.toml`)이 라우팅된 모델과 effort를 덮어쓰기 때문이며, 어긋나면 `correlation.matched: false`로 나타납니다.
+- Codex 앱과 Claude 데스크톱 앱은 hook 출력을 표시하지 않습니다. 그래서 advice는 Main에게 이번 턴의 첫 메시지(어떤 도구 호출보다 먼저)를 Subagent를 띄울 예정이면 `[routed: <model> · effort <effort>]`, Main이 직접 처리할 예정이면 `[main: <model>]`로 시작하라고 지시합니다. 모델에 대한 지시일 뿐 보장은 아니며, 기록은 로그가 기준입니다. Codex advice는 또한 `spawn_agent`에 `agent_type`을 넘기지 말라고 지시합니다. role 설정(`.codex/agents/*.toml`)이 라우팅된 모델과 effort를 덮어쓰기 때문이며, 어긋나면 `correlation.matched: false`로 나타납니다.
 - 한계: 마지막 route는 로그 끝 64KB 안에서만 찾으며, 라우팅이 `off`인 프롬프트는 `route` 이벤트를 쓰지 않으므로 그 뒤 시작한 Subagent는 이전에 기록된 route와 비교됩니다.
 
 ```bash

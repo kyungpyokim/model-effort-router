@@ -210,28 +210,34 @@ class AdviceMatchTest(unittest.TestCase):
         )
         self.assertIn("asks for the model/reasoning_effort", note)
         self.assertIn(
-            "effort medium. Required: begin your final answer with one line naming the model that did the work: "
-            "`[routed: gpt-6.1-sol · effort medium]` if the Subagent ran, or `[main: gpt-6-luna]`",
+            "effort medium. Required: before any tool call, start your first message of this turn with one line naming the model that will do the work: "
+            "`[routed: gpt-6.1-sol · effort medium]` if you spawn the Subagent, or `[main: gpt-6-luna]`",
             note,
         )
         self.assertIn("Do not pass agent_type: a role's config", note)
 
     def test_codex_same_model_tags_reply_with_main(self):
         note = advice.render(plan("gpt-6.1-sol", "medium"), "mer", hosts.CODEX, main_model="gpt-6.1-sol")
-        self.assertIn("effort medium. Required: begin your final answer with the line `[main: gpt-6.1-sol]`", note)
+        self.assertIn(
+            "effort medium. Required: before any tool call, start your first message of this turn with the line `[main: gpt-6.1-sol]`",
+            note,
+        )
         self.assertIn("(the Codex app does not show hook messages)", note)
 
     def test_claude_tags_reply_with_routed_or_main_model(self):
         spawn = advice.render(plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
         self.assertIn(
-            "Required: begin your final answer with one line naming the model that did the work: "
-            "`[routed: claude-opus-5-5 · effort medium]` if the Subagent ran, or `[main: claude-sonnet-5-5]` "
-            "if you handled it in Main (the Claude desktop app does not show hook messages).",
+            "Required: before any tool call, start your first message of this turn with one line naming the model that will do the work: "
+            "`[routed: claude-opus-5-5 · effort medium]` if you spawn the Subagent, or `[main: claude-sonnet-5-5]` "
+            "if you handle it in Main (the Claude desktop app does not show hook messages).",
             spawn,
         )
         same = advice.render(plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-opus-5-5")
-        self.assertIn("Required: begin your final answer with the line `[main: claude-opus-5-5]`", same)
-        self.assertNotIn("final answer", advice.render(plan(), "mer", hosts.CLAUDE, main_model=None))
+        self.assertIn(
+            "Required: before any tool call, start your first message of this turn with the line `[main: claude-opus-5-5]`",
+            same,
+        )
+        self.assertNotIn("first message", advice.render(plan(), "mer", hosts.CLAUDE, main_model=None))
 
     def test_match_says_proceed_in_main_with_routed_effort(self):
         note = advice.render(plan(effort="xhigh"), "mer", hosts.CLAUDE, main_model="claude-opus-5-5")
