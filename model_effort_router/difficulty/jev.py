@@ -5,6 +5,7 @@ import json
 import os
 import re
 import threading
+import unicodedata
 import urllib.error
 import urllib.request
 
@@ -118,29 +119,84 @@ class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
 
 _OPENER = urllib.request.build_opener(_RefuseRedirect)
 _SAFE_ERROR_VALUE = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,79}\Z")
+_SENSITIVE_LABEL = re.compile(
+    r"(?i)(?<![a-z0-9_])((?:\\?[\"'])?(?:[a-z0-9_.-]+[_-])?(?:api[\s_-]*key|private[\s_-]*key|client[\s_-]*secret|"
+    r"access[_-]?token|refresh[_-]?token|authorization|password|secret|credential|token|key)(?:\s+provided)?(?:\\?[\"'])?\s*[:=]).*"
+)
+_AUTH_VALUE = re.compile(r"(?i)\b(?:Basic|Bearer)\s+\S+")
+_TOKEN_VALUE = re.compile(r"(?i)\b(?:sk|pk|rk|xox[baprs])[-_][A-Za-z0-9_-]{8,}\b")
+_DIAGNOSTIC_CHARS = 240
 
 
-def _error_diagnostics(text):
-    """Keep bounded identifiers and fixed response-shape reasons, never provider messages."""
+def _sensitive_key(key):
+    key = "".join(char for char in str(key) if unicodedata.category(char) not in {"Cc", "Cf"})
+    normalized = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key).lower()
+    parts = set(re.split(r"[^a-z0-9]+", normalized))
+    compact = normalized.replace("_", "")
+    return bool(parts & {"key", "token", "password", "secret", "credential", "authorization"}) or any(
+        label in compact for label in ("apikey", "privatekey", "clientsecret", "accesstoken", "refreshtoken")
+    )
+
+
+def _redact_diagnostic(value, secrets):
+    if isinstance(value, dict):
+        return {
+            _redact_diagnostic(key, secrets): "[REDACTED]" if _sensitive_key(key) else _redact_diagnostic(item, secrets)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_diagnostic(item, secrets) for item in value]
+    if not isinstance(value, str):
+        return value
+    value = value.encode("utf-8", "replace").decode("utf-8")
+    value = "".join(
+        " " if char.isspace() else "" if unicodedata.category(char) in {"Cc", "Cf"} else char for char in value
+    )
+    for secret in secrets:
+        if secret:
+            value = value.replace(secret, "[REDACTED]")
+    value = _AUTH_VALUE.sub("[REDACTED]", value)
+    value = _TOKEN_VALUE.sub("[REDACTED]", value)
+    value = " ".join(value.split())
+    value = _SENSITIVE_LABEL.sub(r"\1[REDACTED]", value)
+    return value
+
+
+def _diagnostic_excerpt(value, secrets=()):
+    try:
+        value = _redact_diagnostic(value, secrets)
+        if not isinstance(value, str):
+            value = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    except (RecursionError, TypeError, ValueError):
+        return "unserializable"
+    value = " ".join(value.split())
+    return value[:_DIAGNOSTIC_CHARS]
+
+
+def _error_diagnostics(text, secrets=()):
+    """Keep bounded provider error details with structured and common-credential redaction."""
     if not text:
         return "body=empty"
     try:
         payload = json.loads(text)
     except RecursionError:
-        return "body=json_too_deep"
+        return f"body=json_too_deep; detail={_diagnostic_excerpt(text, secrets)}"
     except (TypeError, ValueError) as exc:
-        return f"body=invalid_json:{type(exc).__name__}"
+        return f"body=invalid_json:{type(exc).__name__}; detail={_diagnostic_excerpt(text, secrets)}"
     if not isinstance(payload, dict):
-        return f"body=non_object:{type(payload).__name__}"
+        return f"body=non_object:{type(payload).__name__}; detail={_diagnostic_excerpt(payload, secrets)}"
     error = payload.get("error", payload)
     if not isinstance(error, dict):
-        return f"error=non_object:{type(error).__name__}"
+        return f"error=non_object:{type(error).__name__}; detail={_diagnostic_excerpt(error, secrets)}"
     fields = []
     for key in ("code", "type", "param"):
         value = error.get(key)
         if isinstance(value, str) and _SAFE_ERROR_VALUE.fullmatch(value):
-            fields.append(f"{key}={value}")
-    return "; ".join(fields) or "error=no_safe_identifiers"
+            fields.append(f"{key}={_diagnostic_excerpt(value, secrets)}")
+    message = error.get("message")
+    if isinstance(message, str) and message:
+        fields.append(f"message={_diagnostic_excerpt(message, secrets)}")
+    return "; ".join(fields) or f"error=no_safe_identifiers; detail={_diagnostic_excerpt(error, secrets)}"
 
 
 def _post(url, headers, body, timeout_s, opener=None):
@@ -220,7 +276,9 @@ class SystemOneBackend:
         body = json.dumps({"state": state_text(task), "model": model, "questions": questions}).encode()
         status, text = self._transport(url, headers, body, timeout_s)
         if not 200 <= status < 300:
-            raise HttpStatusError(self.name, status, _error_diagnostics(text))
+            secrets = [value for key, value in headers.items() if _sensitive_key(key)]
+            secrets.extend(value.split()[-1] for value in secrets if len(value.split()) > 1)
+            raise HttpStatusError(self.name, status, _error_diagnostics(text, secrets))
         try:
             data = json.loads(text)
             used = data.get("usage")

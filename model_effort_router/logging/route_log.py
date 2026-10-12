@@ -1,4 +1,4 @@
-"""Append-only JSONL route log, one file per session (spec 21). Never stores prompt text, only hash + length."""
+"""Append-only JSONL route log: hashes prompts and stores bounded classifier diagnostics for debugging."""
 
 import hashlib
 import json
@@ -57,7 +57,7 @@ def prompt_fingerprint(prompt):
 
 
 def error_event(exc, *, latency_ms, prompt, configured_backend=None, timeout_clamped=False, host=None):
-    """A prompt whose routing raised: type name only, since messages can carry config or prompt text."""
+    """A routing failure with classifier causes separate from the withheld exception message."""
     ev = {
         "event": "route",
         "target": "error",
@@ -112,7 +112,7 @@ def route_event(
     elif plan.classifier_usage:
         ev["classifier_usage"] = dict(plan.classifier_usage)  # token counts only
     if plan.classifier_causes:
-        ev["classifier_causes"] = list(plan.classifier_causes)  # includes safe structured provider error identifiers
+        ev["classifier_causes"] = list(plan.classifier_causes)  # includes bounded provider error excerpts
     if decision:
         ev["decision"] = {
             "role": decision.role,
