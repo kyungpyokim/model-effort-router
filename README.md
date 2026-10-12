@@ -265,7 +265,7 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 
 ### Report
 
-`mer report` summarizes these logs. It lists the most recent `route`, `run`, and `subagent` rows (model, effort, role, classifier, advice action, token usage), then totals over every matching session: routed `(model, effort)` pairs, advice actions, Subagents `matched`, `mismatched`, or `unverified` against the route, classifier health (errors, fallbacks, latency average and p95, failure causes), and classifier and worker tokens.
+`mer report` summarizes these logs. It lists the most recent `route`, `run`, and `subagent` rows (model, effort, role, classifier, advice action, Main's model and effort as `main=<model>/<effort>` when known, token usage), then totals over every matching session: routed `(model, effort)` pairs, advice actions, Subagents `matched`, `mismatched`, or `unverified` against the route, classifier health (errors, fallbacks, latency average and p95, failure causes), and classifier and worker tokens.
 
 - Options: `--session <id prefix>`, `--since <n>m|h|d` (for example `12h`), and `--limit <n>` (rows to list, default 20; `0` prints only the summary).
 - Tokens exist only for `route` (the classifier call) and `run` (the worker). Main and Subagent turns are not logged, so their tokens are not shown.

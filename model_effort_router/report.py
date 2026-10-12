@@ -83,7 +83,10 @@ def _row(ev):
         if not d:
             return None
         model = d.get("model") or (ev.get("advice") or {}).get("routed_model")
-        detail = f"{d.get('role')}/{d.get('backend')} {(ev.get('advice') or {}).get('action') or ev.get('target')}"
+        advice = ev.get("advice") or {}
+        detail = f"{d.get('role')}/{d.get('backend')} {advice.get('action') or ev.get('target')}"
+        main = "/".join(filter(None, (advice.get("main_model"), ev.get("main_effort"))))
+        detail += f" main={main}" if main else ""
         return kind, model, d.get("applied_effort") or d.get("requested_effort"), detail
     if kind == "run":
         return kind, ev.get("actual_model"), ev.get("applied_effort"), f"{ev.get('role')} {ev.get('status')}"

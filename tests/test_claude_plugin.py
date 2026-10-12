@@ -8,6 +8,7 @@ import unittest
 
 from model_effort_router.difficulty.decision import EFFORTS, DifficultyDecision
 from model_effort_router.host import advice, codex_hooks, hosts
+from model_effort_router.logging import route_log
 from model_effort_router.policy.router import RoutePlan
 from model_effort_router.policy.targeting import NO_ROUTE, ROUTE
 from tests.hook_helpers import HookCase, PLUGIN, ROOT, run_script
@@ -238,6 +239,13 @@ class HookTest(HookCase):
         self.assertIn("Main model claude-sonnet-5-5 ≠ routed claude-opus-5-5: spawn the Subagent", note)
         self.assertIn("Agent(subagent_type=", note)
         self.assertNotIn("proceeding without", miss["systemMessage"])
+
+    def test_main_effort_from_the_transcript_is_logged_on_the_route_event(self):
+        path = self.root / "t.jsonl"
+        path.write_text(json.dumps({"type": "assistant", "isSidechain": False, "effort": "high", "message": {}}) + "\n")
+        data = {"session_id": "s", "cwd": str(self.repo), "prompt": PROMPT, "transcript_path": str(path)}
+        self.assertEqual(self.submit(payload=data, env_extra={"MER_HOST": "claude"}).returncode, 0)
+        self.assertEqual(route_log.last_event(str(self.state), "s", "route")["main_effort"], "high")
 
     def start_session(self, **extra):
         data = {"session_id": "s", "hook_event_name": "SessionStart", "source": "startup", **extra}

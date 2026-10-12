@@ -41,6 +41,12 @@ class NoRouteEventTest(unittest.TestCase):
             ("no_route", "low", "low"),
         )
 
+    def test_main_effort_is_logged_only_when_known(self):
+        plan = route("x", role_override="fix", effort_override="low", explicit=True)
+        kwargs = {"latency_ms": 1, "prompt": "p", "configured_backend": "a"}
+        self.assertEqual(route_log.route_event(plan, main_effort="high", **kwargs)["main_effort"], "high")
+        self.assertNotIn("main_effort", route_log.route_event(plan, **kwargs))
+
     def test_decision_without_target_has_no_target_key(self):
         plan = route("x", role_override="fix", effort_override="low", explicit=True)
         self.assertNotIn(

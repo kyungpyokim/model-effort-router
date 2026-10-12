@@ -18,7 +18,7 @@ from ..policy.overrides import parse_override
 from ..policy.router import route
 from ..policy.targeting import NO_ROUTE
 from . import advice, hosts
-from .main_model import main_model, normalize, save_session_model
+from .main_model import main_effort, main_model, normalize, save_session_model
 
 REGISTRY_MODULE_ENV = "MER_TEST_REGISTRY_MODULE"  # tests only: a module under tests/ with register(registry, env)
 USER_CONFIG_ENV = "MER_USER_CONFIG"
@@ -76,6 +76,14 @@ def _main_model(data, host, env):
         return main_model(data, host.name, route_log.state_dir(env))
     except Exception as exc:  # unknown Main model: legacy advice
         _log_error(env, data, exc, "MainModel")
+        return None
+
+
+def _main_effort(data, host, env):
+    try:
+        return main_effort(data, host.name)
+    except Exception as exc:  # unknown Main effort: just not logged
+        _log_error(env, data, exc, "MainEffort")
         return None
 
 
@@ -186,6 +194,7 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
                 host=host.name,
                 turn_id=data.get("turn_id"),
                 advice=advice.policy_summary(lanes, main) if policy else advice.summary(plan, host, main),
+                main_effort=_main_effort(data, host, env) if plan.target != NO_ROUTE else None,
             ),
         )
     return out
