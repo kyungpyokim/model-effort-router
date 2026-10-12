@@ -1,6 +1,8 @@
+import contextlib
 import io
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -68,6 +70,43 @@ class ReportTest(unittest.TestCase):
             text = self.report(sdir, "--session", "ses_abc")
             self.assertIn("review/explicit", text)
             self.assertIn("  high  ", text)
+
+    def test_summarizes_advice_followed_and_classifier_health(self):
+        now = time.time()
+        spawn = {
+            "event": "route",
+            "target": "route",
+            "latency_ms": 100,
+            "advice": {"action": "spawn"},
+            "decision": {"role": "plan", "backend": "jev", "model": "m", "applied_effort": "low"},
+        }
+        failed = {"event": "route", "target": "error", "latency_ms": 300, "classifier_causes": ["jev:HTTP 503"]}
+        fallback = {
+            **spawn,
+            "latency_ms": 200,
+            "classifier_fallback": True,
+            "advice": {"action": "inline_same_model"},
+            "classifier_causes": ["jev:HTTP 503"],
+        }
+        starts = [{"event": "subagent_start", "correlation": {"matched": m}} for m in (True, False, None)]
+        with tempfile.TemporaryDirectory() as sdir:
+            _log(sdir, "aaaaaaaa-1", *({**e, "ts": now} for e in (spawn, failed, fallback, *starts)))
+            text = self.report(sdir)
+            self.assertIn("advice: spawn 1 · inline_same_model 1", text)
+            self.assertIn("subagents: matched 1 · mismatched 1 · unverified 1", text)
+            self.assertIn("classifier: 3 routes · 1 errors · 1 fallbacks · latency avg 200 ms, p95 300 ms", text)
+            self.assertIn("causes: jev:HTTP 503 2", text)
+
+    def test_since_drops_older_events_and_rejects_bad_values(self):
+        now = time.time()
+        route = {"event": "route", "decision": {"role": "plan", "model": "m", "applied_effort": "low"}}
+        with tempfile.TemporaryDirectory() as sdir:
+            _log(sdir, "aaaaaaaa-1", {**route, "ts": now - 3 * 86400}, {**route, "ts": now - 60})
+            self.assertIn("   2  m  low", self.report(sdir))
+            self.assertIn("   1  m  low", self.report(sdir, "--since", "1d"))
+            self.assertIn("no routed requests", self.report(sdir, "--since", "0m"))
+            with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                self.report(sdir, "--since", "5x")
 
     def test_empty_log_dir(self):
         with tempfile.TemporaryDirectory() as sdir:
