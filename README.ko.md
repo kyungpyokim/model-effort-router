@@ -55,6 +55,33 @@ bun install --frozen-lockfile
 
 Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지원하지 않습니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/), [OpenCode 플러그인 가이드](https://dev.opencode.ai/docs/plugins/)를 참고하십시오.
 
+## 업데이트와 릴리스
+
+플러그인 업데이트는 `version`이 바뀌어야 설치한 사용자에게 전달되고, marketplace 설치는 공유 runtime을 건드리지 않습니다. 변경이 `main`에 머지된 뒤에는 명령 하나로 이 기기의 모든 설치를 갱신합니다.
+
+```sh
+git checkout main && git pull
+scripts/deploy.sh                 # 전체 대상
+scripts/deploy.sh claude codex    # 대상 선택: core|claude|codex|antigravity|opencode
+```
+
+| 대상 | 실행 내용 | 기준 소스 |
+|---|---|---|
+| `core` | `scripts/install_core.py`와 `--check` | 이 checkout |
+| `claude` | `claude plugin marketplace update`, `claude plugin update` | GitHub `main` |
+| `codex` | `codex plugin marketplace upgrade`, `codex plugin add` | GitHub `main` |
+| `antigravity` | `agy plugin validate`, `agy plugin install` | 이 checkout |
+| `opencode` | `bun install --frozen-lockfile` (`opencode.json`이 이미 이 checkout을 가리킴) | 이 checkout |
+
+CLI가 설치되어 있지 않은 대상은 건너뜁니다. checkout이 `origin/main`이 아니면 경고하고, 실패한 단계가 있어도 끝까지 진행한 뒤 실패한 명령을 나열하며 0이 아닌 코드로 종료합니다. 끝나면 각 호스트에서 새 세션을 시작해야 hook이 다시 로드됩니다.
+
+릴리스 순서:
+
+1. Claude·Codex `plugin.json`, OpenCode `package.json`·`package-lock.json`의 `version`과 `tests/test_opencode_plugin.py`, `tests/test_plugin_bundle.py`의 버전 단언을 올립니다.
+2. `main`에 머지하고 `main` CI가 통과할 때까지 기다립니다.
+3. 머지 커밋에 `model-effort-router--vX.Y.Z` 태그를 달고 `Model Effort Router X.Y.Z` 제목으로 GitHub Release를 발행합니다(`gh release create`).
+4. `scripts/deploy.sh`를 실행합니다.
+
 ## 라우팅 계약
 
 분류기는 `role`과 `effort`를 반환하며, `confidence`와 `reason_code`는 선택 사항입니다. 역할은 `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, `analysis`입니다. 앞의 네 역할은 실행 모델을 사용하고, 나머지는 추론 모델을 사용합니다. 노력 수준은 `low`, `medium`, `high`, `xhigh`입니다. 독립적인 위험 감지는 안전 민감 검토/설계 요청을 최소 `high`까지 올릴 수 있지만, 역할이나 모델 레인은 변경하지 않습니다.

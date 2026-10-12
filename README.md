@@ -55,6 +55,33 @@ All host integrations can provide a primary model recommendation and configured 
 
 Antigravity and OpenCode provide route advice only; worker execution is unsupported. Marketplace plugin installs do not install or update the shared runtime; rerun `python3 scripts/install_core.py` from this checkout when updating it. See the [Codex plugin guide](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace guide](https://code.claude.com/docs/en/plugin-marketplaces), and [Antigravity plugin guide](https://antigravity.google/docs/plugins/) for host-specific details.
 
+## Updating and releasing
+
+A plugin update only reaches installed users when its `version` changes, and marketplace installs never touch the shared runtime. After a change is merged to `main`, update every local install with one command:
+
+```sh
+git checkout main && git pull
+scripts/deploy.sh                 # all targets
+scripts/deploy.sh claude codex    # or pick targets: core|claude|codex|antigravity|opencode
+```
+
+| Target | What it runs | Source |
+|---|---|---|
+| `core` | `scripts/install_core.py` and `--check` | this checkout |
+| `claude` | `claude plugin marketplace update`, `claude plugin update` | GitHub `main` |
+| `codex` | `codex plugin marketplace upgrade`, `codex plugin add` | GitHub `main` |
+| `antigravity` | `agy plugin validate`, `agy plugin install` | this checkout |
+| `opencode` | `bun install --frozen-lockfile` (`opencode.json` already points at this checkout) | this checkout |
+
+A target whose CLI is missing is skipped. The script warns when the checkout is not at `origin/main`, continues past a failing step, and exits non-zero with the failed commands listed. Start a new session in each host afterwards so the hooks reload.
+
+Release checklist:
+
+1. Bump `version` in the Claude and Codex `plugin.json`, OpenCode `package.json` and `package-lock.json`, and the two version assertions in `tests/test_opencode_plugin.py` and `tests/test_plugin_bundle.py`.
+2. Merge to `main` and wait for the `main` CI run to pass.
+3. Tag the merge commit as `model-effort-router--vX.Y.Z` and publish a GitHub Release titled `Model Effort Router X.Y.Z` (`gh release create`).
+4. Run `scripts/deploy.sh`.
+
 ## Routing contract
 
 The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, `xhigh`, or `max`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
