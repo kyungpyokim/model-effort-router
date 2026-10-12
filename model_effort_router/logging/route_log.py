@@ -74,7 +74,16 @@ def error_event(exc, *, latency_ms, prompt, configured_backend, timeout_clamped=
 
 
 def route_event(
-    plan, *, latency_ms, prompt, configured_backend, timeout_clamped=False, host=None, turn_id=None, advice=None
+    plan,
+    *,
+    latency_ms,
+    prompt,
+    configured_backend,
+    timeout_clamped=False,
+    host=None,
+    turn_id=None,
+    advice=None,
+    main_effort=None,
 ):
     decision = plan.decision
     ev = {
@@ -87,7 +96,13 @@ def route_event(
     }
     if timeout_clamped:
         ev["timeout_clamped"] = True
-    ev.update({k: v for k, v in (("host", host), ("turn_id", turn_id), ("advice", advice)) if v is not None})
+    ev.update(
+        {
+            k: v
+            for k, v in (("host", host), ("turn_id", turn_id), ("advice", advice), ("main_effort", main_effort))
+            if v is not None
+        }
+    )
     if plan.classifier_usage_missing:
         ev["classifier_usage"] = None  # a model was called but its usage is unknown (absent key = no model call)
     elif plan.classifier_usage:

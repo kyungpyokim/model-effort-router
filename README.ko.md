@@ -265,7 +265,7 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 
 ### 리포트
 
-`mer report`는 이 로그를 요약합니다. 최근 `route`, `run`, `subagent` 행(모델, effort, 역할, 분류기, advice 동작, 토큰 사용량)을 나열한 뒤, 조건에 맞는 전체 세션을 합산합니다. 합산 항목은 라우팅된 `(model, effort)` 조합, advice 동작, route 대비 Subagent의 `matched`/`mismatched`/`unverified`, 분류기 상태(에러, 폴백, 지연 시간 평균과 p95, 실패 원인), 분류기와 worker 토큰입니다.
+`mer report`는 이 로그를 요약합니다. 최근 `route`, `run`, `subagent` 행(모델, effort, 역할, 분류기, advice 동작, 알려진 경우 Main의 모델과 effort를 `main=<model>/<effort>`로, 토큰 사용량)을 나열한 뒤, 조건에 맞는 전체 세션을 합산합니다. 합산 항목은 라우팅된 `(model, effort)` 조합, advice 동작, route 대비 Subagent의 `matched`/`mismatched`/`unverified`, 분류기 상태(에러, 폴백, 지연 시간 평균과 p95, 실패 원인), 분류기와 worker 토큰입니다.
 
 - 옵션: `--session <세션 ID 앞부분>`, `--since <n>m|h|d`(예: `12h`), `--limit <n>`(나열할 행 수, 기본 20, `0`이면 요약만 출력).
 - 토큰은 `route`(분류기 호출)와 `run`(worker)에만 있습니다. Main과 Subagent 턴은 로그에 남지 않아 그 토큰은 표시되지 않습니다.

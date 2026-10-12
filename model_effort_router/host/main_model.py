@@ -136,3 +136,25 @@ def main_model(data, host_name, sdir=None):
             return None if switched else found
         return stored
     return None
+
+
+def main_effort(data, host_name):
+    """Effort of Main's last reply, from the Claude transcript's assistant rows (`effort`). It is the previous turn's
+    value: a change since then shows after the next reply. Codex payloads carry none, so None means unknown."""
+    if host_name != "claude":
+        return None
+    found = None
+    try:
+        for line in _lines(data.get("transcript_path"), TAIL_BYTES):
+            if '"assistant"' not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except (ValueError, RecursionError):
+                continue
+            effort = row.get("effort") if isinstance(row, dict) and not row.get("isSidechain") else None
+            if isinstance(effort, str) and effort:
+                found = effort
+    except OSError:
+        pass
+    return found

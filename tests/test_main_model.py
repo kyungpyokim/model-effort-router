@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from model_effort_router.host import advice, hosts
-from model_effort_router.host.main_model import main_model, normalize, save_session_model
+from model_effort_router.host.main_model import main_effort, main_model, normalize, save_session_model
 from model_effort_router.difficulty.decision import DifficultyDecision
 from model_effort_router.policy.router import RoutePlan
 from model_effort_router.policy.targeting import ROUTE
@@ -38,6 +38,10 @@ def row(kind, **fields):
 def assistant(model, sidechain=False, ts=None):
     extra = {"timestamp": ts} if ts else {}
     return row("assistant", isSidechain=sidechain, message={"model": model, "content": []}, **extra)
+
+
+def assistant_effort(effort, sidechain=False):
+    return row("assistant", isSidechain=sidechain, effort=effort, message={"model": "m", "content": []})
 
 
 def attachment(model_id):
@@ -189,6 +193,18 @@ class MainModelTest(unittest.TestCase):
         self.assertEqual(main_model({"model": "GPT-6.1-Sol"}, "codex"), "gpt-6.1-sol")
         self.assertIsNone(main_model({}, "codex"))
         self.assertIsNone(main_model({"model": "x", "transcript_path": "/x"}, "antigravity"))
+
+    def test_claude_reads_last_main_assistant_effort(self):
+        path = self.transcript(
+            assistant_effort("low"), assistant_effort("max", sidechain=True), assistant_effort("high")
+        )
+        self.assertEqual(main_effort({"transcript_path": path}, "claude"), "high")
+
+    def test_unknown_without_evidence_or_on_codex(self):
+        path = self.transcript(assistant("claude-opus-5-5"), assistant_effort(7), assistant_effort(""))
+        self.assertIsNone(main_effort({"transcript_path": path}, "claude"))
+        self.assertIsNone(main_effort({"transcript_path": path}, "codex"))
+        self.assertIsNone(main_effort({"transcript_path": "relative.jsonl"}, "claude"))
 
 
 class AdviceMatchTest(unittest.TestCase):

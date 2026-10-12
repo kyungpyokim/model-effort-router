@@ -25,7 +25,8 @@ class ReportTest(unittest.TestCase):
                 "ts": 1,
                 "event": "route",
                 "target": "route",
-                "advice": {"action": "spawn"},
+                "advice": {"action": "spawn", "main_model": "claude-sonnet-5-5"},
+                "main_effort": "high",
                 "classifier_usage": {"input_tokens": 1234, "cached_input_tokens": 0, "output_tokens": 56},
                 "decision": {"role": "review", "backend": "jev", "model": "claude-opus-5-5", "applied_effort": "high"},
             }
@@ -49,6 +50,8 @@ class ReportTest(unittest.TestCase):
             _log(sdir, "bbbbbbbb-2", {**route, "ts": 5})
             text = self.report(sdir)
             self.assertIn("claude-opus-5-5  high", text)
+            self.assertIn("main=claude-sonnet-5-5/high", text)
+            self.assertNotIn("main=-", text)
             self.assertIn("input 1,234 cached 0 output 56", text)
             self.assertIn("claude-sonnet-5-5  low  fix complete", text)
             self.assertIn("effort-high", text)
