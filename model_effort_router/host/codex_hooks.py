@@ -81,7 +81,7 @@ def _main_model(data, host, env):
 
 def _main_effort(data, host, env):
     try:
-        return main_effort(data, host.name)
+        return main_effort(data, host.name, env)
     except Exception as exc:  # unknown Main effort: just not logged
         _log_error(env, data, exc, "MainEffort")
         return None

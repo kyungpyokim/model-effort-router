@@ -56,6 +56,7 @@ class HookCase(unittest.TestCase):
             "MER_CORE_PATH": str(ROOT),
             "MER_TEST_REGISTRY_MODULE": "tests.fake_registry",
             "MER_TEST_FAKE_BACKEND": json.dumps(self.fake),
+            "CLAUDE_EFFORT": "",  # the developer's own Claude Code session must not leak into the hook under test
         }
         e.update(extra)
         return e
