@@ -6,19 +6,23 @@ from .decision import DifficultyDecision
 class ClassificationError(RuntimeError):
     def __init__(self, message, causes=()):
         super().__init__(message)
-        self.causes = tuple(causes)  # "name:Type" or "name:HTTP 503"; never exception messages
+        self.causes = tuple(causes)  # bounded classifier diagnostics, also retained for debug logs
 
 
 class HttpStatusError(RuntimeError):
-    """A non-2xx classifier response; the status survives into the fallback cause."""
+    """A non-2xx classifier response with optional bounded provider diagnostics."""
 
-    def __init__(self, name, status):
+    def __init__(self, name, status, diagnostics=""):
         super().__init__(f"{name} HTTP {status}")
         self.status = status
+        self.diagnostics = diagnostics
 
 
 def _cause(name, exc):
-    return f"{name}:HTTP {exc.status}" if isinstance(exc, HttpStatusError) else f"{name}:{type(exc).__name__}"
+    if isinstance(exc, HttpStatusError):
+        cause = f"{name}:HTTP {exc.status}"
+        return f"{cause} [{exc.diagnostics}]" if exc.diagnostics else cause
+    return f"{name}:{type(exc).__name__}"
 
 
 def classify_with_fallback(task, backends, timeout_s, prior=()):
@@ -33,4 +37,5 @@ def classify_with_fallback(task, backends, timeout_s, prior=()):
             causes.append(f"{name}:InvalidResult")
         except Exception as exc:
             causes.append(_cause(name, exc))
-    raise ClassificationError("all classifiers failed: " + (", ".join(causes) or "no classifier configured"), causes)
+    summary = ", ".join(cause.split(" [", 1)[0] for cause in causes) or "no classifier configured"
+    raise ClassificationError(f"all classifiers failed: {summary}", causes)

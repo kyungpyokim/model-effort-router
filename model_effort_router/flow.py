@@ -80,7 +80,7 @@ def run_worker(task, plan, *, cwd, runner, env, host, timeout_s, context_packet=
     }
 
 
-def _loop_result(attempts, status, error=None):
+def _loop_result(attempts, status, error=None, *, error_type=None, failure_stage=None):
     keys = ("input", "cached_input", "output", "reasoning_output")
     reported = [a["usage"] for a in attempts if isinstance(a.get("usage"), dict)]
     missing = sum(
@@ -113,6 +113,8 @@ def _loop_result(attempts, status, error=None):
         "usage_missing": missing,
         "usage_scope": "worker attempts; excludes models invoked inside the verification command",
         **({"error": error[:300]} if error else {}),
+        **({"error_type": error_type} if error_type else {}),
+        **({"failure_stage": failure_stage} if failure_stage else {}),
     }
 
 
@@ -181,7 +183,9 @@ def run_low_first(
                 message,
                 model=failed["model"],
                 fallback_reason=failed["fallback_reason"],
-                result=_loop_result([*attempts, failed], "error", message),
+                result=_loop_result(
+                    [*attempts, failed], "error", message, error_type=type(exc).__name__, failure_stage="worker"
+                ),
             ) from exc
         except Exception as exc:
             failed = {
@@ -190,7 +194,13 @@ def run_low_first(
                 "model": getattr(exc, "model", current.model),
                 "usage": None,
             }
-            return _loop_result([*attempts, failed], "error", f"{type(exc).__name__}: {exc}")
+            return _loop_result(
+                [*attempts, failed],
+                "error",
+                f"{type(exc).__name__}: {exc}",
+                error_type=type(exc).__name__,
+                failure_stage="worker",
+            )
         result = {**result, "worker_wall_s": round(time.monotonic() - started, 3)}
         try:
             check = verify(cwd, verify_timeout_s)
@@ -204,7 +214,11 @@ def run_low_first(
         except Exception as exc:
             error = f"verification: {type(exc).__name__}: {exc}"
             return _loop_result(
-                [*attempts, {**result, "verification": {"status": "error", "reason": error[:300]}}], "error", error
+                [*attempts, {**result, "verification": {"status": "error", "reason": error[:300]}}],
+                "error",
+                error,
+                error_type=type(exc).__name__,
+                failure_stage="verification",
             )
         except (WorkerInterrupted, KeyboardInterrupt) as exc:
             message = str(exc) or "verification interrupted"
@@ -213,13 +227,24 @@ def run_low_first(
                 message,
                 model=result["model"],
                 fallback_reason=result.get("fallback_reason"),
-                result=_loop_result([*attempts, interrupted], "error", message),
+                result=_loop_result(
+                    [*attempts, interrupted],
+                    "error",
+                    message,
+                    error_type=type(exc).__name__,
+                    failure_stage="verification",
+                ),
             ) from exc
         attempts = [*attempts, {**result, "verification": check}]
         if check["status"] == "passed":
             return _loop_result(attempts, "complete")
         if check.get("reason") or not isinstance(code, int) or isinstance(code, bool) or code <= 0:
-            return _loop_result(attempts, "error", check.get("reason") or "verification could not finish normally")
+            return _loop_result(
+                attempts,
+                "error",
+                check.get("reason") or "verification could not finish normally",
+                failure_stage="verification",
+            )
         # Fresh sessions avoid host-specific resume/usage semantics; the same cwd retains edits.
         packet = json.dumps(
             {
@@ -231,4 +256,6 @@ def run_low_first(
             ensure_ascii=False,
         )
         current = replace(current, model=result["model"], fallback_model=None)
-    return _loop_result(attempts, "verification_failed", "verification failed at maximum effort")
+    return _loop_result(
+        attempts, "verification_failed", "verification failed at maximum effort", failure_stage="verification"
+    )

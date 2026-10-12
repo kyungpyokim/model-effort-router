@@ -278,7 +278,8 @@ class LowFirstCliTests(unittest.TestCase):
         self.assertEqual((status, loop.call_count, captured["retry_low"]), (0, 1, True))
         captured["verify"](cwd, 12)
         self.assertEqual(check.call_count, 1)
-        self.assertEqual(events[0]["policy"], "low-retry")
+        run_event = next(event for event in events if event.get("event") == "run")
+        self.assertEqual(run_event["policy"], "low-retry")
 
     def test_approved_xhigh_low_first_starts_from_xhigh(self):
         captured = {}

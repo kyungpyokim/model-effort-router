@@ -32,7 +32,7 @@ class MiscTest(HookCase):
         (self.repo / ".model-effort-router.json").write_text('{"SECRET_TOKEN_XYZ": ')
         self.submit()
         (err,) = [e for e in self.log_events() if e["event"] == "error"]
-        self.assertEqual(set(err) - {"ts"}, {"event", "type", "code"})
+        self.assertEqual(set(err) - {"ts"}, {"event", "stage", "type", "code"})
         self.assertNotIn("SECRET_TOKEN_XYZ", json.dumps(err))
 
     def test_production_code_has_no_fake_backend(self):

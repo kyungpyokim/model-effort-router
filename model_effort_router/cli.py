@@ -164,16 +164,29 @@ def _response(plan):
     }
 
 
-def _log_route(env, args, plan, latency_ms, host, repo_cfg, user_cfg, registry):
+def _log_route(env, args, plan, latency_ms, host, repo_cfg, user_cfg, registry, session_id=None):
     """Record the route in the host session's log, as the Claude/Codex hooks do. Logging never fails a route."""
     try:
         backend = resolve_config(repo=repo_cfg, user=user_cfg, registry=registry).backend
         event = route_log.route_event(
             plan, latency_ms=latency_ms, prompt=args.request, configured_backend=backend, host=host
         )
-        route_log.append(route_log.state_dir(env), args.session, event)
+        route_log.append(route_log.state_dir(env), session_id or getattr(args, "session", None), event)
     except Exception as exc:
         print(f"mer: could not log route: {type(exc).__name__}", file=sys.stderr)
+
+
+def _log_route_error(env, session_id, request, exc, latency_ms, host):
+    if not session_id:
+        return
+    try:
+        route_log.append(
+            route_log.state_dir(env),
+            session_id,
+            route_log.error_event(exc, latency_ms=latency_ms, prompt=request, host=host),
+        )
+    except Exception as log_exc:
+        print(f"mer: could not log route: {type(log_exc).__name__}", file=sys.stderr)
 
 
 def main(argv=None, *, env=None, runner=None, out=None):
@@ -205,6 +218,8 @@ def main(argv=None, *, env=None, runner=None, out=None):
                 file=sys.stderr,
             )
             return 2
+    run_sid = f"mer-{int(time.time())}-{uuid.uuid4().hex[:6]}" if args.command == "run" else None
+    route_started = time.monotonic()
     try:
         with _WorkerSignalScope():
             host = hosts.get(args.host, env)
@@ -212,7 +227,6 @@ def main(argv=None, *, env=None, runner=None, out=None):
             repo_cfg, user_cfg = load_configs(cwd, env)
             classifier_host = "codex" if host.name == "opencode" else host.name
             registry = _registry(env, classifier_host=classifier_host)
-            route_started = time.monotonic()
             plan = route(
                 args.request,
                 repo_config=repo_cfg,
@@ -225,19 +239,45 @@ def main(argv=None, *, env=None, runner=None, out=None):
                 repo_summary=os.path.basename(os.path.normpath(cwd)),
             )
     except WorkerInterrupted as exc:
+        _log_route_error(
+            env,
+            run_sid or getattr(args, "session", None),
+            args.request,
+            exc,
+            (time.monotonic() - route_started) * 1000,
+            getattr(locals().get("host"), "name", None),
+        )
         print(f"mer: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:
+        _log_route_error(
+            env,
+            run_sid or getattr(args, "session", None),
+            args.request,
+            exc,
+            (time.monotonic() - route_started) * 1000,
+            getattr(locals().get("host"), "name", None),
+        )
         print(f"mer: could not route: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
+    if args.command == "run" or (args.command == "route" and args.session and plan.mode != "off"):
+        _log_route(
+            env,
+            args,
+            plan,
+            (time.monotonic() - route_started) * 1000,
+            host.name,
+            repo_cfg,
+            user_cfg,
+            registry,
+            session_id=run_sid,
+        )
     if plan.override_rejected:
         print(
             "mer: invalid /router override; use `/router role=<role> effort=<effort>` or `/router mode=<mode>`",
             file=sys.stderr,
         )
         return 2
-    if args.command == "route" and args.session and plan.mode != "off":
-        _log_route(env, args, plan, (time.monotonic() - route_started) * 1000, host.name, repo_cfg, user_cfg, registry)
     if plan.decision is None or plan.target == NO_ROUTE:
         if args.command == "route" and args.automatic:
             response = {"route": "no_route", "mode": plan.mode}
@@ -333,7 +373,7 @@ def main(argv=None, *, env=None, runner=None, out=None):
     except (OSError, subprocess.SubprocessError):
         path_root = cwd
     baseline_states = {path: _path_state(path_root, path) for path in baseline_paths}
-    sid = f"mer-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+    sid = run_sid
     started = time.monotonic()
     try:
         with _WorkerSignalScope():
@@ -360,13 +400,15 @@ def main(argv=None, *, env=None, runner=None, out=None):
             else:
                 result = run_worker(task, plan, **options)
     except WorkerInterrupted as exc:
+        interrupted = {**result, **(exc.result or {})}
         result = {
-            **result,
-            **(exc.result or {}),
-            "model": exc.model or result.get("model", plan.model),
-            "fallback_reason": exc.fallback_reason or result.get("fallback_reason"),
+            **interrupted,
+            "model": exc.model or interrupted.get("model", plan.model),
+            "fallback_reason": exc.fallback_reason or interrupted.get("fallback_reason"),
             "status": "error",
             "error": str(exc)[:300],
+            "error_type": interrupted.get("error_type", type(exc).__name__),
+            "failure_stage": interrupted.get("failure_stage", "worker"),
         }
         status = 1
     except Exception as exc:
@@ -376,6 +418,8 @@ def main(argv=None, *, env=None, runner=None, out=None):
             "fallback_reason": getattr(exc, "fallback_reason", result.get("fallback_reason")),
             "status": "error",
             "error": f"{type(exc).__name__}: {exc}"[:300],
+            "error_type": type(exc).__name__,
+            "failure_stage": "execution",
         }
         status = 1
     else:
@@ -422,6 +466,7 @@ def main(argv=None, *, env=None, runner=None, out=None):
                 "applied_effort": result.get("applied_effort", plan.applied_effort),
                 "classifier": plan.decision.backend,
                 "fallback_reason": result.get("fallback_reason"),
+                **{k: result[k] for k in ("failure_stage", "error_type") if result.get(k)},
                 "status": result.get("status", "error"),
                 "usage": result.get("usage"),
                 "wall_s": result["wall_s"],
@@ -458,8 +503,8 @@ def main(argv=None, *, env=None, runner=None, out=None):
                 ),
             },
         )
-    except OSError:
-        pass
+    except OSError as exc:
+        print(f"mer: could not log run: {type(exc).__name__}", file=sys.stderr)
     if args.json:
         print(json.dumps(result, ensure_ascii=False), file=out)
     else:

@@ -14,6 +14,8 @@ _CLAUDE_ALIAS = re.compile(
 
 def _split_cause(cause):
     name, _, detail = cause.partition(":")
+    if detail.startswith("HTTP "):
+        detail = detail.split(" [", 1)[0]
     return name, detail
 
 

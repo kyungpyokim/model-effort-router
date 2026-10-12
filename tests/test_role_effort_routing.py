@@ -315,7 +315,7 @@ class WorkerSafetyTests(unittest.TestCase):
                     env={"HOME": directory, "MER_STATE_DIR": str(pathlib.Path(directory) / "state")},
                     out=io.StringIO(),
                 )
-        event = events[0]
+        event = next(event for event in events if event.get("event") == "run")
         self.assertEqual(status, 0)
         self.assertEqual(
             (
@@ -362,7 +362,7 @@ class WorkerSafetyTests(unittest.TestCase):
             )
         self.assertEqual(status, 1)
         self.assertEqual(len(calls), 2, "cancellation retried the fallback worker")
-        event = events[0]
+        event = next(event for event in events if event.get("event") == "run")
         self.assertEqual(
             (event["actual_model"], event["fallback_reason"], event["status"]),
             ("gpt-6.1-sol", "ModelUnavailableBeforeExecution", "error"),
