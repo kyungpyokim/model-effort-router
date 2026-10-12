@@ -25,7 +25,7 @@ from .policy.config import resolve_config
 from .policy.overrides import parse_override
 from .policy.router import route
 from .policy.targeting import NO_ROUTE
-from .report import since_seconds
+from .report import limit_count, since_seconds
 from .review import _git, git_diff
 
 _ONE_WAY_FLAGS = frozenset(("data_migration", "data_loss", "payment"))
@@ -138,7 +138,9 @@ def _parser():
     report = sub.add_parser("report", help="show the model, effort, and token usage recorded in the session logs")
     report.add_argument("--session", help="session id prefix; default is every session")
     report.add_argument("--since", type=since_seconds, help="only events from the last <n>m, <n>h, or <n>d")
-    report.add_argument("--limit", type=int, default=20, help="most recent rows to list (default 20)")
+    report.add_argument(
+        "--limit", type=limit_count, default=20, help="most recent rows to list, 0 for the summary only (default 20)"
+    )
     old = sub.add_parser("chat", help="removed; use mer route and ask Main to call a Subagent")
     old.add_argument("request", nargs="?")
     return parser

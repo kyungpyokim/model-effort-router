@@ -46,6 +46,17 @@ def since_seconds(text):
     return int(found[1]) * _UNIT_SECONDS[found[2]]
 
 
+def limit_count(text):
+    """argparse type for `--limit`: a row count, where 0 lists no rows and shows only the summary."""
+    try:
+        count = int(text)
+    except ValueError:
+        count = -1
+    if count < 0:
+        raise argparse.ArgumentTypeError("use a whole number, 0 or more")
+    return count
+
+
 def _load(sdir, session, since=None):
     cutoff = None if since is None else time.time() - since
     events = []
@@ -108,7 +119,7 @@ def main(args, *, env, out):
         print("no routed requests in the logs", file=out)
         return 0
     rows = [(ev, r) for ev in events if (r := _row(ev))]
-    for ev, (kind, model, effort, detail) in rows[-args.limit :]:
+    for ev, (kind, model, effort, detail) in rows[max(0, len(rows) - args.limit) :]:
         when = datetime.fromtimestamp(ev["ts"]).strftime("%m-%d %H:%M") if ev.get("ts") else "-"
         print(
             f"{when}  {ev['session']}  {kind:<8} {model or '-'}  {effort or '-'}  {detail}  [{_fmt_tokens(_tokens(ev))}]",

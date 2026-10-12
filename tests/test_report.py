@@ -108,6 +108,27 @@ class ReportTest(unittest.TestCase):
             with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
                 self.report(sdir, "--since", "5x")
 
+    def test_limit_picks_the_most_recent_rows_and_zero_lists_none(self):
+        route = {"event": "route", "decision": {"role": "plan", "applied_effort": "low"}}
+        with tempfile.TemporaryDirectory() as sdir:
+            _log(
+                sdir,
+                "aaaaaaaa-1",
+                *({**route, "ts": i, "decision": {**route["decision"], "model": f"m{i}"}} for i in (1, 2, 3)),
+            )
+
+            def rows(*argv):
+                return [line for line in self.report(sdir, *argv).splitlines() if "aaaaaaaa" in line]
+
+            self.assertEqual(len(rows("--limit", "2")), 2)
+            self.assertIn("m3", rows("--limit", "1")[0])
+            self.assertEqual(len(rows("--limit", "9")), 3)  # more than exist: all rows, not a wrapped slice
+            self.assertEqual(rows("--limit", "0"), [])
+            self.assertIn("   1  m1  low", self.report(sdir, "--limit", "0"))  # summary still printed
+            for bad in ("-1", "x"):
+                with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                    self.report(sdir, "--limit", bad)
+
     def test_empty_log_dir(self):
         with tempfile.TemporaryDirectory() as sdir:
             self.assertIn("no routed requests", self.report(sdir))
