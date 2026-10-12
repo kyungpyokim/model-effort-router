@@ -121,22 +121,26 @@ _SAFE_ERROR_VALUE = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,79}\Z")
 
 
 def _error_diagnostics(text):
-    """Keep only bounded structured error identifiers; provider messages may echo prompt data."""
+    """Keep bounded identifiers and fixed response-shape reasons, never provider messages."""
+    if not text:
+        return "body=empty"
     try:
         payload = json.loads(text)
-    except (RecursionError, TypeError, ValueError):
-        return ""
+    except RecursionError:
+        return "body=json_too_deep"
+    except (TypeError, ValueError) as exc:
+        return f"body=invalid_json:{type(exc).__name__}"
     if not isinstance(payload, dict):
-        return ""
+        return f"body=non_object:{type(payload).__name__}"
     error = payload.get("error", payload)
     if not isinstance(error, dict):
-        return ""
+        return f"error=non_object:{type(error).__name__}"
     fields = []
     for key in ("code", "type", "param"):
         value = error.get(key)
         if isinstance(value, str) and _SAFE_ERROR_VALUE.fullmatch(value):
             fields.append(f"{key}={value}")
-    return "; ".join(fields)
+    return "; ".join(fields) or "error=no_safe_identifiers"
 
 
 def _post(url, headers, body, timeout_s, opener=None):
