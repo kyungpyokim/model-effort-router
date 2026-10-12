@@ -129,7 +129,7 @@ def _reply_tag(plan, host, main_model, spawns):
     app = _APPS.get(host.name)
     if app is None:
         return ""
-    main = f"`[main: {normalize(main_model)}]`"
+    main = f"`[main: {normalize(main_model) or '<your model id>'}]`"  # unknown Main model: Main fills in its own id
     if not spawns:
         return f"Required: {_FIRST_LINE} the line {main} ({app} does not show hook messages). "
     return (
@@ -188,7 +188,7 @@ def render(plan, mer_cmd, host, main_model=None):
             + other
         )
     return (
-        f"{_header(plan, decision)} "
+        f"{_header(plan, decision)} {_reply_tag(plan, host, main_model, spawns=_invocation_args(plan, host) is not None)}"
         "Main: route this single task to a native Subagent using the host's supported "
         f"model/effort controls, or handle it directly when Main's model/effort already match or project instructions require it. "
         f"{invocation}Build a compact Context Packet with {packet}. {handoff}"
