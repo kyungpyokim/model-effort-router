@@ -27,8 +27,8 @@ def plan(model="claude-opus-5-5", effort="high", options=None):
 
 
 CLAUDE_MODEL = "claude-opus-5-5"
-GOLDEN_CLAUDE = "[model-effort-router] fix → reasoning · claude-opus-5-5 · effort high. Main: route this single task to a native Subagent using the host's supported model/effort controls, or handle it directly when Main's model/effort already match or project instructions require it. invoke: Agent(subagent_type=\"model-effort-router:effort-high\", model=\"opus\") (`opus` runs Claude Code's current opus model, which may differ from claude-opus-5-5). Build a compact Context Packet with task, context, decisions, constraints, relevant_files, expected_result. Use facts from the current request and relevant conversation to populate the packet, label unknowns, and include the completed packet directly in the host-native Subagent invocation. Do not forward the full conversation or private reasoning. Integrate the result, then decide whether another worker is needed. The hook provides advice only; it does not inspect Main's conversation or invoke the Subagent, and does not change this Main turn's model/settings. Other configured options: other-model (user-selectable, not automatic fallbacks)."
-GOLDEN_CODEX = "[model-effort-router] fix → reasoning · gpt-6.1-sol · effort high. Main: route this single task to a native Subagent using the host's supported model/effort controls, or handle it directly when Main's model/effort already match or project instructions require it. Build a compact Context Packet with task, context, decisions, constraints, relevant_files, expected_result. Use facts from the current request and relevant conversation to populate the packet, label unknowns, and include the completed packet directly in the host-native Subagent invocation. Do not forward the full conversation or private reasoning. Integrate the result, then decide whether another worker is needed. The hook provides advice only; it does not inspect Main's conversation or invoke the Subagent, and does not change this Main turn's model/settings. Other configured options: other-model (user-selectable, not automatic fallbacks)."
+GOLDEN_CLAUDE = "[model-effort-router] fix → reasoning · claude-opus-5-5 · effort high. Required: before any tool call, start your first message of this turn with one line naming the model that will do the work: `[routed: claude-opus-5-5 · effort high]` if you spawn the Subagent, or `[main: <your model id>]` if you handle it in Main (the Claude desktop app does not show hook messages). Main: route this single task to a native Subagent using the host's supported model/effort controls, or handle it directly when Main's model/effort already match or project instructions require it. invoke: Agent(subagent_type=\"model-effort-router:effort-high\", model=\"opus\") (`opus` runs Claude Code's current opus model, which may differ from claude-opus-5-5). Build a compact Context Packet with task, context, decisions, constraints, relevant_files, expected_result. Use facts from the current request and relevant conversation to populate the packet, label unknowns, and include the completed packet directly in the host-native Subagent invocation. Do not forward the full conversation or private reasoning. Integrate the result, then decide whether another worker is needed. The hook provides advice only; it does not inspect Main's conversation or invoke the Subagent, and does not change this Main turn's model/settings. Other configured options: other-model (user-selectable, not automatic fallbacks)."
+GOLDEN_CODEX = "[model-effort-router] fix → reasoning · gpt-6.1-sol · effort high. Required: before any tool call, start your first message of this turn with one line naming the model that will do the work: `[routed: gpt-6.1-sol · effort high]` if you spawn the Subagent, or `[main: <your model id>]` if you handle it in Main (the Codex app does not show hook messages). Main: route this single task to a native Subagent using the host's supported model/effort controls, or handle it directly when Main's model/effort already match or project instructions require it. Build a compact Context Packet with task, context, decisions, constraints, relevant_files, expected_result. Use facts from the current request and relevant conversation to populate the packet, label unknowns, and include the completed packet directly in the host-native Subagent invocation. Do not forward the full conversation or private reasoning. Integrate the result, then decide whether another worker is needed. The hook provides advice only; it does not inspect Main's conversation or invoke the Subagent, and does not change this Main turn's model/settings. Other configured options: other-model (user-selectable, not automatic fallbacks)."
 
 
 def row(kind, **fields):
@@ -253,7 +253,10 @@ class AdviceMatchTest(unittest.TestCase):
             "Required: before any tool call, start your first message of this turn with the line `[main: claude-opus-5-5]`",
             same,
         )
-        self.assertNotIn("first message", advice.render(plan(), "mer", hosts.CLAUDE, main_model=None))
+        unknown = advice.render(plan(), "mer", hosts.CLAUDE, main_model=None)
+        self.assertIn(
+            "`[main: <your model id>]` if you handle it in Main", unknown
+        )  # tag survives an unknown Main model
 
     def test_match_says_proceed_in_main_with_routed_effort(self):
         note = advice.render(plan(effort="xhigh"), "mer", hosts.CLAUDE, main_model="claude-opus-5-5")
@@ -266,7 +269,7 @@ class AdviceMatchTest(unittest.TestCase):
         self.assertIn("handle it directly when Main's model/effort already match", legacy)
         self.assertEqual(legacy, advice.render(plan(), "mer", hosts.CLAUDE, main_model=None))
 
-    def test_unknown_path_is_byte_identical_to_the_legacy_advice(self):
+    def test_unknown_path_is_the_legacy_advice_plus_the_reply_tag(self):
         for model, host, golden in (
             (CLAUDE_MODEL, hosts.CLAUDE, GOLDEN_CLAUDE),
             ("gpt-6.1-sol", hosts.CODEX, GOLDEN_CODEX),
@@ -277,8 +280,9 @@ class AdviceMatchTest(unittest.TestCase):
     def test_claude_model_without_agent_alias_falls_back_to_legacy_advice(self):
         p = plan("provider/model-id")
         note = advice.render(p, "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
-        self.assertEqual(note, advice.render(p, "mer", hosts.CLAUDE))
-        self.assertNotIn("spawn the Subagent", note)
+        self.assertIn("handle it directly when Main's model/effort already match", note)
+        self.assertIn("start your first message of this turn with the line `[main: claude-sonnet-5-5]`", note)
+        self.assertNotIn("[routed:", note)  # nothing to spawn, so no routed tag
 
     def test_matches_helper_is_tristate(self):
         self.assertIsNone(advice.matches(plan(), None))
