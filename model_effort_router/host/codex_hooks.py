@@ -216,7 +216,7 @@ def _log_error(env, data, exc, event):
         route_log.append(
             route_log.state_dir(env),
             sid or "_errors",
-            {"event": "error", "type": type(exc).__name__, "code": f"{event}_failed"},
+            {"event": "error", "stage": event, "type": type(exc).__name__, "code": f"{event}_failed"},
         )
     except Exception:
         pass  # nothing left to do: fail open silently

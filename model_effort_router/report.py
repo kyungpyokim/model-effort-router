@@ -15,7 +15,7 @@ from .logging import route_log
 LOG_SUFFIX = ".log.jsonl"
 _SINCE = re.compile(r"(\d+)([mhd])")
 _UNIT_SECONDS = {"m": 60, "h": 3600, "d": 86400}
-_REPORT_EVENTS = ("route", "run", "subagent_start")
+_REPORT_EVENTS = ("route", "run", "subagent_start", "subagent_stop", "context_refresh", "error")
 _MATCH_LABELS = {True: "matched", False: "mismatched", None: "unverified"}
 _TOKEN_KEYS = (
     ("input", "input_tokens", "input"),
@@ -25,12 +25,12 @@ _TOKEN_KEYS = (
 
 
 def _tokens(ev):
-    """Token counts of a route (classifier) or run (worker) event; route logs name the keys differently."""
-    is_route = ev["event"] == "route"
-    usage = ev.get("classifier_usage") if is_route else ev.get("usage")
+    """Token counts of classifier, worker, or context refresh usage."""
+    long_keys = ev["event"] in ("route", "context_refresh")
+    usage = ev.get("classifier_usage") if ev["event"] == "route" else ev.get("usage")
     if not isinstance(usage, dict):
         return {}
-    out = {label: usage.get(route_key if is_route else run_key) for label, route_key, run_key in _TOKEN_KEYS}
+    out = {label: usage.get(route_key if long_keys else run_key) for label, route_key, run_key in _TOKEN_KEYS}
     return {k: v for k, v in out.items() if isinstance(v, int)}
 
 
@@ -81,7 +81,14 @@ def _row(ev):
     if kind == "route":
         d = ev.get("decision") or {}
         if not d:
-            return None
+            detail = ev.get("target") or "route"
+            if ev.get("error_type"):
+                detail += f" {ev['error_type']}"
+            if ev.get("stage"):
+                detail += f" stage={ev['stage']}"
+            if ev.get("configured_backend"):
+                detail += f" backend={ev['configured_backend']}"
+            return "route", None, None, detail
         model = d.get("model") or (ev.get("advice") or {}).get("routed_model")
         advice = ev.get("advice") or {}
         detail = f"{d.get('role')}/{d.get('backend')} {advice.get('action') or ev.get('target')}"
@@ -89,11 +96,41 @@ def _row(ev):
         detail += f" main={main}" if main else ""
         return kind, model, d.get("applied_effort") or d.get("requested_effort"), detail
     if kind == "run":
-        return kind, ev.get("actual_model"), ev.get("applied_effort"), f"{ev.get('role')} {ev.get('status')}"
-    if kind == "subagent_start":
+        detail = f"{ev.get('role')} {ev.get('status')}"
+        detail += f" stage={ev['failure_stage']}" if ev.get("failure_stage") else ""
+        detail += f" error={ev['error_type']}" if ev.get("error_type") else ""
+        attempts = ev.get("attempts")
+        checks = [
+            f"{a.get('applied_effort')}:{a.get('verification_status')}"
+            + (
+                f"/{a['verification_duration_s']:.1f}s"
+                if isinstance(a.get("verification_duration_s"), (int, float))
+                else ""
+            )
+            for a in (attempts if isinstance(attempts, list) else [])
+            if isinstance(a, dict) and a.get("verification_status")
+        ]
+        detail += f" checks={','.join(checks)}" if checks else ""
+        return kind, ev.get("actual_model"), ev.get("applied_effort"), detail
+    if kind in ("subagent_start", "subagent_stop"):
         agent, corr = ev.get("agent_type") or "", ev.get("correlation") or {}
         effort = agent.rpartition("effort-")[2] if "effort-" in agent else (corr.get("expected") or {}).get("effort")
-        return "subagent", ev.get("model"), effort, f"{agent} matched={corr.get('matched')}"
+        row_kind = "subagent" if kind == "subagent_start" else kind
+        return row_kind, ev.get("model"), effort, f"{agent} matched={corr.get('matched')}"
+    if kind == "context_refresh":
+        detail = f"turns={ev.get('turns', '-')}"
+        if isinstance(ev.get("latency_ms"), (int, float)):
+            detail += f" latency={ev['latency_ms']:,.0f}ms"
+        return "context", ev.get("host"), None, detail
+    if kind == "error":
+        detail = ev.get("code") or "error"
+        if ev.get("stage"):
+            detail += f" stage={ev['stage']}"
+        if ev.get("type"):
+            detail += f" type={ev['type']}"
+        if ev.get("reason"):
+            detail += f" reason={ev['reason']}"
+        return kind, None, None, detail
     return None
 
 
@@ -114,6 +151,38 @@ def _classifier_lines(events):
         line += f" · latency avg {sum(times) / len(times):,.0f} ms, p95 {p95:,.0f} ms"
     causes = Counter(c for ev in routes for c in ev.get("classifier_causes") or ())
     return [line, *([f"  causes: {_join(causes)}"] if causes else [])]
+
+
+def _workflow_lines(events):
+    lines = []
+    runs = [ev for ev in events if ev["event"] == "run"]
+    if runs:
+        lines.append(f"runs: {_join(Counter(ev.get('status') or 'unknown' for ev in runs))}")
+    starts = sum(ev["event"] == "subagent_start" for ev in events)
+    stops = sum(ev["event"] == "subagent_stop" for ev in events)
+    if starts or stops:
+        lines.append(f"subagent lifecycle: {starts} started · {stops} stopped")
+    refreshes = [ev for ev in events if ev["event"] == "context_refresh"]
+    refresh_errors = [ev for ev in events if ev["event"] == "error" and ev.get("code") == "context_refresh_failed"]
+    if refreshes or refresh_errors:
+        times = [ev["latency_ms"] for ev in refreshes if isinstance(ev.get("latency_ms"), (int, float))]
+        line = f"context refresh: {len(refreshes)} completed · {len(refresh_errors)} errors"
+        if times:
+            line += f" · latency avg {sum(times) / len(times):,.0f} ms"
+        lines.append(line)
+    failures = Counter()
+    for ev in events:
+        kind = ev.get("event")
+        if kind == "route" and ev.get("target") == "error":
+            failures[f"routing/{ev.get('error_type') or 'unknown'}"] += 1
+        elif kind == "error":
+            label = ev.get("reason") or ev.get("code") or "error"
+            failures[f"{ev.get('stage') or 'workflow'}/{label}"] += 1
+        elif kind == "run" and ev.get("status") in ("error", "verification_failed"):
+            failures[f"{ev.get('failure_stage') or 'execution'}/{ev.get('error_type') or ev.get('status')}"] += 1
+    if failures:
+        lines.append(f"workflow failures: {_join(failures)}")
+    return lines
 
 
 def main(args, *, env, out):
@@ -140,11 +209,20 @@ def main(args, *, env, out):
         for ev in events
         if ev["event"] == "subagent_start"
     )
-    summary.extend([f"advice: {_join(actions)}", f"subagents: {_join(matches)}", *_classifier_lines(events)])
-    for label, kind in (("classifier", "route"), ("worker", "run")):
+    summary.extend(
+        [
+            f"advice: {_join(actions)}",
+            f"subagents: {_join(matches)}",
+            *_classifier_lines(events),
+            *_workflow_lines(events),
+        ]
+    )
+    for label, kind in (("classifier", "route"), ("worker", "run"), ("context refresh", "context_refresh")):
+        if kind == "context_refresh" and not any(ev["event"] == kind for ev in events):
+            continue
         total = Counter()
         for ev, r in rows:
-            if r[0] == kind:
+            if ev["event"] == kind:
                 total.update(_tokens(ev))
         summary.append(f"{label} tokens: {_fmt_tokens(dict(total))}")
     if shown:

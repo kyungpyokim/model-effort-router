@@ -1,7 +1,9 @@
 """TypeSafe `systemone` classifier using a direct role/effort contract."""
 
+import http.client
 import json
 import os
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -115,6 +117,26 @@ class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
 
 
 _OPENER = urllib.request.build_opener(_RefuseRedirect)
+_SAFE_ERROR_VALUE = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,79}\Z")
+
+
+def _error_diagnostics(text):
+    """Keep only bounded structured error identifiers; provider messages may echo prompt data."""
+    try:
+        payload = json.loads(text)
+    except (RecursionError, TypeError, ValueError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    error = payload.get("error", payload)
+    if not isinstance(error, dict):
+        return ""
+    fields = []
+    for key in ("code", "type", "param"):
+        value = error.get(key)
+        if isinstance(value, str) and _SAFE_ERROR_VALUE.fullmatch(value):
+            fields.append(f"{key}={value}")
+    return "; ".join(fields)
 
 
 def _post(url, headers, body, timeout_s, opener=None):
@@ -126,7 +148,16 @@ def _post(url, headers, body, timeout_s, opener=None):
         with (opener or _OPENER).open(req, timeout=timeout_s) as resp:
             return resp.status, resp.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
-        return exc.code, ""
+        try:
+            text = exc.read(16_384).decode("utf-8", "replace")
+        except (OSError, http.client.HTTPException):
+            text = ""
+        finally:
+            try:
+                exc.close()
+            except OSError:
+                pass  # body-read failure must not hide the received status
+        return exc.code, text
 
 
 def default_transport(url, headers, body, timeout_s, opener=None):
@@ -185,7 +216,7 @@ class SystemOneBackend:
         body = json.dumps({"state": state_text(task), "model": model, "questions": questions}).encode()
         status, text = self._transport(url, headers, body, timeout_s)
         if not 200 <= status < 300:
-            raise HttpStatusError(self.name, status)
+            raise HttpStatusError(self.name, status, _error_diagnostics(text))
         try:
             data = json.loads(text)
             used = data.get("usage")

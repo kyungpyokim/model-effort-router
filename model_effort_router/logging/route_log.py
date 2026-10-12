@@ -56,16 +56,20 @@ def prompt_fingerprint(prompt):
     return {"prompt_sha": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12], "prompt_len": len(prompt)}
 
 
-def error_event(exc, *, latency_ms, prompt, configured_backend, timeout_clamped=False):
+def error_event(exc, *, latency_ms, prompt, configured_backend=None, timeout_clamped=False, host=None):
     """A prompt whose routing raised: type name only, since messages can carry config or prompt text."""
     ev = {
         "event": "route",
         "target": "error",
+        "stage": "routing",
         "error_type": type(exc).__name__,
-        "configured_backend": configured_backend,
         "latency_ms": round(latency_ms, 1),
         **prompt_fingerprint(prompt),
     }
+    if configured_backend:
+        ev["configured_backend"] = configured_backend
+    if host:
+        ev["host"] = host
     if timeout_clamped:
         ev["timeout_clamped"] = True
     if getattr(exc, "causes", ()):
@@ -108,7 +112,7 @@ def route_event(
     elif plan.classifier_usage:
         ev["classifier_usage"] = dict(plan.classifier_usage)  # token counts only
     if plan.classifier_causes:
-        ev["classifier_causes"] = list(plan.classifier_causes)  # names, types, HTTP statuses only
+        ev["classifier_causes"] = list(plan.classifier_causes)  # includes safe structured provider error identifiers
     if decision:
         ev["decision"] = {
             "role": decision.role,

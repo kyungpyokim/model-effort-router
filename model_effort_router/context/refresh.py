@@ -85,12 +85,21 @@ def main(argv, *, runner=default_runner, env=None, min_chars=summary.REFRESH_MIN
     if len(argv) != 4 or argv[0] not in HOSTS or env.get(GUARD_ENV) == "1":
         return 0
     host, sid, path, sdir = argv
+    started = time.monotonic()
     if host == "codex" and not codex_verified(
         version_probe
     ):  # the tool-free flags are only known to hold on VERIFIED_CODEX_VERSIONS
         try:
             route_log.append(
-                sdir, sid, {"event": "error", "code": "context_refresh_failed", "reason": "codex_unverified_version"}
+                sdir,
+                sid,
+                {
+                    "event": "error",
+                    "stage": "context_refresh",
+                    "code": "context_refresh_failed",
+                    "reason": "codex_unverified_version",
+                    "latency_ms": round((time.monotonic() - started) * 1000, 1),
+                },
             )
         except Exception:
             pass
@@ -100,7 +109,6 @@ def main(argv, *, runner=default_runner, env=None, min_chars=summary.REFRESH_MIN
             if not got:  # another refresh is running: it will cover these turns, or the next prompt's will
                 return 0
             summary.prune(sdir, keep=(summary.summary_path(sdir, sid), summary.lock_path(sdir, sid)))
-            started = time.monotonic()
             turns = read_turns(
                 path, host
             )  # transcript and store are read under the lock, so the anchor only moves forward
@@ -129,9 +137,11 @@ def main(argv, *, runner=default_runner, env=None, min_chars=summary.REFRESH_MIN
                 sid,
                 {
                     "event": "error",
+                    "stage": "context_refresh",
                     "type": type(exc).__name__,
                     "code": "context_refresh_failed",
                     "reason": _reason(exc),
+                    "latency_ms": round((time.monotonic() - started) * 1000, 1),
                 },
             )
         except Exception:

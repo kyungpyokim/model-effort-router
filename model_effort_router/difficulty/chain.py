@@ -10,15 +10,19 @@ class ClassificationError(RuntimeError):
 
 
 class HttpStatusError(RuntimeError):
-    """A non-2xx classifier response; the status survives into the fallback cause."""
+    """A non-2xx classifier response with optional safe provider diagnostics."""
 
-    def __init__(self, name, status):
+    def __init__(self, name, status, diagnostics=""):
         super().__init__(f"{name} HTTP {status}")
         self.status = status
+        self.diagnostics = diagnostics
 
 
 def _cause(name, exc):
-    return f"{name}:HTTP {exc.status}" if isinstance(exc, HttpStatusError) else f"{name}:{type(exc).__name__}"
+    if isinstance(exc, HttpStatusError):
+        cause = f"{name}:HTTP {exc.status}"
+        return f"{cause} [{exc.diagnostics}]" if exc.diagnostics else cause
+    return f"{name}:{type(exc).__name__}"
 
 
 def classify_with_fallback(task, backends, timeout_s, prior=()):
