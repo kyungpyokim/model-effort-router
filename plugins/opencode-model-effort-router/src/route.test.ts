@@ -1,8 +1,11 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { execFile } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ModelEffortRouterPlugin from "./index";
-import { automaticRouteAdvice, routeAdvice } from "./route";
+import { automaticRouteAdvice, routeAdvice, routeReport } from "./route";
 
 type ExecFile = typeof execFile;
 type ExecCallback = (
@@ -35,6 +38,18 @@ function failingExec(message: string, stderr: string): ExecFile {
   });
 }
 
+// Routes run through the real CLI log under their session id; keep test sessions out of the user's logs.
+const stateDir = mkdtempSync(join(tmpdir(), "mer-state-"));
+const previousStateDir = process.env.MER_STATE_DIR;
+beforeAll(() => {
+  process.env.MER_STATE_DIR = stateDir;
+});
+afterAll(() => {
+  rmSync(stateDir, { recursive: true, force: true });
+  if (previousStateDir === undefined) delete process.env.MER_STATE_DIR;
+  else process.env.MER_STATE_DIR = previousStateDir;
+});
+
 describe("OpenCode plugin tool schema", () => {
   it("registers the visible mer tool with supported roles and efforts", async () => {
     const registered: {
@@ -44,7 +59,12 @@ describe("OpenCode plugin tool schema", () => {
         required: string[];
       };
       execute: (
-        input: { task: string; mode?: string; role?: string; effort?: string },
+        input: {
+          task?: string;
+          mode?: string;
+          role?: string;
+          effort?: string;
+        },
         context: unknown,
       ) => Promise<{ content?: string }>;
     }[] = [];
@@ -69,7 +89,7 @@ describe("OpenCode plugin tool schema", () => {
           hook: async () => undefined,
         },
       } as never);
-      expect(registered.map(({ name }) => name)).toEqual(["mer"]);
+      expect(registered.map(({ name }) => name)).toEqual(["mer", "mer_report"]);
       expect(registered[0].input.properties.role.enum).toEqual([
         "implementation",
         "fix",
@@ -117,10 +137,58 @@ describe("OpenCode plugin tool schema", () => {
           { sessionID: "test" },
         ),
       ).rejects.toThrow("automatic mode does not accept role or effort");
+      // The explicit route above was logged under its session, so the report lists it.
+      const report = await registered[1].execute({}, { sessionID: "test" });
+      expect(report.content).toContain("route");
+      expect(report.content).toContain("routed (model, effort):");
     } finally {
       if (previousCorePath === undefined) delete process.env.MER_CORE_PATH;
       else process.env.MER_CORE_PATH = previousCorePath;
     }
+  });
+});
+
+describe("route logging and report", () => {
+  it("passes the session id so the route is logged", async () => {
+    const seen: string[][] = [];
+    const exec = fakeExec(({ args }, callback) => {
+      seen.push(args);
+      callback(null, JSON.stringify({ route: "no_route", mode: "off" }), "");
+    });
+    await automaticRouteAdvice("Fix auth", "/work", "/mer", exec, "ses_1");
+    await routeAdvice("Plan", "plan", "low", "/work", "/mer", exec, "ses_1");
+    await automaticRouteAdvice("Fix auth", "/work", "/mer", exec);
+    expect(seen[0]).toContain("--automatic");
+    expect(seen[0].join(" ")).toContain("--session ses_1");
+    expect(seen[1].join(" ")).toContain("--session ses_1");
+    expect(seen[0].slice(-2)).toEqual(["--", "Fix auth"]);
+    expect(seen[2]).not.toContain("--session");
+  });
+
+  it("runs mer report with optional session and limit", async () => {
+    const seen: string[][] = [];
+    const exec = fakeExec(({ args }, callback) => {
+      seen.push(args);
+      callback(null, "report text", "");
+    });
+    expect(await routeReport("/work", undefined, undefined, "/mer", exec)).toBe(
+      "report text",
+    );
+    await routeReport("/work", "ses_1", 5, "/mer", exec);
+    expect(seen[0]).toEqual(["report"]);
+    expect(seen[1]).toEqual(["report", "--session", "ses_1", "--limit", "5"]);
+  });
+
+  it("reports mer report failures", async () => {
+    await expect(
+      routeReport(
+        "/work",
+        undefined,
+        undefined,
+        "/mer",
+        failingExec("x", "boom"),
+      ),
+    ).rejects.toThrow("mer report failed: boom");
   });
 });
 

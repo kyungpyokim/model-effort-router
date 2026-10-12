@@ -21,9 +21,11 @@ from .host import hosts
 from .host.advice import NO_ROUTE_MESSAGE, effort_pair
 from .host.codex_hooks import _registry, load_configs
 from .logging import route_log
+from .policy.config import resolve_config
 from .policy.overrides import parse_override
 from .policy.router import route
 from .policy.targeting import NO_ROUTE
+from .report import limit_count, since_seconds
 from .review import _git, git_diff
 
 _ONE_WAY_FLAGS = frozenset(("data_migration", "data_loss", "payment"))
@@ -108,6 +110,7 @@ def _parser():
                 action="store_true",
                 help="skip requests MER does not classify for routing",
             )
+            item.add_argument("--session", help="host session id; records the route in that session's log")
         if command == "run":
             item.add_argument("--timeout", type=float, default=1200.0)
             item.add_argument(
@@ -134,7 +137,10 @@ def _parser():
             )
     report = sub.add_parser("report", help="show the model, effort, and token usage recorded in the session logs")
     report.add_argument("--session", help="session id prefix; default is every session")
-    report.add_argument("--limit", type=int, default=20, help="most recent rows to list (default 20)")
+    report.add_argument("--since", type=since_seconds, help="only events from the last <n>m, <n>h, or <n>d")
+    report.add_argument(
+        "--limit", type=limit_count, default=20, help="most recent rows to list, 0 for the summary only (default 20)"
+    )
     old = sub.add_parser("chat", help="removed; use mer route and ask Main to call a Subagent")
     old.add_argument("request", nargs="?")
     return parser
@@ -156,6 +162,18 @@ def _response(plan):
         "fallback_reason": plan.fallback_reason,
         "model_options": list(plan.model_options or ((plan.model,) if plan.model else ())),
     }
+
+
+def _log_route(env, args, plan, latency_ms, host, repo_cfg, user_cfg, registry):
+    """Record the route in the host session's log, as the Claude/Codex hooks do. Logging never fails a route."""
+    try:
+        backend = resolve_config(repo=repo_cfg, user=user_cfg, registry=registry).backend
+        event = route_log.route_event(
+            plan, latency_ms=latency_ms, prompt=args.request, configured_backend=backend, host=host
+        )
+        route_log.append(route_log.state_dir(env), args.session, event)
+    except Exception as exc:
+        print(f"mer: could not log route: {type(exc).__name__}", file=sys.stderr)
 
 
 def main(argv=None, *, env=None, runner=None, out=None):
@@ -194,6 +212,7 @@ def main(argv=None, *, env=None, runner=None, out=None):
             repo_cfg, user_cfg = load_configs(cwd, env)
             classifier_host = "codex" if host.name == "opencode" else host.name
             registry = _registry(env, classifier_host=classifier_host)
+            route_started = time.monotonic()
             plan = route(
                 args.request,
                 repo_config=repo_cfg,
@@ -217,6 +236,8 @@ def main(argv=None, *, env=None, runner=None, out=None):
             file=sys.stderr,
         )
         return 2
+    if args.command == "route" and args.session and plan.mode != "off":
+        _log_route(env, args, plan, (time.monotonic() - route_started) * 1000, host.name, repo_cfg, user_cfg, registry)
     if plan.decision is None or plan.target == NO_ROUTE:
         if args.command == "route" and args.automatic:
             response = {"route": "no_route", "mode": plan.mode}
@@ -281,7 +302,6 @@ def main(argv=None, *, env=None, runner=None, out=None):
         from .difficulty.decision import EFFORTS, EXECUTION_ROLES
         from .gate.discovery import Check
         from .gate.run import run_check
-        from .policy.config import resolve_config
 
         try:
             if plan.decision.role not in EXECUTION_ROLES:

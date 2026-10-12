@@ -181,9 +181,10 @@ The Decisions API is the endpoint; `gpt-6-luna` is its model. Jev had the highes
 python3 <plugin>/bin/mer route --host codex --json 'Review the authentication changes'
 python3 <plugin>/bin/mer route --host codex --role implementation --effort high --json 'Implement the approved design'
 python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and fix the focused tests'
+python3 <plugin>/bin/mer report --since 12h --limit 10
 ```
 
-`mer route` classifies/maps only. By default, `mer run` executes exactly one worker request. Reasoning roles run read-only. Antigravity can classify and provide advice, but worker execution is unsupported because Subagent isolation is unverified. OpenCode exposes route advice through the `mer` tool; it does not switch the active model or run workers. `mer chat` was removed; use the route result to ask Main to invoke the selected Subagent. Explicit `--role` and `--effort` bypass automatic hook eligibility and must be provided together.
+`mer route` classifies/maps only. By default, `mer run` executes exactly one worker request. Reasoning roles run read-only. Antigravity can classify and provide advice, but worker execution is unsupported because Subagent isolation is unverified. OpenCode exposes route advice through the `mer` tool and the log summary through the `mer_report` tool; it does not switch the active model or run workers. `mer chat` was removed; use the route result to ask Main to invoke the selected Subagent. Explicit `--role` and `--effort` bypass automatic hook eligibility and must be provided together.
 
 After a run, MER compares the repository's changed paths before and after the worker. When changes are detected, text output reports the `door` (`one-way` for data migration, data loss, or payment risk; otherwise `two-way`) and estimated `blast_radius` (`local` or `broad`), plus changed-file and top-level-directory counts. JSON includes the same values under `change`, with the resulting `risk_flags`. Blast radius is a path-based estimate; review the actual changes to assess impact.
 
@@ -261,6 +262,14 @@ Each session appends to `~/.local/state/model-effort-router/<session>-<hash>.log
 ```bash
 jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.action,model:(.model // .advice.routed_model),matched:.correlation.matched}' ~/.local/state/model-effort-router/<session>-*.log.jsonl
 ```
+
+### Report
+
+`mer report` summarizes these logs. It lists the most recent `route`, `run`, and `subagent` rows (model, effort, role, classifier, advice action, token usage), then totals over every matching session: routed `(model, effort)` pairs, advice actions, Subagents `matched`, `mismatched`, or `unverified` against the route, classifier health (errors, fallbacks, latency average and p95, failure causes), and classifier and worker tokens.
+
+- Options: `--session <id prefix>`, `--since <n>m|h|d` (for example `12h`), and `--limit <n>` (rows to list, default 20; `0` prints only the summary).
+- Tokens exist only for `route` (the classifier call) and `run` (the worker). Main and Subagent turns are not logged, so their tokens are not shown.
+- Claude, Codex, and Antigravity ship a `report` skill. OpenCode has the `mer_report` tool, and its routes are logged per session through `mer route --session <id>`.
 
 ## Runtime development
 

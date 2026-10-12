@@ -181,9 +181,10 @@ Decisions API는 API 엔드포인트이고 `gpt-6-luna`는 해당 API에서 사�
 python3 <plugin>/bin/mer route --host codex --json 'Review the authentication changes'
 python3 <plugin>/bin/mer route --host codex --role implementation --effort high --json 'Implement the approved design'
 python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and fix the focused tests'
+python3 <plugin>/bin/mer report --since 12h --limit 10
 ```
 
-`mer route`는 분류/매핑만 수행합니다. 기본적으로 `mer run`은 worker 요청을 정확히 하나 실행합니다. 추론 역할은 읽기 전용으로 실행됩니다. Antigravity는 Subagent 격리가 검증되지 않아, OpenCode는 plugin worker 실행 계약이 없어 worker 실행을 지원하지 않습니다. OpenCode 플러그인은 `mer` 조언 도구를 제공합니다. `mer chat`은 제거되었으므로, route 결과를 사용해 Main이 선택된 Subagent를 호출하도록 요청하십시오. 명시적인 `--role`과 `--effort`는 자동 hook 적합성 판단을 우회하며, 반드시 함께 제공해야 합니다.
+`mer route`는 분류/매핑만 수행합니다. 기본적으로 `mer run`은 worker 요청을 정확히 하나 실행합니다. 추론 역할은 읽기 전용으로 실행됩니다. Antigravity는 Subagent 격리가 검증되지 않아, OpenCode는 plugin worker 실행 계약이 없어 worker 실행을 지원하지 않습니다. OpenCode 플러그인은 `mer` 조언 도구와 로그 요약용 `mer_report` 도구를 제공합니다. `mer chat`은 제거되었으므로, route 결과를 사용해 Main이 선택된 Subagent를 호출하도록 요청하십시오. 명시적인 `--role`과 `--effort`는 자동 hook 적합성 판단을 우회하며, 반드시 함께 제공해야 합니다.
 
 실행 후 MER는 worker 전후의 저장소 변경 경로를 비교합니다. 변경이 감지되면 텍스트 출력에는 `door`(`one-way`는 데이터 마이그레이션, 데이터 손실 또는 결제 위험인 경우이고, 그 외에는 `two-way`)와 예상 `blast_radius`(`local` 또는 `broad`), 변경 파일 수 및 최상위 디렉터리 수가 표시됩니다. JSON에는 결과 `risk_flags`와 함께 동일한 값이 `change` 아래에 포함됩니다. 영향 범위는 경로를 바탕으로 추정하므로 실제 변경 내용을 검토해 영향을 판단하십시오.
 
@@ -261,6 +262,14 @@ Jev 인증 정보는 전역 사용자 설정에만 둘 수 있습니다. 자세�
 ```bash
 jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.action,model:(.model // .advice.routed_model),matched:.correlation.matched}' ~/.local/state/model-effort-router/<session>-*.log.jsonl
 ```
+
+### 리포트
+
+`mer report`는 이 로그를 요약합니다. 최근 `route`, `run`, `subagent` 행(모델, effort, 역할, 분류기, advice 동작, 토큰 사용량)을 나열한 뒤, 조건에 맞는 전체 세션을 합산합니다. 합산 항목은 라우팅된 `(model, effort)` 조합, advice 동작, route 대비 Subagent의 `matched`/`mismatched`/`unverified`, 분류기 상태(에러, 폴백, 지연 시간 평균과 p95, 실패 원인), 분류기와 worker 토큰입니다.
+
+- 옵션: `--session <세션 ID 앞부분>`, `--since <n>m|h|d`(예: `12h`), `--limit <n>`(나열할 행 수, 기본 20, `0`이면 요약만 출력).
+- 토큰은 `route`(분류기 호출)와 `run`(worker)에만 있습니다. Main과 Subagent 턴은 로그에 남지 않아 그 토큰은 표시되지 않습니다.
+- Claude, Codex, Antigravity는 `report` 스킬을 제공합니다. OpenCode는 `mer_report` 도구를 제공하며, `mer route --session <id>`로 세션별 route를 로그에 남깁니다.
 
 ## Runtime 개발
 

@@ -1,6 +1,6 @@
 # OpenCode Model Effort Router
 
-This local OpenCode plugin runs MER automatically on submitted prompts and appends role, model, and effort advice. It also adds the `mer` tool for an explicit recommendation. It does not change the current model or launch a worker.
+This local OpenCode plugin runs MER automatically on submitted prompts and appends role, model, and effort advice. It also adds the `mer` tool for an explicit recommendation and the `mer_report` tool, which lists the model, effort, and token usage recorded in the logs (`mer report`). Each routed prompt is logged under its OpenCode session in `~/.local/state/model-effort-router`. OpenCode Subagent and worker usage is not logged, so the tokens shown are the classifier's. It does not change the current model or launch a worker.
 
 ## Install for a project
 
