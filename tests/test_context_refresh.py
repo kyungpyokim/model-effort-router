@@ -183,11 +183,13 @@ class RefreshTest(unittest.TestCase):
                 self.assertEqual(runner.calls, [])
         self.assertEqual(summary.load(self.sdir, "s1"), Stored())
         events = self.log_events()
-        self.assertEqual(
-            events and {k: v for e in events for k, v in e.items() if k != "ts"},
-            {"event": "error", "code": "context_refresh_failed", "reason": "codex_unverified_version"},
-        )
         self.assertEqual(len(events), 3)
+        for event in events:
+            self.assertEqual(
+                (event["event"], event["stage"], event["code"], event["reason"]),
+                ("error", "context_refresh", "context_refresh_failed", "codex_unverified_version"),
+            )
+            self.assertIsInstance(event["latency_ms"], (int, float))
 
     def test_the_version_gate_does_not_touch_claude(self):
         runner = FakeRunner(claude_result("S"))
