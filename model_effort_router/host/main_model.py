@@ -13,7 +13,6 @@ import time
 from collections import namedtuple
 from datetime import datetime
 
-from ..adapters.claude import CLAUDE_EFFORTS
 from ..context.transcripts import _lines
 from ..logging import route_log
 
@@ -140,13 +139,9 @@ def _claude_model(data, sdir):
     return stored
 
 
-def _claude_effort(data, env):
-    """The effort Claude Code reports to hooks in `$CLAUDE_EFFORT` (the level in effect now, so a `/effort` change and
-    the first turn are covered). Without it, the last Main reply's transcript `effort`: the previous turn's value, so
-    a change since then shows after the next reply."""
-    level = (env or {}).get("CLAUDE_EFFORT")
-    if level in CLAUDE_EFFORTS:
-        return level
+def _claude_effort(data, sdir):
+    """Effort of Main's last reply, from the Claude transcript's assistant rows (`effort`). It is the previous turn's
+    value: a change since then shows after the next reply."""
     found = None
     try:
         for line in _lines(data.get("transcript_path"), TAIL_BYTES):
@@ -164,12 +159,11 @@ def _claude_effort(data, env):
     return found
 
 
-def _unknown(data, _):
+def _unknown(data, sdir):
     return None
 
 
-# What each host can tell about Main; a host without a reader (or a field) stays unknown.
-# model readers take (payload, state dir), effort readers (payload, hook env).
+# What each host's payload can tell about Main; a host without a reader (or a field) stays unknown.
 MainReader = namedtuple("MainReader", "model effort")
 READERS = {
     "claude": MainReader(_claude_model, _claude_effort),
@@ -182,5 +176,5 @@ def main_model(data, host_name, sdir=None):
     return READERS.get(host_name, _NO_READER).model(data, sdir)
 
 
-def main_effort(data, host_name, env=None):
-    return READERS.get(host_name, _NO_READER).effort(data, env)
+def main_effort(data, host_name):
+    return READERS.get(host_name, _NO_READER).effort(data, None)

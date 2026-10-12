@@ -212,24 +212,8 @@ class MainModelTest(unittest.TestCase):
         self.assertIsNone(main_effort({"transcript_path": path}, "codex"))
         self.assertIsNone(main_effort({"transcript_path": "relative.jsonl"}, "claude"))
 
-    def test_claude_effort_env_wins_over_the_transcript_and_covers_the_first_turn(self):
-        path = self.transcript(assistant_effort("low"))
-        self.assertEqual(main_effort({"transcript_path": path}, "claude", {"CLAUDE_EFFORT": "xhigh"}), "xhigh")
-        self.assertEqual(main_effort({}, "claude", {"CLAUDE_EFFORT": "max"}), "max")  # no transcript yet
-
-    def test_claude_effort_env_that_is_not_a_known_level_falls_back_to_the_transcript(self):
-        path = self.transcript(assistant_effort("low"))
-        for raw in ("", "ultra", "HIGH", None):
-            with self.subTest(raw=raw):
-                env = {} if raw is None else {"CLAUDE_EFFORT": raw}
-                self.assertEqual(main_effort({"transcript_path": path}, "claude", env), "low")
-                self.assertIsNone(main_effort({}, "claude", env))
-
-    def test_codex_ignores_the_claude_effort_env(self):
-        self.assertIsNone(main_effort({}, "codex", {"CLAUDE_EFFORT": "high"}))
-
     def test_a_registered_reader_serves_a_new_host_without_touching_the_dispatch(self):
-        readers = {**main_model_module.READERS, "newhost": MainReader(lambda d, s: "m", lambda d, e: "e")}
+        readers = {**main_model_module.READERS, "newhost": MainReader(lambda d, s: "m", lambda d, s: "e")}
         with patch.object(main_model_module, "READERS", readers):
             self.assertEqual(main_model({}, "newhost"), "m")
             self.assertEqual(main_effort({}, "newhost"), "e")
