@@ -34,6 +34,8 @@ deploy_antigravity() {
   have agy || return 0
   run agy plugin validate ./plugins/antigravity-model-effort-router
   run agy plugin install ./plugins/antigravity-model-effort-router
+  # the manifest has no version, so verify the installed copy matches this checkout
+  run diff -r -x __pycache__ ./plugins/antigravity-model-effort-router "$HOME/.gemini/config/plugins/$PLUGIN"
 }
 deploy_opencode() {
   step "opencode"
