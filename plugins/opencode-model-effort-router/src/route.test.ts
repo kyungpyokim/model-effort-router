@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { execFile } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -38,6 +38,18 @@ function failingExec(message: string, stderr: string): ExecFile {
   });
 }
 
+// Routes run through the real CLI log under their session id; keep test sessions out of the user's logs.
+const stateDir = mkdtempSync(join(tmpdir(), "mer-state-"));
+const previousStateDir = process.env.MER_STATE_DIR;
+beforeAll(() => {
+  process.env.MER_STATE_DIR = stateDir;
+});
+afterAll(() => {
+  rmSync(stateDir, { recursive: true, force: true });
+  if (previousStateDir === undefined) delete process.env.MER_STATE_DIR;
+  else process.env.MER_STATE_DIR = previousStateDir;
+});
+
 describe("OpenCode plugin tool schema", () => {
   it("registers the visible mer tool with supported roles and efforts", async () => {
     const registered: {
@@ -57,9 +69,6 @@ describe("OpenCode plugin tool schema", () => {
       ) => Promise<{ content?: string }>;
     }[] = [];
     const previousCorePath = process.env.MER_CORE_PATH;
-    const previousStateDir = process.env.MER_STATE_DIR;
-    const stateDir = mkdtempSync(join(tmpdir(), "mer-state-"));
-    process.env.MER_STATE_DIR = stateDir;
     process.env.MER_CORE_PATH = fileURLToPath(
       new URL("../../../", import.meta.url),
     );
@@ -133,9 +142,6 @@ describe("OpenCode plugin tool schema", () => {
       expect(report.content).toContain("route");
       expect(report.content).toContain("routed (model, effort):");
     } finally {
-      rmSync(stateDir, { recursive: true, force: true });
-      if (previousStateDir === undefined) delete process.env.MER_STATE_DIR;
-      else process.env.MER_STATE_DIR = previousStateDir;
       if (previousCorePath === undefined) delete process.env.MER_CORE_PATH;
       else process.env.MER_CORE_PATH = previousCorePath;
     }
