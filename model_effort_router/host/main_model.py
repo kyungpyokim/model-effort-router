@@ -141,7 +141,8 @@ def _claude_model(data, sdir):
 
 def _claude_effort(data, sdir):
     """Effort of Main's last reply, from the Claude transcript's assistant rows (`effort`). It is the previous turn's
-    value: a change since then shows after the next reply."""
+    value: a change since then shows after the next reply. Not `$CLAUDE_EFFORT` or a payload `effort`: live-checked
+    (`claude -p`), UserPromptSubmit gets neither, and the variable would only be inherited from a parent session."""
     found = None
     try:
         for line in _lines(data.get("transcript_path"), TAIL_BYTES):
