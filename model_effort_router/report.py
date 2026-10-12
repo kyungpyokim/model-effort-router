@@ -119,30 +119,32 @@ def main(args, *, env, out):
         print("no routed requests in the logs", file=out)
         return 0
     rows = [(ev, r) for ev in events if (r := _row(ev))]
-    for ev, (kind, model, effort, detail) in rows[max(0, len(rows) - args.limit) :]:
+    shown = rows[max(0, len(rows) - args.limit) :]
+    for ev, (kind, model, effort, detail) in shown:
         when = datetime.fromtimestamp(ev["ts"]).strftime("%m-%d %H:%M") if ev.get("ts") else "-"
         print(
             f"{when}  {ev['session']}  {kind:<8} {model or '-'}  {effort or '-'}  {detail}  [{_fmt_tokens(_tokens(ev))}]",
             file=out,
         )
+    summary = []
     routed = Counter((r[1], r[2] or "-") for _, r in rows if r[0] == "route" and r[1])  # no_route has no model
     if routed:
-        print("\nrouted (model, effort):", file=out)
-    for (model, effort), n in routed.most_common():
-        print(f"  {n:>4}  {model}  {effort}", file=out)
+        summary.append("routed (model, effort):")
+    summary.extend(f"  {n:>4}  {model}  {effort}" for (model, effort), n in routed.most_common())
     actions = Counter(a for ev in events if ev["event"] == "route" and (a := (ev.get("advice") or {}).get("action")))
     matches = Counter(
         _MATCH_LABELS.get((ev.get("correlation") or {}).get("matched"), "unverified")
         for ev in events
         if ev["event"] == "subagent_start"
     )
-    print(f"advice: {_join(actions)}\nsubagents: {_join(matches)}", file=out)
-    for line in _classifier_lines(events):
-        print(line, file=out)
+    summary.extend([f"advice: {_join(actions)}", f"subagents: {_join(matches)}", *_classifier_lines(events)])
     for label, kind in (("classifier", "route"), ("worker", "run")):
         total = Counter()
         for ev, r in rows:
             if r[0] == kind:
                 total.update(_tokens(ev))
-        print(f"{label} tokens: {_fmt_tokens(dict(total))}", file=out)
+        summary.append(f"{label} tokens: {_fmt_tokens(dict(total))}")
+    if shown:
+        print(file=out)  # blank line between the rows and the summary
+    print("\n".join(summary), file=out)
     return 0

@@ -124,7 +124,10 @@ class ReportTest(unittest.TestCase):
             self.assertIn("m3", rows("--limit", "1")[0])
             self.assertEqual(len(rows("--limit", "9")), 3)  # more than exist: all rows, not a wrapped slice
             self.assertEqual(rows("--limit", "0"), [])
-            self.assertIn("   1  m1  low", self.report(sdir, "--limit", "0"))  # summary still printed
+            summary_only = self.report(sdir, "--limit", "0")
+            self.assertIn("   1  m1  low", summary_only)  # summary still printed
+            self.assertTrue(summary_only.startswith("routed (model, effort):"))  # no leading blank line
+            self.assertIn("\n\nrouted (model, effort):", self.report(sdir, "--limit", "1"))  # blank line after rows
             for bad in ("-1", "x"):
                 with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
                     self.report(sdir, "--limit", bad)
