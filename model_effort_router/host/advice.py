@@ -45,6 +45,12 @@ def effort_pair(model, effort):
     return f"{model} · effort {effort}"
 
 
+def _main_tag(main_model, main_effort, placeholder):
+    """`[main: …]` body: Main's model (or the placeholder it fills in) plus its effort when the host reported one."""
+    model = normalize(main_model) or placeholder
+    return effort_pair(model, main_effort) if main_effort else model
+
+
 def _invocation_args(plan, host):
     """The one description of the call Main is told to make; the advice text and the log both build from it.
     None when no call applies (a Claude model without an Agent alias)."""
@@ -124,12 +130,12 @@ _APPS = {"codex": "the Codex app", "claude": "the Claude desktop app"}
 _FIRST_LINE = "before any tool call, start your first message of this turn with"
 
 
-def _reply_tag(plan, host, main_model, spawns):
+def _reply_tag(plan, host, main_model, main_effort, spawns):
     """The apps show no hook output, so Main names the model in the first line it writes this turn, before any tool call."""
     app = _APPS.get(host.name)
     if app is None:
         return ""
-    main = f"`[main: {normalize(main_model) or '<your model id>'}]`"  # unknown Main model: Main fills in its own id
+    main = f"`[main: {_main_tag(main_model, main_effort, '<your model id>')}]`"  # unknown Main model: Main fills in its own id
     if not spawns:
         return f"Required: {_FIRST_LINE} the line {main} ({app} does not show hook messages). "
     return (
@@ -143,7 +149,7 @@ def _header(plan, decision):
     return f"[model-effort-router] {decision.role} → {plan.agent} · {effort_pair(plan.model, plan.applied_effort)}."
 
 
-def render(plan, mer_cmd, host, main_model=None):
+def render(plan, mer_cmd, host, main_model=None, main_effort=None):
     if plan.target == NO_ROUTE:
         return NO_ROUTE_MESSAGE if plan.mode == "auto" else None
     decision = plan.decision
@@ -171,14 +177,14 @@ def render(plan, mer_cmd, host, main_model=None):
     same = _same_model(plan, host, main_model)
     if same:
         return (
-            f"{_header(plan, decision)} {_reply_tag(plan, host, main_model, spawns=False)}"
+            f"{_header(plan, decision)} {_reply_tag(plan, host, main_model, main_effort, spawns=False)}"
             f"Main already runs {normalize(main_model)}; no Subagent needed. "
             f"Proceed directly in Main (Main cannot change its own effort; routed effort is {plan.applied_effort})."
         )
     if same is False:
         invocation = _claude_invocation(plan) if host.name == "claude" else _codex_invocation(plan)
         return (
-            f"{_header(plan, decision)} {_reply_tag(plan, host, main_model, spawns=True)}"
+            f"{_header(plan, decision)} {_reply_tag(plan, host, main_model, main_effort, spawns=True)}"
             f"Main model {normalize(main_model)} ≠ routed {plan.model}: spawn the Subagent. "
             f"{invocation}Build a compact Context Packet with {packet}. {handoff}"
             "Integrate the result, then decide whether another worker is needed. "
@@ -188,7 +194,7 @@ def render(plan, mer_cmd, host, main_model=None):
             + other
         )
     return (
-        f"{_header(plan, decision)} {_reply_tag(plan, host, main_model, spawns=_invocation_args(plan, host) is not None)}"
+        f"{_header(plan, decision)} {_reply_tag(plan, host, main_model, main_effort, spawns=_invocation_args(plan, host) is not None)}"
         "Main: route this single task to a native Subagent using the host's supported "
         f"model/effort controls, or handle it directly when Main's model/effort already match or project instructions require it. "
         f"{invocation}Build a compact Context Packet with {packet}. {handoff}"
@@ -223,7 +229,7 @@ def policy_notice(lanes):
     return f"[model-effort-router] policy · execution → {models['execution']} · reasoning → {models['reasoning']}"
 
 
-def render_policy(lanes, host, main_model=None):
+def render_policy(lanes, host, main_model=None, main_effort=None):
     rows, calls = [], []
     for lane, roles in (
         ("execution", "implementation, fix, lint, test"),
@@ -236,7 +242,7 @@ def render_policy(lanes, host, main_model=None):
     tag = (
         f"Required: {_FIRST_LINE} one line naming the model that will do the work: "
         "`[routed: <lane model> · effort <effort>]` if you spawn the Subagent, or "
-        f"`[main: {normalize(main_model) or '<your model>'}]` if you handle it in Main ({_APPS[host.name]} does not show hook messages). "
+        f"`[main: {_main_tag(main_model, main_effort, '<your model>')}]` if you handle it in Main ({_APPS[host.name]} does not show hook messages). "
         if host.name in _APPS
         else ""
     )

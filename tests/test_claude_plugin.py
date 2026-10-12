@@ -247,6 +247,14 @@ class HookTest(HookCase):
         self.assertEqual(self.submit(payload=data, env_extra={"MER_HOST": "claude"}).returncode, 0)
         self.assertEqual(route_log.last_event(str(self.state), "s", "route")["main_effort"], "high")
 
+    def test_main_effort_from_the_transcript_tags_the_reply_with_the_main_line(self):
+        path = self.root / "t.jsonl"
+        row = {"type": "assistant", "isSidechain": False, "effort": "high", "message": {"model": "claude-opus-5-5"}}
+        path.write_text(json.dumps(row) + "\n")
+        data = {"session_id": "s", "cwd": str(self.repo), "prompt": PROMPT, "transcript_path": str(path)}
+        out = json.loads(self.submit(payload=data, env_extra={"MER_HOST": "claude"}).stdout)
+        self.assertIn("`[main: claude-opus-5-5 \u00b7 effort high]`", out["hookSpecificOutput"]["additionalContext"])
+
     def start_session(self, **extra):
         data = {"session_id": "s", "hook_event_name": "SessionStart", "source": "startup", **extra}
         return run_script(
