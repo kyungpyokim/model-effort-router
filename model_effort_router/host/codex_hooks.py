@@ -166,13 +166,15 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
                 spawn(host.name, sid, data["transcript_path"], sdir, env)
             except Exception as exc:
                 _log_error(env, data, exc, "ContextRefresh")
-    main = _main_model(data, host, env) if plan.target != NO_ROUTE else None
+    routed = plan.target != NO_ROUTE
+    main = _main_model(data, host, env) if routed else None
+    effort = _main_effort(data, host, env) if routed else None
     policy = advice.is_policy(plan)
     lanes = cfg.models[host.name] if policy else None
     text = (
-        advice.render_policy(lanes, host, main)
+        advice.render_policy(lanes, host, main, effort)
         if policy
-        else advice.render(plan, f"python3 {Path(plugin_root) / 'bin' / 'mer'}", host, main)
+        else advice.render(plan, f"python3 {Path(plugin_root) / 'bin' / 'mer'}", host, main, effort)
     )
     notice = advice.policy_notice(lanes) if policy else _notice(plan, advice.matches(plan, main)) if text else None
     fallback = advice.fallback_line(plan)
@@ -194,7 +196,7 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
                 host=host.name,
                 turn_id=data.get("turn_id"),
                 advice=advice.policy_summary(lanes, main) if policy else advice.summary(plan, host, main),
-                main_effort=_main_effort(data, host, env) if plan.target != NO_ROUTE else None,
+                main_effort=effort,
             ),
         )
     return out

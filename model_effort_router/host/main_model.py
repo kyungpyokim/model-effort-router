@@ -10,6 +10,7 @@ import json
 import os
 import re
 import time
+from collections import namedtuple
 from datetime import datetime
 
 from ..context.transcripts import _lines
@@ -124,25 +125,24 @@ def _stored_model(sdir, session_id):
         return None, None, None
 
 
-def main_model(data, host_name, sdir=None):
-    if host_name == "codex":
-        return normalize(data.get("model"))
-    if host_name == "claude":
-        stored, source, ts = _stored_model(sdir, data.get("session_id")) if sdir else (None, None, None)
-        found, switched, at = _claude(data.get("transcript_path"))
-        if stored and source == "switch" and not (found and at and isinstance(ts, (int, float)) and at > ts):
-            return stored  # PostModelSwitch tracks every switch; only a reply written after it can outdate the value
-        if found or switched:  # transcript evidence, even a pending switch, beats a start value
-            return None if switched else found
-        return stored
-    return None
+def _codex_model(data, sdir):
+    return normalize(data.get("model"))
 
 
-def main_effort(data, host_name):
+def _claude_model(data, sdir):
+    stored, source, ts = _stored_model(sdir, data.get("session_id")) if sdir else (None, None, None)
+    found, switched, at = _claude(data.get("transcript_path"))
+    if stored and source == "switch" and not (found and at and isinstance(ts, (int, float)) and at > ts):
+        return stored  # PostModelSwitch tracks every switch; only a reply written after it can outdate the value
+    if found or switched:  # transcript evidence, even a pending switch, beats a start value
+        return None if switched else found
+    return stored
+
+
+def _claude_effort(data, sdir):
     """Effort of Main's last reply, from the Claude transcript's assistant rows (`effort`). It is the previous turn's
-    value: a change since then shows after the next reply. Codex payloads carry none, so None means unknown."""
-    if host_name != "claude":
-        return None
+    value: a change since then shows after the next reply. Not `$CLAUDE_EFFORT` or a payload `effort`: live-checked
+    (`claude -p`), UserPromptSubmit gets neither, and the variable would only be inherited from a parent session."""
     found = None
     try:
         for line in _lines(data.get("transcript_path"), TAIL_BYTES):
@@ -158,3 +158,24 @@ def main_effort(data, host_name):
     except OSError:
         pass
     return found
+
+
+def _unknown(data, sdir):
+    return None
+
+
+# What each host's payload can tell about Main; a host without a reader (or a field) stays unknown.
+MainReader = namedtuple("MainReader", "model effort")
+READERS = {
+    "claude": MainReader(_claude_model, _claude_effort),
+    "codex": MainReader(_codex_model, _unknown),  # Codex payloads carry the model but no effort
+}
+_NO_READER = MainReader(_unknown, _unknown)
+
+
+def main_model(data, host_name, sdir=None):
+    return READERS.get(host_name, _NO_READER).model(data, sdir)
+
+
+def main_effort(data, host_name):
+    return READERS.get(host_name, _NO_READER).effort(data, None)

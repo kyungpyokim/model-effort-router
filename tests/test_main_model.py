@@ -4,8 +4,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from model_effort_router.host import advice, hosts
-from model_effort_router.host.main_model import main_effort, main_model, normalize, save_session_model
+from model_effort_router.host import advice, hosts, main_model as main_model_module
+from model_effort_router.host.main_model import (
+    MainReader,
+    main_effort,
+    main_model,
+    normalize,
+    save_session_model,
+)
 from model_effort_router.difficulty.decision import DifficultyDecision
 from model_effort_router.policy.router import RoutePlan
 from model_effort_router.policy.targeting import ROUTE
@@ -206,6 +212,12 @@ class MainModelTest(unittest.TestCase):
         self.assertIsNone(main_effort({"transcript_path": path}, "codex"))
         self.assertIsNone(main_effort({"transcript_path": "relative.jsonl"}, "claude"))
 
+    def test_a_registered_reader_serves_a_new_host_without_touching_the_dispatch(self):
+        readers = {**main_model_module.READERS, "newhost": MainReader(lambda d, s: "m", lambda d, s: "e")}
+        with patch.object(main_model_module, "READERS", readers):
+            self.assertEqual(main_model({}, "newhost"), "m")
+            self.assertEqual(main_effort({}, "newhost"), "e")
+
 
 class AdviceMatchTest(unittest.TestCase):
     def test_mismatch_is_unconditional_and_names_both_models(self):
@@ -263,6 +275,22 @@ class AdviceMatchTest(unittest.TestCase):
         self.assertIn("Main already runs claude-opus-5-5; no Subagent needed. Proceed directly in Main", note)
         self.assertIn("Main cannot change its own effort; routed effort is xhigh", note)
         self.assertNotIn("Context Packet", note)
+
+    def test_main_tag_carries_the_effort_when_known(self):
+        spawn = advice.render(
+            plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5", main_effort="high"
+        )
+        self.assertIn("or `[main: claude-sonnet-5-5 \u00b7 effort high]` if you handle it in Main", spawn)
+        same = advice.render(
+            plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-opus-5-5", main_effort="low"
+        )
+        self.assertIn("the line `[main: claude-opus-5-5 \u00b7 effort low]`", same)
+        unknown = advice.render(plan(), "mer", hosts.CLAUDE, main_model=None, main_effort="high")
+        self.assertIn("`[main: <your model id> \u00b7 effort high]`", unknown)
+
+    def test_main_tag_has_no_effort_when_unknown(self):
+        note = advice.render(plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
+        self.assertIn("`[main: claude-sonnet-5-5]`", note)
 
     def test_unknown_main_model_keeps_legacy_text(self):
         legacy = advice.render(plan(), "mer", hosts.CLAUDE)

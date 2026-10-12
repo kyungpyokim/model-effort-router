@@ -75,6 +75,10 @@ class PolicyAdviceTest(unittest.TestCase):
         self.assertIn("`[main: <your model>]`", text)
         self.assertNotIn("None", text)
 
+    def test_main_tag_carries_the_effort_when_known(self):
+        text = advice.render_policy(self.lanes["claude"], CLAUDE_HOST, "claude-opus-5-5", "max")
+        self.assertIn("`[main: claude-opus-5-5 \u00b7 effort max]`", text)
+
     def test_summary(self):
         self.assertEqual(
             advice.policy_summary(self.lanes["codex"], "gpt-6-luna"),
