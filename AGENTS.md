@@ -14,7 +14,6 @@ Navigation pointers:
 - Host declarations: `plugins/*-model-effort-router/router.py`
 - Review prompts and verdict parsing: `model_effort_router/review.py`
 - Test-without-change probe: `model_effort_router/gate/probe.py`
-- Session review policy: `model_effort_router/policy/session.py`
 - Risk patterns: `model_effort_router/difficulty/risk.py`
 
 Retro: feed human review findings back into the next agent run.

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Routing Flow</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&family=Noto+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@400&family=Noto+Sans+TC:wght@400;500;600&family=Noto+Serif+TC:wght@400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', 'Noto Sans KR', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', 'Noto Serif KR', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Flowchart · Model Effort Router</p>
+    <h1>프롬프트가 모델과 effort로 라우팅되는 흐름</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 852" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="routing-flow-title routing-flow-desc">
+        <title id="routing-flow-title">Model Effort Router routing flow</title>
+        <desc id="routing-flow-desc">Flowchart of a user prompt passing the hook and a classifier fallback chain, then splitting by role into an execution or reasoning model lane before advice reaches Main, or failing open.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+        <!-- Callout (margin, left of hook) -->
+        <text x="232" y="140" fill="#2d3142" font-size="14" font-style="italic" font-family="'Instrument Serif', 'Noto Serif KR', serif" text-anchor="end">no keyword prefilter,</text>
+        <text x="232" y="158" fill="#2d3142" font-size="14" font-style="italic" font-family="'Instrument Serif', 'Noto Serif KR', serif" text-anchor="end">every prompt is classified</text>
+        <path d="M 240 150 Q 260 150 276 148" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="1" stroke-dasharray="4,3"/>
+        <circle cx="280" cy="148" r="2" fill="#2d3142"/>
+
+        <!-- ARROWS (drawn first) -->
+        <line x1="400" y1="80" x2="400" y2="120" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="400" y1="176" x2="400" y2="216" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="400" y1="288" x2="400" y2="330" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+
+        <!-- D1 yes (down) -->
+        <line x1="400" y1="410" x2="400" y2="460" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="408" y="428" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="424" y="437" fill="#5a6580" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">YES</text>
+
+        <!-- D1 no (right) -->
+        <line x1="480" y1="370" x2="600" y2="370" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="526" y="352" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="540" y="361" fill="#5a6580" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">NO</text>
+
+        <!-- D2 left: execution -->
+        <path d="M312,500 H228 Q220,500 220,508 V584" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="242" y="482" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="270" y="491" fill="#5a6580" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">EXECUTION</text>
+
+        <!-- D2 right: reasoning -->
+        <path d="M488,500 H572 Q580,500 580,508 V584" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="502" y="482" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="530" y="491" fill="#5a6580" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">REASONING</text>
+
+        <!-- Lanes merge into advice -->
+        <path d="M220,656 V680 Q220,688 228,688 H332 Q340,688 340,696 V712" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M580,656 V680 Q580,688 572,688 H468 Q460,688 460,696 V712" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- NODES -->
+        <!-- Start: prompt -->
+        <rect x="320" y="40" width="160" height="40" rx="20" fill="#f5f5f5"/>
+        <rect x="320" y="40" width="160" height="40" rx="20" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="400" y="64" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans KR', sans-serif" text-anchor="middle">User prompt</text>
+
+        <!-- Hook -->
+        <rect x="280" y="120" width="240" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="280" y="120" width="240" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="400" y="145" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans KR', sans-serif" text-anchor="middle">UserPromptSubmit hook</text>
+        <text x="400" y="161" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">non-blank, not host-generated</text>
+
+        <!-- Classifier chain (focal) -->
+        <rect x="280" y="216" width="240" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="280" y="216" width="240" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="400" y="242" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans KR', sans-serif" text-anchor="middle">Classifier chain</text>
+        <text x="400" y="259" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">jev &gt; openai_decisions &gt; nimble</text>
+        <text x="400" y="273" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">first success: role + effort</text>
+
+        <!-- Decision: route? -->
+        <polygon points="400,330 480,370 400,410 320,370" fill="#f5f5f5"/>
+        <polygon points="400,330 480,370 400,410 320,370" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="400" y="374" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans KR', sans-serif" text-anchor="middle">Route?</text>
+
+        <!-- End: fail open -->
+        <rect x="600" y="338" width="240" height="64" rx="32" fill="#f5f5f5"/>
+        <rect x="600" y="338" width="240" height="64" rx="32" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="720" y="361" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans KR', sans-serif" text-anchor="middle">Fail open</text>
+        <text x="720" y="376" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">no_route or chain failed</text>
+        <text x="720" y="389" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">request proceeds unblocked</text>
+
+        <!-- Decision: role lane? -->
+        <polygon points="400,460 488,500 400,540 312,500" fill="#f5f5f5"/>
+        <polygon points="400,460 488,500 400,540 312,500" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="400" y="504" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans KR', sans-serif" text-anchor="middle">Role lane?</text>
+
+        <!-- Execution lane -->
+        <rect x="100" y="584" width="240" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="100" y="584" width="240" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="220" y="610" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans KR', sans-serif" text-anchor="middle">Execution model</text>
+        <text x="220" y="627" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">implementation · fix · lint · test</text>
+        <text x="220" y="641" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Claude: claude-sonnet-5-5</text>
+
+        <!-- Reasoning lane -->
+        <rect x="460" y="584" width="240" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="460" y="584" width="240" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="580" y="610" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans KR', sans-serif" text-anchor="middle">Reasoning model</text>
+        <text x="580" y="627" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">plan · design · review · analysis</text>
+        <text x="580" y="641" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Claude: claude-opus-5-5</text>
+
+        <!-- End: advice -->
+        <rect x="280" y="712" width="240" height="48" rx="24" fill="#f5f5f5"/>
+        <rect x="280" y="712" width="240" height="48" rx="24" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="400" y="733" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans KR', sans-serif" text-anchor="middle">Hook advice to Main</text>
+        <text x="400" y="747" fill="#4f5d75" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">role + effort + model for Subagent</text>
+
+        <!-- Legend -->
+        <line x1="40" y1="788" x2="920" y2="788" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="804" fill="#4f5d75" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">LEGEND · SHAPE CARRIES TYPE</text>
+
+        <rect x="40" y="816" width="24" height="12" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="72" y="826" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Start / end (oval)</text>
+
+        <rect x="220" y="816" width="24" height="12" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="252" y="826" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Step (rectangle)</text>
+
+        <polygon points="400,822 412,816 424,822 412,828" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="432" y="826" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision (diamond)</text>
+
+        <rect x="580" y="816" width="24" height="12" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="612" y="826" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Focal step</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
