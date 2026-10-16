@@ -212,6 +212,25 @@ class MainModelTest(unittest.TestCase):
         self.assertIsNone(main_effort({"transcript_path": path}, "codex"))
         self.assertIsNone(main_effort({"transcript_path": "relative.jsonl"}, "claude"))
 
+    def test_antigravity_reads_settings_change_model_and_effort(self):
+        content = (
+            "<USER_REQUEST>\nFix bug\n</USER_REQUEST>\n"
+            "<USER_SETTINGS_CHANGE>\n"
+            "The user changed setting `Model Selection` from None to Gemini 3.8 Flash (High). "
+            "No need to comment on this change if the user doesn't ask about it.\n"
+            "</USER_SETTINGS_CHANGE>"
+        )
+        path = self.transcript(row("USER_INPUT", content=content, source="USER_EXPLICIT"))
+        self.assertEqual(main_model({"transcript_path": path}, "antigravity"), "gemini-3.8-flash")
+        self.assertEqual(main_effort({"transcript_path": path}, "antigravity"), "high")
+
+    def test_antigravity_unknown_when_no_settings_change(self):
+        path = self.transcript(
+            row("USER_INPUT", content="<USER_REQUEST>Fix bug</USER_REQUEST>", source="USER_EXPLICIT")
+        )
+        self.assertIsNone(main_model({"transcript_path": path}, "antigravity"))
+        self.assertIsNone(main_effort({"transcript_path": path}, "antigravity"))
+
     def test_a_registered_reader_serves_a_new_host_without_touching_the_dispatch(self):
         readers = {**main_model_module.READERS, "newhost": MainReader(lambda d, s: "m", lambda d, s: "e")}
         with patch.object(main_model_module, "READERS", readers):
@@ -317,6 +336,16 @@ class AdviceMatchTest(unittest.TestCase):
         self.assertTrue(advice.matches(plan(), "Claude-Opus-5-5"))
         self.assertFalse(advice.matches(plan(), "claude-sonnet-5-5"))
         self.assertFalse(advice.matches(plan(), "opus"))  # no alias fuzzy matching
+
+    def test_antigravity_reply_tag_instructs_main_tag(self):
+        p = plan("gemini-3.8-flash-medium", "medium")
+        note = advice.render(p, "mer", hosts.ANTIGRAVITY, main_model="gemini-3.8-flash", main_effort="high")
+        self.assertIn(
+            "start your first message of this turn with one line naming the model that will do the work:", note
+        )
+        self.assertIn("`[routed: gemini-3.8-flash-medium · effort medium]`", note)
+        self.assertIn("`[main: gemini-3.8-flash · effort high]`", note)
+        self.assertIn("(the Antigravity app does not show hook messages)", note)
 
 
 if __name__ == "__main__":

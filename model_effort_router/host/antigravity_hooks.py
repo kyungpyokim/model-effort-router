@@ -14,6 +14,7 @@ from ..policy.overrides import parse_override
 from ..policy.router import route
 from . import advice, hosts
 from .codex_hooks import MAX_CHAIN_TIMEOUT_S, _registry, _with_timeout, load_configs
+from .main_model import main_effort, main_model
 
 TAIL_BYTES = 1024 * 1024
 _REQUEST = re.compile(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", re.DOTALL)
@@ -73,7 +74,9 @@ def _advice(data, env):
         )
     except ClassificationError as exc:
         return advice.failure_line(exc.causes)
-    text = advice.render(plan, "mer", hosts.ANTIGRAVITY)  # Main's model is not comparable: the slug folds effort in
+    main = main_model(data, "antigravity")
+    effort = main_effort(data, "antigravity")
+    text = advice.render(plan, "mer", hosts.ANTIGRAVITY, main, effort)
     if not text or text == advice.NO_ROUTE_MESSAGE:
         return text or ""
     return text + _CAVEAT

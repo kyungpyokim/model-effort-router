@@ -93,6 +93,8 @@ def matches(plan, main_model):
 
 def _same_model(plan, host, main_model):
     """True/False/None as `matches`, but None when Claude has no Agent alias to spawn with (a flat spawn order would contradict the invocation)."""
+    if host.name == "antigravity":
+        return None
     same = matches(plan, main_model)
     if same is False and host.name == "claude" and not _CLAUDE_ALIAS.match(plan.model or ""):
         return None
@@ -128,7 +130,11 @@ def _codex_invocation(plan):
     )
 
 
-_APPS = {"codex": "the Codex app", "claude": "the Claude desktop app"}
+_APPS = {
+    "codex": "the Codex app",
+    "claude": "the Claude desktop app",
+    "antigravity": "the Antigravity app",
+}
 _FIRST_LINE = "before any tool call, start your first message of this turn with"
 
 
