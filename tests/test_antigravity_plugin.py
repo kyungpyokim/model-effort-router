@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.hook_helpers import ROOT
+from tests.hook_helpers import ROOT, HookCase, run_script
 
 PLUGIN = ROOT / "plugins" / "antigravity-model-effort-router"
 
@@ -125,6 +125,77 @@ class AntigravityBundleTest(unittest.TestCase):
         hooks = json.loads((PLUGIN / "hooks.json").read_text())["model-effort-router"]
         self.assertEqual(set(hooks), {"PreInvocation"})
         self.assertTrue(os.access(PLUGIN / "bin" / "mer", os.X_OK))
+
+
+class AntigravityRoutedHookTest(HookCase):
+    plugin = PLUGIN
+
+    def transcript(self, *requests):
+        path = self.root / "transcript.jsonl"
+        rows = [
+            {
+                "step_index": i,
+                "source": "USER_EXPLICIT",
+                "type": "USER_INPUT",
+                "status": "DONE",
+                "content": f"<USER_REQUEST>\n{text}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nnow\n</ADDITIONAL_METADATA>",
+            }
+            for i, text in enumerate(requests)
+        ]
+        path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+        return path
+
+    def hook(self, path, num=0):
+        payload = {"invocationNum": num, "workspacePaths": [str(self.repo)], "transcriptPath": str(path)}
+        out = run_script(
+            "hooks/pre_invocation.py", stdin=json.dumps(payload), env=self.env(), cwd=self.repo, plugin=PLUGIN
+        )
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout)["injectSteps"][0]["ephemeralMessage"] if out.stdout.strip() else None
+
+    def test_routes_latest_user_request_into_execution_lane(self):
+        self.fake = {"role": "fix", "effort": "medium"}
+        message = self.hook(self.transcript("old question", "Fix the parser bug"))
+        self.assertIn("fix \u2192 execution \u00b7 gemini-3.8-flash-medium \u00b7 effort medium", message)
+
+    def test_routes_reasoning_roles_to_reasoning_lane_with_requested_effort(self):
+        self.fake = {"role": "design", "effort": "high"}
+        message = self.hook(self.transcript("Design the cache layer"))
+        self.assertIn("design \u2192 reasoning \u00b7 gemini-4-argon-high \u00b7 effort high", message)
+
+    def test_later_model_invocations_of_a_turn_stay_silent(self):
+        self.assertIsNone(self.hook(self.transcript("Fix the parser bug"), num=1))
+
+    def test_unreadable_transcript_keeps_the_static_advice(self):
+        message = self.hook(self.root / "missing.jsonl")
+        self.assertTrue(message.startswith("[model-effort-router] gemini-3.8-flash \u00b7 effort high"), message)
+
+    def test_classifier_failure_reports_and_does_not_fall_back_to_static_advice(self):
+        self.fake = {"raise": True}
+        message = self.hook(self.transcript("Fix the parser bug"))
+        self.assertIn("classifier failed", message)
+
+    def test_effort_outside_the_hosts_range_is_clamped_not_dropped(self):
+        for requested, applied in (("low", "medium"), ("xhigh", "high"), ("max", "high")):
+            with self.subTest(requested=requested):
+                self.fake = {"role": "fix", "effort": requested}
+                message = self.hook(self.transcript("Fix the parser bug"))
+                self.assertIn(f"gemini-3.8-flash-{applied} \u00b7 effort {applied}", message)
+
+    def test_routing_error_is_reported_instead_of_silent(self):
+        self.write_repo_config(
+            {
+                "difficulty": {"backend": "fake"},
+                "models": {
+                    "antigravity": {
+                        "execution": {"primary": "gemini-3.8-flash", "fallback": None, "efforts": []},
+                        "reasoning": {"primary": "gemini-4-argon", "fallback": None, "efforts": ["medium", "high"]},
+                    }
+                },
+            }
+        )
+        message = self.hook(self.transcript("Fix the parser bug"))
+        self.assertIn("routing error", message or "")
 
 
 if __name__ == "__main__":

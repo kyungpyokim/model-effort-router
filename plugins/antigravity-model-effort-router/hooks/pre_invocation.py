@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Suggest the configured model profile for native Antigravity Subagents."""
+"""Suggest a model/effort profile for native Antigravity Subagents, classified per request."""
 
 import json
 import os
@@ -19,10 +19,17 @@ def main():
             return
         sys.path.insert(0, str(runtime))
         from model_effort_router.adapters.antigravity import resolve_model
+        from model_effort_router.host.antigravity_hooks import routed_advice
         from model_effort_router.host.advice import effort_pair
         from model_effort_router.host.codex_hooks import load_configs
         from model_effort_router.policy.config import resolve_config
 
+        routed = routed_advice(data, os.environ)  # per-request role/effort from the transcript's latest user turn
+        if routed is not None:
+            if routed:
+                print(json.dumps({"injectSteps": [{"ephemeralMessage": routed}]}))
+            return
+        # Request unreadable (no transcript / unknown format): keep the static execution-lane advice.
         workspaces = data.get("workspacePaths") or []
         repo, user = load_configs(workspaces[0] if workspaces else os.getcwd(), os.environ)
         config = resolve_config(repo=repo, user=user)
