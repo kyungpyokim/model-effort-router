@@ -48,11 +48,13 @@ DEFAULTS = {
         "antigravity": {
             "execution": {
                 "primary": "gemini-3.8-flash",
+                "alternatives": ["claude-sonnet-5-5"],
                 "fallback": None,
                 "efforts": ["medium", "high"],
             },
             "reasoning": {
-                "primary": "claude-opus-5-5",
+                "primary": "gemini-4-argon",
+                "alternatives": ["claude-opus-5-5"],
                 "fallback": None,
                 "efforts": ["medium", "high"],
             },

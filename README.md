@@ -86,7 +86,7 @@ Release checklist:
 
 The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, `xhigh`, or `max`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
 
-Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5` and reasoning `claude-opus-5-5`; Antigravity delegated profile `gemini-3.8-flash`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free` with reasoning alternatives `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, and `opencode-go/grok-4.7`. Each host/lane accepts `primary`, optional `alternatives`, `fallback`, and supported efforts. `primary` is recommended; alternatives are listed as user-selectable choices. For example:
+Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5` and reasoning `claude-opus-5-5`; Antigravity execution `gemini-3.8-flash` and reasoning `gemini-4-argon`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free` with reasoning alternatives `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, and `opencode-go/grok-4.7`. Each host/lane accepts `primary`, optional `alternatives`, `fallback`, and supported efforts. `primary` is recommended; alternatives are listed as user-selectable choices. For example:
 
 ```json
 {
@@ -252,8 +252,8 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
       "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh", "max"]}
     },
     "antigravity": {
-      "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-opus-5-5"], "fallback": null, "efforts": ["medium", "high"]},
-      "reasoning": {"primary": "claude-opus-5-5", "fallback": null, "efforts": ["medium", "high"]}
+      "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-sonnet-5-5"], "fallback": null, "efforts": ["medium", "high"]},
+      "reasoning": {"primary": "gemini-4-argon", "alternatives": ["claude-opus-5-5"], "fallback": null, "efforts": ["medium", "high"]}
     },
     "opencode": {
       "execution": {"primary": "opencode/mimo-v2.6-flash-free", "fallback": null, "efforts": ["low", "medium", "high", "xhigh", "max"]},

@@ -10,7 +10,7 @@ The hook reads `models.antigravity.execution` and prefers the highest supported 
     "antigravity": {
       "execution": {
         "primary": "gemini-3.8-flash",
-        "alternatives": ["claude-opus-5-5", "provider/model-id"],
+        "alternatives": ["claude-sonnet-5-5", "provider/model-id"],
         "efforts": ["medium", "high"]
       }
     }
