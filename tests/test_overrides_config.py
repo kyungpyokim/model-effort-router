@@ -30,8 +30,9 @@ class ConfigPrecedenceTest(unittest.TestCase):
         self.assertEqual(c.models["claude"]["reasoning"]["primary"], "claude-opus-5-5")
         self.assertEqual(c.models["claude"]["reasoning"]["alternatives"], ["claude-fable-5-1"])
         self.assertEqual(c.models["antigravity"]["execution"]["primary"], "gemini-3.8-flash")
-        self.assertEqual(c.models["antigravity"]["execution"].get("alternatives", []), [])
-        self.assertEqual(c.models["antigravity"]["reasoning"]["primary"], "claude-opus-5-5")
+        self.assertEqual(c.models["antigravity"]["execution"]["alternatives"], ["claude-sonnet-5-5"])
+        self.assertEqual(c.models["antigravity"]["reasoning"]["primary"], "gemini-4-argon")
+        self.assertEqual(c.models["antigravity"]["reasoning"]["alternatives"], ["claude-opus-5-5"])
         self.assertEqual(c.models["opencode"]["execution"].get("alternatives", []), [])
         self.assertEqual(
             c.models["opencode"]["reasoning"]["alternatives"],

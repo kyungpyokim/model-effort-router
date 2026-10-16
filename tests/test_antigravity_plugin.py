@@ -90,7 +90,13 @@ class AntigravityBundleTest(unittest.TestCase):
             self.assertEqual(hook.returncode, 0, hook.stderr)
             message = json.loads(hook.stdout)["injectSteps"][0]["ephemeralMessage"]
             # No role classification in this hook: the tagged model/effort pair still leads the message.
-            self.assertTrue(message.startswith("[model-effort-router] gemini-3.8-flash · effort high. "), message)
+            self.assertTrue(
+                message.startswith(
+                    "[model-effort-router] gemini-3.8-flash · effort high; other configured options: "
+                    "claude-sonnet-5-5 (user-selectable, not automatic fallbacks). "
+                ),
+                message,
+            )
             run = subprocess.run(
                 [
                     sys.executable,
