@@ -163,7 +163,21 @@ def _header(plan, decision):
     return f"[model-effort-router] {decision.role} → {plan.agent} · {effort_pair(plan.model, plan.applied_effort)}."
 
 
+REVIEW_AFTER_ROLES = frozenset(("implementation", "fix"))
+REVIEW_REQUEST = (
+    " After the work, if the change is nontrivial code (not docs, config or mechanical edits), "
+    "request an independent review with the `review` skill before reporting it done."
+)
+
+
 def render(plan, mer_cmd, host, main_model=None, main_effort=None):
+    text = _render_route(plan, mer_cmd, host, main_model, main_effort)
+    if text and plan.target != NO_ROUTE and plan.decision and plan.decision.role in REVIEW_AFTER_ROLES:
+        return text + REVIEW_REQUEST
+    return text
+
+
+def _render_route(plan, mer_cmd, host, main_model=None, main_effort=None):
     if plan.target == NO_ROUTE:
         return NO_ROUTE_MESSAGE if plan.mode == "auto" else None
     decision = plan.decision
