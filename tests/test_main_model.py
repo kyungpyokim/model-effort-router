@@ -270,6 +270,21 @@ class AdviceMatchTest(unittest.TestCase):
                 self.assertIsNotNone(advice.summary(p, host, model)["invocation"])
                 self.assertEqual(advice.summary(plan(model), host, model)["action"], "inline_same_model")
 
+    def test_execution_roles_ask_for_a_review_after_the_work_on_every_route_path(self):
+        for host in (hosts.CODEX, hosts.CLAUDE, hosts.ANTIGRAVITY):
+            for role in ("implementation", "fix"):
+                for main in ("claude-opus-5-5", "claude-sonnet-5-5", None):  # same model, mismatch, unknown
+                    with self.subTest(host=host.name, role=role, main=main):
+                        note = advice.render(plan(role=role), "mer", host, main_model=main)
+                        self.assertIn("`review` skill", note)
+                        self.assertIn("not docs, config or mechanical edits", note)
+
+    def test_other_roles_get_no_review_request(self):
+        for role in ("lint", "test", "plan", "design", "review", "analysis"):
+            with self.subTest(role=role):
+                note = advice.render(plan(role=role), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
+                self.assertNotIn("`review` skill", note)
+
     def test_mismatch_is_unconditional_and_names_both_models(self):
         note = advice.render(plan(), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
         self.assertIn("Main model claude-sonnet-5-5 ≠ routed claude-opus-5-5: spawn the Subagent", note)
@@ -277,7 +292,7 @@ class AdviceMatchTest(unittest.TestCase):
         self.assertIn("skipped routing: <reason>", note)
         self.assertNotIn("project instructions require", note)
         self.assertNotIn("already match", note)
-        self.assertTrue(note.rstrip().endswith("settings."))
+        self.assertTrue(note.removesuffix(advice.REVIEW_REQUEST).rstrip().endswith("settings."))
 
     def test_codex_mismatch_gives_spawn_agent_invocation(self):
         note = advice.render(plan("gpt-6.1-sol", "medium"), "mer", hosts.CODEX, main_model="gpt-6-luna")
@@ -353,7 +368,7 @@ class AdviceMatchTest(unittest.TestCase):
             ("gpt-6.1-sol", hosts.CODEX, GOLDEN_CODEX),
         ):
             p = plan(model, "high", options=(model, "other-model"))
-            self.assertEqual(advice.render(p, "mer", host), golden)
+            self.assertEqual(advice.render(p, "mer", host), golden + advice.REVIEW_REQUEST)
 
     def test_claude_model_without_agent_alias_falls_back_to_legacy_advice(self):
         p = plan("provider/model-id")

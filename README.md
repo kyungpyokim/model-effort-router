@@ -234,6 +234,8 @@ For exploratory comparison, `--retry-low` adds one low retry with the same failu
 
 Hooks provide Context Packet fields and instructions, not a completed packet from Main's conversation. Main should use the current request and relevant conversation to populate a compact packet (`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`) and include it directly in the host-native Subagent invocation. For review, pass only `goal`, `decisions`, `constraints`, the actual diff, and verification status/results; mark checks that were not run as not run. Do not forward private reasoning or the full conversation by default. Hooks do not inspect Main's conversation or create native Subagents. `mer run` is a separate one-worker path and cannot read Main's conversation, so include needed context in its explicit task input.
 
+For `implementation` and `fix` requests the advice also asks Main to request an independent review with the plugin's `review` skill after nontrivial code changes (not docs, config or mechanical edits). This is an instruction to the model, not an enforced check: no hook blocks the turn or inspects the diff.
+
 ## Configuration
 
 Configuration uses JSON in `.model-effort-router.json` at the repository root or `~/.config/model-effort-router/config.json`; repository values override user values. Existing user files are not rewritten. Example:
