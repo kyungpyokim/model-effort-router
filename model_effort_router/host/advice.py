@@ -2,10 +2,13 @@
 
 import re
 
+from .. import prompts
 from ..policy.targeting import NO_ROUTE
 from .main_model import normalize
 
 NO_ROUTE_MESSAGE = "[model-effort-router] No route selected; continue in the main agent."
+# Hosts whose app window renders no hook output; Main has to show the recommendation itself.
+_DESKTOP_APPS = {"codex": "the Codex app", "claude": "the Claude desktop app"}
 
 
 def _split_cause(cause):
@@ -71,6 +74,15 @@ def _header(plan, decision):
     return f"[model-effort-router] {decision.role} → {plan.agent} · {effort_pair(plan.model, plan.applied_effort)}."
 
 
+def reply_tag(plan, host):
+    """The desktop apps render no hook output, so Main repeats the recommendation as its first line."""
+    app = _DESKTOP_APPS.get(host.name)
+    if app is None or plan.target == NO_ROUTE or not plan.decision:
+        return ""
+    line = _header(plan, plan.decision).rstrip(".")
+    return prompts.render("advice_reply_tag", line=line, app=app) + " "
+
+
 def render(plan, host, main_model=None):
     if plan.target == NO_ROUTE:
         return NO_ROUTE_MESSAGE if plan.mode == "auto" else None
@@ -79,13 +91,14 @@ def render(plan, host, main_model=None):
         return None
     alternatives = tuple(model for model in plan.model_options if model != plan.model)
     other = f" Other configured options: {', '.join(alternatives)} (user-selectable)." if alternatives else ""
+    tag = reply_tag(plan, host)
     if _same_model(plan, host, main_model):
         return (
-            f"{_header(plan, decision)} Main already uses {normalize(main_model)}. "
+            f"{tag}{_header(plan, decision)} Main already uses {normalize(main_model)}. "
             f"Recommended effort: {plan.applied_effort}. MER recommends model settings only; it does not change them."
         )
     return (
-        f"{_header(plan, decision)} Recommended model: {plan.model}; effort: {plan.applied_effort}. "
+        f"{tag}{_header(plan, decision)} Recommended model: {plan.model}; effort: {plan.applied_effort}. "
         "MER recommends model settings only; it does not change them." + other
     )
 

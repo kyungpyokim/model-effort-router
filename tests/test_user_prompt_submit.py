@@ -29,6 +29,12 @@ class UserPromptSubmitTest(HookCase):
         self.assertNotIn("Context Packet", advice)
         self.assertNotIn("L1", advice)
 
+    def test_codex_advice_tells_main_to_repeat_the_recommendation(self):
+        self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
+        text = self.context(self.submit("Review the diff in parser.py"))
+        self.assertTrue(text.startswith("Required: before any tool call, start your first message"))
+        self.assertIn("the Codex app does not show hook messages", text)
+
     def payload(self, **extra):
         data = {"session_id": SID, "cwd": str(self.repo), "transcript_path": "/x", "prompt": DEV}
         return {**data, **extra}

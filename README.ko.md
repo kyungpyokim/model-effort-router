@@ -212,7 +212,7 @@ python3 <plugin>/bin/mer report --since 12h --limit 10
 
 `mer route`는 요청의 role/effort를 분류하고 호스트 모델에 매핑합니다. 명시적인 `--role`과 `--effort`는 함께 제공해야 합니다. MER는 작업자 실행, 검증 루프, 리뷰 또는 수정 절차를 실행하지 않습니다. 기존 스크립트 호환성을 위해 `mer run`과 `mer chat`은 종료 코드 2와 함께 `mer route` 사용 안내를 반환합니다. 오래된 로그의 `run` 항목은 `mer report`에서 계속 읽을 수 있습니다.
 
-OpenCode의 `mer` 도구도 같은 모델·effort 추천을 반환하며, `mer_report`는 로그를 요약합니다. 호스트 hook은 추천을 추가할 뿐 활성 모델/effort를 변경하지 않습니다.
+OpenCode의 `mer` 도구도 같은 모델·effort 추천을 반환하며, `mer_report`는 로그를 요약합니다. 호스트 hook은 추천을 추가할 뿐 활성 모델/effort를 변경하지 않습니다. Codex·Claude 데스크톱 앱은 hook 출력을 표시하지 않으므로, hook 조언은 Main이 첫 답변 줄에 추천을 적도록 요청합니다.
 
 호스트의 의도한 작업 흐름은 **작업 지시 → MER 모델·effort 추천 → 호스트 작업 → 호스트 리뷰 → 호스트 수정**입니다. MER는 추천에서 종료하며 worker 실행, 리뷰, 수정, 검증 루프를 시작하지 않습니다.
 
