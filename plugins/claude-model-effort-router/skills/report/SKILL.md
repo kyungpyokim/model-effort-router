@@ -7,7 +7,8 @@ description: Use when the user wants to see which model and effort each request 
 
 Run `python3 ${CLAUDE_PLUGIN_ROOT}/bin/mer report` (the plugin's own `bin/mer` if `CLAUDE_PLUGIN_ROOT` is unset) and show the user its output. Options: `--session <id prefix>` limits it to one session, `--since <n>m|h|d` keeps only recent events (for example `12h`), `--limit <n>` sets how many recent rows to list (default 20).
 
-- Rows come from the session logs in `~/.local/state/model-effort-router` (`MER_STATE_DIR` overrides): `route` (routed model, effort, role, classifier, advice action), `run` (`mer run` worker), and `subagent` (actual Subagent started, `matched` against the route).
-- Tokens (`input`, `cached`, `output`) exist only for `route` (the classifier call) and `run` (the worker). The main conversation and Subagent turns are not logged, so their tokens are not shown.
-- The summary covers every matching session, not just the listed rows: routed `(model, effort)` pairs, advice actions (`spawn`, `inline_same_model`, `advise`, `no_route`), how many Subagents `matched` the route (`unverified` when nothing was comparable), classifier health (errors, fallbacks, latency average and p95, failure causes), and classifier and worker token totals.
+- Rows come from the session logs in `~/.local/state/model-effort-router` (`MER_STATE_DIR` overrides): `route` (routed model, effort, role, classifier, advice action), historical `run` events, and `subagent` lifecycle events.
+- New MER versions only route model/effort settings. Old `run` rows may remain in logs and are still reported for compatibility; their tokens are not current session usage.
+- `subagent` rows are host telemetry only; MER does not launch, review, fix, or verify work.
+- The summary covers every matching session: routed `(model, effort)` pairs, advice actions, Subagent route matches where available, and classifier health (errors, fallbacks, latency average and p95, failure causes).
 - Prompts and Subagent output are never in the logs. If the report is empty, no request has been routed yet.

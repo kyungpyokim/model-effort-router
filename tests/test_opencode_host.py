@@ -24,7 +24,7 @@ class OpenCodeHostTest(unittest.TestCase):
             (plan.agent, plan.model, plan.applied_effort), ("reasoning", "opencode/nemotron-3-ultra-free", "medium")
         )
 
-    def test_worker_execution_is_rejected(self):
+    def test_removed_run_command_recommends_route(self):
         result = io.StringIO()
         with redirect_stderr(result):
             status = main(
@@ -33,7 +33,8 @@ class OpenCodeHostTest(unittest.TestCase):
                 out=io.StringIO(),
             )
         self.assertEqual(status, 2)
-        self.assertIn("OpenCode worker execution is unsupported", result.getvalue())
+        self.assertIn("mer run was removed", result.getvalue())
+        self.assertIn("mer route", result.getvalue())
 
 
 if __name__ == "__main__":

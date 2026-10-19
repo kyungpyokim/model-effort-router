@@ -1,5 +1,7 @@
 # Model-Effort Router Greenfield 기획서
 
+> **현행 상태 (2026-10-19):** 이 문서는 초기 제품 설계와 과거 구현 결정을 담은 기록입니다. 현재 MER는 role·effort를 분류해 호스트 모델을 추천하며, 작업 실행·리뷰·수정·검증은 호스트가 담당합니다. 최신 동작은 [README](../../README.md)와 [한국어 README](../../README.ko.md)를 기준으로 하십시오.
+
 > 개정: 2026-10-01 (3차) — 기준선 파일럿 결과(Router가 기준선 대비 사용량 약 3.1배)를 반영해 실행 구조를 "단계별 subagent 오케스트레이션"에서 "요청 단위 라우팅 + cascade 승격"으로 전환. 독립 Review는 고위험 작업에만 적용. Phase 7(전환) 추가.
 >
 > 개정: 2026-10-01 (2차) — Phase 0 spike, Phase 1~4 구현, Codex live 테스트 결과 반영. §3 실행 구조를 "지침 주입 + subagent 생성 검사"로 구체화, 호스트 제약(`mer_<stage>` 이름, `fork_turns=none`, manifest 위치, hook 신뢰) 추가, 설정 형식 JSON 확정, 구현 상태와 미결 사항 갱신.

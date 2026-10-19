@@ -1,4 +1,4 @@
-"""Host selection for mer. OpenCode exposes route advice only; worker hosts also have an exec module and adapter."""
+"""Host model mapping and context capabilities used by mer."""
 
 from collections import namedtuple
 

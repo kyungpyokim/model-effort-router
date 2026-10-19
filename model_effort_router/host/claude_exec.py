@@ -1,6 +1,4 @@
-"""`claude -p` command lines and `--output-format json` result parsing for mer-driven sessions (plan Phase 5).
-
-Counterpart of host/codex_exec.py with the same function names, so flow.py stays host-agnostic.
+"""Claude CLI context-summary command support and `--output-format json` result parsing.
 Everything about Claude Code's runtime behaviour here is from `claude --help` (CLI 2.1.280) and the documented
 result shape; it is UNVERIFIED live, so parsing fails closed like difficulty/jev.py.
 

@@ -26,14 +26,12 @@ class RoutePlan:
     decision: Optional[DifficultyDecision] = None
     risk_flags: tuple = ()
     model: Optional[str] = None
-    fallback_model: Optional[str] = None
     agent: Optional[str] = None
     requested_effort: Optional[str] = None
     applied_effort: Optional[str] = None
     classifier_usage: Optional[dict] = None
     classifier_usage_missing: bool = False
     override_rejected: bool = False
-    fallback_reason: Optional[str] = None
     model_options: tuple = ()
     classifier_causes: tuple = ()  # failed classifier attempts ("jev:HTTP 503") before this plan was decided
 
@@ -171,12 +169,11 @@ def route(
         from ..adapters.antigravity import resolve_model
 
         primary = resolve_model(mapped["primary"], effort, mapped["efforts"]).model
-        fallback = resolve_model(mapped["fallback"], effort, mapped["efforts"]).model if mapped["fallback"] else None
         alternatives = tuple(
             resolve_model(model, effort, mapped["efforts"]).model for model in mapped.get("alternatives", [])
         )
     else:
-        primary, fallback = mapped["primary"], mapped["fallback"]
+        primary = mapped["primary"]
         alternatives = tuple(mapped.get("alternatives", []))
     usage, missing = _usage(backends, decision.backend) if decision.backend != "explicit" else (None, False)
     return RoutePlan(
@@ -185,14 +182,12 @@ def route(
         decision,
         flags,
         primary,
-        fallback,
         lane,
         decision.effort,
         effort,
         usage,
         missing,
         False,
-        None,
         (primary, *alternatives),
         classifier_causes=causes,
     )
