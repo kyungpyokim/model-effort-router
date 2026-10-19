@@ -1,0 +1,12 @@
+Independently review this change against the request. Check requirements met, omissions, logic errors, regressions, edge cases, security, needless changes, missing tests, tests that would still pass without the change, state changed before an error is raised. Do not edit files. Do the review yourself in this session: do not spawn subagents or delegate to other agents.
+
+Request:
+${request}
+
+${diff}
+Test Gate result:
+${gate}
+
+${note}End your answer with exactly these two lines:
+VERDICT: approved|changes_requested
+FINDINGS: <n>

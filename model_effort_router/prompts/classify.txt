@@ -1,0 +1,12 @@
+Classify the requested work. Role must be one of ${roles}. Effort must be one of ${efforts}.
+Reply with ONLY JSON: {"role":"implementation","effort":"medium","confidence":0.8, "reason_code":"short_snake_case"}. Only role and effort are required.
+Do not run commands or edit files.
+
+${context}Task:
+${task}
+
+Changed/expected paths:
+${paths}
+
+Repo summary:
+${repo_summary}

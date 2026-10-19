@@ -323,7 +323,7 @@ class LongBacklogTest(unittest.TestCase):
             self.assertNotIn("turn-13", first)
             included = sum(1 for i in range(14) if f"turn-{i:02d}" in first)
             self.assertTrue(0 < included < 14)
-            self.assertLessEqual(len(first), refresh.MAX_INPUT_CHARS + len(refresh.PROMPT) + 200)
+            self.assertLessEqual(len(first), refresh.MAX_INPUT_CHARS + len(refresh.build_prompt("", [])[0]) + 200)
             self.assertEqual(summary.load(sdir, "s"), Stored("S1", anchor_at(turns, included)))
             runner2 = FakeRunner(claude_result("S2"))
             refresh.main(["claude", "s", path, sdir], runner=runner2, env=env, min_chars=1)

@@ -12,7 +12,8 @@ Navigation pointers:
 - Execution flow: `model_effort_router/flow.py`
 - Plugin entrypoint facade: `model_effort_router/entrypoints.py`
 - Host declarations: `plugins/*-model-effort-router/router.py`
-- Review prompts and verdict parsing: `model_effort_router/review.py`
+- Prompt text sent to models (classifier, session summary, reviewer): `model_effort_router/prompts/*.txt`, filled by `prompts.render`; Jev/Laya classifier questions: `prompts/*.json`, loaded by `prompts.data`
+- Review input and verdict parsing: `model_effort_router/review.py`
 - Test-without-change probe: `model_effort_router/gate/probe.py`
 - Risk patterns: `model_effort_router/difficulty/risk.py`
 

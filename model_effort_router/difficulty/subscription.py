@@ -15,6 +15,7 @@ from dataclasses import replace
 from functools import lru_cache
 
 from .decision import DifficultyDecision, DifficultyInput, EFFORTS, ROLES
+from .. import prompts
 from ..events import iter_events
 
 GUARD_ENV = "MER_CLASSIFIER"  # child env guard: the Router's own hook must no-op when set
@@ -218,22 +219,18 @@ def run_isolated(argv, runner, timeout_s, input_text=None):
 
 def build_prompt(task: DifficultyInput) -> str:
     paths = "\n".join(task.paths[:MAX_PATHS]) or "(none)"
-    context = (
-        f"Session context (earlier conversation; use it only to interpret the task):\n{task.context}\n\n"
-        if task.context
-        else ""
-    )
+    context = prompts.render("classify_context", context=task.context) + "\n\n" if task.context else ""
     return (
-        "Classify the requested work. Role must be one of "
-        + ", ".join(ROLES)
-        + ". Effort must be one of "
-        + ", ".join(EFFORTS)
-        + ".\n"
-        'Reply with ONLY JSON: {"role":"implementation","effort":"medium","confidence":0.8, '
-        '"reason_code":"short_snake_case"}. Only role and effort are required.\n'
-        "Do not run commands or edit files.\n\n"
-        f"{context}Task:\n{task.task[:MAX_TASK_CHARS]}\n\nChanged/expected paths:\n{paths}\n\n"
-        f"Repo summary:\n{task.repo_summary[:MAX_TASK_CHARS] or '(none)'}\n"
+        prompts.render(
+            "classify",
+            roles=", ".join(ROLES),
+            efforts=", ".join(EFFORTS),
+            context=context,
+            task=task.task[:MAX_TASK_CHARS],
+            paths=paths,
+            repo_summary=task.repo_summary[:MAX_TASK_CHARS] or "(none)",
+        )
+        + "\n"
     )
 
 
