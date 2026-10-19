@@ -216,6 +216,8 @@ OpenCode's `mer` tool returns the same model/effort recommendation, and `mer_rep
 
 The intended host workflow is **task instruction → MER model/effort recommendation → host work → host review → host fixes**. MER ends after the recommendation; it does not launch workers, run the review, apply fixes, or run verification loops.
 
+For `implementation` and `fix` requests the advice also asks Main to request an independent review with the plugin's `review` skill after nontrivial code changes (not docs, config or mechanical edits). This is an instruction to the model, not an enforced check: no hook blocks the turn or inspects the diff.
+
 ## Configuration
 
 Configuration uses JSON in `.model-effort-router.json` at the repository root or `~/.config/model-effort-router/config.json`; repository values override user values. Existing user files are not rewritten. Example:
