@@ -14,8 +14,8 @@ FAKE = {"role": "review", "effort": "medium", "confidence": 0.8}
 
 
 class WorkflowLogTest(HookCase):
-    def route(self, **extra):
-        self.fake = FAKE
+    def route(self, role="review", **extra):
+        self.fake = {**FAKE, "role": role}
         data = {"session_id": SID, "cwd": str(self.repo), "prompt": DEV, "turn_id": "t1", "model": "gpt-6-luna"}
         self.assertEqual(self.submit(payload={**data, **extra}).returncode, 0)
         return [e for e in self.log_events() if e["event"] == "route"][-1]
@@ -46,9 +46,9 @@ class WorkflowLogTest(HookCase):
         self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(ev))
 
     def test_same_model_and_unknown_main_actions(self):
-        self.assertEqual(self.route(model="gpt-6.1-sol")["advice"]["action"], "inline_same_model")
-        self.assertIsNone(self.route(model="gpt-6.1-sol")["advice"]["invocation"])
-        self.assertEqual(self.route(model=None)["advice"]["action"], "advise")
+        self.assertEqual(self.route(role="plan", model="gpt-6.1-sol")["advice"]["action"], "inline_same_model")
+        self.assertIsNone(self.route(role="plan", model="gpt-6.1-sol")["advice"]["invocation"])
+        self.assertEqual(self.route(role="plan", model=None)["advice"]["action"], "advise")
 
     def test_subagent_start_and_stop_correlate_with_the_route(self):
         self.route()
@@ -101,7 +101,7 @@ class WorkflowLogTest(HookCase):
         self.assertEqual(orphan["correlation"], {"expected": None, "matched": None, "matched_on": []})
 
     def test_inline_same_model_route_never_claims_a_match(self):
-        self.route(model="gpt-6.1-sol")
+        self.route(role="plan", model="gpt-6.1-sol")
         start = self.sub("start", model="gpt-6.1-sol")
         self.assertEqual(start["correlation"]["expected"]["action"], "inline_same_model")
         self.assertIsNone(start["correlation"]["matched"])

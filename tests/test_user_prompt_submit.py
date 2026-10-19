@@ -33,7 +33,7 @@ class UserPromptSubmitTest(HookCase):
         self.assertIn("full conversation", advice)
         self.assertIn("private reasoning", advice)
         self.assertIn("change this Main turn's model/settings", advice)
-        self.assertIn("Main model gpt-6-luna ≠ routed gpt-6.1-sol", advice)
+        self.assertIn("Use a separate Subagent for independent review", advice)
         self.assertNotIn("L1", advice)
 
     def payload(self, **extra):
@@ -41,7 +41,7 @@ class UserPromptSubmitTest(HookCase):
         return {**data, **extra}
 
     def test_matching_main_model_proceeds_in_main_and_tells_the_user(self):
-        self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
+        self.fake = {"role": "plan", "effort": "medium", "confidence": 0.8}
         proc = self.submit(payload=self.payload(model="GPT-6.1-Sol"))
         out = json.loads(proc.stdout)
         self.assertIn(
@@ -54,8 +54,14 @@ class UserPromptSubmitTest(HookCase):
         self.assertIn("routed effort medium", out["systemMessage"])
         self.assertIn("gpt-6.1-sol · effort medium", out["systemMessage"])
 
-    def test_main_model_failure_is_logged_and_falls_back_to_legacy_advice(self):
+    def test_matching_review_model_still_requests_a_separate_reviewer(self):
         self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
+        out = json.loads(self.submit(payload=self.payload(model="gpt-6.1-sol")).stdout)
+        self.assertIn("independent review", out["hookSpecificOutput"]["additionalContext"])
+        self.assertNotIn("proceeding without a Subagent", out["systemMessage"])
+
+    def test_main_model_failure_is_logged_and_falls_back_to_legacy_advice(self):
+        self.fake = {"role": "plan", "effort": "medium", "confidence": 0.8}
         data = self.payload(model="gpt-6.1-sol", hook_event_name="UserPromptSubmit")
         env = self.env()
         with patch.object(codex_hooks, "main_model", side_effect=RuntimeError("SECRET")):
@@ -71,7 +77,7 @@ class UserPromptSubmitTest(HookCase):
         read.assert_not_called()
 
     def test_mismatch_notice_and_unknown_model_keep_the_plain_notice(self):
-        self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
+        self.fake = {"role": "plan", "effort": "medium", "confidence": 0.8}
         for extra in ({"model": "gpt-6-luna"}, {}):
             out = json.loads(self.submit(payload=self.payload(**extra)).stdout)
             self.assertNotIn("Main already runs", out["systemMessage"])
