@@ -197,7 +197,7 @@ class AntigravityRoutedHookTest(HookCase):
         message = self.hook(self.transcript("Fix the parser bug"))
         self.assertIn("routing error", message or "")
 
-    def test_hook_injects_reply_tag_when_settings_change_present(self):
+    def test_hook_recommends_model_and_effort_when_settings_change_present(self):
         self.fake = {"role": "fix", "effort": "medium"}
         path = self.root / "transcript_with_settings.jsonl"
         content = (
@@ -215,12 +215,10 @@ class AntigravityRoutedHookTest(HookCase):
         }
         path.write_text(json.dumps(row) + "\n")
         message = self.hook(path)
-        self.assertIn(
-            "start your first message of this turn with one line naming the model that will do the work:", message
-        )
-        self.assertIn("`[routed: gemini-3.8-flash-medium · effort medium]`", message)
-        self.assertIn("`[main: gemini-3.8-flash · effort high]`", message)
-        self.assertIn("(the Antigravity app does not show hook messages)", message)
+        self.assertIn("[model-effort-router] fix → execution · gemini-3.8-flash-medium · effort medium.", message)
+        self.assertIn("Recommended model: gemini-3.8-flash-medium; effort: medium.", message)
+        self.assertIn("MER recommends model settings only; it does not change them.", message)
+        self.assertIn("do not claim they were applied unless the host confirms it.", message)
 
 
 if __name__ == "__main__":

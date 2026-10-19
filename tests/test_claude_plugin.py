@@ -41,7 +41,7 @@ class ManifestTest(unittest.TestCase):
         skill = (CLAUDE / "skills" / "classify" / "SKILL.md").read_text()
         self.assertNotIn("Subagent", skill)
         self.assertIn("recommends", skill)
-        self.assertIn("neither changes Main's model", skill)
+        self.assertIn("does not change Main's active model", skill)
         self.assertIn("--role", skill)
         self.assertIn("--effort", skill)
         for name in ("mer", "mer-gate"):

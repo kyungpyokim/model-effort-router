@@ -369,7 +369,10 @@ class ClassifierFallbackNoticeTest(HookCase):
         self.assertIn(line, out["systemMessage"])
         context = out["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Required: tell the user in one line", context)
-        self.assertLess(context.index("[routed:"), context.index("Required: tell the user"))  # reply tag stays first
+        self.assertLess(
+            context.index("[model-effort-router] review → reasoning"),
+            context.index("Required: tell the user"),
+        )  # route recommendation stays before the fallback notice
         self.assertIn(line, context)
         (event,) = self.log_events()
         self.assertEqual(event["classifier_causes"], ["fake:HTTP 503"])

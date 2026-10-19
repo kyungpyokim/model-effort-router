@@ -105,12 +105,12 @@ class ExecTest(unittest.TestCase):
                 with self.subTest(key=key, value=value), self.assertRaises(ax.AntigravityResultError):
                     ax.parse_stream(json.dumps({**self.SUCCESS, "usage": {key: value}}))
 
-    def test_unverified_automation_is_explicitly_rejected(self):
+    def test_automation_entrypoints_are_removed_in_favor_of_routing(self):
         profile = Profile("economy", "medium")
         for sandbox in ("read-only", "workspace-write"):
-            with self.assertRaisesRegex(ValueError, "unsupported"):
+            with self.assertRaisesRegex(ValueError, r"mer run(?:/resume)? was removed; use mer route"):
                 ax.session_argv(profile, "request", sandbox)
-        with self.assertRaisesRegex(ValueError, "unsupported"):
+        with self.assertRaisesRegex(ValueError, r"mer run(?:/resume)? was removed; use mer route"):
             ax.resume_argv(profile, "id", "request")
 
     def test_env_guard_is_a_copy(self):

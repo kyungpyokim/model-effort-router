@@ -210,7 +210,7 @@ def hook(host, root, *, runtime_api=1): return 0
             env = {k: v for k, v in self.env.items() if k != "MER_CORE_PATH"}
             env["XDG_DATA_HOME"] = xdg
             for plugin in PLUGINS:
-                result = self.run_loader(plugin, "bin/mer", "run", "--help", env=env)
+                result = self.run_loader(plugin, "bin/mer", "route", "--help", env=env)
                 self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_missing_corrupt_relative_and_incompatible_core_fail_safely(self):
