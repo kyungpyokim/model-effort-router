@@ -173,12 +173,13 @@ def _antigravity(path):
                 row = json.loads(line)
             except (ValueError, RecursionError):
                 continue
-            if not isinstance(row, dict):
+            if not isinstance(row, dict) or row.get("type") != "USER_INPUT" or row.get("source") != "USER_EXPLICIT":
                 continue
             content = row.get("content")
             if not isinstance(content, str):
                 continue
-            match = _ANTIGRAVITY_SETTING.search(content)
+            settings = _ANTIGRAVITY_SETTINGS.search(content.split("</USER_REQUEST>", 1)[-1])
+            match = _ANTIGRAVITY_SETTING.search(settings[1]) if settings else None
             if match:
                 raw_model = match.group(1).strip()
                 model_str = re.sub(r"\s+", "-", raw_model).lower()
@@ -207,6 +208,7 @@ def _unknown(data, sdir):
     return None
 
 
+_ANTIGRAVITY_SETTINGS = re.compile(r"<USER_SETTINGS_CHANGE>(.*?)</USER_SETTINGS_CHANGE>", re.DOTALL)
 _ANTIGRAVITY_SETTING = re.compile(
     r"`Model Selection`\s+(?:from\s+.*?\s+)?to\s+([A-Za-z0-9\s._-]+?)(?:\s*\(([^)\n]+)\))?\s*\.(?:\s*(?:No need to comment|</USER_SETTINGS_CHANGE>)|$)",
     re.IGNORECASE | re.MULTILINE,

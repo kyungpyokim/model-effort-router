@@ -176,7 +176,13 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
         if policy
         else advice.render(plan, f"python3 {Path(plugin_root) / 'bin' / 'mer'}", host, main, effort)
     )
-    notice = advice.policy_notice(lanes) if policy else _notice(plan, advice.matches(plan, main)) if text else None
+    notice = (
+        advice.policy_notice(lanes)
+        if policy
+        else _notice(plan, advice.summary(plan, host, main)["action"] == "inline_same_model")
+        if text
+        else None
+    )
     fallback = advice.fallback_line(plan)
     if fallback and text:
         text, notice = f"{text} {advice.tell_user(fallback)}", "\n".join(filter(None, (notice, fallback)))

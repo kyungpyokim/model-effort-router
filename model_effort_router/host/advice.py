@@ -101,6 +101,12 @@ def _same_model(plan, host, main_model):
     return same
 
 
+def _independent_review(plan, host):
+    return (
+        plan.decision.role == "review" and host.name in ("codex", "claude") and _invocation_args(plan, host) is not None
+    )
+
+
 def summary(plan, host, main_model=None):
     """What `render` told Main, as data: the log and the text derive from the same values and cannot disagree."""
     if plan.target == NO_ROUTE:
@@ -108,7 +114,7 @@ def summary(plan, host, main_model=None):
     if not plan.decision:
         return {"action": "off"}
     same = _same_model(plan, host, main_model)
-    action = "inline_same_model" if same else "spawn" if same is False else "advise"
+    action = "spawn" if same is False or _independent_review(plan, host) else "inline_same_model" if same else "advise"
     spawns = action != "inline_same_model" and (action == "spawn" or host.name == "claude")
     return {
         "action": action,
@@ -183,17 +189,23 @@ def render(plan, mer_cmd, host, main_model=None, main_effort=None):
     )
     invocation = _claude_invocation(plan) if host.name == "claude" else ""
     same = _same_model(plan, host, main_model)
-    if same:
+    separate_review = _independent_review(plan, host)
+    if same and not separate_review:
         return (
             f"{_header(plan, decision)} {_reply_tag(plan, host, main_model, main_effort, spawns=False)}"
             f"Main already runs {normalize(main_model)}; no Subagent needed. "
             f"Proceed directly in Main (Main cannot change its own effort; routed effort is {plan.applied_effort})."
         )
-    if same is False:
+    if same is False or separate_review:
         invocation = _claude_invocation(plan) if host.name == "claude" else _codex_invocation(plan)
+        reason = (
+            "Use a separate Subagent for independent review. "
+            if separate_review
+            else f"Main model {normalize(main_model)} ≠ routed {plan.model}: spawn the Subagent. "
+        )
         return (
             f"{_header(plan, decision)} {_reply_tag(plan, host, main_model, main_effort, spawns=True)}"
-            f"Main model {normalize(main_model)} ≠ routed {plan.model}: spawn the Subagent. "
+            f"{reason}"
             f"{invocation}Build a compact Context Packet with {packet}. {handoff}"
             "Integrate the result, then decide whether another worker is needed. "
             "Handle it in Main only if the user explicitly told Main to do it this turn; otherwise, if you skip "

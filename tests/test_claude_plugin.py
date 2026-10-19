@@ -201,7 +201,7 @@ class HookTest(HookCase):
         self.assertIn("goal, decisions, constraints, actual diff, verification status/results", note)
         self.assertIn("native Subagent invocation", note)
         self.assertIn("not run", note)
-        self.assertIn("does not change this Main turn", note)
+        self.assertIn("change this Main turn's model/settings", note)
         self.assertNotIn("L1", note)
         self.assertEqual(settings.read_bytes(), original_settings)
 
@@ -229,6 +229,7 @@ class HookTest(HookCase):
         return self.submit(payload=data, env_extra={"MER_HOST": "claude"})
 
     def test_main_model_from_a_real_format_transcript_selects_the_advice(self):
+        self.fake = {**self.fake, "role": "plan"}
         match = json.loads(self.submit_with_transcript("claude-opus-5-5[1m]").stdout)
         self.assertIn(
             "Main already runs claude-opus-5-5; no Subagent needed", match["hookSpecificOutput"]["additionalContext"]
@@ -239,6 +240,11 @@ class HookTest(HookCase):
         self.assertIn("Main model claude-sonnet-5-5 ≠ routed claude-opus-5-5: spawn the Subagent", note)
         self.assertIn("Agent(subagent_type=", note)
         self.assertNotIn("proceeding without", miss["systemMessage"])
+
+    def test_matching_review_model_still_requests_a_separate_reviewer(self):
+        out = json.loads(self.submit_with_transcript("claude-opus-5-5").stdout)
+        self.assertIn("independent review", out["hookSpecificOutput"]["additionalContext"])
+        self.assertNotIn("proceeding without a Subagent", out["systemMessage"])
 
     def test_main_effort_from_the_transcript_is_logged_on_the_route_event(self):
         path = self.root / "t.jsonl"
@@ -276,6 +282,7 @@ class HookTest(HookCase):
         )
 
     def test_post_model_switch_updates_the_model_without_any_output(self):
+        self.fake = {**self.fake, "role": "plan"}
         self.start_session(model="claude-sonnet-5-5")
         proc = self.switch_model(from_model="claude-sonnet-5-5", to_model="claude-opus-5-5")
         self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
@@ -307,6 +314,7 @@ class HookTest(HookCase):
         return json.loads(self.submit(payload=data, env_extra={"MER_HOST": "claude"}).stdout)
 
     def test_session_start_model_decides_the_first_prompt_before_any_transcript_exists(self):
+        self.fake = {**self.fake, "role": "plan"}
         proc = self.start_session(model="claude-opus-5-5")
         self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
         out = self.first_prompt()
@@ -317,6 +325,7 @@ class HookTest(HookCase):
         )
 
     def test_session_start_without_model_clears_stale_value_and_stores_nothing_else(self):
+        self.fake = {**self.fake, "role": "plan"}
         self.start_session(model="claude-opus-5-5")
         self.start_session()  # `claude -p`, /clear or a recovered conversation: no model field
         note = self.first_prompt()["hookSpecificOutput"]["additionalContext"]
