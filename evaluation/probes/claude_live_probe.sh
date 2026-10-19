@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Live checks for the Claude Code host (plan Phase 5). Makes real model calls (a few short ones plus one small
-# mer run); run it yourself. Everything is written to $OUT for analysis; nothing outside a temp dir is touched.
+# mer route); run it yourself. Everything is written to $OUT for analysis; nothing outside a temp dir is touched.
 set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${1:-$REPO/runs/claude-probe}"
@@ -36,11 +36,11 @@ echo "== 5. isolated classifier call (haiku, safe mode, no tools): latency and t
   --tools "" --safe-mode --strict-mcp-config --no-session-persistence \
   -- "Answer with one word: easy or hard? Task: rename a variable.") >"$OUT/5-classifier.json" 2>"$OUT/5-time.txt"
 
-echo "== 6. one small mer run on the pilot fixture (L1 message change)"
+echo "== 6. one explicit mer route on the pilot fixture (model and effort recommendation only)"
 cp -R "$REPO/evaluation/pilot/fixture" "$WORK/fx"
 (cd "$WORK/fx" && git init -q && git -c user.email=p@x -c user.name=p add -A && git -c user.email=p@x -c user.name=p commit -qm fixture)
-(cd "$WORK/fx" && env -u MER_CLASSIFIER python3 "$REPO/plugins/claude-model-effort-router/bin/mer" run --host claude \
-  "In shop/orders.py, change the error message 'insufficient stock for {sku}' to 'out of stock: {sku}'. Keep \`python3 -m unittest\` passing." \
+(cd "$WORK/fx" && env -u MER_CLASSIFIER python3 "$REPO/plugins/claude-model-effort-router/bin/mer" route --host claude \
+  --role fix --effort medium "In shop/orders.py, change the error message for insufficient stock." \
   ) >"$OUT/6-mer.txt" 2>&1
 (cd "$WORK/fx" && git diff) >"$OUT/6-mer.diff"
 

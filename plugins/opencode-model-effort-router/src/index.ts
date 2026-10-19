@@ -10,22 +10,12 @@ function appendAdvice(text: string, advice: Record<string, unknown>) {
       )
     : [advice.model as string];
   const alternatives = models.filter((model) => model !== advice.model);
-  const packet =
-    advice.role === "review"
-      ? "goal, decisions, constraints, actual diff, verification status/results"
-      : "task, context, decisions, constraints, relevant_files, expected_result";
-  let guidance = `Build a compact Context Packet with ${packet}; label unknowns and send only that packet to the native Subagent. `;
-  if (advice.role === "review") {
-    guidance +=
-      "Mark unrun checks as not run; ask the reviewer to inspect the diff, fix actionable findings, run relevant checks, and report unresolved issues. ";
-  }
   const other = alternatives.length
     ? ` Other configured options: ${alternatives.join(", ")} (user-selectable, not automatic fallbacks).`
     : "";
   return (
     `${text}\n\n[model-effort-router] ${advice.role} → ${advice.agent} · ${advice.model} · effort ${advice.effort}. ` +
-    `Main: route this task to a native Subagent using OpenCode's model/effort controls. ${guidance}` +
-    "Integrate the result and decide whether another worker is needed. The hook advises but does not invoke the Subagent or change this turn's model/settings." +
+    "Model/effort recommendation only; select these settings in OpenCode as needed. The hook does not change this turn's active settings." +
     other
   );
 }

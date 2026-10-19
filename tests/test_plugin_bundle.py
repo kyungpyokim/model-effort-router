@@ -85,7 +85,7 @@ class PluginBundleTest(unittest.TestCase):
                 self.assertTrue(metadata["description"])
                 self.assertNotRegex(metadata["description"], r"L1.?L5|escalation|independent review")
                 if plugin.name.startswith(("claude", "codex")):
-                    self.assertEqual(metadata["version"], "0.13.4")
+                    self.assertEqual(metadata["version"], "0.14.0")
 
     def test_skill_has_frontmatter(self):
         text = (PLUGIN / "skills" / "classify" / "SKILL.md").read_text()
@@ -192,11 +192,11 @@ def hook(host, root, *, runtime_api=1): return 0
                 if host == "antigravity":
                     result = self.run_loader(plugin, "bin/mer", "run", *args)
                     self.assertEqual(result.returncode, 2, result.stderr)
-                    self.assertIn("execution isolation is unverified", result.stderr)
+                    self.assertIn("mer run was removed", result.stderr)
                 if host == "opencode":
                     result = self.run_loader(plugin, "bin/mer", "run", *args)
                     self.assertEqual(result.returncode, 2, result.stderr)
-                    self.assertIn("OpenCode worker execution is unsupported", result.stderr)
+                    self.assertIn("mer run was removed", result.stderr)
                 if host in ("codex", "claude"):
                     result = self.run_loader(plugin, "hooks/user_prompt_submit.py")
                     self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
@@ -210,7 +210,7 @@ def hook(host, root, *, runtime_api=1): return 0
             env = {k: v for k, v in self.env.items() if k != "MER_CORE_PATH"}
             env["XDG_DATA_HOME"] = xdg
             for plugin in PLUGINS:
-                result = self.run_loader(plugin, "bin/mer", "run", "--help", env=env)
+                result = self.run_loader(plugin, "bin/mer", "route", "--help", env=env)
                 self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_missing_corrupt_relative_and_incompatible_core_fail_safely(self):

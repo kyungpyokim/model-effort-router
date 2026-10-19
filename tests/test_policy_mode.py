@@ -4,8 +4,6 @@ import json
 import sys
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
-
 from model_effort_router.host import advice, codex_hooks
 from model_effort_router.logging import route_log
 from model_effort_router.policy.config import resolve_config
@@ -15,7 +13,6 @@ from tests.hook_helpers import DEV, PLUGIN, SID, HookCase, run_script
 from tests.test_claude_plugin import CLAUDE
 
 POLICY = {"router": {"mode": "policy"}}
-CODEX, CLAUDE_HOST = SimpleNamespace(name="codex"), SimpleNamespace(name="claude")
 
 
 def boom():
@@ -47,43 +44,36 @@ class PolicyAdviceTest(unittest.TestCase):
     lanes = resolve_config(user=POLICY, registry={}).models
 
     def test_codex_text(self):
-        text = advice.render_policy(self.lanes["codex"], CODEX, "gpt-6-luna")
+        text = advice.render_policy(self.lanes["codex"])
         for part in (
             "gpt-6-luna",
             "gpt-6.1-sol",
-            "spawn_agent(",
-            "Do not pass agent_type",
-            "`[routed:",
-            "`[main: gpt-6-luna]`",
+            "Choose a lane's model and supported effort",
+            "does not change them",
         ):
             self.assertIn(part, text)
+        self.assertNotIn("spawn_agent", text)
 
-    def test_claude_text_has_the_desktop_app_tag(self):
-        text = advice.render_policy(self.lanes["claude"], CLAUDE_HOST, "claude-opus-5-5")
+    def test_claude_text_only_recommends_model_lanes(self):
+        text = advice.render_policy(self.lanes["claude"])
         for part in (
             "claude-sonnet-5-5",
             "claude-opus-5-5",
-            'Agent(subagent_type="model-effort-router:effort-<effort>"',
         ):
             self.assertIn(part, text)
-        self.assertIn("`[routed: <lane model> · effort <effort>]`", text)
-        self.assertIn("`[main: claude-opus-5-5]`", text)
-        self.assertIn("the Claude desktop app does not show hook messages", text)
+        self.assertNotIn("Agent(", text)
+        self.assertIn("does not change them", text)
 
-    def test_unknown_main_model_uses_placeholder(self):
-        text = advice.render_policy(self.lanes["codex"], CODEX, None)
-        self.assertIn("`[main: <your model>]`", text)
+    def test_policy_render_does_not_depend_on_main_model(self):
+        text = advice.render_policy(self.lanes["codex"])
         self.assertNotIn("None", text)
-
-    def test_main_tag_carries_the_effort_when_known(self):
-        text = advice.render_policy(self.lanes["claude"], CLAUDE_HOST, "claude-opus-5-5", "max")
-        self.assertIn("`[main: claude-opus-5-5 \u00b7 effort max]`", text)
 
     def test_summary(self):
         self.assertEqual(
             advice.policy_summary(self.lanes["codex"], "gpt-6-luna"),
             {
                 "action": "policy",
+                "selection_only": True,
                 "main_model": "gpt-6-luna",
                 "lanes": {"execution": "gpt-6-luna", "reasoning": "gpt-6.1-sol"},
             },
@@ -146,11 +136,9 @@ class PolicyHookTest(HookCase):
         self.assertIs(self.start(PLUGIN, "codex", model="other")["matched"], False)
         self.assertIsNone(self.start(PLUGIN, "codex")["matched"])
 
-    def test_claude_correlates_on_effort_agent_prefix(self):
+    def test_new_claude_policy_route_does_not_correlate_to_subagent_execution(self):
         self.route(CLAUDE, "claude", "claude-opus-5-5")
-        self.assertIs(self.start(CLAUDE, "claude", agent_type="model-effort-router:effort-high")["matched"], True)
-        self.assertIs(self.start(CLAUDE, "claude", agent_type="Explore")["matched"], False)
-        self.assertIsNone(self.start(CLAUDE, "claude")["matched"])
+        self.assertIsNone(self.start(CLAUDE, "claude", agent_type="Explore")["matched"])
 
     def test_no_route_prompt_is_silent(self):
         proc, ev = self.route(prompt="   ")
@@ -168,7 +156,14 @@ class CompareModesTest(HookCase):
         route_log.append(
             str(self.state),
             "s1",
-            ev(event="route", mode="policy", host="codex", target="route", latency_ms=4, advice={"action": "policy"}),
+            ev(
+                event="route",
+                mode="policy",
+                host="codex",
+                target="route",
+                latency_ms=4,
+                advice={"action": "policy", "selection_only": True},
+            ),
         )
         route_log.append(str(self.state), "s1", ev(event="subagent_start", correlation={"matched": True}))
         route_log.append(str(self.state), "s1", ev(event="route", target="error", error_type="X"))
@@ -183,7 +178,7 @@ class CompareModesTest(HookCase):
                 target="route",
                 latency_ms=900,
                 classifier_usage={"input_tokens": 5, "output_tokens": 2},
-                advice={"action": "spawn"},
+                advice={"action": "recommend", "selection_only": True},
             ),
         )
         route_log.append(
@@ -202,8 +197,8 @@ class CompareModesTest(HookCase):
         with contextlib.redirect_stdout(buf):
             compare_modes.report(compare_modes.collect(str(self.state)))
         rows = {line.split()[0]: line.split() for line in buf.getvalue().splitlines()[1:]}
-        self.assertEqual(rows["policy"][2:], ["1", "1", "1", "1/0/0", "4", "0"])
-        self.assertEqual(rows["auto"][2:], ["1", "1", "0", "0/0/0", "500", "7"])
+        self.assertEqual(rows["policy"][2:], ["1", "1", "1/0/0", "4", "0"])
+        self.assertEqual(rows["auto"][2:], ["1", "0", "0/0/0", "500", "7"])
 
 
 if __name__ == "__main__":

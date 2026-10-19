@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Experimental A/B report: router.mode auto (classifier) vs policy (Main decides), from the route logs."""
+"""Experimental A/B report: router.mode auto (classifier) vs policy (static model lanes), from the route logs."""
 
 import argparse
 import glob
@@ -42,16 +42,8 @@ def collect(sdir, since=0.0):
     return groups
 
 
-def spawn_advised(ev):
-    """Routes where Main was told it may spawn: auto spawn/advise, policy lane table (or an explicit override's spawn)."""
-    action = (ev.get("advice") or {}).get("action")
-    return action in ("spawn", "advise", "policy")
-
-
 def report(groups):
-    print(
-        f"{'mode':8}{'host':8}{'routed':>7}{'advised':>8}{'starts':>7}{'match T/F/null':>16}{'p50 ms':>8}{'cls tokens':>11}"
-    )
+    print(f"{'mode':8}{'host':8}{'routed':>7}{'starts':>7}{'match T/F/null':>16}{'p50 ms':>8}{'cls tokens':>11}")
     for (mode, host), g in sorted(groups.items(), key=lambda kv: tuple(map(str, kv[0]))):
         routed = [e for e in g["routes"] if e.get("target") == "route"]
         matched = [(s.get("correlation") or {}).get("matched") for s in g["starts"]]
@@ -62,18 +54,12 @@ def report(groups):
             for e in g["routes"]
         )
         counts = f"{matched.count(True)}/{matched.count(False)}/{matched.count(None)}"
-        advised = sum(spawn_advised(e) for e in routed)
         p50 = f"{statistics.median(lat):.0f}" if lat else "-"
-        print(
-            f"{str(mode):8}{str(host):8}{len(routed):>7}{advised:>8}{len(g['starts']):>7}{counts:>16}{p50:>8}{tokens:>11}"
-        )
+        print(f"{str(mode):8}{str(host):8}{len(routed):>7}{len(g['starts']):>7}{counts:>16}{p50:>8}{tokens:>11}")
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(
-        description=__doc__
-        + " Column 'advised' = routes whose advice allowed a spawn (auto: spawn/advise, policy: lane table)."
-    )
+    ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--since", type=float, default=0.0, help="only events at or after this unix timestamp")
     args = ap.parse_args(argv)
     report(collect(state_dir(os.environ), args.since))

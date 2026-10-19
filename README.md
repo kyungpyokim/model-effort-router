@@ -2,7 +2,7 @@
 
 한국어 문서는 [README.ko.md](README.ko.md)를 참고하세요.
 
-MER classifies a development request as a **role + effort**, maps that pair to a host model, and can run an external worker request. Main remains responsible for conversation context, deciding which steps are needed, and invoking host-native Subagents. MER does not change the current Codex turn. Worker runs can opt into verification-driven effort promotion.
+MER (Model Effort Router) classifies a development request as a **role + effort** and recommends the matching host model. MER handles model and effort selection; the host handles work, review, and fixes. Recommendations do not change the active turn's settings.
 
 ## Installation
 
@@ -53,7 +53,7 @@ bun install --frozen-lockfile
 
 All host integrations can provide a primary model recommendation and configured alternatives. Codex, Claude, and Antigravity include them in hook advice; OpenCode returns them in `model_options`. These options do not switch a host's active model or trigger retries. See each plugin README for host-specific limits.
 
-Antigravity and OpenCode provide route advice only; worker execution is unsupported. Marketplace plugin installs do not install or update the shared runtime; rerun `python3 scripts/install_core.py` from this checkout when updating it. See the [Codex plugin guide](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace guide](https://code.claude.com/docs/en/plugin-marketplaces), and [Antigravity plugin guide](https://antigravity.google/docs/plugins/) for host-specific details.
+All host integrations provide model/effort advice only. Marketplace plugin installs do not install or update the shared runtime; rerun `python3 scripts/install_core.py` from this checkout when updating it. See the [Codex plugin guide](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace guide](https://code.claude.com/docs/en/plugin-marketplaces), and [Antigravity plugin guide](https://antigravity.google/docs/plugins/) for host-specific details.
 
 ## Updating and releasing
 
@@ -86,7 +86,7 @@ Release checklist:
 
 The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, `xhigh`, or `max`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
 
-Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5` and reasoning `claude-opus-5-5`; Antigravity execution `gemini-3.8-flash` and reasoning `gemini-4-argon`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free` with reasoning alternatives `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, and `opencode-go/grok-4.7`. Each host/lane accepts `primary`, optional `alternatives`, `fallback`, and supported efforts. `primary` is recommended; alternatives are listed as user-selectable choices. For example:
+Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5` and reasoning `claude-opus-5-5`; Antigravity execution `gemini-3.8-flash` and reasoning `gemini-4-argon`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free` with reasoning alternatives `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, and `opencode-go/grok-4.7`. Each host/lane accepts `primary`, optional `alternatives`, and supported efforts. `primary` is recommended; alternatives are listed as user-selectable choices. Legacy model-level `fallback` values are accepted for config compatibility but are no longer used. For example:
 
 ```json
 {
@@ -105,11 +105,11 @@ Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude ex
 }
 ```
 
-Replace the example IDs with models available to the host. OpenCode returns `model_options`; the other hooks include configured alternatives in their advice. Alternatives never trigger execution retries. MER never infers execution fallback from stderr or retries after a worker may have started; only an explicit pre-execution-unavailable signal permits it. Classifier providers may fall through to the configured next classifier. If all fail, CLI routing returns an error; hooks fail open and leave the user request unblocked.
+Replace the example IDs with models available to the host. OpenCode returns `model_options`; the other hooks include configured alternatives in their advice. Alternatives are recommendations only and never trigger model switching. Classifier providers may fall through to the configured next classifier. If all fail, CLI routing returns an error; hooks fail open and leave the user request unblocked.
 
 ## Classifier backend setup
 
-The classifier backend decides the request's role and effort. It is separate from `models.<host>`, which selects the worker model. The built-in classifier default is `subscription` with no fallback. To use hosted Jev as the primary role/effort classifier, configure `difficulty.backend` as `jev`:
+The classifier backend decides the request's role and effort. It is separate from `models.<host>`, which supplies the recommended host model. The built-in classifier default is `subscription` with no fallback. To use hosted Jev as the primary role/effort classifier, configure `difficulty.backend` as `jev`:
 
 ```json
 {
@@ -207,32 +207,14 @@ The Decisions API is the endpoint; `gpt-6-luna` is its model. Jev had the highes
 ```sh
 python3 <plugin>/bin/mer route --host codex --json 'Review the authentication changes'
 python3 <plugin>/bin/mer route --host codex --role implementation --effort high --json 'Implement the approved design'
-python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and fix the focused tests'
 python3 <plugin>/bin/mer report --since 12h --limit 10
 ```
 
-`mer route` classifies/maps only. By default, `mer run` executes exactly one worker request. Reasoning roles run read-only. Antigravity can classify and provide advice, but worker execution is unsupported because Subagent isolation is unverified. OpenCode exposes route advice through the `mer` tool and the log summary through the `mer_report` tool; it does not switch the active model or run workers. `mer chat` was removed; use the route result to ask Main to invoke the selected Subagent. Explicit `--role` and `--effort` bypass automatic hook eligibility and must be provided together.
+`mer route` classifies a request's role/effort and maps it to a host model. Provide `--role` and `--effort` together for an explicit route. MER does not execute workers, verification loops, reviews, or fixes. For script compatibility, `mer run` and `mer chat` return exit code 2 with guidance to use `mer route`. Historical `run` log entries remain readable by `mer report`.
 
-After a run, MER compares the repository's changed paths before and after the worker. When changes are detected, text output reports the `door` (`one-way` for data migration, data loss, or payment risk; otherwise `two-way`) and estimated `blast_radius` (`local` or `broad`), plus changed-file and top-level-directory counts. JSON includes the same values under `change`, with the resulting `risk_flags`. Blast radius is a path-based estimate; review the actual changes to assess impact.
+OpenCode's `mer` tool returns the same model/effort recommendation, and `mer_report` summarizes logs. Host hooks add a recommendation; they do not change the active model or effort.
 
-### Low-first worker runs
-
-```sh
-python3 <plugin>/bin/mer run --host codex --role fix --effort low --low-first \
-  --verify 'python3 -m unittest discover -s tests' --json 'Fix the approved bug'
-```
-
-For execution roles, `--low-first` starts at low and promotes through medium and high after verification failures. It stops for approval before xhigh and again before max. Pass `--approve-xhigh` or `--approve-max` only when the user has explicitly approved that effort for the run. The configured model must support all five efforts. Each attempt starts a fresh session in the same workspace, keeping edits and receiving the original context plus the previous failure. Worker errors, cancellation, verification start failures, signal termination, and timeouts stop the loop. `--timeout` limits each worker attempt; `--verify-timeout` limits each check (default 300 seconds).
-
-An approval stop returns `continuation_context` with the original request and last failure. After xhigh approval, pass that context in the same workspace with `--low-first --role <same-role> --effort xhigh --approve-xhigh --verify <same-command>` to run the xhigh continuation. If xhigh fails, approve max separately and continue with `--effort max --approve-max`. Each continuation is a separate run; combine their records when measuring the full task. Without an explicit xhigh or max effort, a new invocation starts at low. One-shot xhigh and max runs require their matching approval flag.
-
-`--verify` is an explicit argv command executed without shell expansion, using the parent process's privileges and environment. Freeze meaningful completion checks before work starts: fixing argv does not make worker-editable tests tamper-proof. The last 2,000 characters of check output are sent to the next worker and returned in JSON; keep secrets out of that output. Persistent route logs store only attempt metadata, token counts, and check status/duration.
-
-JSON and route logs record `first_pass`, `escalation_count`, and each attempt's effort, worker usage, and verification duration. `usage` sums reported worker tokens; `usage_missing` counts attempts with absent/incomplete usage. Classifier usage is separate. Deterministic checks add execution time but no router model call; any external model calls inside the check are unmeasured, so the token figures are not a complete validation cost.
-
-For exploratory comparison, `--retry-low` adds one low retry with the same failure feedback before medium. Compare it with normal low-first on separate, equally initialized workspaces and report the full chain and usage; do not run both arms on the already-modified workspace.
-
-Hooks provide Context Packet fields and instructions, not a completed packet from Main's conversation. Main should use the current request and relevant conversation to populate a compact packet (`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`) and include it directly in the host-native Subagent invocation. For review, pass only `goal`, `decisions`, `constraints`, the actual diff, and verification status/results; mark checks that were not run as not run. Do not forward private reasoning or the full conversation by default. Hooks do not inspect Main's conversation or create native Subagents. `mer run` is a separate one-worker path and cannot read Main's conversation, so include needed context in its explicit task input.
+The intended host workflow is **task instruction → MER model/effort recommendation → host work → host review → host fixes**. MER ends after the recommendation; it does not launch workers, run the review, apply fixes, or run verification loops.
 
 For `implementation` and `fix` requests the advice also asks Main to request an independent review with the plugin's `review` skill after nontrivial code changes (not docs, config or mechanical edits). This is an instruction to the model, not an enforced check: no hook blocks the turn or inspects the diff.
 
@@ -243,49 +225,49 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
 ```json
 {
   "router": {"mode": "auto"},
-  "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10},
+  "difficulty": {"backend": "jev", "timeout_s": 10},
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh", "max"]},
-      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh", "max"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "efforts": ["low", "medium", "high", "xhigh", "max"]},
+      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "efforts": ["low", "medium", "high", "xhigh", "max"]}
     },
     "claude": {
-      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-opus-5-5", "efforts": ["low", "medium", "high", "xhigh", "max"]},
-      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh", "max"]}
+      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "efforts": ["low", "medium", "high", "xhigh", "max"]},
+      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "efforts": ["low", "medium", "high", "xhigh", "max"]}
     },
     "antigravity": {
-      "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-sonnet-5-5"], "fallback": null, "efforts": ["medium", "high"]},
-      "reasoning": {"primary": "gemini-4-argon", "alternatives": ["claude-opus-5-5"], "fallback": null, "efforts": ["medium", "high"]}
+      "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-sonnet-5-5"], "efforts": ["medium", "high"]},
+      "reasoning": {"primary": "gemini-4-argon", "alternatives": ["claude-opus-5-5"], "efforts": ["medium", "high"]}
     },
     "opencode": {
-      "execution": {"primary": "opencode/mimo-v2.6-flash-free", "fallback": null, "efforts": ["low", "medium", "high", "xhigh", "max"]},
-      "reasoning": {"primary": "opencode/nemotron-3-ultra-free", "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh", "max"]}
+      "execution": {"primary": "opencode/mimo-v2.6-flash-free", "efforts": ["low", "medium", "high", "xhigh", "max"]},
+      "reasoning": {"primary": "opencode/nemotron-3-ultra-free", "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"], "efforts": ["low", "medium", "high", "xhigh", "max"]}
     }
   }
 }
 ```
 
-Legacy L1-L5, tier/profile, session, escalation, and `nimble_jev` settings are rejected with migration guidance. Replace tier overrides with `/router role=<role> effort=<effort>`; replace an old Main-session routing workflow with `mer route` plus a Main-selected Subagent. `nimble_jev` is removed; configure `nimble` and a separate classifier fallback such as `jev`.
+Legacy L1-L5, tier/profile, session, escalation, and `nimble_jev` settings are rejected with migration guidance. Replace tier overrides with `/router role=<role> effort=<effort>`; replace an old Main-session routing command with `mer route`. `nimble_jev` is removed; configure `nimble` and a separate classifier fallback such as `jev`.
 
 Jev credentials belong only in the global user config; see [Classifier backend setup](#classifier-backend-setup). Repository config cannot provide this credential.
 
 ### Experimental: policy mode
 
-`router.mode = "policy"` skips the classifier. The `UserPromptSubmit` hook injects the static model map (execution and reasoning lanes with their supported efforts) and Main itself picks the lane and effort and decides whether to spawn a Subagent. Every non-blank prompt gets the policy (no keyword prefilter; Main skips trivial requests itself). It makes no model call. Codex and Claude only; other hosts stay silent.
+`router.mode = "policy"` skips the classifier. The `UserPromptSubmit` hook injects the static model map (execution and reasoning lanes with supported efforts) as a model-selection reference. Every non-blank prompt gets the policy; it makes no model call. Codex and Claude only; other hosts stay silent.
 
 - Enable: set `{"router": {"mode": "policy"}}` in the global user config, or start a prompt with `/router policy`. Switch back with `"mode": "auto"` (the default). An explicit `/router role=<role> effort=<effort>` keeps its normal behavior.
 - This is an A/B experiment against `auto`; the losing mode will be removed after the comparison.
-- Compare the two from the workflow logs: `python3 scripts/compare_modes.py [--since <unix ts>]` prints routed prompts, spawn-advised count, Subagent starts, match counts, median hook latency, and classifier tokens per mode and host.
+- Compare the two from the workflow logs: `python3 scripts/compare_modes.py [--since <unix ts>]` prints route counts, Subagent correlation counts, median hook latency, and classifier tokens per mode and host.
 
 ## Workflow log
 
-Each session appends to `~/.local/state/model-effort-router/<session>-<hash>.log.jsonl` (override with `MER_STATE_DIR`). Workflow events include `route` (decision plus `advice`: `spawn`, `inline_same_model`, `advise`, or `no_route`), `subagent_start`/`subagent_stop`, `run` (`mer` worker runs), `context_refresh`, and fixed-code `error` events. A `mer run` log puts its route and worker result in the same generated session file. Prompts and Subagent output are not logged directly; bounded excerpts from a classifier's failed HTTP response may include text the provider echoed.
+Each session appends to `~/.local/state/model-effort-router/<session>-<hash>.log.jsonl` (override with `MER_STATE_DIR`). Workflow events include `route` (decision plus advice action), host-reported `subagent_start`/`subagent_stop`, historical `run` events, `context_refresh`, and fixed-code `error` events. Current MER versions do not emit `run` events; old entries remain readable for report compatibility. Prompts and Subagent output are not logged directly; bounded excerpts from a classifier's failed HTTP response may include text the provider echoed.
 
-- A `subagent_start` carries `correlation.expected` (the session's latest logged `route`) and `correlation.matched`. `matched_on` says what was compared: `["model"]` on Codex (the Subagent's reported model against the routed model), `["agent_type"]` on Claude (the agent type against `model-effort-router:effort-<effort>`; Claude's payload has no model). Effort is never verified. `matched` is `null` when nothing is comparable: no prior route, the model or agent type is missing, the route was `inline_same_model`, or the Claude route is haiku (no effort agent).
+- A `subagent_start` carries `correlation.expected` (the session's latest logged `route`) and `correlation.matched`. Current route advice is marked `selection_only`: Codex can compare the host-reported Subagent model with the recommended model (`matched_on: ["model"]`); Claude exposes no model in its lifecycle payload, so current route events are unverified there (`matched_on: []`). MER records host events but does not launch or direct Subagents. Historical route events without `selection_only` retain their old Claude agent-type comparison. Effort is never verified.
 - Classifier fallback: a `route` event carries `classifier_causes` (e.g. `["jev:HTTP 400 [code=invalid_request_error; message=Unknown model]"]`: backend names, error types, statuses, bounded structured identifiers, and up to 240 characters of response detail with sensitive fields and common credential patterns redacted) when a classifier failed and routing fell back, including on `no_route` and when every classifier fails. Detailed excerpts are stored in the local debug log, including when all classifiers fail; `mer report` can display these causes for debugging, while immediate hook advice and routing failure messages show backend plus status/type summaries. Routing errors record the exception type and stage without the exception message. Excerpts may contain provider-echoed text; review the log before sharing it. The hook shows `[model-effort-router] classifier fallback: jev failed (HTTP 503) → classified by openai_decisions`, or `classifier failed: ...; no routing advice this turn.` when every classifier fails. The Codex and Claude desktop apps do not show hook messages, so the advice also asks Main to tell the user.
 - A `subagent_stop` copies the `correlation` of the `subagent_start` with the same `agent_id`; without one it is `null`.
 - Subagent events record Codex's `turn_id` as `agent_turn_id`: it is the child's turn, not the route's `turn_id`.
-- The Codex app and the Claude desktop app do not display hook output, so the advice asks Main to start its first message of the turn (before any tool call) with `[routed: <model> · effort <effort>]` when it will spawn the Subagent, or `[main: <model> · effort <effort>]` when Main will handle the task. Main's effort comes from its previous reply in the Claude transcript, so a change shows after the next reply; where the host reports none (Codex, a first turn) the tag is just `[main: <model>]`. This is an instruction to the model, not a guarantee; the log is the record. On Codex the advice also tells Main not to pass `agent_type` to `spawn_agent`, because a role config (`.codex/agents/*.toml`) overrides the routed model and effort; a mismatch shows as `correlation.matched: false`.
+- Hooks only provide the routing recommendation; they do not alter the active model or effort. The route log records the recommended profile and, where available, the current Main model. On Codex, a role config (`.codex/agents/*.toml`) may override the recommendation; host-reported Subagent model correlation can show whether the reported model matches, but it does not verify effort or control execution.
 - Limits: only the last 64 KB of the log is searched for the latest route, and prompts with routing `off` write no `route` event, so a Subagent started after one is compared with the previous logged route.
 
 ```bash
@@ -294,10 +276,10 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 
 ### Report
 
-`mer report` summarizes these logs. It lists recent route, worker, Subagent start/stop, context-refresh, and error rows. Failure rows show their stage and exception type or fixed error code; run rows also show verification outcome and duration. The summary includes routed `(model, effort)` pairs, advice actions, Subagents `matched`, `mismatched`, or `unverified` against the route, classifier health, run status, Subagent lifecycle, context-refresh health, and classifier, worker, and context-refresh token totals.
+`mer report` summarizes these logs. It lists recent route, host-reported Subagent start/stop, historical run, context-refresh, and error rows. Historical run rows may include verification outcome and duration; they describe pre-route-only runs and are retained for compatibility. The summary includes routed `(model, effort)` pairs, model recommendation actions, route matches where available, classifier health, Subagent lifecycle, context-refresh health, and classifier/context-refresh token totals.
 
 - Options: `--session <id prefix>`, `--since <n>m|h|d` (for example `12h`), and `--limit <n>` (rows to list, default 20; `0` prints only the summary).
-- Tokens are recorded for `route` (classifier), `run` (worker), and `context_refresh`. Main and Subagent turns are not logged, so their tokens are not shown. Exception messages, prompts, transcripts, verification output, and Subagent output are never written to the workflow log.
+- Tokens are recorded for `route` (classifier) and `context_refresh`; historical `run` entries may contain worker tokens. Main and host Subagent turns are not logged, so their tokens are not shown. Exception messages, prompts, transcripts, verification output, and Subagent output are never written to the workflow log.
 - Claude, Codex, and Antigravity ship a `report` skill. OpenCode has the `mer_report` tool, and its routes are logged per session through `mer route --session <id>`.
 
 ## Runtime development

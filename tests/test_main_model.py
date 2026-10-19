@@ -24,17 +24,11 @@ def plan(model="claude-opus-5-5", effort="high", options=None, role="fix"):
         DifficultyDecision(role, "low", "x"),
         (),
         model,
-        None,
         "reasoning",
         "high",
         effort,
         model_options=options or (model,),
     )
-
-
-CLAUDE_MODEL = "claude-opus-5-5"
-GOLDEN_CLAUDE = "[model-effort-router] fix → reasoning · claude-opus-5-5 · effort high. Required: before any tool call, start your first message of this turn with one line naming the model that will do the work: `[routed: claude-opus-5-5 · effort high]` if you spawn the Subagent, or `[main: <your model id>]` if you handle it in Main (the Claude desktop app does not show hook messages). Main: route this single task to a native Subagent using the host's supported model/effort controls, or handle it directly when Main's model/effort already match or project instructions require it. invoke: Agent(subagent_type=\"model-effort-router:effort-high\", model=\"opus\") (`opus` runs Claude Code's current opus model, which may differ from claude-opus-5-5). Build a compact Context Packet with task, context, decisions, constraints, relevant_files, expected_result. Use facts from the current request and relevant conversation to populate the packet, label unknowns, and include the completed packet directly in the host-native Subagent invocation. Do not forward the full conversation or private reasoning. Integrate the result, then decide whether another worker is needed. The hook provides advice only; it does not inspect Main's conversation or invoke the Subagent, and does not change this Main turn's model/settings. Other configured options: other-model (user-selectable, not automatic fallbacks)."
-GOLDEN_CODEX = "[model-effort-router] fix → reasoning · gpt-6.1-sol · effort high. Required: before any tool call, start your first message of this turn with one line naming the model that will do the work: `[routed: gpt-6.1-sol · effort high]` if you spawn the Subagent, or `[main: <your model id>]` if you handle it in Main (the Codex app does not show hook messages). Main: route this single task to a native Subagent using the host's supported model/effort controls, or handle it directly when Main's model/effort already match or project instructions require it. Build a compact Context Packet with task, context, decisions, constraints, relevant_files, expected_result. Use facts from the current request and relevant conversation to populate the packet, label unknowns, and include the completed packet directly in the host-native Subagent invocation. Do not forward the full conversation or private reasoning. Integrate the result, then decide whether another worker is needed. The hook provides advice only; it does not inspect Main's conversation or invoke the Subagent, and does not change this Main turn's model/settings. Other configured options: other-model (user-selectable, not automatic fallbacks)."
 
 
 def row(kind, **fields):
@@ -252,146 +246,29 @@ class MainModelTest(unittest.TestCase):
             self.assertEqual(main_effort({}, "newhost"), "e")
 
 
-class AdviceMatchTest(unittest.TestCase):
-    def test_review_uses_independent_reviewer_even_with_matching_main_model(self):
-        for host, model, invocation in (
-            (hosts.CODEX, "gpt-6.1-sol", "invoke: spawn_agent("),
-            (hosts.CLAUDE, "claude-opus-5-5", "invoke: Agent("),
-        ):
+class AdviceRecommendationTest(unittest.TestCase):
+    def test_advice_recommends_only_model_and_effort(self):
+        for host, model in ((hosts.CLAUDE, "claude-opus-5-5"), (hosts.CODEX, "gpt-6.1-sol")):
             with self.subTest(host=host.name):
-                p = plan(model, role="review")
-                note = advice.render(p, "mer", host, main_model=model)
-                self.assertIn("independent review", note)
-                self.assertIn(invocation, note)
-                self.assertIn("actual diff, verification status/results", note)
-                self.assertNotIn("no Subagent needed", note)
-                self.assertNotIn("≠", note)
-                self.assertEqual(advice.summary(p, host, model)["action"], "spawn")
-                self.assertIsNotNone(advice.summary(p, host, model)["invocation"])
-                self.assertEqual(advice.summary(plan(model), host, model)["action"], "inline_same_model")
+                note = advice.render(plan(model, "high", options=(model, "other-model")), host)
+                self.assertIn(f"Recommended model: {model}; effort: high", note)
+                self.assertIn("Other configured options: other-model", note)
+                self.assertNotIn("Subagent", note)
+                self.assertNotIn("Context Packet", note)
+                self.assertNotIn("invoke:", note)
+                self.assertEqual(advice.summary(plan(model), host)["action"], "recommend")
 
-    def test_execution_roles_ask_for_a_review_after_the_work_on_every_route_path(self):
-        for host in (hosts.CODEX, hosts.CLAUDE, hosts.ANTIGRAVITY):
-            for role in ("implementation", "fix"):
-                for main in ("claude-opus-5-5", "claude-sonnet-5-5", None):  # same model, mismatch, unknown
-                    with self.subTest(host=host.name, role=role, main=main):
-                        note = advice.render(plan(role=role), "mer", host, main_model=main)
-                        self.assertIn("`review` skill", note)
-                        self.assertIn("not docs, config or mechanical edits", note)
-
-    def test_other_roles_get_no_review_request(self):
-        for role in ("lint", "test", "plan", "design", "review", "analysis"):
-            with self.subTest(role=role):
-                note = advice.render(plan(role=role), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
-                self.assertNotIn("`review` skill", note)
-
-    def test_mismatch_is_unconditional_and_names_both_models(self):
-        note = advice.render(plan(), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
-        self.assertIn("Main model claude-sonnet-5-5 ≠ routed claude-opus-5-5: spawn the Subagent", note)
-        self.assertIn('invoke: Agent(subagent_type="model-effort-router:effort-high", model="opus")', note)
-        self.assertIn("skipped routing: <reason>", note)
-        self.assertNotIn("project instructions require", note)
-        self.assertNotIn("already match", note)
-        self.assertTrue(note.removesuffix(advice.REVIEW_REQUEST).rstrip().endswith("settings."))
-
-    def test_codex_mismatch_gives_spawn_agent_invocation(self):
-        note = advice.render(plan("gpt-6.1-sol", "medium"), "mer", hosts.CODEX, main_model="gpt-6-luna")
-        self.assertIn(
-            'invoke: spawn_agent(model="gpt-6.1-sol", reasoning_effort="medium", fork_turns="none", '
-            "message=<Context Packet>)",
-            note,
-        )
-        self.assertIn("asks for the model/reasoning_effort", note)
-        self.assertIn(
-            "effort medium. Required: before any tool call, start your first message of this turn with one line naming the model that will do the work: "
-            "`[routed: gpt-6.1-sol · effort medium]` if you spawn the Subagent, or `[main: gpt-6-luna]`",
-            note,
-        )
-        self.assertIn("Do not pass agent_type: a role's config", note)
-
-    def test_codex_same_model_tags_reply_with_main(self):
-        note = advice.render(plan("gpt-6.1-sol", "medium"), "mer", hosts.CODEX, main_model="gpt-6.1-sol")
-        self.assertIn(
-            "effort medium. Required: before any tool call, start your first message of this turn with the line `[main: gpt-6.1-sol]`",
-            note,
-        )
-        self.assertIn("(the Codex app does not show hook messages)", note)
-
-    def test_claude_tags_reply_with_routed_or_main_model(self):
-        spawn = advice.render(plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
-        self.assertIn(
-            "Required: before any tool call, start your first message of this turn with one line naming the model that will do the work: "
-            "`[routed: claude-opus-5-5 · effort medium]` if you spawn the Subagent, or `[main: claude-sonnet-5-5]` "
-            "if you handle it in Main (the Claude desktop app does not show hook messages).",
-            spawn,
-        )
-        same = advice.render(plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-opus-5-5")
-        self.assertIn(
-            "Required: before any tool call, start your first message of this turn with the line `[main: claude-opus-5-5]`",
-            same,
-        )
-        unknown = advice.render(plan(), "mer", hosts.CLAUDE, main_model=None)
-        self.assertIn(
-            "`[main: <your model id>]` if you handle it in Main", unknown
-        )  # tag survives an unknown Main model
-
-    def test_match_says_proceed_in_main_with_routed_effort(self):
-        note = advice.render(plan(effort="xhigh"), "mer", hosts.CLAUDE, main_model="claude-opus-5-5")
-        self.assertIn("Main already runs claude-opus-5-5; no Subagent needed. Proceed directly in Main", note)
-        self.assertIn("Main cannot change its own effort; routed effort is xhigh", note)
-        self.assertNotIn("Context Packet", note)
-
-    def test_main_tag_carries_the_effort_when_known(self):
-        spawn = advice.render(
-            plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5", main_effort="high"
-        )
-        self.assertIn("or `[main: claude-sonnet-5-5 \u00b7 effort high]` if you handle it in Main", spawn)
-        same = advice.render(
-            plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-opus-5-5", main_effort="low"
-        )
-        self.assertIn("the line `[main: claude-opus-5-5 \u00b7 effort low]`", same)
-        unknown = advice.render(plan(), "mer", hosts.CLAUDE, main_model=None, main_effort="high")
-        self.assertIn("`[main: <your model id> \u00b7 effort high]`", unknown)
-
-    def test_main_tag_has_no_effort_when_unknown(self):
-        note = advice.render(plan("claude-opus-5-5", "medium"), "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
-        self.assertIn("`[main: claude-sonnet-5-5]`", note)
-
-    def test_unknown_main_model_keeps_legacy_text(self):
-        legacy = advice.render(plan(), "mer", hosts.CLAUDE)
-        self.assertIn("handle it directly when Main's model/effort already match", legacy)
-        self.assertEqual(legacy, advice.render(plan(), "mer", hosts.CLAUDE, main_model=None))
-
-    def test_unknown_path_is_the_legacy_advice_plus_the_reply_tag(self):
-        for model, host, golden in (
-            (CLAUDE_MODEL, hosts.CLAUDE, GOLDEN_CLAUDE),
-            ("gpt-6.1-sol", hosts.CODEX, GOLDEN_CODEX),
-        ):
-            p = plan(model, "high", options=(model, "other-model"))
-            self.assertEqual(advice.render(p, "mer", host), golden + advice.REVIEW_REQUEST)
-
-    def test_claude_model_without_agent_alias_falls_back_to_legacy_advice(self):
-        p = plan("provider/model-id")
-        note = advice.render(p, "mer", hosts.CLAUDE, main_model="claude-sonnet-5-5")
-        self.assertIn("handle it directly when Main's model/effort already match", note)
-        self.assertIn("start your first message of this turn with the line `[main: claude-sonnet-5-5]`", note)
-        self.assertNotIn("[routed:", note)  # nothing to spawn, so no routed tag
+    def test_same_model_recommends_effort_without_delegation(self):
+        note = advice.render(plan("claude-opus-5-5", "xhigh"), hosts.CLAUDE, main_model="claude-opus-5-5")
+        self.assertIn("Main already uses claude-opus-5-5", note)
+        self.assertIn("Recommended effort: xhigh", note)
+        self.assertNotIn("Subagent", note)
 
     def test_matches_helper_is_tristate(self):
         self.assertIsNone(advice.matches(plan(), None))
         self.assertTrue(advice.matches(plan(), "Claude-Opus-5-5"))
         self.assertFalse(advice.matches(plan(), "claude-sonnet-5-5"))
-        self.assertFalse(advice.matches(plan(), "opus"))  # no alias fuzzy matching
-
-    def test_antigravity_reply_tag_instructs_main_tag(self):
-        p = plan("gemini-3.8-flash-medium", "medium")
-        note = advice.render(p, "mer", hosts.ANTIGRAVITY, main_model="gemini-3.8-flash", main_effort="high")
-        self.assertIn(
-            "start your first message of this turn with one line naming the model that will do the work:", note
-        )
-        self.assertIn("`[routed: gemini-3.8-flash-medium · effort medium]`", note)
-        self.assertIn("`[main: gemini-3.8-flash · effort high]`", note)
-        self.assertIn("(the Antigravity app does not show hook messages)", note)
+        self.assertFalse(advice.matches(plan(), "opus"))
 
 
 if __name__ == "__main__":

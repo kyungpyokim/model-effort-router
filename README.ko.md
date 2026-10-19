@@ -2,7 +2,7 @@
 
 영문판: [README.md](README.md)
 
-MER는 개발 요청을 **역할 + 노력 수준**으로 분류하고, 해당 조합을 호스트 모델에 매핑하며, 외부 worker 요청을 실행할 수 있습니다. Main은 대화 컨텍스트를 유지하고, 필요한 단계를 결정하며, 호스트 네이티브 Subagent를 호출하는 일을 계속 담당합니다. MER는 현재 Codex 턴을 변경하지 않습니다. Worker 실행은 검증 기반 노력 수준 승격을 선택할 수 있습니다.
+MER(Model Effort Router)는 개발 요청을 **역할 + 노력 수준**으로 분류하고, 해당 조합에 맞는 호스트 모델을 추천합니다. MER의 범위는 모델·effort 선정이며 작업 실행, 리뷰, 수정은 호스트가 처리합니다. 추천은 현재 턴의 설정을 자동 변경하지 않습니다.
 
 ## 설치
 
@@ -53,7 +53,7 @@ bun install --frozen-lockfile
 
 모든 호스트 통합은 기본 모델 추천과 설정된 대안 후보를 안내할 수 있습니다. Codex·Claude·Antigravity는 hook 안내에, OpenCode는 `model_options`에 후보를 표시합니다. 이 후보는 현재 모델을 바꾸거나 자동 재시도를 실행하지 않습니다. 호스트별 제약은 각 플러그인 README를 참고하십시오.
 
-Antigravity와 OpenCode는 분류와 조언만 지원하며 worker 실행은 지원하지 않습니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/), [OpenCode 플러그인 가이드](https://dev.opencode.ai/docs/plugins/)를 참고하십시오.
+모든 호스트 통합은 모델·effort 추천만 제공합니다. Marketplace 플러그인 설치는 공유 runtime을 설치하거나 업데이트하지 않습니다. runtime을 업데이트할 때는 이 checkout에서 `python3 scripts/install_core.py`를 다시 실행하십시오. 호스트별 자세한 내용은 [Codex 플러그인 가이드](https://developers.openai.com/plugins/build/plugins), [Claude Code marketplace 가이드](https://code.claude.com/docs/en/plugin-marketplaces), [Antigravity 플러그인 가이드](https://antigravity.google/docs/plugins/), [OpenCode 플러그인 가이드](https://dev.opencode.ai/docs/plugins/)를 참고하십시오.
 
 ## 업데이트와 릴리스
 
@@ -86,7 +86,7 @@ CLI가 설치되어 있지 않은 대상은 건너뜁니다. checkout이 `origin
 
 분류기는 `role`과 `effort`를 반환하며, `confidence`와 `reason_code`는 선택 사항입니다. 역할은 `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, `analysis`입니다. 앞의 네 역할은 실행 모델을 사용하고, 나머지는 추론 모델을 사용합니다. 노력 수준은 `low`, `medium`, `high`, `xhigh`입니다. 독립적인 위험 감지는 안전 민감 검토/설계 요청을 최소 `high`까지 올릴 수 있지만, 역할이나 모델 레인은 변경하지 않습니다.
 
-기본값은 Codex 실행 `gpt-6-luna`·추론 `gpt-6.1-sol`, Claude 실행 `claude-sonnet-5-5`·추론 `claude-opus-5-5`, Antigravity 실행 `gemini-3.8-flash`·추론 `gemini-4-argon`, OpenCode 실행 조언 `opencode/mimo-v2.6-flash-free`·추론 조언 `opencode/nemotron-3-ultra-free`입니다. OpenCode 추론 후보는 `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, `opencode-go/grok-4.7`입니다. 각 호스트/레인에서 `primary`, 선택적 `alternatives`, `fallback`, 지원 effort를 설정할 수 있습니다. `primary`를 추천하고 `alternatives`를 사용자가 고를 후보로 표시합니다. 예시:
+기본값은 Codex 실행 `gpt-6-luna`·추론 `gpt-6.1-sol`, Claude 실행 `claude-sonnet-5-5`·추론 `claude-opus-5-5`, Antigravity 실행 `gemini-3.8-flash`·추론 `gemini-4-argon`, OpenCode 실행 조언 `opencode/mimo-v2.6-flash-free`·추론 조언 `opencode/nemotron-3-ultra-free`입니다. OpenCode 추론 후보는 `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, `opencode-go/grok-4.7`입니다. 각 호스트/레인에서 `primary`, 선택적 `alternatives`, 지원 effort를 설정할 수 있습니다. `primary`를 추천하고 `alternatives`를 사용자가 고를 후보로 표시합니다. 이전 설정 호환성을 위해 모델별 `fallback` 값은 읽지만 더는 사용하지 않습니다. 예시:
 
 ```json
 {
@@ -105,11 +105,11 @@ CLI가 설치되어 있지 않은 대상은 건너뜁니다. checkout이 `origin
 }
 ```
 
-예시 모델 ID는 각 호스트에서 사용할 수 있는 모델로 바꾸십시오. OpenCode는 `model_options`를 반환하고, 다른 hook은 안내문에 alternatives를 표시합니다. 대안 후보는 실행 재시도에 사용하지 않습니다. MER는 stderr만으로 실행 fallback을 추론하지 않으며 worker가 시작되었을 수 있는 경우 재시도하지 않습니다. 명시적인 사전 실행 불가 신호가 있을 때만 fallback을 허용합니다. 분류기 provider는 설정된 다음 분류기로 넘어갈 수 있습니다. 모두 실패하면 CLI 라우팅은 오류를 반환하고 hook은 fail open으로 사용자 요청을 막지 않습니다.
+예시 모델 ID는 각 호스트에서 사용할 수 있는 모델로 바꾸십시오. OpenCode는 `model_options`를 반환하고, 다른 hook은 안내문에 alternatives를 표시합니다. 대안 후보는 추천에만 사용되며 자동 모델 전환을 일으키지 않습니다. 분류기 provider는 설정된 다음 분류기로 넘어갈 수 있습니다. 모두 실패하면 CLI 라우팅은 오류를 반환하고 hook은 fail open으로 사용자 요청을 막지 않습니다.
 
 ## 분류기 backend 설정
 
-분류기 backend는 요청의 role과 effort를 판정합니다. worker model을 선택하는 `models.<host>`와는 별개입니다. 내장 분류기 기본값은 fallback이 없는 `subscription`입니다. TypeSafe Jev를 role/effort 분류기의 주 backend로 사용하려면 `difficulty.backend`를 `jev`로 설정합니다.
+분류기 backend는 요청의 role과 effort를 판정합니다. 추천 호스트 모델을 제공하는 `models.<host>`와는 별개입니다. 내장 분류기 기본값은 fallback이 없는 `subscription`입니다. TypeSafe Jev를 role/effort 분류기의 주 backend로 사용하려면 `difficulty.backend`를 `jev`로 설정합니다.
 
 ```json
 {
@@ -207,32 +207,14 @@ Decisions API는 API 엔드포인트이고 `gpt-6-luna`는 해당 API에서 사�
 ```sh
 python3 <plugin>/bin/mer route --host codex --json 'Review the authentication changes'
 python3 <plugin>/bin/mer route --host codex --role implementation --effort high --json 'Implement the approved design'
-python3 <plugin>/bin/mer run --host codex --role test --effort medium 'Run and fix the focused tests'
 python3 <plugin>/bin/mer report --since 12h --limit 10
 ```
 
-`mer route`는 분류/매핑만 수행합니다. 기본적으로 `mer run`은 worker 요청을 정확히 하나 실행합니다. 추론 역할은 읽기 전용으로 실행됩니다. Antigravity는 Subagent 격리가 검증되지 않아, OpenCode는 plugin worker 실행 계약이 없어 worker 실행을 지원하지 않습니다. OpenCode 플러그인은 `mer` 조언 도구와 로그 요약용 `mer_report` 도구를 제공합니다. `mer chat`은 제거되었으므로, route 결과를 사용해 Main이 선택된 Subagent를 호출하도록 요청하십시오. 명시적인 `--role`과 `--effort`는 자동 hook 적합성 판단을 우회하며, 반드시 함께 제공해야 합니다.
+`mer route`는 요청의 role/effort를 분류하고 호스트 모델에 매핑합니다. 명시적인 `--role`과 `--effort`는 함께 제공해야 합니다. MER는 작업자 실행, 검증 루프, 리뷰 또는 수정 절차를 실행하지 않습니다. 기존 스크립트 호환성을 위해 `mer run`과 `mer chat`은 종료 코드 2와 함께 `mer route` 사용 안내를 반환합니다. 오래된 로그의 `run` 항목은 `mer report`에서 계속 읽을 수 있습니다.
 
-실행 후 MER는 worker 전후의 저장소 변경 경로를 비교합니다. 변경이 감지되면 텍스트 출력에는 `door`(`one-way`는 데이터 마이그레이션, 데이터 손실 또는 결제 위험인 경우이고, 그 외에는 `two-way`)와 예상 `blast_radius`(`local` 또는 `broad`), 변경 파일 수 및 최상위 디렉터리 수가 표시됩니다. JSON에는 결과 `risk_flags`와 함께 동일한 값이 `change` 아래에 포함됩니다. 영향 범위는 경로를 바탕으로 추정하므로 실제 변경 내용을 검토해 영향을 판단하십시오.
+OpenCode의 `mer` 도구도 같은 모델·effort 추천을 반환하며, `mer_report`는 로그를 요약합니다. 호스트 hook은 추천을 추가할 뿐 활성 모델/effort를 변경하지 않습니다.
 
-### Low-first worker 실행
-
-```sh
-python3 <plugin>/bin/mer run --host codex --role fix --effort low --low-first \
-  --verify 'python3 -m unittest discover -s tests' --json 'Fix the approved bug'
-```
-
-실행 역할에서 `--low-first`는 고정된 검증 명령이 양의 0이 아닌 코드로 종료된 경우에만 low에서 시작해 medium, high 순서로 승격합니다. high가 실패하면 xhigh를 호출하기 전에 `status: approval_required`로 중지합니다. 사용자가 해당 실행에 대해 xhigh를 명시적으로 승인한 경우에만 `--approve-xhigh`를 전달하십시오. Agent는 이를 설정하기 전에 승인을 받아야 합니다. 설정된 모델은 네 가지 effort를 모두 지원해야 합니다. 각 시도는 같은 workspace에서 새 세션으로 시작하며, 변경 사항을 유지하고 원래 컨텍스트와 이전 실패를 함께 받습니다. Worker 오류, 취소, 검증 시작 실패, 신호 종료 및 timeout은 루프를 중지합니다. `--timeout`은 각 worker 시도를 제한하고, `--verify-timeout`은 각 검사를 제한합니다(기본값 300초).
-
-승인 중지 결과에는 원래 요청과 마지막 실패가 담긴 `continuation_context`가 반환됩니다. 승인 후에는 같은 workspace에서 해당 context를 요청으로 전달하고 `--low-first --role <same-role> --effort xhigh --approve-xhigh --verify <same-command>`를 사용해 xhigh continuation만 실행하십시오. 이 사용량은 별도 실행으로 집계되므로, 전체 작업을 측정할 때 두 기록을 합치십시오. 명시적인 xhigh effort가 없으면 새 invocation은 low에서 시작합니다. 일회성 xhigh 실행에도 `--approve-xhigh`가 필요합니다.
-
-`--verify`는 shell expansion 없이 parent process의 권한과 환경을 사용해 실행되는 명시적인 argv 명령입니다. 작업 시작 전에 의미 있는 완료 검사를 고정하십시오. argv를 수정해도 worker가 편집할 수 있는 테스트를 변조 방지 상태로 만들 수는 없습니다. 검사 출력의 마지막 2,000자는 다음 worker에 전송되고 JSON에도 반환되므로, 그 출력에 secret을 포함하지 마십시오. 영속 route log에는 시도 메타데이터, token 수, 검사 상태/소요 시간만 저장됩니다.
-
-JSON과 route log에는 `first_pass`, `escalation_count`, 그리고 각 시도의 effort, worker 사용량 및 검증 소요 시간이 기록됩니다. `usage`는 보고된 worker token을 합산하고, `usage_missing`은 사용량이 없거나 불완전한 시도의 수를 셉니다. 분류기 사용량은 별도로 기록됩니다. 결정론적 검사는 실행 시간을 늘리지만 router model call은 추가하지 않습니다. 검사 내부의 외부 model call은 측정되지 않으므로 token 수치는 전체 검증 비용이 아닙니다.
-
-탐색적 비교를 위해 `--retry-low`는 medium 전에 동일한 실패 피드백을 사용해 low 재시도를 한 번 추가합니다. 별도로 동일하게 초기화한 workspace에서 일반 low-first와 비교하고, 전체 chain과 사용량을 보고하십시오. 이미 수정된 workspace에서 두 arm을 모두 실행하지 마십시오.
-
-Hook은 Context Packet 필드와 작성 지침을 제공할 뿐, Main의 대화에서 완성된 packet을 가져오지 않습니다. Main이 현재 요청과 관련 대화의 사실을 추려 Context Packet(`task`, `context`, `decisions`, `constraints`, `relevant_files`, `expected_result`)을 채우고 네이티브 Subagent 호출에 직접 포함해야 합니다. 검토에는 `goal`, `decisions`, `constraints`, 실제 diff, 검증 상태/결과만 전달하고 실행하지 않은 검사는 `실행 안 함`으로 표시하십시오. 기본적으로 비공개 추론 과정이나 전체 대화를 전달하지 마십시오. Hook은 Main의 대화를 읽거나 네이티브 Subagent를 직접 생성하지 않습니다. `mer run`은 별도 단일 worker 경로라 Main의 대화를 읽을 수 없으므로 필요한 컨텍스트를 명시적인 task 입력에 포함해야 합니다.
+호스트의 의도한 작업 흐름은 **작업 지시 → MER 모델·effort 추천 → 호스트 작업 → 호스트 리뷰 → 호스트 수정**입니다. MER는 추천에서 종료하며 worker 실행, 리뷰, 수정, 검증 루프를 시작하지 않습니다.
 
 ## 설정
 
@@ -241,49 +223,49 @@ Hook은 Context Packet 필드와 작성 지침을 제공할 뿐, Main의 대화�
 ```json
 {
   "router": {"mode": "auto"},
-  "difficulty": {"backend": "jev", "fallback": "subscription", "timeout_s": 10},
+  "difficulty": {"backend": "jev", "timeout_s": 10},
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6.1-sol", "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "fallback": "gpt-6-luna", "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "efforts": ["low", "medium", "high", "xhigh"]}
     },
     "claude": {
-      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-opus-5-5", "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "fallback": "claude-sonnet-5-5", "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "claude-opus-5-5", "alternatives": ["claude-fable-5-1"], "efforts": ["low", "medium", "high", "xhigh"]}
     },
     "antigravity": {
-      "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-sonnet-5-5"], "fallback": null, "efforts": ["medium", "high"]},
-      "reasoning": {"primary": "gemini-4-argon", "alternatives": ["claude-opus-5-5"], "fallback": null, "efforts": ["medium", "high"]}
+      "execution": {"primary": "gemini-3.8-flash", "alternatives": ["claude-sonnet-5-5"], "efforts": ["medium", "high"]},
+      "reasoning": {"primary": "gemini-4-argon", "alternatives": ["claude-opus-5-5"], "efforts": ["medium", "high"]}
     },
     "opencode": {
-      "execution": {"primary": "opencode/mimo-v2.6-flash-free", "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "opencode/nemotron-3-ultra-free", "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"], "fallback": null, "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "opencode/mimo-v2.6-flash-free", "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "opencode/nemotron-3-ultra-free", "alternatives": ["opencode-go/glm-5.3", "opencode-go/kimi-k3", "opencode-go/grok-4.7"], "efforts": ["low", "medium", "high", "xhigh"]}
     }
   }
 }
 ```
 
-Legacy L1-L5, tier/profile, session, escalation 및 `nimble_jev` 설정은 마이그레이션 안내와 함께 거부됩니다. tier override는 `/router role=<role> effort=<effort>`로 바꾸고, 이전 Main-session 라우팅 workflow는 `mer route`와 Main이 선택한 Subagent 조합으로 바꾸십시오. `nimble_jev`는 제거되었으므로 `nimble`과 `jev` 같은 별도의 classifier fallback을 설정하십시오.
+Legacy L1-L5, tier/profile, session, escalation 및 `nimble_jev` 설정은 마이그레이션 안내와 함께 거부됩니다. tier override는 `/router role=<role> effort=<effort>`로 바꾸고, 이전 Main-session 라우팅 명령은 `mer route`로 바꾸십시오. `nimble_jev`는 제거되었으므로 `nimble`과 `jev` 같은 별도의 classifier fallback을 설정하십시오.
 
 Jev 인증 정보는 전역 사용자 설정에만 둘 수 있습니다. 자세한 방법은 [분류기 backend 설정](#분류기-backend-설정)을 참고하십시오. 저장소 설정에는 이 인증 정보를 둘 수 없습니다.
 
 ### 실험: policy 모드
 
-`router.mode = "policy"`는 분류기를 건너뜁니다. `UserPromptSubmit` hook이 정적 모델 맵(execution/reasoning lane과 지원하는 effort)을 주입하고, lane과 effort 선택 및 Subagent 생성 여부는 Main이 직접 결정합니다. 빈 프롬프트가 아니면 항상 정책을 주입합니다(키워드 사전 필터 없음, 사소한 요청은 Main이 직접 거릅니다). 모델 호출은 하지 않습니다. Codex와 Claude에서만 동작하며 다른 host는 아무 안내도 하지 않습니다.
+`router.mode = "policy"`는 분류기를 건너뜁니다. `UserPromptSubmit` hook은 정적 모델 맵(execution/reasoning lane과 지원 effort)을 모델 선정 참고 정보로 주입합니다. 비어 있지 않은 prompt마다 정책을 주입하며 모델 호출은 하지 않습니다. Codex와 Claude에서만 동작하며 다른 host는 아무 안내도 하지 않습니다.
 
 - 활성화: 전역 사용자 설정에 `{"router": {"mode": "policy"}}`를 넣거나 프롬프트를 `/router policy`로 시작합니다. `"mode": "auto"`(기본값)로 되돌리면 해제됩니다. 명시적 `/router role=<role> effort=<effort>`는 기존 동작을 유지합니다.
 - `auto`와 비교하기 위한 A/B 실험이며, 비교 후 진 쪽 모드는 제거될 예정입니다.
-- 워크플로우 로그로 비교합니다: `python3 scripts/compare_modes.py [--since <unix ts>]`가 모드와 host별로 라우팅된 프롬프트 수, spawn 안내 수, Subagent 시작 수, 일치 횟수, hook 지연 중앙값, 분류기 토큰을 출력합니다.
+- 워크플로우 로그로 비교합니다: `python3 scripts/compare_modes.py [--since <unix ts>]`가 모드와 host별 route 수, Subagent 상관관계 수, hook 지연 중앙값, 분류기 토큰을 출력합니다.
 
 ## 워크플로우 로그
 
-세션마다 `~/.local/state/model-effort-router/<session>-<hash>.log.jsonl`에 기록됩니다(`MER_STATE_DIR`로 변경 가능). 흐름은 `route`(결정과 `advice`: `spawn`, `inline_same_model`, `advise`, `no_route`, 라우팅된 모델과 Main에 지시한 호출) -> `subagent_start` -> `run`(`mer` worker 실행) -> `subagent_stop` 순서입니다. 프롬프트와 Subagent 출력은 저장하지 않습니다.
+세션마다 `~/.local/state/model-effort-router/<session>-<hash>.log.jsonl`에 기록됩니다(`MER_STATE_DIR`로 변경 가능). 이벤트에는 `route`(결정과 advice action), 호스트가 보고한 `subagent_start`/`subagent_stop`, 과거 `run`, `context_refresh`, 고정 코드 `error`가 포함될 수 있습니다. 현재 MER는 `run` 이벤트를 새로 만들지 않으며 예전 로그는 호환성을 위해 읽습니다. 프롬프트와 Subagent 출력은 저장하지 않습니다.
 
-- `subagent_start`에는 `correlation.expected`(세션의 마지막 `route`)와 `correlation.matched`가 붙습니다. `matched_on`은 비교한 항목입니다. Codex는 `["model"]`(Subagent가 보고한 모델과 라우팅된 모델), Claude는 `["agent_type"]`(agent type과 `model-effort-router:effort-<effort>`; Claude payload에는 모델이 없습니다)입니다. effort는 어느 쪽에서도 검증하지 않습니다. 비교할 수 없으면 `matched`는 `null`입니다: 이전 route 없음, 모델/agent type 누락, route가 `inline_same_model`, Claude route가 haiku(effort agent 없음)인 경우입니다.
+- `subagent_start`에는 세션의 마지막 `route`를 기준으로 한 `correlation.expected`와 `correlation.matched`가 붙습니다. 현재 route는 `selection_only`로 표시됩니다. Codex는 호스트가 보고한 Subagent 모델과 추천 모델을 비교할 수 있습니다(`matched_on: ["model"]`). Claude lifecycle payload에는 모델이 없어 현재 route에서는 비교하지 않습니다(`matched_on: []`). MER는 호스트 이벤트를 기록할 뿐 Subagent를 실행하거나 지시하지 않습니다. 과거 `selection_only` 없는 route는 Claude agent type 비교를 계속 지원합니다. effort는 검증하지 않습니다.
 - `subagent_stop`은 같은 `agent_id`의 `subagent_start`가 가진 `correlation`을 복사하며, 없으면 `null`입니다.
 - Subagent 이벤트는 Codex의 `turn_id`를 `agent_turn_id`로 기록합니다. 이는 child turn이며 route의 `turn_id`와 다릅니다.
 - 분류기 fallback: 분류기가 실패해 라우팅이 fallback으로 넘어가면 `route` 이벤트에 `classifier_causes`(예: `["jev:HTTP 503"]`, backend 이름, 오류 타입, HTTP 상태 코드만 기록하며 오류 메시지는 기록하지 않음)가 남고 `no_route`와 모든 분류기가 실패한 경우에도 기록됩니다. hook은 `[model-effort-router] classifier fallback: jev failed (HTTP 503) → classified by openai_decisions`를 표시하고, 모든 분류기가 실패하면 `classifier failed: ...; no routing advice this turn.`을 표시합니다. Codex와 Claude 데스크톱 앱은 hook 메시지를 표시하지 않으므로 advice가 Main에게 사용자에게 알리라고도 지시합니다.
-- Codex 앱과 Claude 데스크톱 앱은 hook 출력을 표시하지 않습니다. 그래서 advice는 Main에게 이번 턴의 첫 메시지(어떤 도구 호출보다 먼저)를 Subagent를 띄울 예정이면 `[routed: <model> · effort <effort>]`, Main이 직접 처리할 예정이면 `[main: <model> · effort <effort>]`로 시작하라고 지시합니다. Main의 effort는 Claude transcript의 직전 reply에서 읽으므로 변경은 다음 reply부터 반영되고, host가 알려 주지 않으면(Codex, 첫 턴) `[main: <model>]`만 씁니다. 모델에 대한 지시일 뿐 보장은 아니며, 기록은 로그가 기준입니다. Codex advice는 또한 `spawn_agent`에 `agent_type`을 넘기지 말라고 지시합니다. role 설정(`.codex/agents/*.toml`)이 라우팅된 모델과 effort를 덮어쓰기 때문이며, 어긋나면 `correlation.matched: false`로 나타납니다.
+- hook은 라우팅 추천만 제공하며 활성 모델이나 effort를 바꾸지 않습니다. route 로그에는 추천 프로필과 가능한 경우 Main 모델이 기록됩니다. Codex role 설정(`.codex/agents/*.toml`)은 추천과 다르게 설정할 수 있습니다. 호스트가 보고한 Subagent 모델을 비교할 수 있지만, effort를 검증하거나 실행을 제어하지는 않습니다.
 - 한계: 마지막 route는 로그 끝 64KB 안에서만 찾으며, 라우팅이 `off`인 프롬프트는 `route` 이벤트를 쓰지 않으므로 그 뒤 시작한 Subagent는 이전에 기록된 route와 비교됩니다.
 
 ```bash
@@ -292,10 +274,10 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 
 ### 리포트
 
-`mer report`는 이 로그를 요약합니다. 최근 `route`, `run`, `subagent` 행(모델, effort, 역할, 분류기, advice 동작, 알려진 경우 Main의 모델과 effort를 `main=<model>/<effort>`로, 토큰 사용량)을 나열한 뒤, 조건에 맞는 전체 세션을 합산합니다. 합산 항목은 라우팅된 `(model, effort)` 조합, advice 동작, route 대비 Subagent의 `matched`/`mismatched`/`unverified`, 분류기 상태(에러, 폴백, 지연 시간 평균과 p95, 실패 원인), 분류기와 worker 토큰입니다.
+`mer report`는 이 로그를 요약합니다. 최근 `route`, 과거 `run`, `subagent` 행(모델, effort, 역할, 분류기, 추천 동작, 알려진 경우 Main의 모델과 effort를 `main=<model>/<effort>`로, 토큰 사용량)을 나열한 뒤, 조건에 맞는 전체 세션을 합산합니다. 합산 항목은 라우팅된 `(model, effort)` 조합, 모델 추천 상태, 가능한 경우 route 대비 Subagent의 `matched`/`mismatched`/`unverified`, 분류기 상태(에러, 폴백, 지연 시간 평균과 p95, 실패 원인), 분류기 token입니다. 과거 run 행은 route-only 전의 실행 기록이며 호환성을 위해 계속 표시됩니다.
 
 - 옵션: `--session <세션 ID 앞부분>`, `--since <n>m|h|d`(예: `12h`), `--limit <n>`(나열할 행 수, 기본 20, `0`이면 요약만 출력).
-- 토큰은 `route`(분류기 호출)와 `run`(worker)에만 있습니다. Main과 Subagent 턴은 로그에 남지 않아 그 토큰은 표시되지 않습니다.
+- 토큰은 `route`(분류기 호출)에 기록되며, 과거 `run` 행에는 worker token이 남아 있을 수 있습니다. Main과 Subagent 턴은 로그에 남지 않아 그 토큰은 표시되지 않습니다.
 - Claude, Codex, Antigravity는 `report` 스킬을 제공합니다. OpenCode는 `mer_report` 도구를 제공하며, `mer route --session <id>`로 세션별 route를 로그에 남깁니다.
 
 ## Runtime 개발
