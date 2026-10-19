@@ -156,6 +156,13 @@ def route(
         mapped = cfg.models[host][lane]
     except KeyError as exc:
         raise ValueError(f"no model mapping configured for host {host!r} and lane {lane!r}") from exc
+    if host == "antigravity":  # its slugs stop at high; clamp into the configured range instead of failing the request
+        from ..adapters.antigravity import ANTIGRAVITY_EFFORTS, AntigravityConfig
+
+        supported = [e for e in ANTIGRAVITY_EFFORTS if e in mapped["efforts"]]
+        effort = AntigravityConfig().efforts.get(effort, effort)  # xhigh/max -> high
+        if supported and EFFORTS.index(effort) < EFFORTS.index(supported[0]):
+            effort = supported[0]  # below the range: raise to the lowest supported rather than fail
     if effort not in mapped["efforts"]:
         raise ValueError(
             f"{host} {lane} model {mapped['primary']} does not support requested effort {effort}; configure a capable primary"
