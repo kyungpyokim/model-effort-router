@@ -1,0 +1,1 @@
+Required: before any tool call, start your first message of this turn with the line `${line}` (${app} does not show hook messages).

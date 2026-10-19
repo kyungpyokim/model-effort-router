@@ -2,6 +2,7 @@
 
 import re
 
+from .. import prompts
 from ..policy.targeting import NO_ROUTE
 from .main_model import normalize
 
@@ -79,10 +80,7 @@ def reply_tag(plan, host):
     if app is None or plan.target == NO_ROUTE or not plan.decision:
         return ""
     line = _header(plan, plan.decision).rstrip(".")
-    return (
-        "Required: before any tool call, start your first message of this turn with the line "
-        f"`{line}` ({app} does not show hook messages). "
-    )
+    return prompts.render("advice_reply_tag", line=line, app=app) + " "
 
 
 def render(plan, host, main_model=None):
