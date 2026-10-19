@@ -197,6 +197,31 @@ class AntigravityRoutedHookTest(HookCase):
         message = self.hook(self.transcript("Fix the parser bug"))
         self.assertIn("routing error", message or "")
 
+    def test_hook_injects_reply_tag_when_settings_change_present(self):
+        self.fake = {"role": "fix", "effort": "medium"}
+        path = self.root / "transcript_with_settings.jsonl"
+        content = (
+            "<USER_REQUEST>\nFix parser\n</USER_REQUEST>\n"
+            "<USER_SETTINGS_CHANGE>\n"
+            "The user changed setting `Model Selection` from None to Gemini 3.8 Flash (High).\n"
+            "</USER_SETTINGS_CHANGE>"
+        )
+        row = {
+            "step_index": 0,
+            "source": "USER_EXPLICIT",
+            "type": "USER_INPUT",
+            "status": "DONE",
+            "content": content,
+        }
+        path.write_text(json.dumps(row) + "\n")
+        message = self.hook(path)
+        self.assertIn(
+            "start your first message of this turn with one line naming the model that will do the work:", message
+        )
+        self.assertIn("`[routed: gemini-3.8-flash-medium · effort medium]`", message)
+        self.assertIn("`[main: gemini-3.8-flash · effort high]`", message)
+        self.assertIn("(the Antigravity app does not show hook messages)", message)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -160,15 +160,64 @@ def _claude_effort(data, sdir):
     return found
 
 
+def _antigravity(path):
+    """(model, effort) read from the latest settings change in the Antigravity transcript."""
+    if not path:
+        return None, None
+    found_model, found_effort = None, None
+    try:
+        for line in _lines(path, TAIL_BYTES):
+            if "Model Selection" not in line and "USER_SETTINGS_CHANGE" not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except (ValueError, RecursionError):
+                continue
+            if not isinstance(row, dict):
+                continue
+            content = row.get("content")
+            if not isinstance(content, str):
+                continue
+            match = _ANTIGRAVITY_SETTING.search(content)
+            if match:
+                raw_model = match.group(1).strip()
+                model_str = re.sub(r"\s+", "-", raw_model).lower()
+                model_str = model_str.replace("claude-sonnet-5.5", "claude-sonnet-5-5").replace(
+                    "claude-opus-5.5", "claude-opus-5-5"
+                )
+                found_model = normalize(model_str)
+                effort = match.group(2).strip().lower() if match.group(2) else None
+                found_effort = effort if effort in ("low", "medium", "high", "xhigh") else None
+    except OSError:
+        pass
+    return found_model, found_effort
+
+
+def _antigravity_model(data, sdir):
+    path = data.get("transcriptPath") or data.get("transcript_path")
+    return _antigravity(path)[0]
+
+
+def _antigravity_effort(data, sdir):
+    path = data.get("transcriptPath") or data.get("transcript_path")
+    return _antigravity(path)[1]
+
+
 def _unknown(data, sdir):
     return None
 
+
+_ANTIGRAVITY_SETTING = re.compile(
+    r"`Model Selection`\s+(?:from\s+.*?\s+)?to\s+([A-Za-z0-9\s._-]+?)(?:\s*\(([^)\n]+)\))?\s*\.(?:\s*(?:No need to comment|</USER_SETTINGS_CHANGE>)|$)",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 # What each host's payload can tell about Main; a host without a reader (or a field) stays unknown.
 MainReader = namedtuple("MainReader", "model effort")
 READERS = {
     "claude": MainReader(_claude_model, _claude_effort),
     "codex": MainReader(_codex_model, _unknown),  # Codex payloads carry the model but no effort
+    "antigravity": MainReader(_antigravity_model, _antigravity_effort),
 }
 _NO_READER = MainReader(_unknown, _unknown)
 
