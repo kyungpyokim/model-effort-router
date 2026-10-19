@@ -29,26 +29,26 @@ class WorkflowLogTest(HookCase):
         self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
         return self.log_events()[-1]
 
-    def test_route_event_records_host_turn_and_spawn_advice(self):
+    def test_route_event_records_host_turn_and_selection_advice(self):
         ev = self.route()
         self.assertEqual((ev["host"], ev["turn_id"]), ("codex", "t1"))
         self.assertEqual(
             ev["advice"],
             {
-                "action": "spawn",
+                "action": "recommend",
+                "selection_only": True,
                 "main_model": "gpt-6-luna",
                 "routed_model": "gpt-6.1-sol",
                 "routed_effort": "medium",
                 "agent": "reasoning",
-                "invocation": {"model": "gpt-6.1-sol", "reasoning_effort": "medium"},
             },
         )
         self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(ev))
 
     def test_same_model_and_unknown_main_actions(self):
-        self.assertEqual(self.route(role="plan", model="gpt-6.1-sol")["advice"]["action"], "inline_same_model")
-        self.assertIsNone(self.route(role="plan", model="gpt-6.1-sol")["advice"]["invocation"])
-        self.assertEqual(self.route(role="plan", model=None)["advice"]["action"], "advise")
+        self.assertEqual(self.route(role="plan", model="gpt-6.1-sol")["advice"]["action"], "already_selected")
+        self.assertNotIn("invocation", self.route(role="plan", model="gpt-6.1-sol")["advice"])
+        self.assertEqual(self.route(role="plan", model=None)["advice"]["action"], "recommend")
 
     def test_subagent_start_and_stop_correlate_with_the_route(self):
         self.route()
@@ -72,7 +72,7 @@ class WorkflowLogTest(HookCase):
         self.assertIs(self.sub("start", model="other")["correlation"]["matched"], False)
         self.assertIsNone(self.sub("start")["correlation"]["matched"])  # model unknown
 
-    def test_claude_matches_on_agent_type(self):
+    def test_claude_route_does_not_claim_subagent_execution(self):
         self.fake = FAKE
         payload = {"session_id": SID, "cwd": str(self.repo), "prompt": DEV, "model": "claude-sonnet-5-5"}
         run_script(
@@ -83,28 +83,27 @@ class WorkflowLogTest(HookCase):
             plugin=CLAUDE,
         )
         adv = [e for e in self.log_events() if e["event"] == "route"][-1]["advice"]
-        self.assertEqual(adv["invocation"], {"subagent_type": "model-effort-router:effort-medium", "model": "opus"})
+        self.assertTrue(adv["selection_only"])
+        self.assertNotIn("invocation", adv)
         ok = self.sub("start", CLAUDE, "claude", agent_type="model-effort-router:effort-medium")
-        self.assertIs(ok["correlation"]["matched"], True)
-        self.assertEqual(ok["correlation"]["matched_on"], ["agent_type"])
-        bad = self.sub("start", CLAUDE, "claude", agent_type="Explore")
-        self.assertIs(bad["correlation"]["matched"], False)
+        self.assertIsNone(ok["correlation"]["matched"])
+        self.assertEqual(ok["correlation"]["matched_on"], [])
 
     def test_stop_follows_its_own_start_not_the_latest_route(self):
         self.route()
         self.sub("start", model="gpt-6.1-sol", agent_id="a1")
         self.route(model="gpt-6.1-sol")  # a later prompt: Main inline
         stop = self.sub("stop", model="gpt-6.1-sol", agent_id="a1")
-        self.assertEqual(stop["correlation"]["expected"]["action"], "spawn")
+        self.assertEqual(stop["correlation"]["expected"]["action"], "recommend")
         self.assertIs(stop["correlation"]["matched"], True)
         orphan = self.sub("stop", agent_id="other")
         self.assertEqual(orphan["correlation"], {"expected": None, "matched": None, "matched_on": []})
 
-    def test_inline_same_model_route_never_claims_a_match(self):
+    def test_already_selected_route_remains_model_comparable_on_codex(self):
         self.route(role="plan", model="gpt-6.1-sol")
         start = self.sub("start", model="gpt-6.1-sol")
-        self.assertEqual(start["correlation"]["expected"]["action"], "inline_same_model")
-        self.assertIsNone(start["correlation"]["matched"])
+        self.assertEqual(start["correlation"]["expected"]["action"], "already_selected")
+        self.assertIs(start["correlation"]["matched"], True)
 
     def test_claude_haiku_route_is_not_comparable(self):
         expected = {
@@ -165,7 +164,6 @@ def _plan(model, effort="medium", target=ROUTE, mode="auto", decision=True):
         DifficultyDecision("fix", effort, "x") if decision else None,
         (),
         model,
-        None,
         "reasoning",
         effort,
         effort,
@@ -177,31 +175,22 @@ def _host(name):
     return SimpleNamespace(name=name)
 
 
-class InvocationAgreementTest(unittest.TestCase):
-    CASES = (
-        ("codex spawn", "codex", "gpt-6.1-sol", "gpt-6-luna", "spawn"),
-        ("codex advise", "codex", "gpt-6.1-sol", None, "advise"),
-        ("claude alias spawn", "claude", "claude-opus-5-5", "claude-sonnet-5-5", "spawn"),
-        ("claude alias advise", "claude", "claude-opus-5-5", None, "advise"),
-        ("claude haiku", "claude", "claude-haiku-4-5", "claude-sonnet-5-5", "spawn"),
-        ("claude no alias", "claude", "other-model", "claude-sonnet-5-5", "advise"),
-    )
-
-    def test_logged_invocation_values_appear_in_the_rendered_advice(self):
-        for label, host, model, main, action in self.CASES:
-            with self.subTest(label):
+class RecommendationAgreementTest(unittest.TestCase):
+    def test_logged_route_and_rendered_advice_are_selection_only(self):
+        for host, model, main, action in (
+            ("codex", "gpt-6.1-sol", "gpt-6-luna", "recommend"),
+            ("codex", "gpt-6.1-sol", "gpt-6.1-sol", "already_selected"),
+            ("claude", "claude-opus-5-5", "claude-sonnet-5-5", "recommend"),
+        ):
+            with self.subTest(host=host, main=main):
                 plan, h = _plan(model), _host(host)
-                info, text = advice.summary(plan, h, main), advice.render(plan, "mer", h, main)
+                info, text = advice.summary(plan, h, main), advice.render(plan, h, main)
                 self.assertEqual(info["action"], action)
-                invocation = info["invocation"]
-                if invocation is None:
-                    self.assertTrue("invoke:" not in text or "has no Agent model alias" in text)
-                    continue
-                for key, value in invocation.items():
-                    if value is not None:
-                        self.assertIn(f'{key}="{value}"', text)
-                if label == "claude haiku":
-                    self.assertIn('invoke: Agent(model="haiku")', text)
+                self.assertTrue(info["selection_only"])
+                self.assertNotIn("invocation", info)
+                self.assertIn(model, text)
+                self.assertNotIn("Subagent", text)
+                self.assertNotIn("invoke:", text)
 
     def test_every_no_route_plan_logs_no_route_and_only_a_missing_decision_logs_off(self):
         for mode in ("auto", "manual", "off", "invalid_override"):

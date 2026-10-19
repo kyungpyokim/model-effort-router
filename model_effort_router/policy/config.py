@@ -22,26 +22,22 @@ DEFAULTS = {
         "codex": {
             "execution": {
                 "primary": "gpt-6-luna",
-                "fallback": "gpt-6.1-sol",
                 "efforts": list(EFFORTS),
             },
             "reasoning": {
                 "primary": "gpt-6.1-sol",
                 "alternatives": ["gpt-6-astra"],
-                "fallback": "gpt-6-luna",
                 "efforts": list(EFFORTS),
             },
         },
         "claude": {
             "execution": {
                 "primary": "claude-sonnet-5-5",
-                "fallback": "claude-opus-5-5",
                 "efforts": list(EFFORTS),
             },
             "reasoning": {
                 "primary": "claude-opus-5-5",
                 "alternatives": ["claude-fable-5-1"],
-                "fallback": "claude-sonnet-5-5",
                 "efforts": list(EFFORTS),
             },
         },
@@ -49,20 +45,17 @@ DEFAULTS = {
             "execution": {
                 "primary": "gemini-3.8-flash",
                 "alternatives": ["claude-sonnet-5-5"],
-                "fallback": None,
                 "efforts": ["medium", "high"],
             },
             "reasoning": {
                 "primary": "gemini-4-argon",
                 "alternatives": ["claude-opus-5-5"],
-                "fallback": None,
                 "efforts": ["medium", "high"],
             },
         },
         "opencode": {
             "execution": {
                 "primary": "opencode/mimo-v2.6-flash-free",
-                "fallback": None,
                 "efforts": list(EFFORTS),
             },
             "reasoning": {
@@ -72,7 +65,6 @@ DEFAULTS = {
                     "opencode-go/kimi-k3",
                     "opencode-go/grok-4.7",
                 ],
-                "fallback": None,
                 "efforts": list(EFFORTS),
             },
         },

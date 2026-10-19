@@ -23,7 +23,7 @@ class AntigravityBundleTest(unittest.TestCase):
         checked = subprocess.run(["agy", "plugin", "validate", str(PLUGIN)], capture_output=True, text=True, timeout=30)
         self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
 
-    def test_bundle_routes_but_rejects_unverified_worker_execution(self):
+    def test_bundle_routes_and_removed_run_command_recommends_route(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp).resolve()
             env = {k: v for k, v in os.environ.items() if not k.startswith("MER_")}
@@ -116,12 +116,12 @@ class AntigravityBundleTest(unittest.TestCase):
                 timeout=30,
             )
             self.assertEqual(run.returncode, 2)
-            self.assertIn("execution isolation is unverified", run.stderr)
+            self.assertIn("mer run was removed", run.stderr)
 
     def test_bundle_has_native_skill_and_advisory_hook(self):
         skill = (PLUGIN / "skills" / "classify" / "SKILL.md").read_text()
         self.assertIn("mer route", skill)
-        self.assertIn("mer run` is unsupported on this host", skill)
+        self.assertIn("mer run` is no longer supported", skill)
         hooks = json.loads((PLUGIN / "hooks.json").read_text())["model-effort-router"]
         self.assertEqual(set(hooks), {"PreInvocation"})
         self.assertTrue(os.access(PLUGIN / "bin" / "mer", os.X_OK))

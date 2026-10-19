@@ -62,13 +62,11 @@ def _context_output(event, text, notice=None):
     return json.dumps(out)
 
 
-def _notice(plan, same_model=None):
+def _notice(plan):
     if plan.target == NO_ROUTE and plan.mode == "auto":
         return advice.NO_ROUTE_MESSAGE
     line = f"[model-effort-router] {plan.decision.role} → {plan.agent} · {advice.effort_pair(plan.model, plan.applied_effort)}"
-    if not same_model:
-        return line
-    return f"{line} — Main already runs this model; proceeding without a Subagent (routed effort {plan.applied_effort}; Main cannot change its own)"
+    return line
 
 
 def _main_model(data, host, env):
@@ -171,18 +169,8 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
     effort = _main_effort(data, host, env) if routed else None
     policy = advice.is_policy(plan)
     lanes = cfg.models[host.name] if policy else None
-    text = (
-        advice.render_policy(lanes, host, main, effort)
-        if policy
-        else advice.render(plan, f"python3 {Path(plugin_root) / 'bin' / 'mer'}", host, main, effort)
-    )
-    notice = (
-        advice.policy_notice(lanes)
-        if policy
-        else _notice(plan, advice.summary(plan, host, main)["action"] == "inline_same_model")
-        if text
-        else None
-    )
+    text = advice.render_policy(lanes) if policy else advice.render(plan, host, main)
+    notice = advice.policy_notice(lanes) if policy else _notice(plan) if text else None
     fallback = advice.fallback_line(plan)
     if fallback and text:
         text, notice = f"{text} {advice.tell_user(fallback)}", "\n".join(filter(None, (notice, fallback)))
@@ -243,13 +231,22 @@ NO_CORRELATION = {"expected": None, "matched": None, "matched_on": []}
 
 
 def _expected_matches(expected, host, agent_type, model):
-    """True/False when the started Subagent equals/differs from the routed one; None when nothing is comparable.
-    Always None after an inline_same_model route: no Subagent was asked for, so none can follow the advice."""
+    """Compare host-reported Subagent models with route advice; old inline_same_model logs remain incomparable."""
     if expected.get("action") == "inline_same_model":
         return None
+    if expected.get("selection_only") and expected.get("action") != "policy":
+        if host == "claude":
+            return None  # Claude's lifecycle payload has no model field.
+        routed, actual = normalize(expected.get("model")), normalize(model)
+        return routed == actual if routed and actual else None
     if (
         expected.get("action") == "policy"
     ):  # experimental: any lane model (Codex) or router effort agent (Claude) counts
+        if expected.get("selection_only"):
+            if host == "claude":
+                return None
+            actual = normalize(model)
+            return actual in expected["models"] if actual else None
         if host == "claude":  # a haiku lane is spawned without an effort agent, so nothing is comparable
             if any(advice.is_haiku(m) for m in expected["models"]) or not isinstance(agent_type, str) or not agent_type:
                 return None
@@ -267,10 +264,12 @@ def _from_route(route_ev, host, agent_type, model):
     advice_ev = route_ev.get("advice") if route_ev else None
     if isinstance(advice_ev, dict) and advice_ev.get("action") == "policy":
         expected = {"action": "policy", "models": [normalize(m) for m in advice_ev["lanes"].values()]}
+        if advice_ev.get("selection_only"):
+            expected["selection_only"] = True
         return {
             "expected": expected,
             "matched": _expected_matches(expected, host, agent_type, model),
-            "matched_on": MATCHED_ON[host],
+            "matched_on": [] if host == "claude" and expected.get("selection_only") else MATCHED_ON[host],
         }
     if not isinstance(advice_ev, dict) or "routed_model" not in advice_ev:
         return NO_CORRELATION
@@ -279,12 +278,14 @@ def _from_route(route_ev, host, agent_type, model):
         "effort": advice_ev["routed_effort"],
         "agent": advice_ev["agent"],
         "action": advice_ev["action"],
-        "invocation": advice_ev["invocation"],
+        "invocation": advice_ev.get("invocation"),
     }
+    if advice_ev.get("selection_only"):
+        expected["selection_only"] = True
     return {
         "expected": expected,
         "matched": _expected_matches(expected, host, agent_type, model),
-        "matched_on": MATCHED_ON[host],
+        "matched_on": [] if host == "claude" and expected.get("selection_only") else MATCHED_ON[host],
     }
 
 

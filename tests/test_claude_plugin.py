@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from model_effort_router.difficulty.decision import EFFORTS, DifficultyDecision
+from model_effort_router.difficulty.decision import DifficultyDecision
 from model_effort_router.host import advice, codex_hooks, hosts
 from model_effort_router.logging import route_log
 from model_effort_router.policy.router import RoutePlan
@@ -39,7 +39,8 @@ class ManifestTest(unittest.TestCase):
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/post_model_switch.py", switch["hooks"][0]["command"])
         self.assertLessEqual(switch["hooks"][0]["timeout"], 10)
         skill = (CLAUDE / "skills" / "classify" / "SKILL.md").read_text()
-        self.assertIn("Subagent", skill)
+        self.assertNotIn("Subagent", skill)
+        self.assertIn("recommends", skill)
         self.assertIn("neither changes Main's model", skill)
         self.assertIn("--role", skill)
         self.assertIn("--effort", skill)
@@ -94,79 +95,28 @@ class ManifestTest(unittest.TestCase):
         self.assertIn("claude-sonnet-5-5", claude_skill)
 
 
-class EffortAgentTest(unittest.TestCase):
-    def test_every_effort_has_an_agent_definition_with_matching_frontmatter(self):
-        for effort in EFFORTS:
-            text = (CLAUDE / "agents" / f"effort-{effort}.md").read_text()
-            head = text.split("---")[1]
-            with self.subTest(effort=effort):
-                self.assertIn(f"name: effort-{effort}\n", head)
-                self.assertIn(f"effort: {effort}\n", head)
-                self.assertIn("Context Packet", text)
-                self.assertIn("recursively", text)
-                self.assertIn("Use only when the model-effort-router hook advice names this agent.", head)
-        self.assertEqual(len(list((CLAUDE / "agents").glob("*.md"))), len(EFFORTS))
-
-    def test_advice_names_agent_and_model_alias_for_claude_only(self):
-        def plan(model, effort="high"):
-            return RoutePlan(
-                ROUTE,
-                "auto",
-                DifficultyDecision("review", "high", "x"),
-                (),
-                model,
-                None,
-                "reasoning",
-                "high",
-                effort,
-                model_options=(model,),
-            )
-
-        for model, alias in (
-            ("claude-opus-5-5", "opus"),
-            ("claude-sonnet-5-5", "sonnet"),
-            ("claude-fable-5-1", "fable"),
-            ("opus", "opus"),
-            ("sonnet-5-5", "sonnet"),
-        ):
-            note = advice.render(plan(model, "xhigh"), "mer", hosts.CLAUDE)
-            self.assertIn(f'Agent(subagent_type="model-effort-router:effort-xhigh", model="{alias}")', note, model)
-            self.assertEqual(model != alias, f"may differ from {model}" in note, model)
-        self.assertNotIn("subagent_type", advice.render(plan("gpt-6.1-sol"), "mer", hosts.CODEX))
-
-    def test_advice_without_alias_or_effort_support_names_no_effort_agent(self):
-        def plan(model):
-            return RoutePlan(
-                ROUTE,
-                "auto",
-                DifficultyDecision("fix", "low", "x"),
-                (),
-                model,
-                None,
-                "execution",
-                "low",
-                "low",
-                model_options=(model,),
-            )
-
-        note = advice.render(plan("provider/model-id"), "mer", hosts.CLAUDE)
-        self.assertNotIn("subagent_type", note)
-        self.assertNotIn("model=", note)
-        self.assertIn(".claude/agents/", note)
-        for model in ("claude-haiku-4-5", "haiku"):
-            note = advice.render(plan(model), "mer", hosts.CLAUDE)
-            self.assertIn('Agent(model="haiku")', note)
-            self.assertNotIn("subagent_type", note)
-            self.assertIn("effort does not apply", note)
-
-    def test_advice_tells_main_agent_to_continue_on_no_route(self):
-        decision = DifficultyDecision("fix", "low", "x", target="no_route")
-        note = advice.render(RoutePlan(NO_ROUTE, "auto", decision), "mer", hosts.CLAUDE)
-        self.assertEqual(note, advice.NO_ROUTE_MESSAGE)
-        note = advice.render(
-            RoutePlan(ROUTE, "auto", decision, (), "m", None, "execution", "low", "low"), "mer", hosts.CODEX
+class AdviceRecommendationTest(unittest.TestCase):
+    def test_review_role_still_recommends_reasoning_model_without_delegation(self):
+        plan = RoutePlan(
+            ROUTE,
+            "auto",
+            DifficultyDecision("review", "high", "x"),
+            (),
+            "claude-opus-5-5",
+            "reasoning",
+            "high",
+            "high",
+            model_options=("claude-opus-5-5",),
         )
-        self.assertIn("handle it directly", note)
+        note = advice.render(plan, hosts.CLAUDE)
+        self.assertIn("review → reasoning", note)
+        self.assertIn("Recommended model: claude-opus-5-5; effort: high", note)
+        self.assertNotIn("Subagent", note)
+        self.assertNotIn("Agent(", note)
+
+    def test_no_route_advice_is_preserved(self):
+        decision = DifficultyDecision("fix", "low", "x", target="no_route")
+        self.assertEqual(advice.render(RoutePlan(NO_ROUTE, "auto", decision), hosts.CLAUDE), advice.NO_ROUTE_MESSAGE)
 
 
 class HookTest(HookCase):
@@ -197,11 +147,10 @@ class HookTest(HookCase):
         note = hook_output["additionalContext"]
         self.assertIn("review → reasoning · claude-opus-5-5 · effort medium", note)
         self.assertIn("claude-opus-5-5", note)
-        self.assertIn('Agent(subagent_type="model-effort-router:effort-medium", model="opus")', note)
-        self.assertIn("goal, decisions, constraints, actual diff, verification status/results", note)
-        self.assertIn("native Subagent invocation", note)
-        self.assertIn("not run", note)
-        self.assertIn("change this Main turn's model/settings", note)
+        self.assertIn("Recommended model: claude-opus-5-5; effort: medium", note)
+        self.assertIn("does not change them", note)
+        self.assertNotIn("Subagent", note)
+        self.assertNotIn("Agent(", note)
         self.assertNotIn("L1", note)
         self.assertEqual(settings.read_bytes(), original_settings)
 
@@ -231,20 +180,20 @@ class HookTest(HookCase):
     def test_main_model_from_a_real_format_transcript_selects_the_advice(self):
         self.fake = {**self.fake, "role": "plan"}
         match = json.loads(self.submit_with_transcript("claude-opus-5-5[1m]").stdout)
-        self.assertIn(
-            "Main already runs claude-opus-5-5; no Subagent needed", match["hookSpecificOutput"]["additionalContext"]
-        )
-        self.assertIn("proceeding without a Subagent", match["systemMessage"])
+        self.assertIn("Main already uses claude-opus-5-5", match["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("Recommended effort: medium", match["hookSpecificOutput"]["additionalContext"])
+        self.assertNotIn("Subagent", match["systemMessage"])
         miss = json.loads(self.submit_with_transcript("claude-sonnet-5-5").stdout)
         note = miss["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("Main model claude-sonnet-5-5 ≠ routed claude-opus-5-5: spawn the Subagent", note)
-        self.assertIn("Agent(subagent_type=", note)
-        self.assertNotIn("proceeding without", miss["systemMessage"])
+        self.assertIn("Recommended model: claude-opus-5-5; effort: medium", note)
+        self.assertNotIn("Subagent", note)
 
-    def test_matching_review_model_still_requests_a_separate_reviewer(self):
+    def test_review_route_only_recommends_model_and_effort(self):
         out = json.loads(self.submit_with_transcript("claude-opus-5-5").stdout)
-        self.assertIn("independent review", out["hookSpecificOutput"]["additionalContext"])
-        self.assertNotIn("proceeding without a Subagent", out["systemMessage"])
+        note = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("review → reasoning · claude-opus-5-5 · effort medium", note)
+        self.assertNotIn("reviewer", note)
+        self.assertNotIn("Subagent", note)
 
     def test_main_effort_from_the_transcript_is_logged_on_the_route_event(self):
         path = self.root / "t.jsonl"
@@ -252,14 +201,6 @@ class HookTest(HookCase):
         data = {"session_id": "s", "cwd": str(self.repo), "prompt": PROMPT, "transcript_path": str(path)}
         self.assertEqual(self.submit(payload=data, env_extra={"MER_HOST": "claude"}).returncode, 0)
         self.assertEqual(route_log.last_event(str(self.state), "s", "route")["main_effort"], "high")
-
-    def test_main_effort_from_the_transcript_tags_the_reply_with_the_main_line(self):
-        path = self.root / "t.jsonl"
-        row = {"type": "assistant", "isSidechain": False, "effort": "high", "message": {"model": "claude-opus-5-5"}}
-        path.write_text(json.dumps(row) + "\n")
-        data = {"session_id": "s", "cwd": str(self.repo), "prompt": PROMPT, "transcript_path": str(path)}
-        out = json.loads(self.submit(payload=data, env_extra={"MER_HOST": "claude"}).stdout)
-        self.assertIn("`[main: claude-opus-5-5 \u00b7 effort high]`", out["hookSpecificOutput"]["additionalContext"])
 
     def start_session(self, **extra):
         data = {"session_id": "s", "hook_event_name": "SessionStart", "source": "startup", **extra}
@@ -287,7 +228,7 @@ class HookTest(HookCase):
         proc = self.switch_model(from_model="claude-sonnet-5-5", to_model="claude-opus-5-5")
         self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
         self.assertIn(
-            "Main already runs claude-opus-5-5", self.first_prompt()["hookSpecificOutput"]["additionalContext"]
+            "Main already uses claude-opus-5-5", self.first_prompt()["hookSpecificOutput"]["additionalContext"]
         )
 
     def test_post_model_switch_normalizes_snapshot_names_and_fails_open(self):
@@ -318,10 +259,10 @@ class HookTest(HookCase):
         proc = self.start_session(model="claude-opus-5-5")
         self.assertEqual((proc.returncode, proc.stdout, proc.stderr), (0, "", ""))
         out = self.first_prompt()
-        self.assertIn("Main already runs claude-opus-5-5", out["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("Main already uses claude-opus-5-5", out["hookSpecificOutput"]["additionalContext"])
         self.start_session(model="claude-sonnet-5-5")
         self.assertIn(
-            "Main model claude-sonnet-5-5 ≠ routed", self.first_prompt()["hookSpecificOutput"]["additionalContext"]
+            "Recommended model: claude-opus-5-5", self.first_prompt()["hookSpecificOutput"]["additionalContext"]
         )
 
     def test_session_start_without_model_clears_stale_value_and_stores_nothing_else(self):
@@ -329,7 +270,7 @@ class HookTest(HookCase):
         self.start_session(model="claude-opus-5-5")
         self.start_session()  # `claude -p`, /clear or a recovered conversation: no model field
         note = self.first_prompt()["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("handle it directly when Main's model/effort already match", note)
+        self.assertIn("Recommended model: claude-opus-5-5", note)
         stored = [p.read_text() for p in self.state.glob("*.model")]
         self.assertEqual(stored, [])
 

@@ -1,7 +1,7 @@
 {
   "name": "model-effort-router",
   "version": "0.13.4",
-  "description": "Routes each request to a configured role, model, and effort; provides a single-worker CLI and advisory hook for Claude Code.",
+  "description": "Routes each request to a configured role, model, and effort; provides model and effort routing advice for Claude Code.",
   "license": "MIT",
   "keywords": ["router", "cascade", "effort"]
 }

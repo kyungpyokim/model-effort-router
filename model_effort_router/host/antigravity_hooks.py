@@ -1,7 +1,7 @@
 """Antigravity PreInvocation: classify the latest user request from the transcript and advise Main per request.
 
 The payload carries no prompt, only `transcriptPath`; the user turn is read from the transcript tail (regular file only,
-bounded read). Advice only: Main's model and the Subagent controls are not changeable from a hook."""
+bounded read). Advice only: Main's model and effort are not changeable from a hook."""
 
 import json
 import os
@@ -14,12 +14,12 @@ from ..policy.overrides import parse_override
 from ..policy.router import route
 from . import advice, hosts
 from .codex_hooks import MAX_CHAIN_TIMEOUT_S, _registry, _with_timeout, load_configs
-from .main_model import main_effort, main_model
+from .main_model import main_model
 
 TAIL_BYTES = 1024 * 1024
 _REQUEST = re.compile(r"<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>", re.DOTALL)
 _CAVEAT = (
-    " Antigravity's Subagent controls only select inherit, flash or pro tiers, so this model and effort are a "
+    " Antigravity's model controls only select inherit, flash or pro tiers, so this model and effort are a "
     "preference; do not claim they were applied unless the host confirms it."
 )
 
@@ -75,8 +75,7 @@ def _advice(data, env):
     except ClassificationError as exc:
         return advice.failure_line(exc.causes)
     main = main_model(data, "antigravity")
-    effort = main_effort(data, "antigravity")
-    text = advice.render(plan, "mer", hosts.ANTIGRAVITY, main, effort)
+    text = advice.render(plan, hosts.ANTIGRAVITY, main)
     if not text or text == advice.NO_ROUTE_MESSAGE:
         return text or ""
     return text + _CAVEAT

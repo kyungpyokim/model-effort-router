@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Suggest a model/effort profile for native Antigravity Subagents, classified per request."""
+"""Recommend a model/effort profile for each Antigravity request."""
 
 import json
 import os
@@ -54,12 +54,9 @@ def main():
             )
         message = (
             # No role classification happens in this hook: the tagged model/effort pair leads, guidance follows.
-            f"[model-effort-router] {model_advice}. Give a native Antigravity Subagent a concise context packet "
-            "from the current request and relevant conversation. For code changes, delegate implementation, "
-            "integrate it, then run the separate write-capable review workflow. This is guidance for "
-            "Subagent selection; the host's current Subagent controls do not guarantee this exact model or "
-            "effort, and the hook cannot change the current Main model. Do not claim the profile was applied "
-            "unless the host confirms it."
+            f"[model-effort-router] {model_advice}. Select this model and effort for the request if available. "
+            "Antigravity's current model controls do not guarantee this exact profile, and the hook cannot "
+            "change the active model. Do not claim the profile was applied unless the host confirms it."
         )
         print(json.dumps({"injectSteps": [{"ephemeralMessage": message}]}))
     except Exception:
