@@ -9,6 +9,7 @@ import unicodedata
 import urllib.error
 import urllib.request
 
+from .. import prompts
 from .chain import HttpStatusError
 from .decision import TARGETS, DifficultyDecision, DifficultyInput
 from .subscription import MAX_PATHS, MAX_TASK_CHARS, BackendOutputError
@@ -23,86 +24,12 @@ class MissingKeyError(RuntimeError):
     pass
 
 
-# Shared by every question: with a "Session context" the request is often a short follow-up.
-CONTEXT_RULE = (
-    " Classify only the current request; use the session context, if given, only to interpret it. "
-    "A follow-up that approves or continues a plan proposed earlier (for example '진행', '응 만들어줘', '둘 다 반영') "
-    "has the role and effort of the work that plan describes."
-)
-
-QUESTIONS = {
-    "role": {
-        "type": "choice",
-        "instructions": (
-            "Which single role best describes the main deliverable of the current request? "
-            "Judge the requested output, not keywords in the text." + CONTEXT_RULE
-        ),
-        "criteria": {
-            "implementation": "Add new behavior or a feature.",
-            "fix": "Repair a bug or failure in existing behavior.",
-            "lint": "Fix only spelling, typos, formatting, style, or static-analysis issues such as unused imports.",
-            "test": "Writing, changing, or running tests is the main goal.",
-            "plan": "Produce a plan for work before executing it.",
-            "design": "A structure, interface, or architecture proposal is the requested deliverable.",
-            "review": "Inspect existing changes or code and report findings without modifying them.",
-            "analysis": (
-                "Explain causes or behavior, or answer in chat only (translation, wording, naming, "
-                "or a short message) without implementing or editing project files."
-            ),
-        },
-    },
-    "effort": {
-        "type": "choice",
-        "instructions": (
-            "Choose the reasoning effort from how hard the decisions are, not from how much code "
-            "must be read. Judge it independently of role, file count, or keywords: planning or "
-            "reviewing a change needs the same effort as making it." + CONTEXT_RULE
-        ),
-        "criteria": {
-            "low": (
-                "One function, option, or explanation is involved and the request states or clearly "
-                "implies the approach, even if that code must be read first."
-            ),
-            "medium": (
-                "Existing parts are connected or changed by established patterns, edge cases need "
-                "judgment, or missing details must be gathered before deciding."
-            ),
-            "high": (
-                "Correctness depends on interacting guarantees such as concurrency, consistency, "
-                "compatibility, or security, or real design tradeoffs or uncertain diagnosis remain."
-            ),
-            "xhigh": (
-                "Rare timing-dependent failures across several subsystems, or changes where a mistake "
-                "would corrupt or lose production data, bypass security, or cause irreversible harm."
-            ),
-            "max": (
-                "The broadest and most demanding reasoning is needed: several interacting systems, substantial "
-                "uncertainty, and high consequences require sustained analysis beyond xhigh."
-            ),
-        },
-    },
-}
+# The classifier questions live in prompts/jev_questions.json; every instruction ends with the shared context rule.
+_QUESTIONS_DOC = prompts.data("jev_questions")
+CONTEXT_RULE = _QUESTIONS_DOC["context_rule"]
+QUESTIONS = prompts.fill(_QUESTIONS_DOC["questions"], context_rule=CONTEXT_RULE)
 # Asked only by backends with `provides_target` (JevBackend); Nimble's target accuracy is unmeasured.
-TARGET_QUESTION = {
-    "type": "choice",
-    "instructions": (
-        "Which outcome does the current request ask for? Judge the requested outcome, not keywords. "
-        "Active-project metadata only supplies an omitted subject. An acknowledgement or approval is route only "
-        "when it authorizes an executable proposal in session context." + CONTEXT_RULE
-    ),
-    "criteria": {
-        "route": (
-            "The user asks for an outcome in the active project or its work: investigate, analyze or explain "
-            "status or behavior, implement, fix, test, lint, plan, design, or review. A follow-up authorizing "
-            "an executable proposal in session context is route."
-        ),
-        "no_route": (
-            "Chit-chat or an acknowledgement or approval without an executable proposal in session context, "
-            "or a request "
-            "explicitly unrelated to software development."
-        ),
-    },
-}
+TARGET_QUESTION = prompts.fill(_QUESTIONS_DOC["target"], context_rule=CONTEXT_RULE)
 
 
 def state_text(task):

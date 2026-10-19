@@ -1,0 +1,2 @@
+Session context (earlier conversation; use it only to interpret the task):
+${context}

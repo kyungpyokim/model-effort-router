@@ -1,5 +1,6 @@
 """Laya local SystemOne classifier. Configure via difficulty.laya, then MER_LAYA_* env vars."""
 
+from .. import prompts
 from .jev import QUESTIONS, SystemOneBackend
 from .nimble import check_local_url, local_transport, validate_options as validate_local_options
 
@@ -7,18 +8,11 @@ DEFAULT_URL = "http://127.0.0.1:8000/v1/systemone"
 DEFAULT_MODEL = "laya"
 MODEL_ENV, URL_ENV, KEY_ENV = "MER_LAYA_MODEL", "MER_LAYA_URL", "MER_LAYA_API_KEY"
 
-# Ollama MLX rejects instructions outside the checkpoint's question budget instead of clipping them.
-_CONTEXT_RULE = (
-    " Classify the current request, using session context only to interpret it. "
-    "Approving or continuing a prior plan inherits that work's role and effort."
-)
-_INSTRUCTIONS = {
-    "role": "Choose the main deliverable's role, judging requested output rather than keywords." + _CONTEXT_RULE,
-    "effort": (
-        "Judge decision difficulty independently of role, file count, keywords, or reading volume; "
-        "planning and review need the same effort as execution." + _CONTEXT_RULE
-    ),
-}
+# Ollama MLX rejects instructions outside the checkpoint's question budget instead of clipping them,
+# so these are shorter than Jev's (prompts/laya_instructions.json).
+_INSTRUCTIONS_DOC = prompts.data("laya_instructions")
+_CONTEXT_RULE = _INSTRUCTIONS_DOC["context_rule"]
+_INSTRUCTIONS = prompts.fill(_INSTRUCTIONS_DOC["instructions"], context_rule=_CONTEXT_RULE)
 
 
 def validate_options(raw):

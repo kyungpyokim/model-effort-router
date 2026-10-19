@@ -4,6 +4,8 @@ import json
 import re
 import subprocess
 
+from . import prompts
+
 DIFF_CAP = 200_000  # bytes; larger diffs are replaced by a file list
 PROBE_TAIL_MAX = 500  # chars of the probe's failing test output shown to the reviewer
 FINDINGS_MAX = 6000  # chars of review text handed back to the implement session
@@ -79,11 +81,6 @@ def review_prompt(request, diff, gate, probe=None):
     ):  # assertion failure vs ImportError / missing fixture
         note += f"\nLast output of that run:\n{tail[-PROBE_TAIL_MAX:]}"
     note_block = f"{note}\n\n" if note else ""
-    return (
-        f"Independently review this change against the request. Check requirements met, omissions, logic "
-        f"errors, regressions, edge cases, security, needless changes, missing tests, tests that would still pass without "
-        f"the change, state changed before an error is raised. Do not edit files. Do the "
-        f"review yourself in this session: do not spawn subagents or delegate to other agents.\n\n"
-        f"Request:\n{request}\n\n{_diff_section(diff)}\nTest Gate result:\n{json.dumps(gate, indent=2)}\n\n{note_block}"
-        "End your answer with exactly these two lines:\nVERDICT: approved|changes_requested\nFINDINGS: <n>"
+    return prompts.render(
+        "review", request=request, diff=_diff_section(diff), gate=json.dumps(gate, indent=2), note=note_block
     )
