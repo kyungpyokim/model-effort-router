@@ -212,7 +212,7 @@ python3 <plugin>/bin/mer report --since 12h --limit 10
 
 `mer route` classifies a request's role/effort and maps it to a host model. Provide `--role` and `--effort` together for an explicit route. MER does not execute workers, verification loops, reviews, or fixes. For script compatibility, `mer run` and `mer chat` return exit code 2 with guidance to use `mer route`. Historical `run` log entries remain readable by `mer report`.
 
-OpenCode's `mer` tool returns the same model/effort recommendation, and `mer_report` summarizes logs. Host hooks add a recommendation; they do not change the active model or effort.
+OpenCode's `mer` tool returns the same model/effort recommendation, and `mer_report` summarizes logs. Host hooks add a recommendation; they do not change the active model or effort. The Codex and Claude desktop apps render no hook output, so the hook advice also asks Main to open its first reply line with the recommendation.
 
 The intended host workflow is **task instruction → MER model/effort recommendation → host work → host review → host fixes**. MER ends after the recommendation; it does not launch workers, run the review, apply fixes, or run verification loops.
 

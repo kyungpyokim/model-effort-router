@@ -118,6 +118,38 @@ class AdviceRecommendationTest(unittest.TestCase):
         decision = DifficultyDecision("fix", "low", "x", target="no_route")
         self.assertEqual(advice.render(RoutePlan(NO_ROUTE, "auto", decision), hosts.CLAUDE), advice.NO_ROUTE_MESSAGE)
 
+    def test_desktop_hosts_repeat_the_recommendation_as_the_first_line(self):
+        plan = RoutePlan(
+            ROUTE,
+            "auto",
+            DifficultyDecision("review", "high", "x"),
+            (),
+            "claude-opus-5-5",
+            "reasoning",
+            "high",
+            "high",
+            model_options=("claude-opus-5-5",),
+        )
+        note = advice.render(plan, hosts.CLAUDE)
+        self.assertTrue(note.startswith("Required: before any tool call, start your first message"))
+        self.assertIn("`[model-effort-router] review → reasoning · claude-opus-5-5 · effort high`", note)
+        self.assertIn("the Claude desktop app does not show hook messages", note)
+
+    def test_hosts_with_a_visible_surface_get_no_reply_tag(self):
+        plan = RoutePlan(
+            ROUTE,
+            "auto",
+            DifficultyDecision("review", "high", "x"),
+            (),
+            "glm-5.3",
+            "reasoning",
+            "high",
+            "high",
+            model_options=("glm-5.3",),
+        )
+        for host in (hosts.OPENCODE, hosts.ANTIGRAVITY):
+            self.assertNotIn("does not show hook messages", advice.render(plan, host))
+
 
 class HookTest(HookCase):
     plugin = CLAUDE

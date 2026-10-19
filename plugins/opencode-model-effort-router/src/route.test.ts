@@ -310,7 +310,11 @@ describe("prompt hook routing banner", () => {
   const previousCorePath = process.env.MER_CORE_PATH;
 
   function fakeCtx(
-    synthetic: (input: { sessionID: string; text: string }) => Promise<unknown>,
+    synthetic: (input: {
+      sessionID: string;
+      text: string;
+      description?: string;
+    }) => Promise<unknown>,
   ) {
     const harness: {
       hookFn?: (event: {
@@ -336,8 +340,11 @@ describe("prompt hook routing banner", () => {
           ) => {
             harness.hookFn = fn;
           },
-          synthetic: async (input: { sessionID: string; text: string }) =>
-            synthetic(input),
+          synthetic: async (input: {
+            sessionID: string;
+            text: string;
+            description?: string;
+          }) => synthetic(input),
         },
       },
     };
@@ -360,7 +367,11 @@ describe("prompt hook routing banner", () => {
       new URL("../../../", import.meta.url),
     );
     try {
-      const posted: { sessionID: string; text: string }[] = [];
+      const posted: {
+        sessionID: string;
+        text: string;
+        description?: string;
+      }[] = [];
       const { harness, ctx } = fakeCtx(async (input) => {
         posted.push(input);
       });
@@ -374,6 +385,8 @@ describe("prompt hook routing banner", () => {
       expect(posted[0].text).toMatch(
         /^\[model-effort-router\] \S+ → \S+ · \S+ · effort \S+$/,
       );
+      // OpenCode timeline notices require a non-empty description to render.
+      expect(posted[0].description).toBe(posted[0].text);
     } finally {
       if (previousCorePath === undefined) delete process.env.MER_CORE_PATH;
       else process.env.MER_CORE_PATH = previousCorePath;

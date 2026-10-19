@@ -44,11 +44,15 @@ export default Plugin.define({
         );
         if (!advice) return;
         event.prompt.text = appendAdvice(event.prompt.text, advice);
+        const banner = routingBanner(advice);
         // Best-effort visible banner. Display failure must never block admission.
+        // OpenCode renders synthetic inputs as timeline notices only when
+        // `description` is non-empty; `text` alone stays model-context-only.
         await ctx.session
           .synthetic({
             sessionID: event.sessionID,
-            text: routingBanner(advice),
+            text: banner,
+            description: banner,
           })
           .catch(() => {});
       } catch (routeError) {
