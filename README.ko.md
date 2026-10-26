@@ -105,6 +105,8 @@ CLI가 설치되어 있지 않은 대상은 건너뜁니다. checkout이 `origin
 }
 ```
 
+lane의 `efforts`에 `max`는 없고 `ultra`만 있으면(선택기가 `xhigh` 다음에 바로 `ultra`인 모델) 분류기의 `max`를 `ultra`로 적용합니다. `ultra`는 작업 자동 위임이 더해지므로 토큰이 더 들 수 있습니다.
+
 예시 모델 ID는 각 호스트에서 사용할 수 있는 모델로 바꾸십시오. OpenCode는 `model_options`를 반환하고, 다른 hook은 안내문에 alternatives를 표시합니다. 대안 후보는 추천에만 사용되며 자동 모델 전환을 일으키지 않습니다. 분류기 provider는 설정된 다음 분류기로 넘어갈 수 있습니다. 모두 실패하면 CLI 라우팅은 오류를 반환하고 hook은 fail open으로 사용자 요청을 막지 않습니다.
 
 ## 분류기 backend 설정

@@ -6,6 +6,7 @@ from math import isfinite
 from types import MappingProxyType
 from typing import Optional
 
+from ..adapters.common import EFFORT_ORDER
 from ..difficulty.decision import EFFORTS
 from ..difficulty.laya import validate_options as validate_laya
 from ..difficulty.nimble import validate_options as validate_nimble
@@ -135,7 +136,7 @@ def _validate_models(raw):
             if len(set(alternatives)) != len(alternatives) or item.get("primary") in alternatives:
                 raise ValueError(f"models.{host}.{lane}.alternatives must be unique and exclude primary")
             efforts = item.get("efforts")
-            if not isinstance(efforts, list) or not efforts or any(e not in EFFORTS for e in efforts):
+            if not isinstance(efforts, list) or not efforts or any(e not in EFFORT_ORDER for e in efforts):
                 raise ValueError(f"models.{host}.{lane}.efforts must list supported efforts")
     return raw
 

@@ -105,6 +105,8 @@ Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude ex
 }
 ```
 
+If a lane's `efforts` omits `max` and lists `ultra` (for a model whose picker goes from `xhigh` straight to `ultra`), the classifier's `max` is applied as `ultra`. `ultra` also adds automatic task delegation, so expect more tokens.
+
 Replace the example IDs with models available to the host. OpenCode returns `model_options`; the other hooks include configured alternatives in their advice. Alternatives are recommendations only and never trigger model switching. Classifier providers may fall through to the configured next classifier. If all fail, CLI routing returns an error; hooks fail open and leave the user request unblocked.
 
 ## Classifier backend setup

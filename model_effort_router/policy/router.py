@@ -161,6 +161,8 @@ def route(
         effort = AntigravityConfig().efforts.get(effort, effort)  # xhigh/max -> high
         if supported and EFFORTS.index(effort) < EFFORTS.index(supported[0]):
             effort = supported[0]  # below the range: raise to the lowest supported rather than fail
+    if effort == "max" and "max" not in mapped["efforts"] and "ultra" in mapped["efforts"]:
+        effort = "ultra"  # a model whose picker tops out at ultra (no max): the abstract max is its ultra
     if effort not in mapped["efforts"]:
         raise ValueError(
             f"{host} {lane} model {mapped['primary']} does not support requested effort {effort}; configure a capable primary"

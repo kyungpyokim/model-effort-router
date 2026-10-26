@@ -62,6 +62,21 @@ class RouteTest(unittest.TestCase):
             (p.decision.role, p.agent, p.requested_effort, p.applied_effort), ("review", "reasoning", "low", "high")
         )
 
+    def test_max_becomes_ultra_for_a_lane_whose_picker_has_no_max(self):
+        no_max = ["low", "medium", "high", "xhigh", "ultra"]
+        cfg = {"models": {"codex": {"execution": {"primary": "gpt-6.1-terra", "efforts": no_max}}}}
+        p = route("add a button", role_override="implementation", effort_override="max", explicit=True, repo_config=cfg)
+        self.assertEqual((p.model, p.requested_effort, p.applied_effort), ("gpt-6.1-terra", "max", "ultra"))
+        p = route(
+            "add a button", role_override="implementation", effort_override="xhigh", explicit=True, repo_config=cfg
+        )
+        self.assertEqual(p.applied_effort, "xhigh")
+
+    def test_max_stays_max_when_the_lane_lists_max(self):
+        cfg = {"models": {"codex": {"execution": {"primary": "gpt-6.1-terra", "efforts": ["high", "max", "ultra"]}}}}
+        p = route("add a button", role_override="implementation", effort_override="max", explicit=True, repo_config=cfg)
+        self.assertEqual(p.applied_effort, "max")
+
     def test_classifier_exhaustion_raises_instead_of_defaulting(self):
         with self.assertRaisesRegex(RuntimeError, "all classifiers failed"):
             route(
