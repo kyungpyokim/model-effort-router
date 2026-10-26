@@ -15,13 +15,20 @@ CLAUDE_EFFORTS = (
     "max",
 )  # `claude --effort` choices (CLI 2.1.280 --help)
 CONTEXTS = ("lean", "full")
-HAIKU = "claude-haiku-4-5"  # no supported efforts: the flag is omitted
+HAIKU = "claude-haiku-5-5"  # no supported efforts: the flag is omitted
 _FIVE = CLAUDE_EFFORTS
 # Per-model supported efforts (plan Phase 5, 2026-10-02 decision). An empty tuple = the model takes no --effort.
-_MODEL_EFFORTS = MappingProxyType({"claude-sonnet-5-5": _FIVE, "claude-opus-5-5": _FIVE, HAIKU: ()})
+_MODEL_EFFORTS = MappingProxyType(
+    {
+        "claude-sonnet-5-5": _FIVE,
+        "claude-opus-5-5": _FIVE,
+        HAIKU: (),
+        "claude-haiku-4-5": (),
+    }
+)
 _TIERS = MappingProxyType(
     {
-        "economy": "claude-sonnet-5-5",
+        "economy": "claude-haiku-5-5",
         "balanced": "claude-sonnet-5-5",
         "frontier": "claude-opus-5-5",
     }
