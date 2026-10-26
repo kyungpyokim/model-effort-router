@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from ..difficulty.decision import EFFORTS, ROLES
+from ..difficulty.decision import EFFORTS, ROLES, TIERS
 from .config import MODES
 
 COMMAND = "/router"
@@ -13,11 +13,12 @@ class Override:
     mode: str = None
     role: str = None
     effort: str = None
+    tier: str = None
     rejected: bool = False
 
     @property
     def is_empty(self):
-        return self.mode is None and self.role is None and self.effort is None
+        return self.mode is None and self.role is None and self.effort is None and self.tier is None
 
     def as_config(self):
         return {"router": {"mode": self.mode}} if self.mode else {}
@@ -44,6 +45,7 @@ def parse_override(message):
         values[key] = value
     if len(values) == 1 and "mode" in values and values["mode"] in MODES:
         return Override(mode=values["mode"]), rest
-    if set(values) == {"role", "effort"} and values["role"] in ROLES and values["effort"] in EFFORTS:
-        return Override(role=values["role"], effort=values["effort"]), rest
+    if values.keys() in ({"role", "effort"}, {"role", "effort", "tier"}):
+        if values["role"] in ROLES and values["effort"] in EFFORTS and values.get("tier", "economy") in TIERS:
+            return Override(role=values["role"], effort=values["effort"], tier=values.get("tier")), rest
     return REJECTED, rest

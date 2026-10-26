@@ -85,6 +85,7 @@ def route(
     explicit=False,
     role_override=None,
     effort_override=None,
+    tier_override=None,
     context="",
     repo_summary="",
 ):
@@ -96,6 +97,7 @@ def route(
     flags = detect_risk_flags(text, paths)
     role_override = role_override if role_override is not None else override.role
     effort_override = effort_override if effort_override is not None else override.effort
+    tier_override = tier_override if tier_override is not None else override.tier
     phase_override = role_override is not None or effort_override is not None
     if phase_override and (role_override is None or effort_override is None):
         raise ValueError("--role and --effort must be provided together")
@@ -112,7 +114,7 @@ def route(
     task = DifficultyInput(text, tuple(paths), repo_summary=repo_summary, context=context)
     causes = ()
     if phase_override:
-        decision = DifficultyDecision(role_override, effort_override, "explicit")
+        decision = DifficultyDecision(role_override, effort_override, "explicit", tier=tier_override)
     elif explicit:
         decision, causes = classify_with_fallback(task, backends, cfg.timeout_s)
     else:
@@ -154,6 +156,35 @@ def route(
         mapped = cfg.models[host][lane]
     except KeyError as exc:
         raise ValueError(f"no model mapping configured for host {host!r} and lane {lane!r}") from exc
+
+    tier_model = None
+    if decision.tier:
+        if "tiers" in mapped and decision.tier in mapped["tiers"]:
+            tier_model = mapped["tiers"][decision.tier]
+        else:
+            from ..host import hosts
+
+            host_obj = hosts.HOSTS.get(host)
+            if host_obj and host_obj.config and hasattr(host_obj.config, "tiers"):
+                tier_model = host_obj.config.tiers.get(decision.tier)
+
+    if tier_model:
+        primary = tier_model
+        configured_alts = [m for m in mapped.get("alternatives", []) if m != primary]
+        if configured_alts:
+            alternatives = tuple(configured_alts)
+        else:
+            from ..host import hosts
+
+            host_obj = hosts.HOSTS.get(host)
+            if host_obj and host_obj.config and hasattr(host_obj.config, "tiers"):
+                alternatives = tuple(m for t, m in host_obj.config.tiers.items() if m != primary)
+            else:
+                alternatives = ()
+    else:
+        primary = mapped["primary"]
+        alternatives = tuple(mapped.get("alternatives", []))
+
     if host == "antigravity":  # its slugs stop at high; clamp into the configured range instead of failing the request
         from ..adapters.antigravity import ANTIGRAVITY_EFFORTS, AntigravityConfig
 
@@ -165,18 +196,13 @@ def route(
         effort = "ultra"  # a model whose picker tops out at ultra (no max): the abstract max is its ultra
     if effort not in mapped["efforts"]:
         raise ValueError(
-            f"{host} {lane} model {mapped['primary']} does not support requested effort {effort}; configure a capable primary"
+            f"{host} {lane} model {primary} does not support requested effort {effort}; configure a capable primary"
         )
     if host == "antigravity":
         from ..adapters.antigravity import resolve_model
 
-        primary = resolve_model(mapped["primary"], effort, mapped["efforts"]).model
-        alternatives = tuple(
-            resolve_model(model, effort, mapped["efforts"]).model for model in mapped.get("alternatives", [])
-        )
-    else:
-        primary = mapped["primary"]
-        alternatives = tuple(mapped.get("alternatives", []))
+        primary = resolve_model(primary, effort, mapped["efforts"]).model
+        alternatives = tuple(resolve_model(model, effort, mapped["efforts"]).model for model in alternatives)
     usage, missing = _usage(backends, decision.backend) if decision.backend != "explicit" else (None, False)
     return RoutePlan(
         ROUTE,

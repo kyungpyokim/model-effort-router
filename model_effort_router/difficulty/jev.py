@@ -173,6 +173,7 @@ def parse_decision(data, backend):
         return DifficultyDecision(
             role=data["role"],
             effort=data["effort"],
+            tier=data.get("tier"),
             backend=backend,
             confidence=data.get("confidence"),
             reason_code=data.get("reason_code"),
@@ -219,7 +220,9 @@ class SystemOneBackend:
                     and v >= 0
                 }
             answers = data["answers"]
-            parsed = {key: answers[key].get("choice") for key in ("role", "effort")}
+            parsed = {key: answers[key].get("choice") for key in ("role", "effort") if key in answers}
+            if "tier" in answers and isinstance(answers["tier"], dict):
+                parsed["tier"] = answers["tier"].get("choice")
             if self.provides_target:
                 target = answers["target"].get("choice")
                 if target not in TARGETS:

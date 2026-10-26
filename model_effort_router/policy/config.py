@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Optional
 
 from ..adapters.common import EFFORT_ORDER
-from ..difficulty.decision import EFFORTS
+from ..difficulty.decision import EFFORTS, TIERS
 from ..difficulty.laya import validate_options as validate_laya
 from ..difficulty.nimble import validate_options as validate_nimble
 
@@ -119,6 +119,7 @@ def _validate_models(raw):
                 "fallback",
                 "alternatives",
                 "efforts",
+                "tiers",
             }:
                 raise ValueError(f"models.{host}.{lane} has unknown or invalid settings")
             for key in ("primary", "fallback"):
@@ -127,6 +128,15 @@ def _validate_models(raw):
                     continue
                 if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", model):
                     raise ValueError(f"models.{host}.{lane}.{key} must be a valid model slug (1-128 ASCII characters)")
+            tiers = item.get("tiers")
+            if tiers is not None:
+                if not isinstance(tiers, dict) or any(t not in TIERS for t in tiers):
+                    raise ValueError(f"models.{host}.{lane}.tiers must be a mapping of tiers to model slugs")
+                for tier, model in tiers.items():
+                    if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", model):
+                        raise ValueError(
+                            f"models.{host}.{lane}.tiers.{tier} must be a valid model slug (1-128 ASCII characters)"
+                        )
             alternatives = item.get("alternatives", [])
             if not isinstance(alternatives, list) or any(
                 not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", model)

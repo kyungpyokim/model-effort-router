@@ -86,7 +86,7 @@ class LayaTest(unittest.TestCase):
         url, headers, body, timeout = transport.calls[0]
         self.assertEqual((url, body["model"], timeout), (DEFAULT_URL, DEFAULT_MODEL, 3))
         self.assertEqual(headers["Authorization"], "Bearer secret")
-        self.assertEqual(set(body["questions"]), {"role", "effort"})
+        self.assertEqual(set(body["questions"]), {"role", "effort", "tier"})
         self.assertEqual((decision.role, decision.effort), ("fix", "medium"))
         self.assertEqual(backend.last_usage, {"input_tokens": 12, "output_tokens": 0})
 
@@ -186,7 +186,7 @@ class LayaTest(unittest.TestCase):
             server.server_close()
         self.assertEqual(received["path"], "/v1/systemone")
         self.assertEqual(received["body"]["model"], DEFAULT_MODEL)
-        self.assertEqual(set(received["body"]["questions"]), {"role", "effort"})
+        self.assertEqual(set(received["body"]["questions"]), {"role", "effort", "tier"})
 
     def test_malformed_and_http_error_fail_for_chain(self):
         for transport in (FakeTransport(body={"answers": {}}), FakeTransport(status=503)):
