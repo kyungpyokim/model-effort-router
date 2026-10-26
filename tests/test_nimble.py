@@ -20,7 +20,7 @@ class NimbleProviderTest(unittest.TestCase):
         url, headers, body, timeout = transport.calls[0]
         self.assertEqual((url, timeout), (DEFAULT_URL, 7))
         self.assertEqual(headers, {"Content-Type": "application/json"})
-        self.assertEqual(set(body["questions"]), {"role", "effort"})
+        self.assertEqual(set(body["questions"]), {"role", "effort", "tier"})
         self.assertIn(TASK, body["state"])
         self.assertNotIn("must-not-send", str(transport.calls))
         self.assertEqual((decision.role, decision.effort), ("fix", "high"))
@@ -83,7 +83,7 @@ class NimbleProviderTest(unittest.TestCase):
         self.assertEqual((NimbleBackend.provides_target, decision.target), (False, None))
 
     def test_systemone_question_contract_matches_jev(self):
-        self.assertEqual(set(jev.QUESTIONS), {"role", "effort"})
+        self.assertEqual(set(jev.QUESTIONS), {"role", "effort", "tier"})
 
 
 if __name__ == "__main__":

@@ -8,13 +8,16 @@ from model_effort_router.profiles.profiles import Profile
 class ResolveTest(unittest.TestCase):
     def test_default_tiers_and_efforts(self):
         for tier, model in (
-            ("economy", "claude-sonnet-5-5"),
+            ("economy", "claude-haiku-5-5"),
             ("balanced", "claude-sonnet-5-5"),
             ("frontier", "claude-opus-5-5"),
         ):
             for effort, host in (("medium", "medium"), ("high", "high"), ("xhigh", "high"), ("max", "max")):
                 r = resolve(Profile(tier, effort))
-                self.assertEqual((r.tier, r.model, r.requested_effort, r.applied_effort), (tier, model, host, host))
+                expected_applied = None if tier == "economy" else host
+                self.assertEqual(
+                    (r.tier, r.model, r.requested_effort, r.applied_effort), (tier, model, host, expected_applied)
+                )
 
     def test_same_resolved_shape_as_codex(self):
         from dataclasses import fields

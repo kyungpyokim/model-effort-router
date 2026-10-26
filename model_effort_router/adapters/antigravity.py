@@ -12,11 +12,17 @@ _TIERS = MappingProxyType(
     {
         "economy": "gemini-3.8-flash",
         "balanced": "claude-sonnet-5-5",
-        "frontier": "claude-opus-5-5",
+        "frontier": "gemini-4-argon",
     }
 )
 _EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "high", "max": "high"})
-_MODEL_EFFORTS = MappingProxyType(dict.fromkeys(_TIERS.values(), ANTIGRAVITY_EFFORTS))
+_ALL_MODELS = (
+    "gemini-3.8-flash",
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
+    "gemini-4-argon",
+)
+_MODEL_EFFORTS = MappingProxyType(dict.fromkeys(_ALL_MODELS, ANTIGRAVITY_EFFORTS))
 
 
 @dataclass(frozen=True)

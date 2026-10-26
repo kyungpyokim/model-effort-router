@@ -6,6 +6,7 @@ from typing import Optional, Tuple
 
 from .efforts import EFFORTS
 
+TIERS = ("economy", "balanced", "frontier")
 ROLES = ("implementation", "fix", "lint", "test", "plan", "design", "review", "analysis")
 EXECUTION_ROLES = frozenset(("implementation", "fix", "lint", "test"))
 TARGETS = ("route", "no_route")
@@ -32,12 +33,15 @@ class DifficultyDecision:
     confidence: Optional[float] = None
     reason_code: Optional[str] = None
     target: Optional[str] = None  # set only by a backend that also decides eligibility (`provides_target`)
+    tier: Optional[str] = None
 
     def __post_init__(self):
         if self.role not in ROLES:
             raise ValueError(f"role must be one of {ROLES}, got {self.role!r}")
         if self.effort not in EFFORTS:
             raise ValueError(f"effort must be one of {EFFORTS}, got {self.effort!r}")
+        if self.tier is not None and self.tier not in TIERS:
+            raise ValueError(f"tier must be one of {TIERS}, got {self.tier!r}")
         if not isinstance(self.backend, str) or not self.backend:
             raise ValueError("backend is required")
         if self.confidence is not None and (

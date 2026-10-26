@@ -2,6 +2,7 @@
   "context_rule": " Classify the current request, using session context only to interpret it. Approving or continuing a prior plan inherits that work's role and effort.",
   "instructions": {
     "role": "Choose the main deliverable's role, judging requested output rather than keywords.${context_rule}",
-    "effort": "Judge decision difficulty independently of role, file count, keywords, or reading volume; planning and review need the same effort as execution.${context_rule}"
+    "effort": "Judge decision difficulty independently of role, file count, keywords, or reading volume; planning and review need the same effort as execution.${context_rule}",
+    "tier": "Choose the model intelligence tier needed for task complexity and scope.${context_rule}"
   }
 }

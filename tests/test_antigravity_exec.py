@@ -12,7 +12,7 @@ class AdapterTest(unittest.TestCase):
         for tier, model in (
             ("economy", "gemini-3.8-flash"),
             ("balanced", "claude-sonnet-5-5"),
-            ("frontier", "claude-opus-5-5"),
+            ("frontier", "gemini-4-argon"),
         ):
             for requested, applied in (("medium", "medium"), ("high", "high"), ("xhigh", "high"), ("max", "high")):
                 with self.subTest(tier=tier, requested=requested):

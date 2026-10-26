@@ -46,7 +46,7 @@ class PromptFilesTest(unittest.TestCase):
     def test_data_files_keep_their_key_order_because_the_request_body_is_serialized_from_them(self):
         doc = prompts.data("jev_questions")
         self.assertEqual(list(doc), ["context_rule", "questions", "target"])
-        self.assertEqual(list(doc["questions"]), ["role", "effort"])
+        self.assertEqual(list(doc["questions"]), ["role", "effort", "tier"])
         self.assertEqual(list(doc["questions"]["role"]), ["type", "instructions", "criteria"])
 
     def test_data_files_fill_cleanly_and_have_no_stray_dollar_signs(self):

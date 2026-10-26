@@ -78,13 +78,14 @@ class OpenAIDecisionsBackend:
                 if not isinstance(answer, dict) or answer.get("name") not in (
                     "role",
                     "effort",
+                    "tier",
                 ):
                     raise TypeError("invalid answer")
                 name = answer["name"]
                 if name in by_name or answer.get("type") != "choice":
                     raise TypeError("duplicate or non-choice answer")
                 by_name[name] = answer
-            parsed = {name: by_name[name]["choice"] for name in SYSTEMONE_QUESTIONS}
+            parsed = {name: by_name[name]["choice"] for name in SYSTEMONE_QUESTIONS if name in by_name}
             confidence = by_name["role"].get("confidence")
             if confidence is not None:
                 parsed["confidence"] = confidence

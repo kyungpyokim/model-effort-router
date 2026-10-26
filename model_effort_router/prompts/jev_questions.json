@@ -25,6 +25,15 @@
         "xhigh": "Rare timing-dependent failures across several subsystems, or changes where a mistake would corrupt or lose production data, bypass security, or cause irreversible harm.",
         "max": "The broadest and most demanding reasoning is needed: several interacting systems, substantial uncertainty, and high consequences require sustained analysis beyond xhigh."
       }
+    },
+    "tier": {
+      "type": "choice",
+      "instructions": "Which model intelligence tier does this request need, considering task complexity, context scope, and precision? Judge the required model capability independently of reasoning effort.${context_rule}",
+      "criteria": {
+        "economy": "Straightforward, lightweight, localized, or routine tasks suitable for fast economy models (e.g., Luna, Haiku 5.5, Flash).",
+        "balanced": "Standard feature work, moderate logic, multi-step changes, or everyday development needing balanced capability (e.g., Terra, Sonnet 5.5).",
+        "frontier": "High-complexity architectural design, critical cross-module reasoning, tricky concurrency/security, or deepest reasoning (e.g., Sol, Opus 5.5, Argon)."
+      }
     }
   },
   "target": {

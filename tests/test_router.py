@@ -18,14 +18,16 @@ class FakeBackend:
         name="fake",
         provides_target=False,
         usage=None,
+        tier=None,
     ):
-        self.role, self.effort, self.error, self.target, self.name, self.provides_target = (
+        self.role, self.effort, self.error, self.target, self.name, self.provides_target, self.tier = (
             role,
             effort,
             error,
             target,
             name,
             provides_target,
+            tier,
         )
         self.calls, self.calls_model, self.last_usage = 0, usage is not None, usage
         self.last_task = None
@@ -35,7 +37,7 @@ class FakeBackend:
         self.last_task = task
         if self.error:
             raise self.error
-        return DifficultyDecision(self.role, self.effort, self.name, target=self.target)
+        return DifficultyDecision(self.role, self.effort, self.name, target=self.target, tier=self.tier)
 
 
 def registry(backend):
@@ -194,3 +196,48 @@ class TargetFromBackendTest(unittest.TestCase):
     def test_target_backend_answer_without_a_target_routes(self):
         p = self.plan(KOREAN, FakeBackend(name="first", provides_target=True))
         self.assertEqual((p.target, p.decision.backend), (ROUTE, "first"))
+
+    def test_tier_selects_tier_model_for_host(self):
+        b_balanced = FakeBackend("implementation", "medium", tier="balanced")
+        p = route(
+            "Do feature", registry=registry(b_balanced), repo_config={"difficulty": {"backend": "fake"}}, host="codex"
+        )
+        self.assertEqual((p.model, p.applied_effort, p.agent), ("gpt-6.1-terra", "medium", "execution"))
+
+        b_economy = FakeBackend("implementation", "low", tier="economy")
+        p = route(
+            "Do simple fix", registry=registry(b_economy), repo_config={"difficulty": {"backend": "fake"}}, host="codex"
+        )
+        self.assertEqual((p.model, p.applied_effort, p.agent), ("gpt-6-luna", "low", "execution"))
+
+        b_frontier = FakeBackend("implementation", "high", tier="frontier")
+        p = route(
+            "Do complex task",
+            registry=registry(b_frontier),
+            repo_config={"difficulty": {"backend": "fake"}},
+            host="codex",
+        )
+        self.assertEqual((p.model, p.applied_effort, p.agent), ("gpt-6.1-sol", "high", "execution"))
+
+    def test_tier_and_effort_are_independent(self):
+        b1 = FakeBackend("implementation", "low", tier="balanced")
+        p1 = route(
+            "Quick routine task on terra",
+            registry=registry(b1),
+            repo_config={"difficulty": {"backend": "fake"}},
+            host="codex",
+        )
+        self.assertEqual((p1.model, p1.applied_effort), ("gpt-6.1-terra", "low"))
+
+        b2 = FakeBackend("implementation", "high", tier="economy")
+        p2 = route(
+            "Deep thinking on luna",
+            registry=registry(b2),
+            repo_config={"difficulty": {"backend": "fake"}},
+            host="codex",
+        )
+        self.assertEqual((p2.model, p2.applied_effort), ("gpt-6-luna", "high"))
+
+    def test_override_with_tier(self):
+        p = route("/router role=implementation effort=medium tier=balanced\nDo task", host="codex")
+        self.assertEqual((p.model, p.applied_effort, p.decision.tier), ("gpt-6.1-terra", "medium", "balanced"))

@@ -121,7 +121,7 @@ class JevContractTest(unittest.TestCase):
         backend = JevBackend(transport=transport, env={"TYPESAFE_API_KEY": "test-key"})
         got = backend.classify(DifficultyInput("Analyze parser", ("src/parser.py",)), 4)
         self.assertEqual((got.role, got.effort), ("analysis", "high"))
-        self.assertEqual(set(seen["body"]["questions"]), {"role", "effort", "target"})
+        self.assertEqual(set(seen["body"]["questions"]), {"role", "effort", "tier", "target"})
         role = seen["body"]["questions"]["role"]
         self.assertEqual(set(role["criteria"]), set(ROLES))
         self.assertTrue(all(role["criteria"][name] != name for name in ROLES))
@@ -145,7 +145,7 @@ class JevContractTest(unittest.TestCase):
         self.assertEqual((question["type"], set(question["criteria"])), ("choice", {"route", "no_route"}))
         self.assertIn("acknowledgement or approval without an executable proposal", question["criteria"]["no_route"])
         self.assertTrue(JevBackend.provides_target)
-        self.assertEqual(set(jev.QUESTIONS), {"role", "effort"})
+        self.assertEqual(set(jev.QUESTIONS), {"role", "effort", "tier"})
 
     def test_target_contract_uses_requested_project_outcome_and_context(self):
         target = jev.TARGET_QUESTION
