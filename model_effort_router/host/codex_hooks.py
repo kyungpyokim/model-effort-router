@@ -121,6 +121,8 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
     repo_cfg, user_cfg = load_configs(cwd, env)
     registry = _registry(env)
     cfg = resolve_config(task=parse_override(prompt)[0].as_config(), repo=repo_cfg, user=user_cfg, registry=registry)
+    if cfg.mode == "off":
+        return None
     limit = MAX_CHAIN_TIMEOUT_S // max(len(cfg.chain), 2)  # per backend: 12s for one or two, 8s for three
     clamped = cfg.timeout_s > limit
     if clamped:

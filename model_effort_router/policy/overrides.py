@@ -36,12 +36,15 @@ def parse_override(message):
         return NO_OVERRIDE, message
     values = {}
     for token in first.split()[1:]:
-        if token in MODES and "mode" not in values:
-            values["mode"] = token
+        t = "auto" if token == "on" else token
+        if t in MODES and "mode" not in values:
+            values["mode"] = t
             continue
         key, sep, value = token.partition("=")
         if not sep or key in values:
             return REJECTED, rest
+        if key == "mode" and value == "on":
+            value = "auto"
         values[key] = value
     if len(values) == 1 and "mode" in values and values["mode"] in MODES:
         return Override(mode=values["mode"]), rest

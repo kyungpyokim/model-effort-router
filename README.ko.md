@@ -210,9 +210,15 @@ Decisions API는 API 엔드포인트이고 `gpt-6-luna`는 해당 API에서 사�
 python3 <plugin>/bin/mer route --host codex --json 'Review the authentication changes'
 python3 <plugin>/bin/mer route --host codex --role implementation --effort high --json 'Implement the approved design'
 python3 <plugin>/bin/mer report --since 12h --limit 10
+python3 <plugin>/bin/mer on                        # 전역 라우터 활성화 (mode: auto)
+python3 <plugin>/bin/mer off                       # 전역 라우터 비활성화 (mode: off, 바이패스)
+python3 <plugin>/bin/mer status                    # 현재 활성 상태 및 설정 소스 확인
+python3 <plugin>/bin/mer off --local               # 현재 저장소 로컬에서만 비활성화
 ```
 
 `mer route`는 요청의 role/effort를 분류하고 호스트 모델에 매핑합니다. 명시적인 `--role`과 `--effort`는 함께 제공해야 합니다. MER는 작업자 실행, 검증 루프, 리뷰 또는 수정 절차를 실행하지 않습니다. 기존 스크립트 호환성을 위해 `mer run`과 `mer chat`은 종료 코드 2와 함께 `mer route` 사용 안내를 반환합니다. 오래된 로그의 `run` 항목은 `mer report`에서 계속 읽을 수 있습니다.
+
+`mer on`과 `mer off`는 라우터를 전역 또는 로컬(`--local`)로 즉시 켜고 끕니다. 비활성화(`mode: "off"`) 시 분류기 호출과 프롬프트 조언 주입을 완전히 건너뛰고(bypass) 호스트 기본 모델로 직접 동작합니다. `mer status`는 현재 라우터 활성 여부(`ON`/`OFF`), 적용 모드, 설정 출처를 출력합니다.
 
 OpenCode의 `mer` 도구도 같은 모델·effort 추천을 반환하며, `mer_report`는 로그를 요약합니다. 호스트 hook은 추천을 추가할 뿐 활성 모델/effort를 변경하지 않습니다. Codex·Claude 데스크톱 앱은 hook 출력을 표시하지 않으므로, hook 조언은 Main이 첫 답변 줄에 추천을 적도록 요청합니다.
 
@@ -280,7 +286,7 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 
 - 옵션: `--session <세션 ID 앞부분>`, `--since <n>m|h|d`(예: `12h`), `--limit <n>`(나열할 행 수, 기본 20, `0`이면 요약만 출력).
 - 토큰은 `route`(분류기 호출)에 기록되며, 과거 `run` 행에는 worker token이 남아 있을 수 있습니다. Main과 Subagent 턴은 로그에 남지 않아 그 토큰은 표시되지 않습니다.
-- Claude, Codex, Antigravity는 `report` 스킬을 제공합니다. OpenCode는 `mer_report` 도구를 제공하며, `mer route --session <id>`로 세션별 route를 로그에 남깁니다.
+- Claude, Codex, Antigravity는 `classify`, `router`, `report` 스킬을 제공합니다. OpenCode는 `mer_report` 도구를 제공하며, `mer route --session <id>`로 세션별 route를 로그에 남깁니다.
 
 ## Runtime 개발
 

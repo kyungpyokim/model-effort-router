@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 import signal
 import sys
 import threading
@@ -10,7 +11,7 @@ import time
 
 from .host import hosts
 from .host.advice import NO_ROUTE_MESSAGE, effort_pair
-from .host.codex_hooks import _registry, load_configs
+from .host.codex_hooks import REPO_CONFIG, USER_CONFIG_ENV, _registry, load_configs
 from .logging import route_log
 from .policy.config import resolve_config
 from .policy.router import route
@@ -61,6 +62,23 @@ def _parser():
     report.add_argument(
         "--limit", type=limit_count, default=20, help="most recent rows to list, 0 for the summary only (default 20)"
     )
+    mode_parser = sub.add_parser("mode", help="get or set router mode (on|off|auto|status)")
+    mode_parser.add_argument("state", nargs="?", choices=["on", "off", "auto", "status"], default="status")
+    mode_parser.add_argument(
+        "--local", action="store_true", help="update repo-local config (.model-effort-router.json)"
+    )
+    mode_parser.add_argument("--cwd", default=os.getcwd())
+
+    on_parser = sub.add_parser("on", help="enable model router (mode: auto)")
+    on_parser.add_argument("--local", action="store_true", help="update repo-local config (.model-effort-router.json)")
+    on_parser.add_argument("--cwd", default=os.getcwd())
+
+    off_parser = sub.add_parser("off", help="disable model router (mode: off)")
+    off_parser.add_argument("--local", action="store_true", help="update repo-local config (.model-effort-router.json)")
+    off_parser.add_argument("--cwd", default=os.getcwd())
+
+    status_parser = sub.add_parser("status", help="show current model router status")
+    status_parser.add_argument("--cwd", default=os.getcwd())
     return parser
 
 
@@ -105,6 +123,60 @@ def _log_route_error(env, session_id, request, exc, latency_ms, host):
         print(f"mer: could not log route: {type(log_exc).__name__}", file=sys.stderr)
 
 
+def _config_target(env, local, cwd):
+    if local:
+        return Path(cwd) / REPO_CONFIG
+    home = env.get("HOME") or os.path.expanduser("~")
+    user_path = env.get(USER_CONFIG_ENV) or os.path.join(
+        env.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"),
+        "model-effort-router",
+        "config.json",
+    )
+    return Path(user_path)
+
+
+def _handle_mode(args, env, out):
+    state = getattr(args, "state", None) or args.command
+    if state in ("on", "off", "auto"):
+        target_mode = "off" if state == "off" else "auto"
+        local = getattr(args, "local", False)
+        cwd = getattr(args, "cwd", os.getcwd())
+        path = _config_target(env, local, cwd)
+        cfg = {}
+        if path.is_file():
+            try:
+                cfg = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                cfg = {}
+        if not isinstance(cfg, dict):
+            cfg = {}
+        cfg.setdefault("router", {})["mode"] = target_mode
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        scope = f"local ({path.name})" if local else "global"
+        if target_mode == "off":
+            print(
+                f"[model-effort-router] Router disabled (mode: off, scope: {scope}). Model routing is bypassed.",
+                file=out,
+            )
+        else:
+            print(f"[model-effort-router] Router enabled (mode: auto, scope: {scope}).", file=out)
+        return 0
+
+    # status
+    cwd = getattr(args, "cwd", os.getcwd())
+    repo_cfg, user_cfg = load_configs(cwd, env)
+    cfg = resolve_config(repo=repo_cfg, user=user_cfg)
+    active = "OFF" if cfg.mode == "off" else "ON"
+    source = "default"
+    if repo_cfg and "router" in repo_cfg and "mode" in repo_cfg["router"]:
+        source = f"local {REPO_CONFIG}"
+    elif user_cfg and "router" in user_cfg and "mode" in user_cfg["router"]:
+        source = "global config.json"
+    print(f"[model-effort-router] Status: {active} (mode: {cfg.mode}, source: {source})", file=out)
+    return 0
+
+
 def main(argv=None, *, env=None, out=None):
     out = out or sys.stdout
     env = dict(os.environ) if env is None else dict(env)
@@ -117,6 +189,8 @@ def main(argv=None, *, env=None, out=None):
         from .report import main as report_main
 
         return report_main(args, env=env, out=out)
+    if args.command in ("mode", "on", "off", "status"):
+        return _handle_mode(args, env=env, out=out)
 
     route_started = time.monotonic()
     host = None
