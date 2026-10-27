@@ -1,6 +1,6 @@
 {
   "name": "model-effort-router",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Routes each request to a configured role, model, and effort; provides model and effort routing advice for Claude Code.",
   "license": "MIT",
   "keywords": ["router", "cascade", "effort"]

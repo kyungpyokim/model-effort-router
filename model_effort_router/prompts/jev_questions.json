@@ -30,9 +30,9 @@
       "type": "choice",
       "instructions": "Which model intelligence tier does this request need, considering task complexity, context scope, and precision? Judge the required model capability independently of reasoning effort.${context_rule}",
       "criteria": {
-        "economy": "Straightforward, lightweight, localized, or routine tasks suitable for fast economy models (e.g., Luna, Haiku 5.5, Flash).",
-        "balanced": "Standard feature work, moderate logic, multi-step changes, or everyday development needing balanced capability (e.g., Terra, Sonnet 5.5).",
-        "frontier": "High-complexity architectural design, critical cross-module reasoning, tricky concurrency/security, or deepest reasoning (e.g., Sol, Opus 5.5, Argon)."
+        "economy": "Self-contained or localized tasks (e.g., single function/class/module implementation, targeted bug fixes, tests, refactoring, or straightforward routines) that capable fast economy models (e.g., Luna, Haiku 5.5, Flash) can handle well when given appropriate reasoning effort.",
+        "balanced": "Multi-module or cross-component feature work, complex interactions between subsystems, non-trivial state management, or architecture-guided changes requiring balanced model capability (e.g., Terra, Sonnet 5.5).",
+        "frontier": "System-wide architectural design, subtle cross-system reasoning, mission-critical concurrency/security/data-loss guarantees, or deep foundational decisions (e.g., Sol, Opus 5.5, Argon)."
       }
     }
   },
