@@ -8,6 +8,10 @@ class RoleOverrideTests(unittest.TestCase):
         o, rest = parse_override("/router role=review effort=high\ninspect diff")
         self.assertEqual((o.role, o.effort, rest), ("review", "high", "inspect diff"))
         self.assertEqual(parse_override("/router off")[0].mode, "off")
+        self.assertEqual(parse_override("/router on")[0].mode, "auto")
+        self.assertEqual(parse_override("/router auto")[0].mode, "auto")
+        self.assertEqual(parse_override("/router mode=off")[0].mode, "off")
+        self.assertEqual(parse_override("/router mode=on")[0].mode, "auto")
 
     def test_legacy_session_override_is_actionable_rejection(self):
         self.assertTrue(parse_override("/router session=frontier:high")[0].rejected)

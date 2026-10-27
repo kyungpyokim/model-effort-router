@@ -197,6 +197,8 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
     router, difficulty = merged["router"], merged["difficulty"]
     if set(router) - {"mode"}:
         raise ValueError(f"unknown router settings: {sorted(set(router) - {'mode'})}")
+    if router.get("mode") == "on":
+        router["mode"] = "auto"
     if router.get("mode") not in MODES:
         raise ValueError(f"router.mode must be one of {MODES}, got {router.get('mode')!r}")
     if set(difficulty) - {"backend", "fallback", "timeout_s", "nimble", "laya"}:

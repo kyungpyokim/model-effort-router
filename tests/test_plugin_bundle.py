@@ -91,6 +91,9 @@ class PluginBundleTest(unittest.TestCase):
         text = (PLUGIN / "skills" / "classify" / "SKILL.md").read_text()
         self.assertTrue(text.startswith("---\nname: classify\n"))
         self.assertNotIn("spawn_agent", text)
+        router = (PLUGIN / "skills" / "router" / "SKILL.md").read_text()
+        self.assertTrue(router.startswith("---\nname: router\n"))
+        self.assertIn("description:", router)
 
     def test_all_loaders_import_one_shared_core_and_forward_arguments(self):
         package = self.runtime / "model_effort_router"

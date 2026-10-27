@@ -20,4 +20,4 @@ Configure `models.antigravity` in `.model-effort-router.json` or `~/.config/mode
 }
 ```
 
-Install the shared runtime with `python3 scripts/install_core.py`. Use `MER_CORE_PATH="$PWD"` for development. See the [`classify` skill](skills/classify/SKILL.md) and [`report` skill](skills/report/SKILL.md). Historical `run` log rows remain readable; current MER versions do not create them.
+Install the shared runtime with `python3 scripts/install_core.py`. Use `MER_CORE_PATH="$PWD"` for development. See the [`router` skill](skills/router/SKILL.md), [`classify` skill](skills/classify/SKILL.md), and [`report` skill](skills/report/SKILL.md). Historical `run` log rows remain readable; current MER versions do not create them.
