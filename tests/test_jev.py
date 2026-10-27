@@ -135,6 +135,12 @@ class JevContractTest(unittest.TestCase):
         self.assertIn("interacting", effort["criteria"]["high"].lower())
         self.assertIn("production data", effort["criteria"]["xhigh"].lower())
         self.assertIn("beyond xhigh", effort["criteria"]["max"].lower())
+        tier = seen["body"]["questions"]["tier"]
+        self.assertIn("independently of reasoning effort", tier["instructions"])
+        self.assertEqual(set(tier["criteria"]), {"economy", "balanced", "frontier"})
+        self.assertIn("self-contained", tier["criteria"]["economy"].lower())
+        self.assertIn("multi-module", tier["criteria"]["balanced"].lower())
+        self.assertIn("system-wide", tier["criteria"]["frontier"].lower())
         self.assertEqual(seen["timeout"], 4)
 
     def test_target_question_and_answer_are_part_of_the_decision(self):
