@@ -210,9 +210,15 @@ The Decisions API is the endpoint; `gpt-6-luna` is its model. Jev had the highes
 python3 <plugin>/bin/mer route --host codex --json 'Review the authentication changes'
 python3 <plugin>/bin/mer route --host codex --role implementation --effort high --json 'Implement the approved design'
 python3 <plugin>/bin/mer report --since 12h --limit 10
+python3 <plugin>/bin/mer on                        # enable router globally (mode: auto)
+python3 <plugin>/bin/mer off                       # disable router globally (mode: off, bypass)
+python3 <plugin>/bin/mer status                    # show active mode and config source
+python3 <plugin>/bin/mer off --local               # disable router for current repository only
 ```
 
 `mer route` classifies a request's role/effort and maps it to a host model. Provide `--role` and `--effort` together for an explicit route. MER does not execute workers, verification loops, reviews, or fixes. For script compatibility, `mer run` and `mer chat` return exit code 2 with guidance to use `mer route`. Historical `run` log entries remain readable by `mer report`.
+
+`mer on` and `mer off` toggle routing globally or locally (`--local`). When disabled (`mode: "off"`), model routing is completely bypassed with zero classifier calls or hook advice overhead, falling back directly to host default models. `mer status` checks the current active status, mode, and config source.
 
 OpenCode's `mer` tool returns the same model/effort recommendation, and `mer_report` summarizes logs. Host hooks add a recommendation; they do not change the active model or effort. The Codex and Claude desktop apps render no hook output, so the hook advice also asks Main to open its first reply line with the recommendation.
 
@@ -282,7 +288,7 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 
 - Options: `--session <id prefix>`, `--since <n>m|h|d` (for example `12h`), and `--limit <n>` (rows to list, default 20; `0` prints only the summary).
 - Tokens are recorded for `route` (classifier) and `context_refresh`; historical `run` entries may contain worker tokens. Main and host Subagent turns are not logged, so their tokens are not shown. Exception messages, prompts, transcripts, verification output, and Subagent output are never written to the workflow log.
-- Claude, Codex, and Antigravity ship a `report` skill. OpenCode has the `mer_report` tool, and its routes are logged per session through `mer route --session <id>`.
+- Claude, Codex, and Antigravity ship `classify`, `router`, and `report` skills. OpenCode has the `mer` and `mer_report` tools, and its routes are logged per session through `mer route --session <id>`.
 
 ## Runtime development
 
