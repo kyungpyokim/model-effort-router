@@ -84,9 +84,25 @@ Release checklist:
 
 ## Routing contract
 
-The classifier returns `role` and `effort`; `confidence` and `reason_code` are optional. Roles are `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model; the rest use the reasoning model. Effort is `low`, `medium`, `high`, `xhigh`, or `max`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane.
+MER classifies a request along three orthogonal dimensions: **role**, **effort**, and **tier** (`confidence` and `reason_code` are optional):
 
-Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude execution `claude-sonnet-5-5` and reasoning `claude-opus-5-5`; Antigravity execution `gemini-3.8-flash` and reasoning `gemini-4-argon`; OpenCode advice execution `opencode/mimo-v2.6-flash-free`, reasoning `opencode/nemotron-3-ultra-free` with reasoning alternatives `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, and `opencode-go/grok-4.7`. Each host/lane accepts `primary`, optional `alternatives`, and supported efforts. `primary` is recommended; alternatives are listed as user-selectable choices. Legacy model-level `fallback` values are accepted for config compatibility but are no longer used. For example:
+- **Role**: `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model lane; the rest use the reasoning model lane.
+- **Effort**: `low`, `medium`, `high`, `xhigh`, or `max`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane. If a lane's `efforts` omits `max` and lists `ultra` (for models whose picker goes from `xhigh` straight to `ultra`), the classifier's `max` is applied as `ultra`.
+- **Tier**: `economy`, `balanced`, or `frontier`. Decouples the required model intelligence/capability class from reasoning effort:
+  - `economy`: Self-contained or localized tasks (e.g., single function/class/module implementation, targeted bug fixes, tests, or straightforward refactoring) suited for fast economy models.
+  - `balanced`: Multi-module or cross-component feature work, complex interactions between subsystems, non-trivial state management, or architecture-guided changes.
+  - `frontier`: System-wide architectural design, subtle cross-system reasoning, mission-critical concurrency/security/data-loss guarantees, or deep foundational decisions.
+
+### Default host models
+
+| Host | Economy | Balanced | Frontier |
+|---|---|---|---|
+| **Codex** | `gpt-6-luna` | `gpt-6.1-terra` | `gpt-6.1-sol` |
+| **Claude** | `claude-haiku-5-5` | `claude-sonnet-5-5` | `claude-opus-5-5` |
+| **Antigravity** | `gemini-3.8-flash` | `claude-sonnet-5-5` | `gemini-4-argon` *(alt: `claude-opus-5-5`)* |
+| **OpenCode** | `opencode/mimo-v2.6-flash-free` | `opencode-go/glm-5.3` | `opencode/nemotron-3-ultra-free` *(alt: `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, `opencode-go/grok-4.7`)* |
+
+Each host/lane accepts `primary`, optional `alternatives`, supported `efforts`, and optional `tiers` mapping. `primary` is recommended; alternatives are listed as user-selectable choices. Legacy model-level `fallback` values are accepted for config compatibility but are no longer used. For example:
 
 ```json
 {
@@ -94,11 +110,23 @@ Defaults are Codex execution `gpt-6-luna` and reasoning `gpt-6.1-sol`; Claude ex
     "codex": {
       "execution": {
         "primary": "gpt-6-luna",
-        "alternatives": ["gpt-6-astra", "provider/model-id"]
+        "tiers": {
+          "economy": "gpt-6-luna",
+          "balanced": "gpt-6.1-terra",
+          "frontier": "gpt-6.1-sol"
+        },
+        "alternatives": ["gpt-6-astra"],
+        "efforts": ["low", "medium", "high", "xhigh", "max"]
       },
       "reasoning": {
         "primary": "gpt-6.1-sol",
-        "alternatives": ["gpt-6-astra", "provider/another-model"]
+        "tiers": {
+          "economy": "gpt-6-luna",
+          "balanced": "gpt-6.1-terra",
+          "frontier": "gpt-6.1-sol"
+        },
+        "alternatives": ["gpt-6-astra"],
+        "efforts": ["low", "medium", "high", "xhigh", "max"]
       }
     }
   }
@@ -208,7 +236,7 @@ The Decisions API is the endpoint; `gpt-6-luna` is its model. Jev had the highes
 
 ```sh
 python3 <plugin>/bin/mer route --host codex --json 'Review the authentication changes'
-python3 <plugin>/bin/mer route --host codex --role implementation --effort high --json 'Implement the approved design'
+python3 <plugin>/bin/mer route --host codex --role implementation --effort high --tier balanced --json 'Implement the approved design'
 python3 <plugin>/bin/mer report --since 12h --limit 10
 python3 <plugin>/bin/mer on                        # enable router globally (mode: auto)
 python3 <plugin>/bin/mer off                       # disable router globally (mode: off, bypass)
@@ -216,9 +244,9 @@ python3 <plugin>/bin/mer status                    # show active mode and config
 python3 <plugin>/bin/mer off --local               # disable router for current repository only
 ```
 
-`mer route` classifies a request's role/effort and maps it to a host model. Provide `--role` and `--effort` together for an explicit route. MER does not execute workers, verification loops, reviews, or fixes. For script compatibility, `mer run` and `mer chat` return exit code 2 with guidance to use `mer route`. Historical `run` log entries remain readable by `mer report`.
+`mer route` classifies a request's role, effort, and tier, then maps it to a host model. Provide `--role` and `--effort` (and optionally `--tier`) together for an explicit route. You can also specify an override directly in host chat with `/router role=<role> effort=<effort> tier=<tier>`. MER does not execute workers, verification loops, reviews, or fixes. For script compatibility, `mer run` and `mer chat` return exit code 2 with guidance to use `mer route`. Historical `run` log entries remain readable by `mer report`.
 
-`mer on` and `mer off` toggle routing globally or locally (`--local`). When disabled (`mode: "off"`), model routing is completely bypassed with zero classifier calls or hook advice overhead, falling back directly to host default models. `mer status` checks the current active status, mode, and config source.
+`mer on` and `mer off` toggle routing globally or locally (`--local`). When disabled (`mode: "off"`), model routing is completely bypassed with zero classifier calls or hook advice overhead, falling back directly to host default models. `mer status` checks the current active status, mode, and config source. Antigravity, Claude Code, and Codex plugins also provide the `/router on` and `/router off` slash commands via the `router` skill.
 
 OpenCode's `mer` tool returns the same model/effort recommendation, and `mer_report` summarizes logs. Host hooks add a recommendation; they do not change the active model or effort. The Codex and Claude desktop apps render no hook output, so the hook advice also asks Main to open its first reply line with the recommendation.
 
@@ -255,7 +283,7 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
 }
 ```
 
-Legacy L1-L5, tier/profile, session, escalation, and `nimble_jev` settings are rejected with migration guidance. Replace tier overrides with `/router role=<role> effort=<effort>`; replace an old Main-session routing command with `mer route`. `nimble_jev` is removed; configure `nimble` and a separate classifier fallback such as `jev`.
+Legacy L1-L5, session, escalation, and `nimble_jev` settings are rejected with migration guidance. Replace legacy overrides with `/router role=<role> effort=<effort> tier=<tier>`; replace an old Main-session routing command with `mer route`. `nimble_jev` is removed; configure `nimble` and a separate classifier fallback such as `jev`.
 
 Jev credentials belong only in the global user config; see [Classifier backend setup](#classifier-backend-setup). Repository config cannot provide this credential.
 
@@ -289,6 +317,95 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 - Options: `--session <id prefix>`, `--since <n>m|h|d` (for example `12h`), and `--limit <n>` (rows to list, default 20; `0` prints only the summary).
 - Tokens are recorded for `route` (classifier) and `context_refresh`; historical `run` entries may contain worker tokens. Main and host Subagent turns are not logged, so their tokens are not shown. Exception messages, prompts, transcripts, verification output, and Subagent output are never written to the workflow log.
 - Claude, Codex, and Antigravity ship `classify`, `router`, and `report` skills. OpenCode has the `mer` and `mer_report` tools, and its routes are logged per session through `mer route --session <id>`.
+
+## Changelog
+
+### [v0.18.0] - 2026-10-27
+- **Recalibrated Jev tier classification**: Refined `jev_questions.json` criteria to clearly delineate model tiers:
+  - `economy`: Self-contained, localized tasks (single function/module, bug fixes, unit tests, routine refactoring) that fast economy models (e.g., Luna, Haiku 5.5, Flash) handle well with appropriate reasoning effort.
+  - `balanced`: Multi-module or cross-component features, non-trivial state management, or architecture-guided changes (e.g., Terra, Sonnet 5.5).
+  - `frontier`: System-wide architectural design, subtle cross-system reasoning, mission-critical concurrency/security/data-loss guarantees, or deep foundational decisions (e.g., Sol, Opus 5.5, Argon).
+
+### [v0.17.0] - 2026-10-27
+- **Router toggle commands and skills**:
+  - Added CLI commands `mer on`, `mer off`, `mer status`, and `mer mode [on|off|auto|status]` with `--local` support for repository-level toggling (`.model-effort-router.json`).
+  - Added `router` skill (`/router on`, `/router off`) across Antigravity, Claude Code, and Codex plugins.
+  - Complete bypass when `mode: "off"`: zero classifier API calls and zero hook advice overhead, falling back directly to host default models.
+
+### [v0.16.2] - 2026-10-26
+- **Decoupled model tier from reasoning effort**:
+  - Introduced orthogonal 3-axis classification: `role`, `effort` (`low`..`ultra`), and `tier` (`economy`, `balanced`, `frontier`).
+  - Configured default tier models per host:
+    - **Codex**: `gpt-6-luna` (economy), `gpt-6.1-terra` (balanced), `gpt-6.1-sol` (frontier).
+    - **Claude**: `claude-haiku-5-5` (economy), `claude-sonnet-5-5` (balanced), `claude-opus-5-5` (frontier).
+    - **Antigravity**: `gemini-3.8-flash` (economy), `claude-sonnet-5-5` (balanced), `gemini-4-argon` (frontier, alt: `claude-opus-5-5`).
+    - **OpenCode**: `opencode/mimo-v2.6-flash-free` (economy), `opencode-go/glm-5.3` (balanced), `opencode/nemotron-3-ultra-free` (frontier).
+  - Added tier classification to Jev (`jev_questions.json`) and Laya (`laya_instructions.json`).
+  - Added `models.<host>.<lane>.tiers` configuration and `/router ... tier=<tier>` chat override support.
+
+### [v0.16.1] - 2026-10-26
+- **Ultra effort mapping**: Automatically mapped classifier `max` effort requests to `ultra` for lanes/models that support `ultra` instead of `max`. Allowed `ultra` in configured lane `efforts`.
+
+### [v0.16.0] - 2026-10-26
+- **Codex balanced model update**: Added `gpt-6.1-terra` as Codex balanced tier model with supported effort levels.
+
+### [v0.15.0] - 2026-10-19
+- **Desktop UI advice visibility**: Restored routing advice display in Codex Desktop and Claude Desktop apps via Main reply tag guidance (`advice_reply_tag.txt`).
+- Extracted reply tag prompts into `prompts/` directory.
+
+### [v0.14.0] - 2026-10-19
+- **Streamlined MER scope to routing advice**:
+  - Simplified MER to focus strictly on role, effort, and model recommendation. Work execution, test loops, reviews, and fixes are delegated to the host agent.
+  - Added post-change independent review advice for `implementation` and `fix` tasks.
+  - Extracted prompt templates into standalone files under `model_effort_router/prompts/`.
+
+### [v0.13.4] - 2026-10-12
+- **Workflow log & diagnostics enhancements**:
+  - Structured event schemas for `route`, `subagent_start`/`stop`, `context_refresh`, and `error`.
+  - Added detailed Jev error diagnostic logging with status codes, stage identification, response excerpt truncation (240 chars), and credential masking.
+  - Modularized `mer report` event rendering and summary calculations.
+
+### [v0.13.3] - 2026-10-12
+- **Main effort tag in reply**: Displayed Main agent effort in response leading tags (`[main: <model> · effort <effort>]`).
+- Refactored host Main model/effort detection into host reader registry (`READERS`).
+- Added Antigravity diff verification to `scripts/deploy.sh`.
+
+### [v0.13.2] - 2026-10-12
+- **Extended report insights**: Added aggregated statistics to `mer report` covering model-effort distributions, classifier token usage, and Subagent lifecycle correlations.
+- Added session context background summarization with a 14-day retention window.
+
+### [v0.12.1] - 2026-10-08
+- **Plugin version alignment**: Synchronized Codex, Claude, and OpenCode plugins with core runtime updates.
+
+### [v0.12.0] - 2026-10-08
+- **Refined `no_route` and project targeting**: Guided non-code/chit-chat requests to Main agent without routing overhead. Improved Jev classification accuracy on project deliverables.
+
+### [v0.11.2] - 2026-10-07
+- **Unified routing display format**: Standardized routed model and effort display banner across all host hook surfaces (`[model-effort-router] model: <model> · effort: <effort>`).
+
+### [v0.11.1] - 2026-10-07
+- **OpenCode UI banner**: Enhanced routing banner presentation and TypeScript typecheck validation in OpenCode.
+
+### [v0.11.0] - 2026-10-07
+- **Laya classifier integration**: Added local Laya classifier backend support (`english` and `multilingual`) with evaluation benchmarks. Explicitly surfaced selected model and effort in host turn hooks.
+
+### [v0.10.0] - 2026-10-07
+- **Session context awareness**: Added background session context summarization for Claude and Codex hooks so short follow-ups (e.g., "go ahead") inherit prior task role and effort. Enabled safe tool-disabled CLI execution for background summaries.
+
+### [v0.9.0] - 2026-10-07
+- **OpenCode prompt hook & Max effort**: Added automatic prompt classification hook for OpenCode. Added `max` effort routing support across all hosts.
+
+### [v0.8.1] - 2026-10-07
+- **OpenCode v2 plugin alignment**: Transitioned OpenCode integration to v2 plugin specification with registered `mer` tool.
+
+### [v0.8.0] - 2026-10-07
+- **OpenAI Decisions API backend**: Added opt-in `openai_decisions` classifier backend (`gpt-6-luna`).
+- Added initial OpenCode plugin support. Introduced alternative model (`alternatives`) configuration.
+
+### [v0.7.0] - 2026-10-06
+- **Architecture refactoring to shared core**: Removed duplicate core copies across Codex, Claude, and Antigravity plugins into single `model_effort_router` package.
+- Standardized routing contract around role and effort. Added Jev and Nimble classifier backends.
+- Separated `classify` and `review` skills. Added Korean documentation (`README.ko.md`).
 
 ## Runtime development
 
