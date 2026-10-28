@@ -84,9 +84,25 @@ CLI가 설치되어 있지 않은 대상은 건너뜁니다. checkout이 `origin
 
 ## 라우팅 계약
 
-분류기는 `role`과 `effort`를 반환하며, `confidence`와 `reason_code`는 선택 사항입니다. 역할은 `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, `analysis`입니다. 앞의 네 역할은 실행 모델을 사용하고, 나머지는 추론 모델을 사용합니다. 노력 수준은 `low`, `medium`, `high`, `xhigh`입니다. 독립적인 위험 감지는 안전 민감 검토/설계 요청을 최소 `high`까지 올릴 수 있지만, 역할이나 모델 레인은 변경하지 않습니다.
+MER는 개발 요청을 3가지 독립된 축(**역할(role)**, **노력 수준(effort)**, **작업 체급(tier)**)으로 분류합니다(`confidence`와 `reason_code`는 선택 사항):
 
-기본값은 Codex 실행 `gpt-6-luna`·추론 `gpt-6.1-sol`, Claude 실행 `claude-sonnet-5-5`·추론 `claude-opus-5-5`, Antigravity 실행 `gemini-3.8-flash`·추론 `gemini-4-argon`, OpenCode 실행 조언 `opencode/mimo-v2.6-flash-free`·추론 조언 `opencode/nemotron-3-ultra-free`입니다. OpenCode 추론 후보는 `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, `opencode-go/grok-4.7`입니다. 각 호스트/레인에서 `primary`, 선택적 `alternatives`, 지원 effort를 설정할 수 있습니다. `primary`를 추천하고 `alternatives`를 사용자가 고를 후보로 표시합니다. 이전 설정 호환성을 위해 모델별 `fallback` 값은 읽지만 더는 사용하지 않습니다. 예시:
+- **역할 (Role)**: `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, `analysis`. 앞의 네 역할은 실행(execution) 모델 레인을 사용하고, 나머지는 추론(reasoning) 모델 레인을 사용합니다.
+- **노력 수준 (Effort)**: `low`, `medium`, `high`, `xhigh`, `max`. 독립적인 위험 감지는 안전 민감 검토/설계 요청을 최소 `high`까지 올릴 수 있지만, 역할이나 모델 레인은 변경하지 않습니다. 모델 레인의 `efforts`에 `max`가 없고 `ultra`가 정의되어 있으면(`xhigh`에서 바로 `ultra`로 넘어가는 모델), 분류기의 `max`는 `ultra`로 자동 매핑됩니다.
+- **작업 체급 (Tier)**: `economy`, `balanced`, `frontier`. 모델의 지능 체급(지능 수준/규모)을 추론 노력 수준(effort)과 독립적으로 분리하여 판단합니다:
+  - `economy`: 단일 함수/클래스/모듈 구현, 국소적인 버그 수정, 단위 테스트, 일상적 리팩터링 등 빠르고 가벼운 경제형 모델(Luna, Haiku 5.5, Flash 등)이 적절한 reasoning effort와 결합하여 잘 처리할 수 있는 자기완결적 작업.
+  - `balanced`: 다중 모듈 및 컴포넌트 간 기능 개발, 서브시스템 간 상호작용, 상태 관리, 아키텍처 가이드 기반 변경 작업(Terra, Sonnet 5.5 등).
+  - `frontier`: 시스템 전반의 아키텍처 설계, 미묘한 크로스 시스템 추론, 동시성/보안/데이터 무결성이 결부된 미션 크리티컬 의사결정(Sol, Opus 5.5, Argon 등).
+
+### 호스트별 기본 모델 매핑
+
+| 호스트 | Economy | Balanced | Frontier |
+|---|---|---|---|
+| **Codex** | `gpt-6-luna` | `gpt-6.1-terra` | `gpt-6.1-sol` |
+| **Claude** | `claude-haiku-5-5` | `claude-sonnet-5-5` | `claude-opus-5-5` |
+| **Antigravity** | `gemini-3.8-flash` | `claude-sonnet-5-5` | `gemini-4-argon` *(대안: `claude-opus-5-5`)* |
+| **OpenCode** | `opencode/mimo-v2.6-flash-free` | `opencode-go/glm-5.3` | `opencode/nemotron-3-ultra-free` *(대안: `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, `opencode-go/grok-4.7`)* |
+
+각 호스트/레인에서 `primary`, 선택적 `alternatives`, 지원 `efforts`, 그리고 선택적 `tiers` 매핑을 설정할 수 있습니다. `primary`를 추천하고 `alternatives`를 사용자가 고를 후보로 표시합니다. 이전 설정 호환성을 위해 모델별 `fallback` 값은 읽지만 더는 사용하지 않습니다. 예시:
 
 ```json
 {
@@ -94,11 +110,23 @@ CLI가 설치되어 있지 않은 대상은 건너뜁니다. checkout이 `origin
     "codex": {
       "execution": {
         "primary": "gpt-6-luna",
-        "alternatives": ["gpt-6-astra", "provider/model-id"]
+        "tiers": {
+          "economy": "gpt-6-luna",
+          "balanced": "gpt-6.1-terra",
+          "frontier": "gpt-6.1-sol"
+        },
+        "alternatives": ["gpt-6-astra"],
+        "efforts": ["low", "medium", "high", "xhigh", "max"]
       },
       "reasoning": {
         "primary": "gpt-6.1-sol",
-        "alternatives": ["gpt-6-astra", "provider/another-model"]
+        "tiers": {
+          "economy": "gpt-6-luna",
+          "balanced": "gpt-6.1-terra",
+          "frontier": "gpt-6.1-sol"
+        },
+        "alternatives": ["gpt-6-astra"],
+        "efforts": ["low", "medium", "high", "xhigh", "max"]
       }
     }
   }
@@ -216,9 +244,9 @@ python3 <plugin>/bin/mer status                    # 현재 활성 상태 및 �
 python3 <plugin>/bin/mer off --local               # 현재 저장소 로컬에서만 비활성화
 ```
 
-`mer route`는 요청의 role/effort를 분류하고 호스트 모델에 매핑합니다. 명시적인 `--role`과 `--effort`는 함께 제공해야 합니다. MER는 작업자 실행, 검증 루프, 리뷰 또는 수정 절차를 실행하지 않습니다. 기존 스크립트 호환성을 위해 `mer run`과 `mer chat`은 종료 코드 2와 함께 `mer route` 사용 안내를 반환합니다. 오래된 로그의 `run` 항목은 `mer report`에서 계속 읽을 수 있습니다.
+`mer route`는 요청의 role, effort, tier를 분류하고 호스트 모델에 매핑합니다. 명시적인 라우팅을 지정하려면 `--role`과 `--effort`(선택적으로 `--tier`)를 함께 제공해야 합니다. 호스트 채팅 내에서 `/router role=<role> effort=<effort> tier=<tier>` 형식으로 직접 오버라이드할 수도 있습니다. MER는 작업자 실행, 검증 루프, 리뷰 또는 수정 절차를 실행하지 않습니다. 기존 스크립트 호환성을 위해 `mer run`과 `mer chat`은 종료 코드 2와 함께 `mer route` 사용 안내를 반환합니다. 오래된 로그의 `run` 항목은 `mer report`에서 계속 읽을 수 있습니다.
 
-`mer on`과 `mer off`는 라우터를 전역 또는 로컬(`--local`)로 즉시 켜고 끕니다. 비활성화(`mode: "off"`) 시 분류기 호출과 프롬프트 조언 주입을 완전히 건너뛰고(bypass) 호스트 기본 모델로 직접 동작합니다. `mer status`는 현재 라우터 활성 여부(`ON`/`OFF`), 적용 모드, 설정 출처를 출력합니다.
+`mer on`과 `mer off`는 라우터를 전역 또는 로컬(`--local`)로 즉시 켜고 끕니다. 비활성화(`mode: "off"`) 시 분류기 호출과 프롬프트 조언 주입을 완전히 건너뛰고(bypass) 호스트 기본 모델로 직접 동작합니다. `mer status`는 현재 라우터 활성 여부(`ON`/`OFF`), 적용 모드, 설정 출처를 출력합니다. Antigravity, Claude Code, Codex 플러그인은 `router` 스킬을 통해 채팅창에서 `/router on` 및 `/router off` 슬래시 명령도 지원합니다.
 
 OpenCode의 `mer` 도구도 같은 모델·effort 추천을 반환하며, `mer_report`는 로그를 요약합니다. 호스트 hook은 추천을 추가할 뿐 활성 모델/effort를 변경하지 않습니다. Codex·Claude 데스크톱 앱은 hook 출력을 표시하지 않으므로, hook 조언은 Main이 첫 답변 줄에 추천을 적도록 요청합니다.
 
@@ -253,7 +281,7 @@ OpenCode의 `mer` 도구도 같은 모델·effort 추천을 반환하며, `mer_r
 }
 ```
 
-Legacy L1-L5, tier/profile, session, escalation 및 `nimble_jev` 설정은 마이그레이션 안내와 함께 거부됩니다. tier override는 `/router role=<role> effort=<effort>`로 바꾸고, 이전 Main-session 라우팅 명령은 `mer route`로 바꾸십시오. `nimble_jev`는 제거되었으므로 `nimble`과 `jev` 같은 별도의 classifier fallback을 설정하십시오.
+Legacy L1-L5, session, escalation 및 `nimble_jev` 설정은 마이그레이션 안내와 함께 거부됩니다. 이전 설정 오버라이드는 `/router role=<role> effort=<effort> tier=<tier>`로 바꾸고, 이전 Main-session 라우팅 명령은 `mer route`로 바꾸십시오. `nimble_jev`는 제거되었으므로 `nimble`과 `jev` 같은 별도의 classifier fallback을 설정하십시오.
 
 Jev 인증 정보는 전역 사용자 설정에만 둘 수 있습니다. 자세한 방법은 [분류기 backend 설정](#분류기-backend-설정)을 참고하십시오. 저장소 설정에는 이 인증 정보를 둘 수 없습니다.
 
@@ -287,6 +315,95 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 - 옵션: `--session <세션 ID 앞부분>`, `--since <n>m|h|d`(예: `12h`), `--limit <n>`(나열할 행 수, 기본 20, `0`이면 요약만 출력).
 - 토큰은 `route`(분류기 호출)에 기록되며, 과거 `run` 행에는 worker token이 남아 있을 수 있습니다. Main과 Subagent 턴은 로그에 남지 않아 그 토큰은 표시되지 않습니다.
 - Claude, Codex, Antigravity는 `classify`, `router`, `report` 스킬을 제공합니다. OpenCode는 `mer_report` 도구를 제공하며, `mer route --session <id>`로 세션별 route를 로그에 남깁니다.
+
+## 버전별 변경사항 (Changelog)
+
+### [v0.18.0] - 2026-10-27
+- **Jev 티어 분류 기준 재조정**: `jev_questions.json`의 판정 기준을 정교화하여 작업 규모와 체급을 명확히 구분:
+  - `economy`: 단일 함수/모듈, 버그 수정, 단위 테스트, 일상적 리팩터링 등 가벼운 경제형 모델(Luna, Haiku 5.5, Flash 등)이 적절한 reasoning effort와 결합하여 충분히 해결 가능한 국소적 작업.
+  - `balanced`: 다중 모듈 또는 컴포넌트 간 기능 개발, 비자명한 상태 관리, 서브시스템 간 상호작용 등 균형 잡힌 모델(Terra, Sonnet 5.5 등)이 필요한 작업.
+  - `frontier`: 시스템 전반의 아키텍처 설계, 심층적인 크로스 시스템 추론, 동시성/보안/데이터 손실 방지가 직결된 핵심 의사결정(Sol, Opus 5.5, Argon 등).
+
+### [v0.17.0] - 2026-10-27
+- **라우터 모드 토글 명령어 및 스킬 추가**:
+  - `mer on`, `mer off`, `mer status`, `mer mode [on|off|auto|status]` CLI 명령어 지원 (`--local` 옵션으로 저장소 로컬 `.model-effort-router.json`에만 적용 가능).
+  - Antigravity, Claude Code, Codex 플러그인에 `router` 스킬 추가 (`/router on`, `/router off` 슬래시 커맨드 지원).
+  - `mode: "off"` 시 분류기 API 호출과 훅 조언 주입을 최우선으로 바이패스하여 지연 시간과 불필요한 토큰 소모를 방지하고 호스트 기본 모델로 즉시 복귀.
+
+### [v0.16.2] - 2026-10-26
+- **작업 체급(`tier`)과 추론 깊이(`effort`)의 분리**:
+  - 3개 독립 축 분류 체계 도입: `role`(역할), `effort`(`low`..`ultra` 추론 깊이), `tier`(`economy`, `balanced`, `frontier` 모델 체급).
+  - 호스트별 기본 모델 티어 매핑 정립:
+    - **Codex**: `gpt-6-luna` (economy), `gpt-6.1-terra` (balanced), `gpt-6.1-sol` (frontier).
+    - **Claude**: `claude-haiku-5-5` (economy), `claude-sonnet-5-5` (balanced), `claude-opus-5-5` (frontier).
+    - **Antigravity**: `gemini-3.8-flash` (economy), `claude-sonnet-5-5` (balanced), `gemini-4-argon` (frontier, 대안: `claude-opus-5-5`).
+    - **OpenCode**: `opencode/mimo-v2.6-flash-free` (economy), `opencode-go/glm-5.3` (balanced), `opencode/nemotron-3-ultra-free` (frontier).
+  - Jev(`jev_questions.json`) 및 Laya(`laya_instructions.json`) 분류기에 tier 판별 질문 추가.
+  - 설정의 `models.<host>.<lane>.tiers` 매핑 및 채팅창 오버라이드 `/router ... tier=<tier>` 지원.
+
+### [v0.16.1] - 2026-10-26
+- **Ultra effort 자동 매핑**: `max` effort를 지원하지 않고 `ultra`를 지원하는 모델/레인에서 분류기의 `max` 요청을 `ultra`로 자동 매핑. 설정의 `efforts` 배열에 `ultra` 허용.
+
+### [v0.16.0] - 2026-10-26
+- **Codex balanced 모델 업데이트**: Codex balanced 티어 기본 모델로 `gpt-6.1-terra` 추가 및 지원 effort 등록.
+
+### [v0.15.0] - 2026-10-19
+- **데스크톱 UI 조언 노출 복원**: Codex 데스크톱 UI 및 Claude 데스크톱 앱에서 Main 첫 답변 줄에 추천 태그를 출력하도록 가이드 복원 (`advice_reply_tag.txt`).
+- 응답 태그 프롬프트를 `prompts/` 디렉터리로 분리.
+
+### [v0.14.0] - 2026-10-19
+- **MER 역할을 라우팅 추천 전용으로 단순화**:
+  - MER의 책임을 모델/effort/tier 추천으로 집중하고 작업 실행, 테스트 루프, 리뷰, 수정은 호스트가 전담하도록 위임.
+  - `implementation` 및 `fix` 요청 시 작업 완료 후 독립 리뷰를 요청하도록 조언(advice) 안내 메시지 추가.
+  - 프롬프트 텍스트를 `model_effort_router/prompts/` 디렉터리 내 개별 파일로 분리.
+
+### [v0.13.4] - 2026-10-12
+- **워크플로우 로그 및 진단 강화**:
+  - `route`, `subagent_start`/`stop`, `context_refresh`, `error` 이벤트 구조화.
+  - Jev 에러 디버그 진단 로그 강화: HTTP 상태 코드, 단계 정보 기록, 응답 발췌문 길이 제한(240자) 및 민감 정보/자격 증명 마스킹.
+  - `mer report`의 이벤트 출력 및 요약 처리 모듈화.
+
+### [v0.13.3] - 2026-10-12
+- **답변 첫 줄 태그에 Main의 effort 표기**: `[main: <model> · effort <effort>]` 형태로 현재 모델과 effort 상태 노출.
+- 호스트 Main 모델 및 effort 판별 분기를 host별 reader 레지스트리(`READERS`)로 리팩터링.
+- `scripts/deploy.sh`에 Antigravity 설치본 `diff` 검증 추가.
+
+### [v0.13.2] - 2026-10-12
+- **리포트 상세 통계 추가**: `mer report`에 모델-effort 분포, 분류기 토큰 소모량, Subagent 생애주기 상관관계 통계 추가.
+- 세션 컨텍스트 백그라운드 요약(보존 기간 14일) 도입.
+
+### [v0.12.1] - 2026-10-08
+- **플러그인 버전 동기화**: Codex, Claude, OpenCode 플러그인 버전 `0.12.1` 정렬 및 안정화.
+
+### [v0.12.0] - 2026-10-08
+- **`no_route` 및 프로젝트 타깃 개선**: 잡담 및 비개발 요청을 Main 에이전트로 원활하게 안내. Jev 프로젝트 결과물 판정 정확도 개선.
+
+### [v0.11.2] - 2026-10-07
+- **통일된 라우팅 표시 포맷**: 모든 호스트 hook 표면에 `[model-effort-router] model: <model> · effort: <effort>` 형식의 표준화된 배너 적용.
+
+### [v0.11.1] - 2026-10-07
+- **OpenCode UI 배너**: OpenCode 라우팅 배너 UI 표시 및 TypeScript 타입 검사 보강.
+
+### [v0.11.0] - 2026-10-07
+- **Laya 분류기 연동**: 로컬 Laya 분류기 백엔드(`english`, `multilingual`) 및 벤치마크 평가 추가. 호스트 턴 훅에서 선택된 모델과 effort를 명시적으로 표시.
+
+### [v0.10.0] - 2026-10-07
+- **세션 맥락 요약 도입**: Claude 및 Codex 훅에서 백그라운드 세션 맥락 요약을 전송하여 "계속해줘" 등 짧은 후속 지시도 앞선 작업의 역할과 effort를 상속하도록 개선.
+
+### [v0.9.0] - 2026-10-07
+- **OpenCode 프롬프트 훅 및 Max effort**: OpenCode 자동 프롬프트 분류 훅 추가 및 전 호스트 대상 `max` effort 라우팅 지원.
+
+### [v0.8.1] - 2026-10-07
+- **OpenCode v2 플러그인 전환**: OpenCode v2 플러그인 사양으로 전환하고 `mer` 도구 등록.
+
+### [v0.8.0] - 2026-10-07
+- **OpenAI Decisions API 백엔드**: 선택적 `openai_decisions` 분류기 백엔드(`gpt-6-luna`) 추가.
+- 초기 OpenCode 플러그인 지원 및 대안 모델(`alternatives`) 설정 도입.
+
+### [v0.7.0] - 2026-10-06
+- **공유 코어 아키텍처 리팩터링**: 각 플러그인에 흩어져 있던 코어 사본을 제거하고 단일 `model_effort_router` 패키지로 통합.
+- 역할(role) 및 노력 수준(effort) 중심 라우팅 계약 확립. Jev 및 Nimble 분류기 백엔드 지원.
+- `classify`와 `review` 스킬 분리. 한국어 문서(`README.ko.md`) 추가.
 
 ## Runtime 개발
 
