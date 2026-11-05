@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 
+from .difficulty.decision import TIERS
 from .host import hosts
 from .host.advice import NO_ROUTE_MESSAGE, effort_pair
 from .host.codex_hooks import REPO_CONFIG, USER_CONFIG_ENV, _registry, load_configs
@@ -49,6 +50,7 @@ def _parser():
     route_parser.add_argument("--host", choices=sorted(hosts.HOSTS))
     route_parser.add_argument("--role")
     route_parser.add_argument("--effort")
+    route_parser.add_argument("--tier", choices=TIERS, help="model tier; requires --role and --effort")
     route_parser.add_argument("--json", action="store_true")
     route_parser.add_argument(
         "--automatic",
@@ -210,6 +212,7 @@ def main(argv=None, *, env=None, out=None):
                 explicit=not args.automatic,
                 role_override=args.role,
                 effort_override=args.effort,
+                tier_override=args.tier,
                 repo_summary=os.path.basename(os.path.normpath(cwd)),
             )
     except _RoutingInterrupted as exc:

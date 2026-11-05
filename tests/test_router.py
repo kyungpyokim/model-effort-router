@@ -241,3 +241,13 @@ class TargetFromBackendTest(unittest.TestCase):
     def test_override_with_tier(self):
         p = route("/router role=implementation effort=medium tier=balanced\nDo task", host="codex")
         self.assertEqual((p.model, p.applied_effort, p.decision.tier), ("gpt-6.1-terra", "medium", "balanced"))
+
+    def test_tier_override_argument_selects_tier_and_requires_role_and_effort(self):
+        p = route(
+            "Do task", host="codex", role_override="implementation", effort_override="high", tier_override="frontier"
+        )
+        self.assertEqual((p.model, p.decision.tier, p.decision.backend), ("gpt-6.1-sol", "frontier", "explicit"))
+        with self.assertRaisesRegex(ValueError, "--tier requires --role and --effort"):
+            route("Do task", host="codex", tier_override="frontier")
+        with self.assertRaisesRegex(ValueError, "must be provided together"):
+            route("Do task", host="codex", role_override="implementation", tier_override="frontier")

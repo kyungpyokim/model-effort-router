@@ -101,6 +101,8 @@ def route(
     phase_override = role_override is not None or effort_override is not None
     if phase_override and (role_override is None or effort_override is None):
         raise ValueError("--role and --effort must be provided together")
+    if tier_override is not None and not phase_override:
+        raise ValueError("--tier requires --role and --effort")
     if cfg.mode == "off":
         return RoutePlan(NO_ROUTE, "off")
     if cfg.mode == "manual" and not phase_override:

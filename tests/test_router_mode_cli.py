@@ -1,3 +1,4 @@
+import contextlib
 import io
 import json
 import tempfile
@@ -79,6 +80,48 @@ class RouterModeCliTest(unittest.TestCase):
         self.assertIn("Router enabled (mode: auto, scope: local (.model-effort-router.json))", out)
         saved = json.loads(local_cfg.read_text())
         self.assertEqual(saved["router"]["mode"], "auto")
+
+    def route_cli(self, *args):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            try:
+                code, out = self.run_cli("route", "--cwd", str(self.cwd), *args)
+            except SystemExit as exc:  # argparse rejects bad arguments by exiting
+                code, out = exc.code, ""
+        return code, out, err.getvalue()
+
+    def test_route_tier_flag_selects_tier_model_per_host(self):
+        expected = {
+            "codex": ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol"),
+            "claude": ("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"),
+            "antigravity": ("gemini-3.8-flash-high", "claude-sonnet-5-5-high", "gemini-4-argon-high"),
+        }
+        for host, models in expected.items():
+            for tier, model in zip(("economy", "balanced", "frontier"), models):
+                with self.subTest(host=host, tier=tier):
+                    code, out, err = self.route_cli(
+                        "--host", host, "--role", "implementation", "--effort", "high", "--tier", tier, "--json", "x"
+                    )
+                    self.assertEqual(code, 0, err)
+                    payload = json.loads(out)
+                    self.assertEqual((payload["model"], payload["effort"]), (model, "high"))
+                    self.assertEqual(payload["classifier"], "explicit")
+
+    def test_route_tier_flag_requires_role_and_effort(self):
+        for args in ((), ("--role", "implementation"), ("--effort", "high")):
+            with self.subTest(args=args):
+                code, out, err = self.route_cli("--host", "codex", *args, "--tier", "frontier", "--json", "x")
+                self.assertEqual(code, 2)
+                self.assertEqual(out, "")
+                self.assertIn("--role", err)
+
+    def test_route_rejects_an_invalid_tier(self):
+        code, out, err = self.route_cli(
+            "--host", "codex", "--role", "implementation", "--effort", "high", "--tier", "ultra", "--json", "x"
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("invalid choice: 'ultra'", err)
 
     def test_router_bypassed_when_mode_is_off(self):
         # Configure off locally
