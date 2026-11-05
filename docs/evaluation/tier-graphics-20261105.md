@@ -1,6 +1,6 @@
 # 그래픽·Blender tier 기준 보정 (2026-11-05)
 
-> **최종 상태**: 도메인 조건(좁은 도메인 API, 공간·기하 추론, 렌더링 출력)에 해당하는 작업은 크기와 상관없이 `frontier`로 분류한다. 사용자 결정이다. 아래 "변경"~"리뷰 지적 재측정"은 같은 조건을 `balanced`로 두던 중간 단계(v1, v2)의 기록이고, 최종 결과는 맨 아래 "frontier로 재정의" 절에 있다.
+> **최종 상태**: 도메인 조건(좁은 도메인 API, 공간·기하 수학, 테스트로 확인할 수 없는 시각 결과)에 해당하는 작업은 크기와 상관없이 `frontier`로 분류한다. 사용자 결정이다. 아래 "변경"~"리뷰 지적 재측정"은 같은 조건을 `balanced`로 두던 중간 단계(v1, v2)의 기록이고, 최종 결과는 맨 아래 "frontier로 재정의" 절에 있다.
 
 ## 문제
 
@@ -92,7 +92,7 @@ effort가 달라진 5건 중 새로 맞힌 것이 2건, 새로 틀린 것이 3�
 사용자가 그래픽·Blender 작업은 balanced가 아니라 frontier로 보내야 한다고 정했다. 그래서 도메인 조건을 balanced에서 frontier로 옮겼다. 값·이름·오타 변경과 널리 알려진 개념 설명은 그대로 economy다.
 
 - **프롬프트**: balanced는 원래 문구(다중 모듈·서브시스템 상호작용·상태 관리·아키텍처 가이드)로 되돌렸다. frontier에 v1의 도메인 문장을 그대로 옮겼다("a task of any size whose correctness depends on ..."). economy의 예외 문장에는 "frontier에 적힌 도메인에서도"를 덧붙였다. v2에서 나빠졌던 "localized task" 표현은 쓰지 않았다.
-- **라벨**: 라벨링 가이드 §3a를 새 정의로 고쳤다. 78건(dev 32, holdout 24, 대조군 22)을 `tier-*-v2.jsonl`로 복사해, 이전 라벨을 보지 않은 새 AI 라벨러 두 명이 처음부터 다시 라벨링했다. 첫 일치는 role 77/78, effort 69/78, tier 78/78이었다. role/effort 불일치는 앞 라운드에서 같은 사례를 판정한 결과와 맞췄다. 새 정답 tier는 dev가 economy 14 / frontier 18, holdout이 economy 11 / frontier 13, 대조군이 economy 15 / balanced 2 / frontier 5다.
+- **라벨**: 라벨링 가이드 §3a를 새 정의로 고쳤다. 78건(dev 32, holdout 24, 대조군 22)을 `tier-*-v2.jsonl`로 복사해, 이전 라벨을 보지 않은 새 AI 라벨러 두 명이 처음부터 다시 라벨링했다. 첫 일치는 role 77/78, effort 69/78, tier 78/78이었다. role/effort 불일치는 앞 라운드에서 같은 사례를 판정한 결과와 맞췄다. 두 라벨러가 일치해서 앞 라운드와 달라진 final도 있다: role/effort 4건(gfx-dev-016 medium→high, gfx-hold-017 medium→high, gfx-hold-018 low→medium, tier-ctl-011 low→medium)과 tier 1건(tier-ctl-014 Vue 드래그 앤 드롭, economy→balanced)이다. 새 정답 tier는 dev가 economy 14 / frontier 18, holdout이 economy 11 / frontier 13, 대조군이 economy 15 / balanced 2 / frontier 5다.
 - **채점**: 원래 문구와 v1 문구는 앞서 받은 예측을 새 정답으로 다시 채점했고, 최종 문구만 새로 호출했다.
 
 | 세트 (v2 라벨) | 원래 문구 | v1 (도메인→balanced) | 최종 (도메인→frontier) |
@@ -103,12 +103,16 @@ effort가 달라진 5건 중 새로 맞힌 것이 2건, 새로 틀린 것이 3�
 | v3 150건 role / effort | 142 / 117 | 142 / 116 | 142 / 119 |
 
 - **dev 오답 1건**: Blender Apply Scale 설명(economy)을 frontier로 분류했다. 이전 라운드에서도 경계에 있던 사례다.
-- **대조군 오답 1건**: 키보드 접근성이 있는 Vue 드래그 앤 드롭 정렬(balanced)을 economy로 분류했다. economy로 판정한 일반 프론트엔드 15건은 모두 economy였고, frontier 5건(엔진 설계·계획 3건, Blender 애드온 이전 계획, Godot 셰이더)도 모두 맞혔다.
-- **일반 요청 v3**: tier 분포가 원래 문구의 economy 100 / balanced 33 / frontier 17에서 98 / 32 / 20으로 바뀌었다. frontier로 올라간 3건 중 2건은 IndexedDB 로컬 사본 이전(데이터 손실)과 서명 검증 리뷰(보안)로, 기존 frontier 정의에 맞는다. 나머지 1건은 맥락 없는 "It broke again. Fix it."이다. role/effort는 떨어지지 않았다.
+- **대조군 오답 1건**: 키보드 접근성이 있는 Vue 드래그 앤 드롭 정렬(balanced)을 economy로 분류했다. 이 사례는 앞 라운드 정답이 economy였는데 새 라벨러 둘이 balanced로 바꾼 것이라, 프롬프트 동작보다 라벨 변화에서 나온 오답이다(v1 문구의 오답 3건 중 1건도 같은 이유). economy로 판정한 대조군 15건(일반 프론트엔드 14, 날짜 유틸 리팩터링 1)은 모두 economy였고, frontier 5건(엔진 설계·계획 3건, Blender 애드온 이전 계획, Godot 셰이더)도 모두 맞혔다.
+- **일반 요청 v3**: tier 분포가 원래 문구의 economy 100 / balanced 33 / frontier 17에서 98 / 32 / 20으로 바뀌었다. frontier로 올라간 3건 중 2건은 IndexedDB 로컬 사본 이전(데이터 손실)과 서명 검증 리뷰(보안)로, 기존 frontier 정의에 맞는다. 나머지 1건은 맥락 없는 "It broke again. Fix it."으로, 근거 없이 frontier로 올라간 오분류다. 맥락이 빈 요청이 Opus로 추천될 수 있다는 뜻이다. role/effort는 떨어지지 않았다.
 
-한계는 앞 절과 같다. 정답은 AI 라벨러의 합의이고, 기준과 프롬프트를 같은 작성자가 썼으며, holdout은 이전 라운드에서 이미 결과를 본 세트다. 따라서 24/24는 "새 정의와의 일치"이지 독립 검증이 아니다. 비용도 고려해야 한다. Claude 기본 매핑에서 그래픽·Blender 작업은 이제 Opus로 추천된다.
+**문구 위험.** 프롬프트의 frontier 조건은 가이드보다 넓다. 가이드는 시각 조건을 렌더링·그래픽 출력으로 한정하고 일반 UI 레이아웃·스타일은 economy라고 명시하지만, 프롬프트는 "visual output that tests cannot check"와 "spatial or geometric math"만 쓴다. 일반 프론트엔드 대조군 14건은 모두 economy로 남았지만, 지도·위치 정보·CSS transform·차트 레이아웃처럼 공간 수학과 닿는 작업은 대조군이 없다. 잘못 올라가면 이제 Sonnet이 아니라 Opus로 추천되므로 balanced 때보다 비용이 크다. 프롬프트를 가이드처럼 좁히려면 다시 측정해야 한다.
+
+한계는 앞 절과 같다. 정답은 AI 라벨러의 합의이고, 기준과 프롬프트를 같은 작성자가 썼으며, holdout은 이전 라운드에서 이미 결과를 본 세트다. 따라서 24/24는 "새 정의와의 일치"이지 독립 검증이 아니다. 비용도 고려해야 한다. Claude 기본 매핑에서 그래픽·Blender 작업은 이제 Opus로 추천되고, "작업 크기와 상관없이"라는 문구 때문에 작은 bpy 스크립트나 셰이더 수정도 Opus로 간다.
 
 ## 재현
+
+앞 절들의 원래 문구·v1·v2 결과는 `*-v1.jsonl`(이전 정의 라벨)로 측정했다. 아래 명령은 현재 정의의 `*-v2.jsonl`을 쓴다.
 
 ```sh
 python3 -m evaluation.compare evaluation/corpus/tier-graphics-dev-v2.jsonl --backend jev --json runs/tier-graphics-dev.json
