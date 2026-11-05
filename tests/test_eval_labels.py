@@ -82,6 +82,28 @@ class TierLabelsTest(unittest.TestCase):
         self.assertEqual(read[0]["tier"], "economy")
         self.assertNotIn("tier", read[1])
 
+    def test_legacy_tsv_and_tierless_jsonl_merge_without_tier_keys(self):
+        sheet = self.d / "kim.tsv"
+        with sheet.open("w", newline="") as f:
+            w = csv.writer(f, delimiter="\t")
+            w.writerow(labels.TSV_FIELDS)
+            w.writerow(["a", "Fix typo", "README.md", "kim", "fix", "low", ""])
+            w.writerow(["b", "What is this?", "", "kim", "analysis", "low", ""])
+        other = self.d / "o.jsonl"
+        other.write_text(
+            "".join(
+                json.dumps({"id": i, "labeler": "claude", "role": r, "effort": "low"}) + "\n"
+                for i, r in (("a", "fix"), ("b", "analysis"))
+            )
+        )
+        out = labels.merge(str(self.corpus), [str(sheet), str(other)])
+        self.assertEqual([r["status"] for r in out], ["labeled", "labeled"])
+        for r in out:
+            for lab in r["labels"]:
+                self.assertEqual(set(lab), {"labeler", "role", "effort"})
+        rep = cases.agreement(out)
+        self.assertEqual((rep["compared"], rep["role_exact"], rep["tier_compared"]), (2, 2, 0))
+
     def test_old_sheet_has_no_tier_column(self):
         sheet = self.d / "old.tsv"
         labels.write_sheet(str(self.corpus), str(sheet))

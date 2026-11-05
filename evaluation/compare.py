@@ -73,13 +73,18 @@ def compare(rows, backends, **kwargs):
 
 
 def to_markdown(result):
+    show_tier = any(item.get("tier_n", 0) for item in result["backends"].values())
+    title = "Role / effort / tier" if show_tier else "Role / effort"
+    labels = "role, effort and tier labels" if show_tier else "role and effort labels"
     lines = [
-        f"# Role / effort comparison ({result['cases']} adjudicated cases)",
+        f"# {title} comparison ({result['cases']} adjudicated cases)",
         "",
-        "Historical L1-L5 corpora are excluded; this report scores only explicit role and effort labels (plus tier where labeled).",
+        f"Historical L1-L5 corpora are excluded; this report scores only explicit {labels}.",
         "",
-        "| Provider | Cases | Role exact | Effort exact | Joint exact | Tier exact | Provider failures |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Provider | Cases | Role exact | Effort exact | Joint exact | "
+        + ("Tier exact | " if show_tier else "")
+        + "Provider failures |",
+        "|---|---:|---:|---:|---:|" + ("---:|" if show_tier else "") + "---:|",
     ]
     for name, item in result["backends"].items():
         n = item["n"]
@@ -88,27 +93,43 @@ def to_markdown(result):
             return f"{item[key]}/{n} ({item[key] / n:.0%})" if n else "-"
 
         tn = item.get("tier_n", 0)
-        tier = f"{item['tier_exact']}/{tn} ({item['tier_exact'] / tn:.0%})" if tn else "-"
+        tier = f" {item['tier_exact']}/{tn} ({item['tier_exact'] / tn:.0%}) |" if tn else " - |"
         lines.append(
-            f"| {name} | {n} | {pct('role_exact')} | {pct('effort_exact')} | {pct('joint_exact')} | {tier} | {item['fallback_count']} |"
+            f"| {name} | {n} | {pct('role_exact')} | {pct('effort_exact')} | {pct('joint_exact')} |"
+            + (tier if show_tier else "")
+            + f" {item['fallback_count']} |"
         )
     return "\n".join(lines) + "\n"
 
 
-def build_backend(name, user_config=None):
-    """Backend from the registry; Jev/OpenAI keys come from user config like policy.router._make_backends."""
-    from model_effort_router.difficulty.registry import create
+def build_backend(name, repo_config=None, user_config=None):
+    """Backend from the registry, configured like policy.router._make_backends (resolved repo/user config)."""
+    from model_effort_router.difficulty.registry import BACKENDS, create
+    from model_effort_router.policy.config import resolve_config
 
+    if name not in BACKENDS:
+        raise ValueError(f"unknown backend {name!r}; valid: {', '.join(sorted(BACKENDS))}")
+    cfg = resolve_config(repo=repo_config, user=user_config)
     options = {}
-    user_config = user_config or {}
-    if name == "jev":
+    if name in ("nimble", "laya"):
+        backend_options = getattr(cfg, name, None)
+        if backend_options:
+            options["options"] = backend_options
+    if name == "jev" and user_config:
         jev = user_config.get("jev") or {}
         options["api_key"] = jev.get("api_key")
         if jev.get("model"):
             options["model"] = jev["model"]
-    elif name == "openai_decisions":
+    if name == "openai_decisions" and user_config:
         options["api_key"] = (user_config.get("openai") or {}).get("api_key")
     return create(name, **options)
+
+
+def _failed_backends(result):
+    for name, item in result["backends"].items():
+        if item["n"] and item["fallback_count"] == item["n"]:
+            kinds = sorted({e["type"] for e in item["errors"]}) or ["fallback"]
+            yield name, kinds
 
 
 def main(argv=None, *, backend_factory=None):
@@ -121,20 +142,35 @@ def main(argv=None, *, backend_factory=None):
     parser.add_argument("--json", dest="json_out")
     parser.add_argument("--timeout", type=float, default=30)
     args = parser.parse_args(argv)
+    out_file = None
     try:
         rows = cases.load(args.corpus)
-        user_config = load_configs(os.getcwd(), os.environ)[1]
+        repo_config, user_config = load_configs(os.getcwd(), os.environ)
+        for label, config in (("repo", repo_config), ("user", user_config)):
+            if config is not None and not isinstance(config, dict):
+                raise ValueError(f"{label} config must be a JSON object")
         factory = backend_factory or build_backend
-        backends = {name: factory(name, user_config) for name in args.backends}
+        backends = {name: factory(name, repo_config, user_config) for name in args.backends}
+        if args.json_out:  # fail before any paid call
+            out_file = open(args.json_out, "w", encoding="utf-8")
     except (cases.CorpusError, OSError, KeyError, ValueError) as exc:
         print(f"compare: {exc}", file=sys.stderr)
         return 1
-    result = compare(rows, backends, timeout_s=args.timeout)
-    print(to_markdown(result), end="")
-    if args.json_out:
-        with open(args.json_out, "w", encoding="utf-8") as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-    return 0
+    try:
+        result = compare(rows, backends, timeout_s=args.timeout)
+        print(to_markdown(result), end="")
+        if out_file:
+            json.dump(result, out_file, ensure_ascii=False, indent=2)
+    finally:
+        if out_file:
+            out_file.close()
+    failed = list(_failed_backends(result))
+    for name, kinds in failed:
+        print(
+            f"compare: backend {name!r} failed on every case ({', '.join(kinds)}); is its API key or endpoint configured?",
+            file=sys.stderr,
+        )
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
