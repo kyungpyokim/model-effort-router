@@ -77,6 +77,10 @@ Jev는 role 기준을 넘었고 effort와 joint는 각각 1건, 2건 모자라�
 
 분류 backend를 실제 호출하면 설정에 따라 외부 서비스 또는 `codex exec`를 사용하고 사용량이 발생할 수 있다. 비교 API를 직접 실행하기 전에 대상 backend와 요청 텍스트 전송 여부를 확인한다. 이 저장소는 live 비교를 자동 실행하지 않는다.
 
+## tier
+
+선택 라벨 `tier`(`economy`, `balanced`, `frontier`)는 [라벨링 가이드](labeling-guide.md) §3a 기준으로 붙인다. `python3 -m evaluation.compare CORPUS --backend jev`가 tier 라벨이 있는 케이스에서 tier 일치도 함께 센다. 그래픽·Blender 요청이 economy로 쏠리던 문제를 보정한 기록은 [tier 기준 보정](tier-graphics-20261105.md)에 있다. 현재 정의는 도메인 조건(좁은 도메인 API, 공간·기하 수학, 테스트로 확인할 수 없는 시각 결과)을 frontier로 보낸다. 프롬프트 문구는 가이드보다 넓어 일반 UI·공간 수학 작업을 과하게 올릴 위험이 남아 있다. 이 정의로 다시 라벨링한 `tier-*-v2.jsonl`에서 Jev tier 일치는 holdout 12/24(원래 문구)에서 24/24로, dev 15/32에서 31/32로 올랐다. 대조군은 21/22였고, economy로 판정한 대조군 15건(일반 프론트엔드 14, 리팩터링 1)은 모두 economy였다. `*-v1.jsonl`은 도메인 조건을 balanced로 두던 이전 정의의 라벨로, 기록으로 보존한다. 정답은 AI 라벨러 두 명의 합의이며 사람 판정이 아니다.
+
 ## 실행 정책 파일럿
 
 현재 실행 정책의 탐색 결과는 [low 시작·승격 파일럿](low-first-escalation-pilot-20261006.md)에 기록했다. 같은 `gpt-6-luna`로 기존 13개 fixture 작업을 비교했으며 과거 L1–L5 라벨은 사용하지 않았다. 리뷰로 보완한 검사에서 low 첫 시도는 11/13, medium 승격 후는 13/13, high 1회는 11/13이었다. 승격까지 합친 worker 토큰은 22.0% 적었다. 결과를 본 뒤 검사기를 보완한 작은 탐색이므로 분류 정확도나 일반 작업 성공률로 해석하지 않는다.

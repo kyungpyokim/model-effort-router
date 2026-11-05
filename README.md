@@ -89,9 +89,9 @@ MER classifies a request along three orthogonal dimensions: **role**, **effort**
 - **Role**: `implementation`, `fix`, `lint`, `test`, `plan`, `design`, `review`, and `analysis`. The first four use the execution model lane; the rest use the reasoning model lane.
 - **Effort**: `low`, `medium`, `high`, `xhigh`, or `max`. Independent risk detection can raise a safety-sensitive review/design request to at least `high`, but never changes its role or model lane. If a lane's `efforts` omits `max` and lists `ultra` (for models whose picker goes from `xhigh` straight to `ultra`), the classifier's `max` is applied as `ultra`.
 - **Tier**: `economy`, `balanced`, or `frontier`. Decouples the required model intelligence/capability class from reasoning effort:
-  - `economy`: Self-contained or localized tasks (e.g., single function/class/module implementation, targeted bug fixes, tests, or straightforward refactoring) suited for fast economy models.
+  - `economy`: Self-contained or localized tasks (e.g., single function/class/module implementation, targeted bug fixes, tests, or straightforward refactoring) that use general-purpose code in common ways and whose result tests or stated values can confirm, suited for fast economy models. Changing a stated value, name, or typo is economy in any domain.
   - `balanced`: Multi-module or cross-component feature work, complex interactions between subsystems, non-trivial state management, or architecture-guided changes.
-  - `frontier`: System-wide architectural design, subtle cross-system reasoning, mission-critical concurrency/security/data-loss guarantees, or deep foundational decisions.
+  - `frontier`: System-wide architectural design, subtle cross-system reasoning, mission-critical concurrency/security/data-loss guarantees, or deep foundational decisions; or a task of any size whose correctness depends on niche or version-specific domain APIs (e.g., Blender `bpy`, game engines, graphics APIs, shader languages), spatial or geometric math, or visual output that tests cannot check. More reasoning effort cannot supply domain knowledge a smaller model lacks.
 
 ### Default host models
 
@@ -319,6 +319,10 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 - Claude, Codex, and Antigravity ship `classify`, `router`, and `report` skills. OpenCode has the `mer` and `mer_report` tools, and its routes are logged per session through `mer route --session <id>`.
 
 ## Changelog
+
+### [Unreleased]
+- **Graphics and Blender work routes to `frontier`**: Jev's `frontier` tier now also covers tasks of any size whose correctness depends on niche or version-specific domain APIs (Blender `bpy`, game engines, graphics APIs, shaders), spatial/geometric math, or visual output tests cannot check; such requests were mostly routed to `economy`. Changing a stated value, name, or typo, or explaining a well-known concept, stays `economy`. On re-labeled graphics corpora Jev's tier agreement rose from 12/24 to 24/24 on the holdout, ordinary frontend controls stayed `economy`, and v3 role/effort did not drop ([report](docs/evaluation/tier-graphics-20261105.md)).
+- **Tier scoring in evaluation tools**: corpora accept an optional `tier` label, `evaluation.labels sheet --tier` emits a tier column, and `python3 -m evaluation.compare CORPUS --backend jev` scores tier.
 
 ### [v0.18.0] - 2026-10-27
 - **Recalibrated Jev tier classification**: Refined `jev_questions.json` criteria to clearly delineate model tiers:

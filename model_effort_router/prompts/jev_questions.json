@@ -28,11 +28,11 @@
     },
     "tier": {
       "type": "choice",
-      "instructions": "Which model intelligence tier does this request need, considering task complexity, context scope, and precision? Judge the required model capability independently of reasoning effort.${context_rule}",
+      "instructions": "Which model intelligence tier does this request need, considering task complexity, context scope, domain knowledge, and precision? Judge the required model capability independently of reasoning effort: more reasoning effort cannot supply domain or API knowledge a model lacks. Judge what the task actually requires, not domain words.${context_rule}",
       "criteria": {
-        "economy": "Self-contained or localized tasks (e.g., single function/class/module implementation, targeted bug fixes, tests, refactoring, or straightforward routines) that capable fast economy models (e.g., Luna, Haiku 5.5, Flash) can handle well when given appropriate reasoning effort.",
+        "economy": "Self-contained or localized tasks (e.g., single function/class/module implementation, targeted bug fixes, tests, refactoring, or straightforward routines) that use general-purpose code or widely used frameworks in common ways and whose result tests or values stated in the request can confirm; capable fast economy models (e.g., Luna, Haiku 5.5, Flash) handle these well when given appropriate reasoning effort. Changing a stated value, name, or typo, or explaining a well-known concept, is economy in any domain, including the domains listed under frontier.",
         "balanced": "Multi-module or cross-component feature work, complex interactions between subsystems, non-trivial state management, or architecture-guided changes requiring balanced model capability (e.g., Terra, Sonnet 5.5).",
-        "frontier": "System-wide architectural design, subtle cross-system reasoning, mission-critical concurrency/security/data-loss guarantees, or deep foundational decisions (e.g., Sol, Opus 5.5, Argon)."
+        "frontier": "System-wide architectural design, subtle cross-system reasoning, mission-critical concurrency/security/data-loss guarantees, or deep foundational decisions; or a task of any size whose correctness depends on niche or version-specific domain APIs (e.g., Blender bpy, game engines, graphics APIs, shader languages), on spatial or geometric math (coordinate spaces, transforms, rotations, projection, lighting), or on visual output that tests cannot check. These require frontier model capability (e.g., Sol, Opus 5.5, Argon)."
       }
     }
   },

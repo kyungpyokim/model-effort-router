@@ -1,9 +1,9 @@
-"""Role/effort corpus loader and labeler agreement. Usage: python3 -m evaluation.cases FILE."""
+"""Role/effort (+ optional tier) corpus loader and labeler agreement. Usage: python3 -m evaluation.cases FILE."""
 
 import json
 import sys
 
-from model_effort_router.difficulty.decision import EFFORTS, ROLES
+from model_effort_router.difficulty.decision import EFFORTS, ROLES, TIERS
 
 STATUSES = ("draft", "labeled", "adjudicated")
 FIELDS = {"id", "task", "paths", "labels", "status", "final", "note"}
@@ -16,7 +16,7 @@ class CorpusError(ValueError):
 def _check_verdict(obj, where, *, labeler=False):
     if not isinstance(obj, dict):
         raise CorpusError(f"{where}: must be an object")
-    allowed = {"role", "effort"} | ({"labeler"} if labeler else set())
+    allowed = {"role", "effort", "tier"} | ({"labeler"} if labeler else set())
     unknown = set(obj) - allowed
     if unknown:
         raise CorpusError(f"{where}: unknown field(s) {sorted(unknown)}")
@@ -27,7 +27,14 @@ def _check_verdict(obj, where, *, labeler=False):
         raise CorpusError(f"{where}: role must be one of {ROLES}, got {role!r}")
     if effort not in EFFORTS:
         raise CorpusError(f"{where}: effort must be one of {EFFORTS}, got {effort!r}")
-    return {"role": role, "effort": effort, **({"labeler": obj["labeler"]} if labeler else {})}
+    if "tier" in obj and obj["tier"] not in TIERS:
+        raise CorpusError(f"{where}: tier must be one of {TIERS}, got {obj['tier']!r}")
+    return {
+        "role": role,
+        "effort": effort,
+        **({"tier": obj["tier"]} if "tier" in obj else {}),
+        **({"labeler": obj["labeler"]} if labeler else {}),
+    }
 
 
 def validate_case(row):
@@ -94,9 +101,10 @@ def adjudicated(rows):
 
 
 def agreement(rows):
-    """Report unanimous exact agreement and cases with role or effort mismatches."""
+    """Report unanimous exact agreement and cases with role, effort or (when every label has one) tier mismatches."""
     role_mismatches, effort_mismatches = [], []
-    role_exact = effort_exact = joint_exact = compared = 0
+    tier_mismatches = []
+    role_exact = effort_exact = joint_exact = compared = tier_compared = tier_exact = 0
     for r in rows:
         labels = r.get("labels", [])
         if len(labels) < 2:
@@ -107,6 +115,12 @@ def agreement(rows):
         role_exact += role_ok
         effort_exact += effort_ok
         joint_exact += role_ok and effort_ok
+        if all("tier" in line for line in labels):
+            tier_compared += 1
+            if len({line["tier"] for line in labels}) == 1:
+                tier_exact += 1
+            else:
+                tier_mismatches.append(r["id"])
         if not role_ok:
             role_mismatches.append(r["id"])
         if not effort_ok:
@@ -118,6 +132,9 @@ def agreement(rows):
         "joint_exact": joint_exact,
         "role_mismatches": role_mismatches,
         "effort_mismatches": effort_mismatches,
+        "tier_compared": tier_compared,
+        "tier_exact": tier_exact,
+        "tier_mismatches": tier_mismatches,
     }
 
 
