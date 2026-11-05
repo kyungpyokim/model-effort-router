@@ -1,5 +1,7 @@
 # 그래픽·Blender tier 기준 보정 (2026-11-05)
 
+> **최종 상태**: 도메인 조건(좁은 도메인 API, 공간·기하 추론, 렌더링 출력)에 해당하는 작업은 크기와 상관없이 `frontier`로 분류한다. 사용자 결정이다. 아래 "변경"~"리뷰 지적 재측정"은 같은 조건을 `balanced`로 두던 중간 단계(v1, v2)의 기록이고, 최종 결과는 맨 아래 "frontier로 재정의" 절에 있다.
+
 ## 문제
 
 그래픽, 셰이더, Blender 스크립트 요청이 대부분 `economy` tier로 분류됐다. 기존 Jev tier 기준은 작업 범위(함수·모듈 하나인가)만 봤다. 그래서 파일 하나짜리 bpy 스크립트나 셰이더는 economy가 됐다. 이런 작업의 정확성은 버전에 따라 바뀌는 좁은 도메인 API, 3D·기하 수학, 눈으로만 확인할 수 있는 결과에 달려 있다. reasoning effort를 올려도 모델이 모르는 API 지식은 생기지 않는다.
@@ -85,12 +87,33 @@ effort가 달라진 5건 중 새로 맞힌 것이 2건, 새로 틀린 것이 3�
 
 그래서 프롬프트는 v1을 유지했다. 라벨링 가이드의 §3a 보정(일반 UI는 economy, frontier 우선)은 대조군 라벨의 근거이므로 그대로 둔다. v1 문구가 이 라벨과 22/22 일치하므로 프롬프트와 가이드가 실제로 어긋나는 사례는 관찰되지 않았다. frontier 하향 위험(dev-024)은 남은 과제다. frontier 사례가 더 많은 새 세트로 따로 다뤄야 한다.
 
+## frontier로 재정의 (최종)
+
+사용자가 그래픽·Blender 작업은 balanced가 아니라 frontier로 보내야 한다고 정했다. 그래서 도메인 조건을 balanced에서 frontier로 옮겼다. 값·이름·오타 변경과 널리 알려진 개념 설명은 그대로 economy다.
+
+- **프롬프트**: balanced는 원래 문구(다중 모듈·서브시스템 상호작용·상태 관리·아키텍처 가이드)로 되돌렸다. frontier에 v1의 도메인 문장을 그대로 옮겼다("a task of any size whose correctness depends on ..."). economy의 예외 문장에는 "frontier에 적힌 도메인에서도"를 덧붙였다. v2에서 나빠졌던 "localized task" 표현은 쓰지 않았다.
+- **라벨**: 라벨링 가이드 §3a를 새 정의로 고쳤다. 78건(dev 32, holdout 24, 대조군 22)을 `tier-*-v2.jsonl`로 복사해, 이전 라벨을 보지 않은 새 AI 라벨러 두 명이 처음부터 다시 라벨링했다. 첫 일치는 role 77/78, effort 69/78, tier 78/78이었다. role/effort 불일치는 앞 라운드에서 같은 사례를 판정한 결과와 맞췄다. 새 정답 tier는 dev가 economy 14 / frontier 18, holdout이 economy 11 / frontier 13, 대조군이 economy 15 / balanced 2 / frontier 5다.
+- **채점**: 원래 문구와 v1 문구는 앞서 받은 예측을 새 정답으로 다시 채점했고, 최종 문구만 새로 호출했다.
+
+| 세트 (v2 라벨) | 원래 문구 | v1 (도메인→balanced) | 최종 (도메인→frontier) |
+|---|---:|---:|---:|
+| 그래픽 dev tier | 15/32 | 13/32 | 31/32 |
+| 그래픽 holdout tier | 12/24 | 12/24 | 24/24 |
+| 대조군 tier | – | 19/22 | 21/22 |
+| v3 150건 role / effort | 142 / 117 | 142 / 116 | 142 / 119 |
+
+- **dev 오답 1건**: Blender Apply Scale 설명(economy)을 frontier로 분류했다. 이전 라운드에서도 경계에 있던 사례다.
+- **대조군 오답 1건**: 키보드 접근성이 있는 Vue 드래그 앤 드롭 정렬(balanced)을 economy로 분류했다. economy로 판정한 일반 프론트엔드 15건은 모두 economy였고, frontier 5건(엔진 설계·계획 3건, Blender 애드온 이전 계획, Godot 셰이더)도 모두 맞혔다.
+- **일반 요청 v3**: tier 분포가 원래 문구의 economy 100 / balanced 33 / frontier 17에서 98 / 32 / 20으로 바뀌었다. frontier로 올라간 3건 중 2건은 IndexedDB 로컬 사본 이전(데이터 손실)과 서명 검증 리뷰(보안)로, 기존 frontier 정의에 맞는다. 나머지 1건은 맥락 없는 "It broke again. Fix it."이다. role/effort는 떨어지지 않았다.
+
+한계는 앞 절과 같다. 정답은 AI 라벨러의 합의이고, 기준과 프롬프트를 같은 작성자가 썼으며, holdout은 이전 라운드에서 이미 결과를 본 세트다. 따라서 24/24는 "새 정의와의 일치"이지 독립 검증이 아니다. 비용도 고려해야 한다. Claude 기본 매핑에서 그래픽·Blender 작업은 이제 Opus로 추천된다.
+
 ## 재현
 
 ```sh
-python3 -m evaluation.compare evaluation/corpus/tier-graphics-dev-v1.jsonl --backend jev --json runs/tier-graphics-dev.json
-python3 -m evaluation.compare evaluation/corpus/tier-graphics-holdout-v1.jsonl --backend jev --json runs/tier-graphics-holdout.json
-python3 -m evaluation.compare evaluation/corpus/tier-frontend-controls-v1.jsonl --backend jev --json runs/tier-controls.json
+python3 -m evaluation.compare evaluation/corpus/tier-graphics-dev-v2.jsonl --backend jev --json runs/tier-graphics-dev.json
+python3 -m evaluation.compare evaluation/corpus/tier-graphics-holdout-v2.jsonl --backend jev --json runs/tier-graphics-holdout.json
+python3 -m evaluation.compare evaluation/corpus/tier-frontend-controls-v2.jsonl --backend jev --json runs/tier-controls.json
 python3 -m evaluation.compare evaluation/corpus/role-effort-human-holdout-v3-adjudicated.jsonl --backend jev --json runs/v3.json
 ```
 
