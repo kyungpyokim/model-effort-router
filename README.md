@@ -321,7 +321,7 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 ## Changelog
 
 ### [Unreleased]
-- **Tier criteria account for domain knowledge**: Jev's `balanced` tier now covers small tasks whose correctness depends on niche or version-specific domain APIs (Blender `bpy`, game engines, graphics APIs, shaders), spatial/geometric math, or visual output tests cannot check; such graphics and Blender requests were mostly routed to `economy`. On a new graphics corpus Jev's tier agreement rose from 13/24 to 24/24 on the holdout, with v3 role/effort unchanged within run-to-run variance ([report](docs/evaluation/tier-graphics-20261105.md)).
+- **Tier criteria account for domain knowledge**: Jev's `balanced` tier now covers small tasks whose correctness depends on niche or version-specific domain APIs (Blender `bpy`, game engines, graphics APIs, shaders), spatial/geometric math, or visual output tests cannot check; such graphics and Blender requests were mostly routed to `economy`. On a new graphics corpus Jev's tier agreement rose from 13/24 to 24/24 on the holdout, with v3 role/effort within one case of the previous run ([report](docs/evaluation/tier-graphics-20261105.md)).
 - **Tier scoring in evaluation tools**: corpora accept an optional `tier` label, `evaluation.labels sheet --tier` emits a tier column, and `python3 -m evaluation.compare CORPUS --backend jev` scores tier.
 
 ### [v0.18.0] - 2026-10-27

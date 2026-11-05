@@ -319,7 +319,7 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 ## 버전별 변경사항 (Changelog)
 
 ### [Unreleased]
-- **tier 기준에 도메인 지식 반영**: 그래픽·Blender 요청이 대부분 `economy`로 분류되던 문제를 고쳤습니다. 이제 범위가 작아도 버전에 민감한 좁은 도메인 API(Blender `bpy`, 게임 엔진, 그래픽 API, 셰이더), 공간·기하 수학, 테스트로 확인할 수 없는 시각 결과가 정확성을 좌우하면 Jev가 `balanced`로 분류합니다. 새 그래픽 holdout에서 tier 일치가 13/24에서 24/24로 올랐고, v3 role/effort는 실행 간 편차 범위 안에서 그대로였습니다([보고서](docs/evaluation/tier-graphics-20261105.md)).
+- **tier 기준에 도메인 지식 반영**: 그래픽·Blender 요청이 대부분 `economy`로 분류되던 문제를 고쳤습니다. 이제 범위가 작아도 버전에 민감한 좁은 도메인 API(Blender `bpy`, 게임 엔진, 그래픽 API, 셰이더), 공간·기하 수학, 테스트로 확인할 수 없는 시각 결과가 정확성을 좌우하면 Jev가 `balanced`로 분류합니다. 새 그래픽 holdout에서 tier 일치가 13/24에서 24/24로 올랐고, v3 role/effort는 이전 실행과 1건 이내로 차이 났습니다([보고서](docs/evaluation/tier-graphics-20261105.md)).
 - **평가 도구의 tier 채점**: corpus에 선택 라벨 `tier`를 둘 수 있고, `evaluation.labels sheet --tier`로 tier 열이 있는 시트를 만들며, `python3 -m evaluation.compare CORPUS --backend jev`로 tier를 채점합니다.
 
 ### [v0.18.0] - 2026-10-27
