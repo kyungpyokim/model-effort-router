@@ -1,0 +1,2542 @@
+{
+ "dev-baseline": {
+  "n": 32,
+  "role_exact": 32,
+  "effort_exact": 25,
+  "joint_exact": 25,
+  "tier_n": 32,
+  "tier_exact": 16,
+  "fallback_count": 0,
+  "errors": [],
+  "predictions": [
+   {
+    "id": "gfx-dev-001",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-002",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-003",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-004",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-005",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-006",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-007",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-008",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-009",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-010",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-011",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-012",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-013",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-014",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-015",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-016",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-017",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-018",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-019",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-020",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-021",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-022",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-023",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-024",
+    "role": "plan",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "gfx-dev-025",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-026",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-027",
+    "role": "test",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-028",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-029",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-030",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-031",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-032",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   }
+  ]
+ },
+ "dev-after1": {
+  "n": 32,
+  "role_exact": 32,
+  "effort_exact": 25,
+  "joint_exact": 25,
+  "tier_n": 32,
+  "tier_exact": 30,
+  "fallback_count": 0,
+  "errors": [],
+  "predictions": [
+   {
+    "id": "gfx-dev-001",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-002",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-003",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-004",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-005",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-006",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-007",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-008",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-009",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-010",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-011",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-012",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-013",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-014",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-015",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-016",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-017",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-018",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-019",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-020",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-021",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-022",
+    "role": "review",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-023",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-024",
+    "role": "plan",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-025",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-026",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-027",
+    "role": "test",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-028",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-029",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-030",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-dev-031",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-dev-032",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   }
+  ]
+ },
+ "holdout-baseline": {
+  "n": 24,
+  "role_exact": 24,
+  "effort_exact": 19,
+  "joint_exact": 19,
+  "tier_n": 24,
+  "tier_exact": 13,
+  "fallback_count": 0,
+  "errors": [],
+  "predictions": [
+   {
+    "id": "gfx-hold-001",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-002",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-003",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-004",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-005",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-006",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-007",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-008",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-009",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-010",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-011",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-012",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-013",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-014",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-015",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-016",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-017",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-018",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-019",
+    "role": "design",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "gfx-hold-020",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-021",
+    "role": "test",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-022",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-023",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-024",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   }
+  ]
+ },
+ "holdout-after": {
+  "n": 24,
+  "role_exact": 24,
+  "effort_exact": 19,
+  "joint_exact": 19,
+  "tier_n": 24,
+  "tier_exact": 24,
+  "fallback_count": 0,
+  "errors": [],
+  "predictions": [
+   {
+    "id": "gfx-hold-001",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-002",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-003",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-004",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-005",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-006",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-007",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-008",
+    "role": "fix",
+    "effort": "low",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-009",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-010",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-011",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-012",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-013",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-014",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-015",
+    "role": "review",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-016",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-017",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-018",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-019",
+    "role": "design",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "gfx-hold-020",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "gfx-hold-021",
+    "role": "test",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-022",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-023",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "gfx-hold-024",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "balanced"
+   }
+  ]
+ },
+ "v3-before": {
+  "n": 150,
+  "role_exact": 142,
+  "effort_exact": 117,
+  "joint_exact": 110,
+  "fallback_count": 0,
+  "errors": [],
+  "predictions": [
+   {
+    "id": "human-holdout-v3-001",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-002",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-003",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-004",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-005",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-006",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-007",
+    "role": "review",
+    "effort": "high",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-008",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-009",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-010",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-011",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-012",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-013",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-014",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-015",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-016",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-017",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-018",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-019",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-020",
+    "role": "review",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-021",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-022",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-023",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-024",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-025",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-026",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-027",
+    "role": "review",
+    "effort": "high",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-028",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-029",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-030",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-031",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-032",
+    "role": "design",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-033",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-034",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-035",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-036",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-037",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-038",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-039",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-040",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-041",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-042",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-043",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-044",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-045",
+    "role": "review",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-046",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-047",
+    "role": "analysis",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-048",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-049",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-050",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-051",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-052",
+    "role": "implementation",
+    "effort": "xhigh",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-053",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-054",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-055",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-056",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-057",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-058",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-059",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-060",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-061",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-062",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-063",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-064",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-065",
+    "role": "plan",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-066",
+    "role": "design",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-067",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-068",
+    "role": "plan",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-069",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-070",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-071",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-072",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-073",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-074",
+    "role": "review",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-075",
+    "role": "review",
+    "effort": "xhigh",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-076",
+    "role": "review",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-077",
+    "role": "review",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-078",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-079",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-080",
+    "role": "plan",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-081",
+    "role": "design",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-082",
+    "role": "review",
+    "effort": "high",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-083",
+    "role": "review",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-084",
+    "role": "plan",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-085",
+    "role": "plan",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-086",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-087",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-088",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-089",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-090",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-091",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-092",
+    "role": "fix",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-093",
+    "role": "review",
+    "effort": "high",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-094",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-095",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-096",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-097",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-098",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-099",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-100",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-101",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-102",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-103",
+    "role": "plan",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-104",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-105",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-106",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-107",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-108",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-109",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-110",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-111",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-112",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-113",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-114",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-115",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-116",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-117",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-118",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-119",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-120",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-121",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-122",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-123",
+    "role": "plan",
+    "effort": "xhigh",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-124",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-125",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-126",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-127",
+    "role": "plan",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-128",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-129",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-130",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-131",
+    "role": "plan",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-132",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-133",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-134",
+    "role": "review",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-135",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-136",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-137",
+    "role": "fix",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-138",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-139",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-140",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-141",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-142",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-143",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-144",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-145",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-146",
+    "role": "fix",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-147",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-148",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-149",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-150",
+    "role": "review",
+    "effort": "high",
+    "tier": "frontier"
+   }
+  ]
+ },
+ "v3-after": {
+  "n": 150,
+  "role_exact": 142,
+  "effort_exact": 116,
+  "joint_exact": 109,
+  "fallback_count": 0,
+  "errors": [],
+  "predictions": [
+   {
+    "id": "human-holdout-v3-001",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-002",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-003",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-004",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-005",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-006",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-007",
+    "role": "review",
+    "effort": "high",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-008",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-009",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-010",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-011",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-012",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-013",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-014",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-015",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-016",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-017",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-018",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-019",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-020",
+    "role": "review",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-021",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-022",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-023",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-024",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-025",
+    "role": "review",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-026",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-027",
+    "role": "review",
+    "effort": "high",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-028",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-029",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-030",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-031",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-032",
+    "role": "design",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-033",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-034",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-035",
+    "role": "implementation",
+    "effort": "xhigh",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-036",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-037",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-038",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-039",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-040",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-041",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-042",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-043",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-044",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-045",
+    "role": "review",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-046",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-047",
+    "role": "analysis",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-048",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-049",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-050",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-051",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-052",
+    "role": "implementation",
+    "effort": "xhigh",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-053",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-054",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-055",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-056",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-057",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-058",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-059",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-060",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-061",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-062",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-063",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-064",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-065",
+    "role": "plan",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-066",
+    "role": "design",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-067",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-068",
+    "role": "plan",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-069",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-070",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-071",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-072",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-073",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-074",
+    "role": "review",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-075",
+    "role": "review",
+    "effort": "xhigh",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-076",
+    "role": "review",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-077",
+    "role": "review",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-078",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-079",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-080",
+    "role": "plan",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-081",
+    "role": "design",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-082",
+    "role": "review",
+    "effort": "high",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-083",
+    "role": "review",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-084",
+    "role": "plan",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-085",
+    "role": "plan",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-086",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-087",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-088",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-089",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-090",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-091",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-092",
+    "role": "fix",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-093",
+    "role": "review",
+    "effort": "high",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-094",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-095",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-096",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-097",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-098",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-099",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-100",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-101",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-102",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-103",
+    "role": "plan",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-104",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-105",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-106",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-107",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-108",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-109",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-110",
+    "role": "fix",
+    "effort": "medium",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-111",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-112",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-113",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-114",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-115",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-116",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-117",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-118",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-119",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-120",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-121",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-122",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-123",
+    "role": "plan",
+    "effort": "xhigh",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-124",
+    "role": "lint",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-125",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-126",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-127",
+    "role": "plan",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-128",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-129",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-130",
+    "role": "review",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-131",
+    "role": "plan",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-132",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-133",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-134",
+    "role": "review",
+    "effort": "high",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-135",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-136",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-137",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-138",
+    "role": "fix",
+    "effort": "xhigh",
+    "tier": "frontier"
+   },
+   {
+    "id": "human-holdout-v3-139",
+    "role": "analysis",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-140",
+    "role": "plan",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-141",
+    "role": "implementation",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-142",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-143",
+    "role": "review",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-144",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-145",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-146",
+    "role": "fix",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-147",
+    "role": "fix",
+    "effort": "low",
+    "tier": "economy"
+   },
+   {
+    "id": "human-holdout-v3-148",
+    "role": "implementation",
+    "effort": "high",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-149",
+    "role": "implementation",
+    "effort": "medium",
+    "tier": "balanced"
+   },
+   {
+    "id": "human-holdout-v3-150",
+    "role": "review",
+    "effort": "high",
+    "tier": "frontier"
+   }
+  ]
+ }
+}

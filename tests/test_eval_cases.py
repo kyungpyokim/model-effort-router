@@ -114,6 +114,46 @@ class AgreementTest(unittest.TestCase):
     def test_empty(self):
         self.assertEqual(cases.agreement([])["compared"], 0)
 
+    def test_tierless_corpus_reports_zero_tier_counts(self):
+        rep = cases.agreement([case("a", status="labeled", labels=[label("a"), label("b")])])
+        self.assertEqual((rep["tier_compared"], rep["tier_exact"], rep["tier_mismatches"]), (0, 0, []))
+
+    def test_tier_counts_need_every_label_to_have_one(self):
+        def tl(who, tier=None):
+            return {**label(who), **({"tier": tier} if tier else {})}
+
+        rows = [
+            case("same", status="labeled", labels=[tl("a", "economy"), tl("b", "economy")]),
+            case("diff", status="labeled", labels=[tl("a", "economy"), tl("b", "frontier")]),
+            case("partial", status="labeled", labels=[tl("a", "economy"), tl("b")]),
+            case("none", status="labeled", labels=[tl("a"), tl("b")]),
+        ]
+        rep = cases.agreement(rows)
+        self.assertEqual((rep["compared"], rep["tier_compared"], rep["tier_exact"]), (4, 2, 1))
+        self.assertEqual(rep["tier_mismatches"], ["diff"])
+
+
+class TierTest(unittest.TestCase):
+    def test_tier_optional_and_preserved_only_when_present(self):
+        out = cases.validate_case(adjudicated())
+        self.assertNotIn("tier", out["final"])
+        self.assertNotIn("tier", out["labels"][0])
+        row = adjudicated()
+        row["final"]["tier"] = "balanced"
+        row["labels"][0]["tier"] = "economy"
+        out = cases.validate_case(row)
+        self.assertEqual(out["final"]["tier"], "balanced")
+        self.assertEqual(out["labels"][0]["tier"], "economy")
+        self.assertNotIn("tier", out["labels"][1])
+
+    def test_invalid_tier_rejected(self):
+        for where in ("final", "label"):
+            row = adjudicated()
+            (row["final"] if where == "final" else row["labels"][0])["tier"] = "premium"
+            with self.assertRaises(cases.CorpusError) as cm:
+                cases.validate_case(row)
+            self.assertIn("tier", str(cm.exception))
+
 
 class SeedTest(unittest.TestCase):
     def setUp(self):
