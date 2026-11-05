@@ -79,7 +79,7 @@ Jev는 role 기준을 넘었고 effort와 joint는 각각 1건, 2건 모자라�
 
 ## tier
 
-선택 라벨 `tier`(`economy`, `balanced`, `frontier`)는 [라벨링 가이드](labeling-guide.md) §3a 기준으로 붙인다. `python3 -m evaluation.compare CORPUS --backend jev`가 tier 라벨이 있는 케이스에서 tier 일치도 함께 센다. 그래픽·Blender 요청이 economy로 쏠리던 문제를 보정한 기록은 [tier 기준 보정](tier-graphics-20261105.md)에 있다. Jev tier 일치가 dev 16/32에서 30/32로, 조정에 쓰지 않은 holdout 13/24에서 24/24로 올랐다. v3 150건의 role/effort는 1건 이내로 차이 났고 tier 분포는 2건만 바뀌었다. 정답은 AI 라벨러 두 명의 합의이며 사람 판정이 아니다.
+선택 라벨 `tier`(`economy`, `balanced`, `frontier`)는 [라벨링 가이드](labeling-guide.md) §3a 기준으로 붙인다. `python3 -m evaluation.compare CORPUS --backend jev`가 tier 라벨이 있는 케이스에서 tier 일치도 함께 센다. 그래픽·Blender 요청이 economy로 쏠리던 문제를 보정한 기록은 [tier 기준 보정](tier-graphics-20261105.md)에 있다. Jev tier 일치가 dev 16/32에서 30/32로, 조정에 쓰지 않은 holdout 13/24에서 24/24로 올랐다. v3 150건의 role/effort는 1건 이내로 차이 났고 tier 분포는 2건만 바뀌었다. 리뷰 지적(일반 UI 과대 분류, frontier 하향)을 반영한 v2 문구는 새 대조군 22건에서 v1과 같았고 그래픽 세트에서는 나빠서 채택하지 않았다. v1은 일반 프론트엔드 대조군 16건을 모두 economy로 분류했다. 정답은 AI 라벨러 두 명의 합의이며 사람 판정이 아니다.
 
 ## 실행 정책 파일럿
 

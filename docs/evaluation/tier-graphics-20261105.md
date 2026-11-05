@@ -56,11 +56,41 @@ role/effort 판정이 있는 [v3 holdout](README.md) 150건을 수정 전후에 
 
 effort가 달라진 5건 중 새로 맞힌 것이 2건, 새로 틀린 것이 3건이다. 1건 차이라 노이즈일 가능성이 크다. 다만 현재 프롬프트를 같은 조건으로 반복 측정한 편차는 아직 재지 않았다. 이전 기록의 119는 tier 질문이 추가되기 전 프롬프트에서 나온 값이라 비교 근거가 되지 않는다. v3에는 tier 라벨이 없어서 분포만 비교했다. 수정 전 economy 100 / balanced 33 / frontier 17이 수정 후 99 / 33 / 18이 됐고, 바뀐 사례는 2건이다. 그래픽이 아닌 요청의 tier는 사실상 바뀌지 않았다.
 
+## 리뷰 지적 재측정 (v2 문구, 채택하지 않음)
+
+독립 리뷰에서 문구 위험 두 가지가 나왔다.
+1. "테스트로 확인할 수 없는 시각 결과" 조건이 평범한 UI·CSS 작업까지 balanced로 올릴 수 있다.
+2. 넓어진 balanced 조건이 frontier를 끌어내릴 수 있다.
+
+이를 고친 v2 문구를 만들어 측정했다.
+- economy: 일반 UI 레이아웃·스타일은 economy라고 명시하고, "테스트나 적힌 값으로 확인 가능" 조건을 뺐다.
+- balanced: "a localized task"로 한정하고, 시각 조건을 렌더링·그래픽 출력으로 좁혔다.
+- frontier: 해당하면 balanced 도메인 조건보다 우선한다는 문장을 추가했다.
+
+측정용으로 새 대조군 `evaluation/corpus/tier-frontend-controls-v1.jsonl` 22건을 만들었다. 일반 프론트엔드 16건, 그래픽 balanced 3건, frontier급 설계·계획 3건이다. 라벨링 가이드 §3a를 위 방향으로 보정한 뒤 AI 라벨러 두 명이 독립 라벨링했다. 첫 일치는 role 22/22, effort 19/22, tier 20/22였고 판정을 거쳐 economy 16, balanced 3, frontier 3이 됐다. v1 측정에는 v1 문구가 든 별도 worktree를 썼다.
+
+| 세트 | v1 (채택) | v2 |
+|---|---:|---:|
+| 그래픽 dev tier | 30/32 | 28/32 (재실행 29/32) |
+| 그래픽 holdout tier | 24/24 | 22/24 |
+| 대조군 tier | 22/22 | 22/22 |
+| 대조군 role / effort | 22 / 15 | 22 / 15 |
+| v3 role / effort / joint | 142 / 116 / 109 | 142 / 119 / 112 |
+
+해석:
+- **지적 1은 v1에서도 나타나지 않았다.** 일반 프론트엔드 대조군 16건 모두 v1에서 economy였다.
+- **지적 2는 v2로 고쳐지지 않았다.** dev의 WebGPU 이전 계획(frontier)은 v2의 세 번 실행에서 모두 balanced였다. 대조군의 frontier 3건은 v1·v2 모두 맞혔다. v2는 tier 라벨이 없는 v3에서 frontier를 17에서 21로 늘렸는데, 맞는 방향인지는 알 수 없다.
+- **v2는 economy 예외를 약하게 만들었다.** dev의 Blender 설정 색 값 변경(economy)이 v2의 두 실행에서 모두 balanced였다. "a localized task"가 국소적인 Blender 작업을 직접 끌어올린 것으로 보인다.
+- **실행 간 편차:** 같은 v2 문구로 dev를 다시 돌리자 tier 1건이 바뀌었고 effort는 바뀌지 않았다. v3 effort 116과 119의 차이도 이 편차와 프롬프트 차이를 분리할 수 없는 크기다.
+
+그래서 프롬프트는 v1을 유지했다. 라벨링 가이드의 §3a 보정(일반 UI는 economy, frontier 우선)은 대조군 라벨의 근거이므로 그대로 둔다. v1 문구가 이 라벨과 22/22 일치하므로 프롬프트와 가이드가 실제로 어긋나는 사례는 관찰되지 않았다. frontier 하향 위험(dev-024)은 남은 과제다. frontier 사례가 더 많은 새 세트로 따로 다뤄야 한다.
+
 ## 재현
 
 ```sh
 python3 -m evaluation.compare evaluation/corpus/tier-graphics-dev-v1.jsonl --backend jev --json runs/tier-graphics-dev.json
 python3 -m evaluation.compare evaluation/corpus/tier-graphics-holdout-v1.jsonl --backend jev --json runs/tier-graphics-holdout.json
+python3 -m evaluation.compare evaluation/corpus/tier-frontend-controls-v1.jsonl --backend jev --json runs/tier-controls.json
 python3 -m evaluation.compare evaluation/corpus/role-effort-human-holdout-v3-adjudicated.jsonl --backend jev --json runs/v3.json
 ```
 
