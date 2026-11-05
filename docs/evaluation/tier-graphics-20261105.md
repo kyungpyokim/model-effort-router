@@ -67,7 +67,7 @@ effort가 달라진 5건 중 새로 맞힌 것이 2건, 새로 틀린 것이 3�
 - balanced: "a localized task"로 한정하고, 시각 조건을 렌더링·그래픽 출력으로 좁혔다.
 - frontier: 해당하면 balanced 도메인 조건보다 우선한다는 문장을 추가했다.
 
-측정용으로 새 대조군 `evaluation/corpus/tier-frontend-controls-v1.jsonl` 22건을 만들었다. 일반 프론트엔드 16건, 그래픽 balanced 3건, frontier급 설계·계획 3건이다. 라벨링 가이드 §3a를 위 방향으로 보정한 뒤 AI 라벨러 두 명이 독립 라벨링했다. 첫 일치는 role 22/22, effort 19/22, tier 20/22였고 판정을 거쳐 economy 16, balanced 3, frontier 3이 됐다. v1 측정에는 v1 문구가 든 별도 worktree를 썼다.
+측정용으로 새 대조군 `evaluation/corpus/tier-frontend-controls-v1.jsonl` 22건을 만들었다. 일반 프론트엔드 작업 위주로 그래픽 도메인 작업과 frontier급 설계·계획을 섞었다. 라벨링 가이드 §3a를 위 방향으로 보정한 뒤 AI 라벨러 두 명이 독립 라벨링했다. 첫 일치는 role 22/22, effort 19/22, tier 20/22였고 판정을 거쳐 economy 16(프론트엔드 15, 일반 리팩터링 1), balanced 3(여러 모듈을 잇는 다크 모드 토글, Blender 애드온 이전 계획, Godot 셰이더), frontier 3(엔진 전체 설계·계획)이 됐다. 그래픽 dev/holdout은 보정 전 §3a로, 대조군은 보정 후 §3a로 라벨링됐다. 기존 그래픽 라벨을 다시 확인했는데(예: CSS 3D flip은 economy) 두 버전 모두와 맞았다. v1 측정에는 v1 문구가 든 별도 worktree를 썼다.
 
 | 세트 | v1 (채택) | v2 |
 |---|---:|---:|
@@ -78,9 +78,9 @@ effort가 달라진 5건 중 새로 맞힌 것이 2건, 새로 틀린 것이 3�
 | v3 role / effort / joint | 142 / 116 / 109 | 142 / 119 / 112 |
 
 해석:
-- **지적 1은 v1에서도 나타나지 않았다.** 일반 프론트엔드 대조군 16건 모두 v1에서 economy였다.
-- **지적 2는 v2로 고쳐지지 않았다.** dev의 WebGPU 이전 계획(frontier)은 v2의 세 번 실행에서 모두 balanced였다. 대조군의 frontier 3건은 v1·v2 모두 맞혔다. v2는 tier 라벨이 없는 v3에서 frontier를 17에서 21로 늘렸는데, 맞는 방향인지는 알 수 없다.
-- **v2는 economy 예외를 약하게 만들었다.** dev의 Blender 설정 색 값 변경(economy)이 v2의 두 실행에서 모두 balanced였다. "a localized task"가 국소적인 Blender 작업을 직접 끌어올린 것으로 보인다.
+- **지적 1은 v1에서도 나타나지 않았다.** economy로 판정한 프론트엔드 대조군 15건이 v1에서 모두 economy였고, 여러 모듈을 잇는 다크 모드 토글은 balanced였다.
+- **지적 2는 v2로 고쳐지지 않았다.** dev의 WebGPU 이전 계획(frontier)은 v1 한 번, v2 두 번의 실행 모두에서 balanced였다. 대조군의 frontier 3건은 v1·v2 모두 맞혔지만, 셋 다 엔진 전체를 다루는 노골적인 설계라 dev-024 같은 미묘한 frontier 사례는 판별하지 못한다. 그래픽 frontier 하향의 근거는 여전히 2건 중 1건이다. v2는 tier 라벨이 없는 v3에서 frontier를 18(v1)에서 21로 늘렸는데, 맞는 방향인지는 알 수 없다.
+- **v2는 economy 예외를 약하게 만들었다.** dev의 Blender 설정 색 값 변경(economy)이 v2의 두 실행에서 모두 balanced였다. holdout에서 v2가 틀린 2건도 economy 예외 유형(normal map 설명, Godot 그림자 상수 변경)이었다. "a localized task"가 국소적인 Blender 작업을 직접 끌어올린 것으로 보인다.
 - **실행 간 편차:** 같은 v2 문구로 dev를 다시 돌리자 tier 1건이 바뀌었고 effort는 바뀌지 않았다. v3 effort 116과 119의 차이도 이 편차와 프롬프트 차이를 분리할 수 없는 크기다.
 
 그래서 프롬프트는 v1을 유지했다. 라벨링 가이드의 §3a 보정(일반 UI는 economy, frontier 우선)은 대조군 라벨의 근거이므로 그대로 둔다. v1 문구가 이 라벨과 22/22 일치하므로 프롬프트와 가이드가 실제로 어긋나는 사례는 관찰되지 않았다. frontier 하향 위험(dev-024)은 남은 과제다. frontier 사례가 더 많은 새 세트로 따로 다뤄야 한다.
