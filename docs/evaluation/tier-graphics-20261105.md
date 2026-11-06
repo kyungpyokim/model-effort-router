@@ -114,7 +114,7 @@ effort가 달라진 5건 중 새로 맞힌 것이 2건, 새로 틀린 것이 3�
 
 배포 후 사용자가 Blender라는 이름만 들어가도 Opus가 선택된다고 보고했다. 원인 후보는 두 가지였다. 하나는 frontier 기준에 제품 이름("Blender bpy")이 예시로 들어 있어 분류기가 그 단어에 끌린다는 것이다. 다른 하나는 corpus의 Blender economy 사례가 프롬프트에 예외로 적힌 유형(값·이름·오타 변경, 개념 설명)뿐이라 이 문제가 측정되지 않았다는 것이다.
 
-**probe 세트.** `evaluation/corpus/tier-blender-mentions-v1.jsonl` 30건을 만들었다. Blender를 언급하지만 bpy·3D 지식이 필요 없는 요청(빌드 zip, README, CI, 파일 정리, 로그 파서, 일반 질문, 리팩터링, 렌더팜 대시보드 등)이 20건이다. 여기에 Blender 세션 맥락이 붙은 후속 요청 5건("커밋해줘", "테스트 돌려줘", 맥락 속 제안을 승인하는 "응 그렇게 구현해줘" 등)과, 실제로 bpy·Geometry Nodes가 필요한 요청 5건을 더했다. 세션 맥락 재현을 위해 corpus에 선택 필드 `context`를 추가했고, `evaluation.compare`가 이를 분류기에 넘긴다. 형식은 hook이 만드는 "Session summary / Recent turns"와 같다. AI 라벨러 두 명이 독립 라벨링했고 첫 일치는 role 29/30, effort 27/30, tier 29/30이었다. 판정 결과 economy 23, balanced 1, frontier 6이다.
+**probe 세트.** `evaluation/corpus/tier-blender-mentions-v1.jsonl` 30건을 만들었다. Blender를 언급하지만 bpy·3D 지식이 필요 없는 요청(빌드 zip, README, CI, 파일 정리, 로그 파서, 일반 질문, 리팩터링, 렌더팜 대시보드 등)이 20건이다. 여기에 Blender 세션 맥락이 붙은 후속 요청 5건("커밋해줘", "테스트 돌려줘", 맥락 속 제안을 승인하는 "응 그렇게 구현해줘" 등)과, 실제로 bpy·Geometry Nodes가 필요한 요청 5건(그중 1건은 세션 맥락 포함, 맥락 사례는 모두 6건)을 더했다. 세션 맥락 재현을 위해 corpus에 선택 필드 `context`를 추가했고, `evaluation.compare`가 이를 분류기에 넘긴다. 형식은 hook이 만드는 "Session summary / Recent turns"와 같다. AI 라벨러 두 명이 독립 라벨링했고 첫 일치는 role 29/30, effort 27/30, tier 29/30이었다. 판정 결과 economy 23, balanced 1, frontier 6이다.
 
 **재현.** 당시 main 문구로 economy 정답 23건 중 3건이 frontier로 분류됐다. Python 버전 질문, 오퍼레이터 이름 문자열을 상수로 모으는 리팩터링, Blender 세션의 "테스트 돌려줘"다. 이 세트에서 "무조건"까지는 재현되지 않았다. 사용자가 실제로 겪은 요청 문장은 확인하지 못했다.
 
@@ -123,7 +123,7 @@ effort가 달라진 5건 중 새로 맞힌 것이 2건, 새로 틀린 것이 3�
 - economy: "3D 도구·엔진·그래픽 제품을 언급한다고 frontier가 되지는 않는다"고 쓰고, 그런 프로젝트에서 범용 코드·파일만 건드리는 작업(패키징, 빌드·CI 스크립트, 파일 처리, 로그 파싱, 문서, changelog, 설정, 일반 helper 테스트), 커밋·테스트 실행, 값·이름·오타 변경, 잘 알려진 기능·개념 질문은 economy로 명시했다.
 - frontier: 제품 이름 예시를 빼고 조건을 세 가지 행동으로 나눴다. (1) 3D/DCC 도구·게임 엔진·그래픽 API의 스크립팅 인터페이스를 쓰는 코드, 또는 셰이더 로직 작성·디버깅, (2) 공간·기하 수학(교차 판정, 좌표계, 변환, 회전, 투영, 조명), (3) 테스트로 확인할 수 없는 렌더링 결과의 진단·수정(depth 정밀도, 셰이딩, 정렬, 노멀 문제). 끝에 "그런 코드 안에서도 지정된 값·이름·오타 변경은 economy"를 붙였다.
 
-조정은 dev와 probe만 보고 했다. v4는 조건을 한 문장에 몰아 써서 z-fighting과 ray–triangle 교차가 economy로 떨어졌다. v5는 셰이더 색상 기본값 변경을 frontier로 올렸다. v6에서 두 문제를 고친 뒤 holdout·대조군·v3는 v6로 한 번만 측정했다.
+조정은 dev와 probe만 보고 했다. v4는 조건을 한 문장에 몰아 써서 z-fighting과 ray–triangle 교차가 economy로 떨어졌다. v5는 셰이더 색상 기본값 변경을 frontier로 올렸다. v6에서 두 문제를 고쳤다. holdout과 대조군은 v4에서도 측정했지만 결과가 문구 변경에 쓰이지 않았고, v6에서 다시 측정했다. v3는 v6로 한 번만 측정했다.
 
 | 세트 | 당시 main | v4 | v5 | v6 (채택) |
 |---|---:|---:|---:|---:|
@@ -134,8 +134,17 @@ effort가 달라진 5건 중 새로 맞힌 것이 2건, 새로 틀린 것이 3�
 | v3 role / effort | 142 / 119 | – | – | 142 / 117 |
 
 - v6에서 probe의 economy 정답 중 잘못 올라간 것은 1건(Blender 세션의 "테스트 돌려줘")이다. 직전 대화가 "Blender 안에서 수동으로 확인했다"여서 Blender 안의 테스트로 읽힐 수 있는 경계 사례다. 대조군 오답은 앞 절과 같은 tier-ctl-014다.
-- v3 tier 분포는 economy 101 / balanced 32 / frontier 17로 원래 문구(100 / 33 / 17)와 거의 같다. 당시 main에서 근거 없이 frontier로 갔던 "It broke again. Fix it."은 economy로 돌아왔다. 데이터 손실·보안 사례 2건도 원래 문구처럼 balanced·economy로 돌아갔다.
-- 한계: 같은 dev와 probe로 문구를 세 번 조정했으므로, 이 둘의 점수는 조정에 맞춘 값이다. holdout은 이전 라운드에서 이미 본 세트다. probe의 세션 맥락 사례는 5건뿐이다. 사용자의 실제 요청으로 확인한 것이 아니므로, 배포 후 실제로 잘못 분류된 문장이 나오면 probe에 추가해야 한다.
+- v3 tier 분포는 economy 101 / balanced 32 / frontier 17로 원래 문구(100 / 33 / 17)와 거의 같다. 당시 main과 비교하면 4건이 바뀌었다.
+  - 근거 없이 frontier로 갔던 "It broke again. Fix it."은 economy로 돌아왔다.
+  - 로컬에만 있는 사본을 옮기는 작업(v3-052, 데이터 손실)과 서명 검증 리뷰(v3-075, 보안)는 각각 balanced와 economy로 내려갔다. 원래 문구와 같은 결과지만, frontier 정의상 frontier가 맞을 가능성이 높다. 특히 보안 리뷰가 economy로 가는 것은 과소 분류로 본다.
+  - GitHub Actions Python 매트릭스 설정(v3-107)이 balanced에서 economy로 내려갔다. 원래 문구와 달라진 유일한 v3 사례다. Blender 프로젝트용으로 쓴 economy 목록("build or CI scripts")이 일반 작업에도 적용된 것으로 보인다.
+- effort가 약간 내려갔다: v3 119→117, dev 24→23, 대조군 15→14. 실행 간 편차 범위로 보이지만 확인하지는 않았다.
+- 한계: 같은 dev와 probe로 문구를 세 번 조정했으므로, 이 둘의 점수는 조정에 맞춘 값이다. holdout은 이전 라운드에서 이미 본 세트다. probe의 세션 맥락 사례는 6건뿐이다. 사용자의 실제 요청으로 확인한 것이 아니므로, 배포 후 실제로 잘못 분류된 문장이 나오면 probe에 추가해야 한다.
+- 남은 문구 위험(관찰된 오답은 아님):
+  - economy 목록은 "in such a project"라고 썼지만 일반 작업에도 적용된다(v3-107). "config"와 "잘 알려진 기능 질문"은 버전에 따라 달라지는 API 질문까지 economy로 끌어내릴 수 있다.
+  - (1)의 "own scripting interface"는 bpy나 Unity C#에는 맞지만, Unreal C++ 같은 엔진 C++나 도구 밖의 exporter·importer 코드는 (2)·(3)으로만 잡힌다.
+  - 이전 정의의 일반 조건 "좁거나 버전에 민감한 도메인 API"가 빠지고 3D/DCC·엔진·그래픽 API로 좁혀졌다.
+  - "그런 코드 안에서도 지정된 값 변경은 economy"는 "z-fighting을 고치려면 near plane을 0.01로" 같은 진단성 값 변경을 과소 분류할 수 있다.
 
 ## 재현
 

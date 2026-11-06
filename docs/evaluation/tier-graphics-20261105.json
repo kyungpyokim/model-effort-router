@@ -5711,7 +5711,7 @@
    }
   ]
  },
- "_note": "Keys prefixed frontier- hold predictions from the final prompt. Their stored scores were computed against the *-v1 corpora; rescore predictions against tier-*-v2.jsonl for the current definition, as the report does.",
+ "_note": "Keys prefixed frontier- hold predictions from the previous main prompt (domain clause under frontier, before v6); their stored scores were computed against the *-v1 corpora, so rescore against tier-*-v2.jsonl. v4-/v5-/v6- keys are the Blender-mention fix rounds, scored against tier-*-v2.jsonl and tier-blender-mentions-v1.jsonl; v6 is the adopted prompt. probe-main is the previous main on the probe.",
  "probe-main": {
   "n": 30,
   "role_exact": 28,
