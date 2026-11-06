@@ -48,6 +48,13 @@ class ValidateTest(unittest.TestCase):
         self.bad(case(status="weird"), "status")
         self.bad(case(surprise=1), "unknown field")
         self.bad("nope", "object")
+        self.bad(case(context=""), "context")
+        self.bad(case(context=3), "context")
+
+    def test_optional_session_context_is_kept(self):
+        self.assertEqual(
+            cases.validate_case(case(context="Earlier: bpy addon work"))["context"], "Earlier: bpy addon work"
+        )
 
     def test_draft_has_no_labels_or_final(self):
         self.bad(case(labels=[label("a")]), "draft")

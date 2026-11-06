@@ -79,7 +79,7 @@ Jev는 role 기준을 넘었고 effort와 joint는 각각 1건, 2건 모자라�
 
 ## tier
 
-선택 라벨 `tier`(`economy`, `balanced`, `frontier`)는 [라벨링 가이드](labeling-guide.md) §3a 기준으로 붙인다. `python3 -m evaluation.compare CORPUS --backend jev`가 tier 라벨이 있는 케이스에서 tier 일치도 함께 센다. 그래픽·Blender 요청이 economy로 쏠리던 문제를 보정한 기록은 [tier 기준 보정](tier-graphics-20261105.md)에 있다. 현재 정의는 도메인 조건(좁은 도메인 API, 공간·기하 수학, 테스트로 확인할 수 없는 시각 결과)을 frontier로 보낸다. 프롬프트 문구는 가이드보다 넓어 일반 UI·공간 수학 작업을 과하게 올릴 위험이 남아 있다. 이 정의로 다시 라벨링한 `tier-*-v2.jsonl`에서 Jev tier 일치는 holdout 12/24(원래 문구)에서 24/24로, dev 15/32에서 31/32로 올랐다. 대조군은 21/22였고, economy로 판정한 대조군 15건(일반 프론트엔드 14, 리팩터링 1)은 모두 economy였다. `*-v1.jsonl`은 도메인 조건을 balanced로 두던 이전 정의의 라벨로, 기록으로 보존한다. 정답은 AI 라벨러 두 명의 합의이며 사람 판정이 아니다.
+선택 라벨 `tier`(`economy`, `balanced`, `frontier`)는 [라벨링 가이드](labeling-guide.md) §3a 기준으로 붙인다. `python3 -m evaluation.compare CORPUS --backend jev`가 tier 라벨이 있는 케이스에서 tier 일치도 함께 센다. 그래픽·Blender 요청이 economy로 쏠리던 문제를 보정한 기록은 [tier 기준 보정](tier-graphics-20261105.md)에 있다. 도메인 조건을 frontier로 보낸다. 이 조건을 처음에는 좁은 도메인 API, 공간·기하 수학, 시각 결과로 정의했다. 현재 프롬프트(v6)는 3D/DCC 도구·엔진·그래픽 API의 스크립팅 인터페이스를 쓰는 코드나 셰이더 로직, 공간·기하 수학, 렌더링 결과 진단이라는 행동으로 정의하고, 제품 이름만으로는 올리지 않는다. 이 정의로 다시 라벨링한 `tier-*-v2.jsonl`에서 Jev tier 일치는 holdout 12/24(원래 문구)에서 24/24로, dev 15/32에서 31/32로 올랐다. 대조군은 21/22였고, economy로 판정한 대조군 15건(일반 프론트엔드 14, 리팩터링 1)은 모두 economy였다. 이후 Blender라는 이름만으로 frontier가 되는 문제가 보고됐다. Blender 언급 probe(`tier-blender-mentions-v1.jsonl`, 세션 맥락 사례 포함)를 만들어 frontier 기준을 제품 이름이 아닌 행동으로 다시 썼고, 잘못 올라간 economy 사례가 23건 중 3건에서 1건으로 줄었다. `*-v1.jsonl`은 도메인 조건을 balanced로 두던 이전 정의의 라벨로, 기록으로 보존한다. 정답은 AI 라벨러 두 명의 합의이며 사람 판정이 아니다.
 
 ## 실행 정책 파일럿
 

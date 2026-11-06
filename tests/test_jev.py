@@ -140,8 +140,11 @@ class JevContractTest(unittest.TestCase):
         self.assertEqual(set(tier["criteria"]), {"economy", "balanced", "frontier"})
         self.assertIn("self-contained", tier["criteria"]["economy"].lower())
         self.assertIn("multi-module", tier["criteria"]["balanced"].lower())
-        self.assertIn("domain apis", tier["criteria"]["frontier"].lower())
-        self.assertNotIn("domain apis", tier["criteria"]["balanced"].lower())
+        self.assertIn("scripting interface", tier["criteria"]["frontier"].lower())
+        self.assertNotIn("scripting interface", tier["criteria"]["balanced"].lower())
+        self.assertNotIn("blender", tier["criteria"]["frontier"].lower())  # a product name anchors the classifier
+        self.assertIn("does not make a task frontier", tier["criteria"]["economy"])
+        self.assertIn("not evidence by itself", tier["instructions"])
         self.assertIn("stated value", tier["criteria"]["economy"].lower())
         self.assertIn("cannot supply domain", tier["instructions"])
         self.assertIn("system-wide", tier["criteria"]["frontier"].lower())

@@ -40,7 +40,7 @@ def evaluate_backend(name, backend, rows, *, clock=time.monotonic, timeout_s=30)
     }
     latencies = []
     for row in scored:
-        task = DifficultyInput(row["task"], tuple(row.get("paths", ())))
+        task = DifficultyInput(row["task"], tuple(row.get("paths", ())), context=row.get("context", ""))
         started = clock()
         try:
             decision, causes = classify_with_fallback(task, [backend], timeout_s)

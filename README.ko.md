@@ -91,7 +91,7 @@ MER는 개발 요청을 3가지 독립된 축(**역할(role)**, **노력 수준(
 - **작업 체급 (Tier)**: `economy`, `balanced`, `frontier`. 모델의 지능 체급(지능 수준/규모)을 추론 노력 수준(effort)과 독립적으로 분리하여 판단합니다:
   - `economy`: 단일 함수/클래스/모듈 구현, 국소적인 버그 수정, 단위 테스트, 일상적 리팩터링 등 빠르고 가벼운 경제형 모델(Luna, Haiku 5.5, Flash 등)이 적절한 reasoning effort와 결합하여 잘 처리할 수 있는 자기완결적 작업. 범용 코드의 흔한 사용이고 테스트나 요청에 적힌 값으로 결과를 확인할 수 있어야 합니다. 지정된 값·이름·오타 변경은 도메인과 무관하게 economy입니다.
   - `balanced`: 다중 모듈 및 컴포넌트 간 기능 개발, 서브시스템 간 상호작용, 상태 관리, 아키텍처 가이드 기반 변경 작업(Terra, Sonnet 5.5 등).
-  - `frontier`: 시스템 전반의 아키텍처 설계, 미묘한 크로스 시스템 추론, 동시성/보안/데이터 무결성이 결부된 미션 크리티컬 의사결정(Sol, Opus 5.5, Argon 등). 또는 작업 크기와 상관없이 버전에 민감한 좁은 도메인 API(Blender `bpy`, 게임 엔진, 그래픽 API, 셰이더 언어 등), 공간·기하 수학, 테스트로 확인할 수 없는 시각 결과가 정확성을 좌우하는 작업. reasoning effort를 올려도 작은 모델이 모르는 도메인 지식은 생기지 않습니다.
+  - `frontier`: 시스템 전반의 아키텍처 설계, 미묘한 크로스 시스템 추론, 동시성/보안/데이터 무결성이 결부된 미션 크리티컬 의사결정(Sol, Opus 5.5, Argon 등). 또는 작업 크기와 상관없이 3D/DCC 도구·게임 엔진·그래픽 API의 스크립팅 인터페이스(Blender `bpy` 등)를 쓰는 코드나 셰이더 로직, 공간·기하 수학, 테스트로 확인할 수 없는 렌더링 결과의 진단이 필요한 작업. 제품 이름이 나오는 것만으로는 해당하지 않으며, 그런 프로젝트의 범용 코드·문서·CI·커밋·지정된 값이나 이름 변경은 `economy`입니다. reasoning effort를 올려도 작은 모델이 모르는 도메인 지식은 생기지 않습니다.
 
 ### 호스트별 기본 모델 매핑
 
@@ -319,6 +319,8 @@ jq -c 'select(.event|test("route|subagent|run")) | {ts,event,action:.advice.acti
 ## 버전별 변경사항 (Changelog)
 
 ### [Unreleased]
+- **제품 이름만으로 `frontier`가 되지 않게 수정**: Blender 등 3D 도구를 언급만 하고 범용 코드·문서·CI·커밋·질문만 다루는 요청은 `economy`로 남습니다. frontier 기준을 제품 이름 대신 행동(스크립팅 API 코드, 셰이더 로직, 공간 수학, 렌더링 결과 진단)으로 바꿨습니다. 새 Blender 언급 probe 30건에서 잘못 올라간 economy 사례가 3건에서 1건으로 줄었고, 그래픽 dev 32/32, holdout 24/24입니다([보고서](docs/evaluation/tier-graphics-20261105.md)).
+- **평가 corpus의 세션 맥락**: 케이스에 선택 필드 `context`를 둘 수 있고, `evaluation.compare`가 이를 분류기에 넘깁니다.
 - **tier 기준에 도메인 지식 반영**: 그래픽·Blender 요청이 대부분 `economy`로 분류되던 문제를 고쳤습니다. 이제 작업 크기와 상관없이 버전에 민감한 좁은 도메인 API(Blender `bpy`, 게임 엔진, 그래픽 API, 셰이더), 공간·기하 수학, 테스트로 확인할 수 없는 시각 결과가 정확성을 좌우하면 Jev가 `frontier`로 분류합니다. 값·이름·오타 변경과 개념 설명은 `economy`로 남습니다. 새 기준으로 다시 라벨링한 그래픽 holdout에서 tier 일치가 12/24에서 24/24로 올랐고, 일반 프론트엔드 대조군은 `economy`를 유지했으며, v3 role/effort는 떨어지지 않았습니다([보고서](docs/evaluation/tier-graphics-20261105.md)).
 - **평가 도구의 tier 채점**: corpus에 선택 라벨 `tier`를 둘 수 있고, `evaluation.labels sheet --tier`로 tier 열이 있는 시트를 만들며, `python3 -m evaluation.compare CORPUS --backend jev`로 tier를 채점합니다.
 
