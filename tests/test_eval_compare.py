@@ -21,6 +21,34 @@ class Fake:
         return DifficultyDecision(self.role, self.effort, self.name, tier=self.tier)
 
 
+class SessionContextTest(unittest.TestCase):
+    def test_row_context_reaches_the_classifier(self):
+        seen = []
+
+        class Spy(Fake):
+            def classify(self, task, timeout_s):
+                seen.append(task.context)
+                return super().classify(task, timeout_s)
+
+        rows = [
+            {
+                "id": "c",
+                "task": "commit it",
+                "context": "Earlier: a bpy script",
+                "status": "adjudicated",
+                "final": {"role": "implementation", "effort": "low"},
+            },
+            {
+                "id": "d",
+                "task": "no context",
+                "status": "adjudicated",
+                "final": {"role": "implementation", "effort": "low"},
+            },
+        ]
+        compare.evaluate_backend("spy", Spy("implementation", "low"), rows)
+        self.assertEqual(seen, ["Earlier: a bpy script", ""])
+
+
 class RoleEffortEvaluationTest(unittest.TestCase):
     ROWS = [
         {

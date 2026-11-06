@@ -6,7 +6,7 @@ import sys
 from model_effort_router.difficulty.decision import EFFORTS, ROLES, TIERS
 
 STATUSES = ("draft", "labeled", "adjudicated")
-FIELDS = {"id", "task", "paths", "labels", "status", "final", "note"}
+FIELDS = {"id", "task", "paths", "context", "labels", "status", "final", "note"}
 
 
 class CorpusError(ValueError):
@@ -52,6 +52,8 @@ def validate_case(row):
     paths = row.get("paths", [])
     if not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
         raise CorpusError(f"{where}: paths must be a list of strings")
+    if "context" in row and not (isinstance(row["context"], str) and row["context"].strip()):
+        raise CorpusError(f"{where}: context must be a non-empty string when present")
     status = row.get("status")
     if status not in STATUSES:
         raise CorpusError(f"{where}: status must be one of {STATUSES}, got {status!r}")
