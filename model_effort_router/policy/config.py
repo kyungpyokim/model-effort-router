@@ -1,7 +1,7 @@
 """Router configuration: repo values override user values, then built-in defaults."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
 from types import MappingProxyType
 from typing import Optional
@@ -11,12 +11,13 @@ from ..difficulty.decision import EFFORTS, TIERS
 from ..difficulty.laya import validate_options as validate_laya
 from ..difficulty.nimble import validate_options as validate_nimble
 
+HOSTS = ("codex", "claude", "antigravity", "opencode")
 MODES = ("auto", "manual", "off", "policy")  # "policy": experimental, no classifier (Main picks the lane)
 MIN_CONTEXT_CHARS, MAX_CONTEXT_CHARS = 500, 20000
 SECTIONS = ("router", "difficulty", "models", "context", "jev", "openai")
 PASSTHROUGH_SECTIONS = ("gate",)  # owned by the independent mer-gate CLI
 DEFAULTS = {
-    "router": {"mode": "auto"},
+    "router": {"mode": "auto", "hosts": {}},
     "difficulty": {"backend": "subscription", "fallback": "none", "timeout_s": 10},
     "context": {"enabled": True, "max_chars": 6000},
     "models": {
@@ -84,6 +85,7 @@ class RouterConfig:
     context_enabled: bool = True
     context_max_chars: int = 6000
     laya: Optional[dict] = None
+    hosts: object = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def chain(self):
@@ -109,7 +111,7 @@ def _layer(value, name):
 
 def _validate_models(raw):
     for host, groups in raw.items():
-        if host not in ("codex", "claude", "antigravity", "opencode") or not isinstance(groups, dict):
+        if host not in HOSTS or not isinstance(groups, dict):
             raise ValueError(f"models.{host} must be a host mapping")
         if set(groups) != {"execution", "reasoning"}:
             raise ValueError(f"models.{host} must define execution and reasoning")
@@ -151,15 +153,29 @@ def _validate_models(raw):
     return raw
 
 
-def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConfig:
+def _normalize_mode(value, field_name):
+    mode = "auto" if value == "on" else value
+    if mode not in MODES:
+        raise ValueError(f"{field_name} must be one of {MODES}, got {value!r}")
+    return mode
+
+
+def resolve_config(task=None, repo=None, user=None, registry=None, host=None) -> RouterConfig:
+    if host is not None and host not in HOSTS:
+        raise ValueError(f"unknown host: {host!r}")
     merged = {
         key: (
             {h: {k: dict(v) for k, v in groups.items()} for h, groups in value.items()}
             if key == "models"
-            else {name: dict(item) if isinstance(item, dict) else item for name, item in value.items()}
+            else (
+                {"mode": value["mode"], "hosts": dict(value["hosts"])}
+                if key == "router"
+                else {name: dict(item) if isinstance(item, dict) else item for name, item in value.items()}
+            )
         )
         for key, value in DEFAULTS.items()
     }
+    effective_mode = merged["router"]["mode"]
     for name, source in (("user", user), ("repo", repo), ("task", task)):
         source = _layer(source, name)
         for section in ("jev", "openai"):
@@ -180,11 +196,36 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         for key in SECTIONS:
             if key in ("jev", "openai"):
                 continue
-            if key == "models":
-                for host, groups in source.get(key, {}).items():
-                    merged[key].setdefault(host, {})
+            if key == "router":
+                router_layer = source.get("router")
+                if not router_layer:
+                    continue
+                if set(router_layer) - {"mode", "hosts"}:
+                    raise ValueError(f"unknown router settings: {sorted(set(router_layer) - {'mode', 'hosts'})}")
+                if "mode" in router_layer:
+                    merged["router"]["mode"] = _normalize_mode(router_layer["mode"], "router.mode")
+                hosts_layer = router_layer.get("hosts")
+                if "hosts" in router_layer:
+                    if not isinstance(hosts_layer, dict):
+                        raise ValueError("router.hosts must be an object")
+                    for h, h_mode in hosts_layer.items():
+                        if h not in HOSTS:
+                            raise ValueError(f"unknown router.hosts key: {h!r}")
+                        if h_mode is None:
+                            merged["router"]["hosts"].pop(h, None)
+                        else:
+                            merged["router"]["hosts"][h] = _normalize_mode(h_mode, f"router.hosts.{h}")
+                if host is not None and isinstance(hosts_layer, dict) and host in hosts_layer:
+                    effective_mode = (
+                        merged["router"]["mode"] if hosts_layer[host] is None else merged["router"]["hosts"][host]
+                    )
+                elif "mode" in router_layer:
+                    effective_mode = merged["router"]["mode"]
+            elif key == "models":
+                for h_name, groups in source.get(key, {}).items():
+                    merged[key].setdefault(h_name, {})
                     for lane, options in groups.items():
-                        current = merged[key][host].setdefault(lane, {})
+                        current = merged[key][h_name].setdefault(lane, {})
                         if "primary" in options and "alternatives" not in options:
                             alternatives = current.get("alternatives", [])
                             if isinstance(alternatives, list):
@@ -195,12 +236,8 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
             else:
                 merged[key].update(source.get(key, {}))
     router, difficulty = merged["router"], merged["difficulty"]
-    if set(router) - {"mode"}:
-        raise ValueError(f"unknown router settings: {sorted(set(router) - {'mode'})}")
-    if router.get("mode") == "on":
-        router["mode"] = "auto"
-    if router.get("mode") not in MODES:
-        raise ValueError(f"router.mode must be one of {MODES}, got {router.get('mode')!r}")
+    if host is None:
+        effective_mode = router["mode"]
     if set(difficulty) - {"backend", "fallback", "timeout_s", "nimble", "laya"}:
         raise ValueError("legacy or unknown difficulty settings; remove level thresholds and nimble_jev policy")
     if not isinstance(difficulty.get("backend"), str):
@@ -214,7 +251,7 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         raise ValueError("difficulty.timeout_s must be a positive finite number")
     if "nimble_jev" in (difficulty["backend"], *names):
         raise ValueError("difficulty backend 'nimble_jev' was removed; use 'nimble' with fallback 'jev'")
-    if registry is not None and router["mode"] == "auto":
+    if registry is not None and effective_mode == "auto":
         for key, name in (("backend", difficulty["backend"]), *(("fallback", n) for n in names)):
             if name != "none" and name not in registry:
                 raise ValueError(f"unknown difficulty.{key}: {name!r}")
@@ -238,7 +275,7 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
     nimble = validate_nimble(difficulty["nimble"]) if "nimble" in difficulty else None
     laya = validate_laya(difficulty["laya"]) if "laya" in difficulty else None
     return RouterConfig(
-        router["mode"],
+        effective_mode,
         difficulty["backend"],
         difficulty["fallback"],
         float(timeout),
@@ -247,4 +284,5 @@ def resolve_config(task=None, repo=None, user=None, registry=None) -> RouterConf
         context["enabled"],
         limit,
         laya=laya,
+        hosts=MappingProxyType(dict(router["hosts"])),
     )

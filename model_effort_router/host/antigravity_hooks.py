@@ -57,7 +57,13 @@ def _advice(data, env):
     cwd = workspaces[0] if workspaces else os.getcwd()
     repo_cfg, user_cfg = load_configs(cwd, env)
     registry = _registry(env, "antigravity")
-    cfg = resolve_config(task=parse_override(prompt)[0].as_config(), repo=repo_cfg, user=user_cfg, registry=registry)
+    cfg = resolve_config(
+        task=parse_override(prompt)[0].as_config(),
+        repo=repo_cfg,
+        user=user_cfg,
+        registry=registry,
+        host="antigravity",
+    )
     if cfg.mode != "auto":
         return ""
     limit = MAX_CHAIN_TIMEOUT_S // max(len(cfg.chain), 2)

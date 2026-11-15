@@ -32,7 +32,7 @@ def main():
         # Request unreadable (no transcript / unknown format): keep the static execution-lane advice.
         workspaces = data.get("workspacePaths") or []
         repo, user = load_configs(workspaces[0] if workspaces else os.getcwd(), os.environ)
-        config = resolve_config(repo=repo, user=user)
+        config = resolve_config(repo=repo, user=user, host="antigravity")
         if config.mode != "auto":
             return
         execution = config.models["antigravity"]["execution"]
