@@ -13,22 +13,28 @@ Enable or disable `model-effort-router`.
 ## Commands
 
 ### 1. Toggle Router
-- **Turn off:**
+- **Turn off (this agent only when run via the plugin `mer` / `MER_HOST=antigravity`):**
   ```bash
   mer off
   # or: mer mode off
+  # explicit host or all agents:
+  mer off --host antigravity
+  mer off --all
   ```
   Add `--local` to apply only to the current repository (`.model-effort-router.json`).
 - **Turn on:**
   ```bash
   mer on
   # or: mer mode on
+  # explicit host or all agents:
+  mer on --host antigravity
+  mer on --all
   ```
   Add `--local` to apply only to the current repository.
 - **Check status:**
   ```bash
   mer status
-  # or: mer mode
+  # or: mer status --all
   ```
 
 ### 2. Per-Turn Override

@@ -93,7 +93,13 @@ def route(
     override, text = parse_override(message)
     if override.rejected:
         return RoutePlan(NO_ROUTE, "invalid_override", override_rejected=True)
-    cfg = resolve_config(task=override.as_config(), repo=repo_config, user=user_config, registry=registry)
+    cfg = resolve_config(
+        task=override.as_config(),
+        repo=repo_config,
+        user=user_config,
+        registry=registry,
+        host=host,
+    )
     flags = detect_risk_flags(text, paths)
     role_override = role_override if role_override is not None else override.role
     effort_override = effort_override if effort_override is not None else override.effort

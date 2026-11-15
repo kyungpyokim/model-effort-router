@@ -13,7 +13,7 @@ from .host import hosts
 from .host.advice import NO_ROUTE_MESSAGE, effort_pair
 from .host.codex_hooks import REPO_CONFIG, USER_CONFIG_ENV, _registry, load_configs
 from .logging import route_log
-from .policy.config import resolve_config
+from .policy.config import HOSTS, resolve_config
 from .policy.router import route
 from .policy.targeting import NO_ROUTE
 from .report import limit_count, since_seconds
@@ -62,23 +62,30 @@ def _parser():
     report.add_argument(
         "--limit", type=limit_count, default=20, help="most recent rows to list, 0 for the summary only (default 20)"
     )
+
+    def _add_mode_args(p, *, with_local=True):
+        if with_local:
+            p.add_argument("--local", action="store_true", help="update repo-local config (.model-effort-router.json)")
+        p.add_argument("--cwd", default=os.getcwd())
+        p.add_argument(
+            "--host",
+            choices=[*HOSTS, "all"],
+            help="target host agent (default: MER_HOST if set, otherwise global mode)",
+        )
+        p.add_argument("--all", action="store_true", help="apply to all hosts instead of MER_HOST")
+
     mode_parser = sub.add_parser("mode", help="get or set router mode (on|off|auto|status)")
     mode_parser.add_argument("state", nargs="?", choices=["on", "off", "auto", "status"], default="status")
-    mode_parser.add_argument(
-        "--local", action="store_true", help="update repo-local config (.model-effort-router.json)"
-    )
-    mode_parser.add_argument("--cwd", default=os.getcwd())
+    _add_mode_args(mode_parser)
 
     on_parser = sub.add_parser("on", help="enable model router (mode: auto)")
-    on_parser.add_argument("--local", action="store_true", help="update repo-local config (.model-effort-router.json)")
-    on_parser.add_argument("--cwd", default=os.getcwd())
+    _add_mode_args(on_parser)
 
     off_parser = sub.add_parser("off", help="disable model router (mode: off)")
-    off_parser.add_argument("--local", action="store_true", help="update repo-local config (.model-effort-router.json)")
-    off_parser.add_argument("--cwd", default=os.getcwd())
+    _add_mode_args(off_parser)
 
     status_parser = sub.add_parser("status", help="show current model router status")
-    status_parser.add_argument("--cwd", default=os.getcwd())
+    _add_mode_args(status_parser, with_local=False)
     return parser
 
 
@@ -101,7 +108,7 @@ def _response(plan):
 def _log_route(env, args, plan, latency_ms, host, repo_cfg, user_cfg, registry):
     """Record the route in the host session's log. Logging never fails a route."""
     try:
-        backend = resolve_config(repo=repo_cfg, user=user_cfg, registry=registry).backend
+        backend = resolve_config(repo=repo_cfg, user=user_cfg, registry=registry, host=host).backend
         event = route_log.route_event(
             plan, latency_ms=latency_ms, prompt=args.request, configured_backend=backend, host=host
         )
@@ -135,8 +142,32 @@ def _config_target(env, local, cwd):
     return Path(user_path)
 
 
+def _target_host(args, env):
+    if getattr(args, "all", False) or getattr(args, "host", None) == "all":
+        return None
+    explicit = getattr(args, "host", None)
+    if explicit:
+        return explicit
+    env_host = env.get("MER_HOST")
+    return env_host if env_host in HOSTS else None
+
+
+def _status_source(repo_cfg, user_cfg, target_host):
+    for cfg, label in ((repo_cfg, f"local {REPO_CONFIG}"), (user_cfg, "global config.json")):
+        router = cfg.get("router", {}) if isinstance(cfg, dict) else {}
+        if not isinstance(router, dict):
+            continue
+        hosts_cfg = router.get("hosts")
+        if target_host and isinstance(hosts_cfg, dict) and target_host in hosts_cfg:
+            return f"{label} (host: {target_host})"
+        if "mode" in router:
+            return label
+    return "default"
+
+
 def _handle_mode(args, env, out):
     state = getattr(args, "state", None) or args.command
+    target_host = _target_host(args, env)
     if state in ("on", "off", "auto"):
         target_mode = "off" if state == "off" else "auto"
         local = getattr(args, "local", False)
@@ -150,30 +181,39 @@ def _handle_mode(args, env, out):
                 cfg = {}
         if not isinstance(cfg, dict):
             cfg = {}
-        cfg.setdefault("router", {})["mode"] = target_mode
+        router_cfg = cfg.setdefault("router", {})
+        if target_host:
+            hosts_cfg = router_cfg.get("hosts")
+            if not isinstance(hosts_cfg, dict):
+                hosts_cfg = {}
+                router_cfg["hosts"] = hosts_cfg
+            hosts_cfg[target_host] = target_mode
+        else:
+            router_cfg["mode"] = target_mode
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         scope = f"local ({path.name})" if local else "global"
+        host_label = f" for {target_host}" if target_host else ""
         if target_mode == "off":
             print(
-                f"[model-effort-router] Router disabled (mode: off, scope: {scope}). Model routing is bypassed.",
+                f"[model-effort-router] Router disabled{host_label} (mode: off, scope: {scope}). Model routing is bypassed.",
                 file=out,
             )
         else:
-            print(f"[model-effort-router] Router enabled (mode: auto, scope: {scope}).", file=out)
+            print(f"[model-effort-router] Router enabled{host_label} (mode: auto, scope: {scope}).", file=out)
         return 0
 
     # status
     cwd = getattr(args, "cwd", os.getcwd())
     repo_cfg, user_cfg = load_configs(cwd, env)
-    cfg = resolve_config(repo=repo_cfg, user=user_cfg)
+    cfg = resolve_config(repo=repo_cfg, user=user_cfg, host=target_host)
     active = "OFF" if cfg.mode == "off" else "ON"
-    source = "default"
-    if repo_cfg and "router" in repo_cfg and "mode" in repo_cfg["router"]:
-        source = f"local {REPO_CONFIG}"
-    elif user_cfg and "router" in user_cfg and "mode" in user_cfg["router"]:
-        source = "global config.json"
-    print(f"[model-effort-router] Status: {active} (mode: {cfg.mode}, source: {source})", file=out)
+    source = _status_source(repo_cfg, user_cfg, target_host)
+    host_info = f", host: {target_host}" if target_host else ""
+    print(f"[model-effort-router] Status: {active} (mode: {cfg.mode}{host_info}, source: {source})", file=out)
+    if target_host is None and cfg.hosts:
+        hosts_str = ", ".join(f"{h}={m}" for h, m in sorted(cfg.hosts.items()))
+        print(f"[model-effort-router] Host overrides: {hosts_str}", file=out)
     return 0
 
 

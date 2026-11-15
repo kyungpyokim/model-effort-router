@@ -120,7 +120,14 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
     cwd = data.get("cwd") or os.getcwd()
     repo_cfg, user_cfg = load_configs(cwd, env)
     registry = _registry(env)
-    cfg = resolve_config(task=parse_override(prompt)[0].as_config(), repo=repo_cfg, user=user_cfg, registry=registry)
+    host = hosts.get(env=env)
+    cfg = resolve_config(
+        task=parse_override(prompt)[0].as_config(),
+        repo=repo_cfg,
+        user=user_cfg,
+        registry=registry,
+        host=host.name,
+    )
     if cfg.mode == "off":
         return None
     limit = MAX_CHAIN_TIMEOUT_S // max(len(cfg.chain), 2)  # per backend: 12s for one or two, 8s for three
@@ -128,7 +135,6 @@ def user_prompt_submit(data, env, plugin_root, spawn=refresh.spawn, version_prob
     if clamped:
         repo_cfg = _with_timeout(repo_cfg, limit)
     started = time.monotonic()
-    host = hosts.get(env=env)
     context, due = _session_context(data, host, sdir, sid, prompt, cfg, env, version_probe)
     plan = None
     try:

@@ -25,9 +25,9 @@ class RouterModeCliTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_cli(self, *args):
+    def run_cli(self, *args, env=None):
         out = io.StringIO()
-        code = main(list(args), env=self.env, out=out)
+        code = main(list(args), env=self.env if env is None else env, out=out)
         return code, out.getvalue()
 
     def test_default_status_is_on(self):
@@ -94,6 +94,86 @@ class RouterModeCliTest(unittest.TestCase):
         payload = {"prompt": "implement a new feature", "session_id": "test-sid", "cwd": str(self.cwd)}
         res = codex_hooks.user_prompt_submit(payload, self.env, str(self.cwd))
         self.assertIsNone(res)
+
+    def test_host_scoped_off_and_on_via_flag(self):
+        code, out = self.run_cli("off", "--host", "antigravity")
+        self.assertEqual(code, 0)
+        self.assertIn("Router disabled for antigravity (mode: off, scope: global)", out)
+        saved = json.loads(self.user_cfg_path.read_text())
+        self.assertEqual(saved["router"]["hosts"]["antigravity"], "off")
+        self.assertNotIn("mode", saved["router"])
+
+        repo_cfg, user_cfg = codex_hooks.load_configs(str(self.cwd), self.env)
+        self.assertEqual(resolve_config(repo=repo_cfg, user=user_cfg, host="antigravity").mode, "off")
+        self.assertEqual(resolve_config(repo=repo_cfg, user=user_cfg, host="codex").mode, "auto")
+        self.assertEqual(resolve_config(repo=repo_cfg, user=user_cfg, host="claude").mode, "auto")
+
+        plan_ag = route("implement a new feature", repo_config=repo_cfg, user_config=user_cfg, host="antigravity")
+        self.assertEqual((plan_ag.target, plan_ag.mode), (NO_ROUTE, "off"))
+
+        code, out = self.run_cli("status", "--cwd", str(self.cwd), "--host", "antigravity")
+        self.assertEqual(code, 0)
+        self.assertIn("Status: OFF (mode: off, host: antigravity, source: global config.json (host: antigravity))", out)
+
+        code, out = self.run_cli("status", "--cwd", str(self.cwd))
+        self.assertEqual(code, 0)
+        self.assertIn("Status: ON (mode: auto, source: default)", out)
+        self.assertIn("Host overrides: antigravity=off", out)
+
+        code, out = self.run_cli("on", "--host", "antigravity")
+        self.assertEqual(code, 0)
+        self.assertIn("Router enabled for antigravity (mode: auto, scope: global)", out)
+        repo_cfg, user_cfg = codex_hooks.load_configs(str(self.cwd), self.env)
+        self.assertEqual(resolve_config(repo=repo_cfg, user=user_cfg, host="antigravity").mode, "auto")
+
+    def test_mer_host_env_scopes_by_default_and_all_overrides(self):
+        claude_env = {**self.env, "MER_HOST": "claude"}
+        code, out = self.run_cli("off", env=claude_env)
+        self.assertEqual(code, 0)
+        self.assertIn("Router disabled for claude", out)
+
+        repo_cfg, user_cfg = codex_hooks.load_configs(str(self.cwd), self.env)
+        self.assertEqual(resolve_config(repo=repo_cfg, user=user_cfg, host="claude").mode, "off")
+        self.assertEqual(resolve_config(repo=repo_cfg, user=user_cfg, host="codex").mode, "auto")
+
+        code, out = self.run_cli("status", "--cwd", str(self.cwd), env=claude_env)
+        self.assertEqual(code, 0)
+        self.assertIn("Status: OFF (mode: off, host: claude", out)
+
+        code, out = self.run_cli("off", "--all", env=claude_env)
+        self.assertEqual(code, 0)
+        self.assertIn("Router disabled (mode: off, scope: global)", out)
+        repo_cfg, user_cfg = codex_hooks.load_configs(str(self.cwd), self.env)
+        self.assertEqual(resolve_config(repo=repo_cfg, user=user_cfg, host="codex").mode, "off")
+
+    def test_host_mode_precedence_and_validation(self):
+        cfg = resolve_config(
+            user={"router": {"mode": "auto", "hosts": {"claude": "off"}}},
+            repo={"router": {"mode": "auto"}},
+            host="claude",
+        )
+        self.assertEqual(cfg.mode, "auto")
+
+        cfg = resolve_config(
+            user={"router": {"mode": "auto", "hosts": {"claude": "off"}}},
+            repo={"router": {"hosts": {"codex": "off"}}},
+            host="claude",
+        )
+        self.assertEqual(cfg.mode, "off")
+
+        cfg = resolve_config(
+            user={"router": {"hosts": {"claude": "off"}}},
+            task={"router": {"mode": "auto"}},
+            host="claude",
+        )
+        self.assertEqual(cfg.mode, "auto")
+
+        with self.assertRaises(ValueError):
+            resolve_config(user={"router": {"hosts": {"unknown": "off"}}})
+        with self.assertRaises(ValueError):
+            resolve_config(user={"router": {"hosts": {"claude": "bogus"}}})
+        with self.assertRaises(ValueError):
+            resolve_config(host="unknown")
 
 
 if __name__ == "__main__":
