@@ -22,8 +22,8 @@ class UserPromptSubmitTest(HookCase):
     def test_advisory_includes_only_role_effort_and_model_recommendation(self):
         self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
         advice = self.context(self.submit("Review the diff in parser.py"))
-        self.assertIn("review → reasoning · gpt-6.1-sol · effort medium", advice)
-        self.assertIn("Recommended model: gpt-6.1-sol; effort: medium", advice)
+        self.assertIn("review → reasoning · gpt-6.2-astra · effort medium", advice)
+        self.assertIn("Recommended model: gpt-6.2-astra; effort: medium", advice)
         self.assertIn("MER recommends model settings only", advice)
         self.assertNotIn("Subagent", advice)
         self.assertNotIn("Context Packet", advice)
@@ -41,27 +41,27 @@ class UserPromptSubmitTest(HookCase):
 
     def test_matching_main_model_still_recommends_effort_without_delegation(self):
         self.fake = {"role": "plan", "effort": "medium", "confidence": 0.8}
-        proc = self.submit(payload=self.payload(model="GPT-6.1-Sol"))
+        proc = self.submit(payload=self.payload(model="GPT-6.2-Astra"))
         out = json.loads(proc.stdout)
-        self.assertIn("Main already uses gpt-6.1-sol", out["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("Main already uses gpt-6.2-astra", out["hookSpecificOutput"]["additionalContext"])
         self.assertIn("Recommended effort: medium", out["hookSpecificOutput"]["additionalContext"])
         self.assertNotIn("Subagent", out["systemMessage"])
-        self.assertIn("gpt-6.1-sol · effort medium", out["systemMessage"])
+        self.assertIn("gpt-6.2-astra · effort medium", out["systemMessage"])
 
     def test_review_route_only_selects_a_model_and_effort(self):
         self.fake = {"role": "review", "effort": "medium", "confidence": 0.8}
-        out = json.loads(self.submit(payload=self.payload(model="gpt-6.1-sol")).stdout)
+        out = json.loads(self.submit(payload=self.payload(model="gpt-6.2-astra")).stdout)
         self.assertIn("review → reasoning", out["hookSpecificOutput"]["additionalContext"])
         self.assertNotIn("reviewer", out["hookSpecificOutput"]["additionalContext"])
         self.assertNotIn("Subagent", out["hookSpecificOutput"]["additionalContext"])
 
     def test_main_model_failure_is_logged_and_falls_back_to_legacy_advice(self):
         self.fake = {"role": "plan", "effort": "medium", "confidence": 0.8}
-        data = self.payload(model="gpt-6.1-sol", hook_event_name="UserPromptSubmit")
+        data = self.payload(model="gpt-6.2-astra", hook_event_name="UserPromptSubmit")
         env = self.env()
         with patch.object(codex_hooks, "main_model", side_effect=RuntimeError("SECRET")):
             out = codex_hooks.user_prompt_submit(data, env, PLUGIN)
-        self.assertIn("Recommended model: gpt-6.1-sol", out)
+        self.assertIn("Recommended model: gpt-6.2-astra", out)
         errors = [e for e in self.log_events() if e["event"] == "error"]
         self.assertEqual([(e["type"], e["code"]) for e in errors], [("RuntimeError", "MainModel_failed")])
         self.assertNotIn("SECRET", json.dumps(errors))
@@ -77,7 +77,7 @@ class UserPromptSubmitTest(HookCase):
             out = json.loads(self.submit(payload=self.payload(**extra)).stdout)
             self.assertNotIn("Main already runs", out["systemMessage"])
         advice = out["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("Recommended model: gpt-6.1-sol", advice)
+        self.assertIn("Recommended model: gpt-6.2-astra", advice)
 
     def test_active_project_name_is_passed_to_the_router_from_hook_cwd(self):
         data = {

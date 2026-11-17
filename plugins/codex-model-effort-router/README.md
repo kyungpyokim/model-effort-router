@@ -10,8 +10,8 @@ Configure `primary` and optional `alternatives` for each lane. Alternatives are 
 {
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra", "provider/model-id"]},
-      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra", "provider/another-model"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6.2-sol", "provider/model-id"]},
+      "reasoning": {"primary": "gpt-6.2-astra", "alternatives": ["gpt-6.2-sol", "provider/another-model"]}
     }
   }
 }

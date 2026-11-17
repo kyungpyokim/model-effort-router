@@ -38,7 +38,7 @@ class WorkflowLogTest(HookCase):
                 "action": "recommend",
                 "selection_only": True,
                 "main_model": "gpt-6-luna",
-                "routed_model": "gpt-6.1-sol",
+                "routed_model": "gpt-6.2-astra",
                 "routed_effort": "medium",
                 "agent": "reasoning",
             },
@@ -46,28 +46,28 @@ class WorkflowLogTest(HookCase):
         self.assertNotIn("ZEBRA_PROMPT_MARKER", json.dumps(ev))
 
     def test_same_model_and_unknown_main_actions(self):
-        self.assertEqual(self.route(role="plan", model="gpt-6.1-sol")["advice"]["action"], "already_selected")
-        self.assertNotIn("invocation", self.route(role="plan", model="gpt-6.1-sol")["advice"])
+        self.assertEqual(self.route(role="plan", model="gpt-6.2-astra")["advice"]["action"], "already_selected")
+        self.assertNotIn("invocation", self.route(role="plan", model="gpt-6.2-astra")["advice"])
         self.assertEqual(self.route(role="plan", model=None)["advice"]["action"], "recommend")
 
     def test_subagent_start_and_stop_correlate_with_the_route(self):
         self.route()
-        start = self.sub("start", model="gpt-6.1-sol", turn_id="child-turn")
+        start = self.sub("start", model="gpt-6.2-astra", turn_id="child-turn")
         self.assertEqual(
             (start["event"], start["host"], start["agent_id"], start["model"]),
-            ("subagent_start", "codex", "a1", "gpt-6.1-sol"),
+            ("subagent_start", "codex", "a1", "gpt-6.2-astra"),
         )
         self.assertEqual((start["agent_turn_id"], "turn_id" in start), ("child-turn", False))
-        self.assertEqual(start["correlation"]["expected"]["model"], "gpt-6.1-sol")
+        self.assertEqual(start["correlation"]["expected"]["model"], "gpt-6.2-astra")
         self.assertIs(start["correlation"]["matched"], True)
         self.assertEqual(start["correlation"]["matched_on"], ["model"])
-        stop = self.sub("stop", model="gpt-6.1-sol", last_assistant_message="SECRET_REPLY")
+        stop = self.sub("stop", model="gpt-6.2-astra", last_assistant_message="SECRET_REPLY")
         self.assertEqual(stop["event"], "subagent_stop")
         self.assertEqual(stop["correlation"], start["correlation"])
         self.assertNotIn("SECRET_REPLY", json.dumps(self.log_events()))
 
     def test_wrong_model_does_not_match_and_no_route_is_null(self):
-        self.assertIsNone(self.sub("start", model="gpt-6.1-sol")["correlation"]["matched"])  # no route yet
+        self.assertIsNone(self.sub("start", model="gpt-6.2-astra")["correlation"]["matched"])  # no route yet
         self.route()
         self.assertIs(self.sub("start", model="other")["correlation"]["matched"], False)
         self.assertIsNone(self.sub("start")["correlation"]["matched"])  # model unknown
@@ -91,17 +91,17 @@ class WorkflowLogTest(HookCase):
 
     def test_stop_follows_its_own_start_not_the_latest_route(self):
         self.route()
-        self.sub("start", model="gpt-6.1-sol", agent_id="a1")
-        self.route(model="gpt-6.1-sol")  # a later prompt: Main inline
-        stop = self.sub("stop", model="gpt-6.1-sol", agent_id="a1")
+        self.sub("start", model="gpt-6.2-astra", agent_id="a1")
+        self.route(model="gpt-6.2-astra")  # a later prompt: Main inline
+        stop = self.sub("stop", model="gpt-6.2-astra", agent_id="a1")
         self.assertEqual(stop["correlation"]["expected"]["action"], "recommend")
         self.assertIs(stop["correlation"]["matched"], True)
         orphan = self.sub("stop", agent_id="other")
         self.assertEqual(orphan["correlation"], {"expected": None, "matched": None, "matched_on": []})
 
     def test_already_selected_route_remains_model_comparable_on_codex(self):
-        self.route(role="plan", model="gpt-6.1-sol")
-        start = self.sub("start", model="gpt-6.1-sol")
+        self.route(role="plan", model="gpt-6.2-astra")
+        start = self.sub("start", model="gpt-6.2-astra")
         self.assertEqual(start["correlation"]["expected"]["action"], "already_selected")
         self.assertIs(start["correlation"]["matched"], True)
 
@@ -178,8 +178,8 @@ def _host(name):
 class RecommendationAgreementTest(unittest.TestCase):
     def test_logged_route_and_rendered_advice_are_selection_only(self):
         for host, model, main, action in (
-            ("codex", "gpt-6.1-sol", "gpt-6-luna", "recommend"),
-            ("codex", "gpt-6.1-sol", "gpt-6.1-sol", "already_selected"),
+            ("codex", "gpt-6.2-astra", "gpt-6-luna", "recommend"),
+            ("codex", "gpt-6.2-astra", "gpt-6.2-astra", "already_selected"),
             ("claude", "claude-opus-5-5", "claude-sonnet-5-5", "recommend"),
         ):
             with self.subTest(host=host, main=main):

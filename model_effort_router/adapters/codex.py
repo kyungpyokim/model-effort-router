@@ -16,10 +16,12 @@ _MODEL_EFFORTS = MappingProxyType(
         "gpt-6-sol": _LUNA + ("ultra",),
         "gpt-6.1-sol": _LUNA + ("ultra",),
         "gpt-6.1-terra": _LUNA + ("ultra",),
+        "gpt-6.2-sol": _LUNA + ("ultra",),
+        "gpt-6.2-astra": _LUNA + ("ultra",),
     }
 )
 # Default tier models -- to confirm at install time (spec 12).
-_TIERS = MappingProxyType({"economy": "gpt-6-luna", "balanced": "gpt-6.1-terra", "frontier": "gpt-6.1-sol"})
+_TIERS = MappingProxyType({"economy": "gpt-6-luna", "balanced": "gpt-6.2-sol", "frontier": "gpt-6.2-astra"})
 _EFFORTS = MappingProxyType({"medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"})
 
 

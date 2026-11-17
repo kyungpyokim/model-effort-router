@@ -97,7 +97,7 @@ MER classifies a request along three orthogonal dimensions: **role**, **effort**
 
 | Host | Economy | Balanced | Frontier |
 |---|---|---|---|
-| **Codex** | `gpt-6-luna` | `gpt-6.1-terra` | `gpt-6.1-sol` |
+| **Codex** | `gpt-6-luna` | `gpt-6.2-sol` | `gpt-6.2-astra` |
 | **Claude** | `claude-haiku-5-5` | `claude-sonnet-5-5` | `claude-opus-5-5` |
 | **Antigravity** | `gemini-3.8-flash` | `claude-sonnet-5-5` | `gemini-4-argon` *(alt: `claude-opus-5-5`)* |
 | **OpenCode** | `opencode/mimo-v2.6-flash-free` | `opencode-go/glm-5.3` | `opencode/nemotron-3-ultra-free` *(alt: `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, `opencode-go/grok-4.7`)* |
@@ -112,20 +112,20 @@ Each host/lane accepts `primary`, optional `alternatives`, supported `efforts`, 
         "primary": "gpt-6-luna",
         "tiers": {
           "economy": "gpt-6-luna",
-          "balanced": "gpt-6.1-terra",
-          "frontier": "gpt-6.1-sol"
+          "balanced": "gpt-6.2-sol",
+          "frontier": "gpt-6.2-astra"
         },
-        "alternatives": ["gpt-6-astra"],
+        "alternatives": ["gpt-6.2-sol"],
         "efforts": ["low", "medium", "high", "xhigh", "max"]
       },
       "reasoning": {
-        "primary": "gpt-6.1-sol",
+        "primary": "gpt-6.2-astra",
         "tiers": {
           "economy": "gpt-6-luna",
-          "balanced": "gpt-6.1-terra",
-          "frontier": "gpt-6.1-sol"
+          "balanced": "gpt-6.2-sol",
+          "frontier": "gpt-6.2-astra"
         },
-        "alternatives": ["gpt-6-astra"],
+        "alternatives": ["gpt-6.2-sol"],
         "efforts": ["low", "medium", "high", "xhigh", "max"]
       }
     }
@@ -264,8 +264,8 @@ Configuration uses JSON in `.model-effort-router.json` at the repository root or
   "difficulty": {"backend": "jev", "timeout_s": 10},
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "efforts": ["low", "medium", "high", "xhigh", "max"]},
-      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "efforts": ["low", "medium", "high", "xhigh", "max"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6.2-sol"], "efforts": ["low", "medium", "high", "xhigh", "max"]},
+      "reasoning": {"primary": "gpt-6.2-astra", "alternatives": ["gpt-6.2-sol"], "efforts": ["low", "medium", "high", "xhigh", "max"]}
     },
     "claude": {
       "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "efforts": ["low", "medium", "high", "xhigh", "max"]},
