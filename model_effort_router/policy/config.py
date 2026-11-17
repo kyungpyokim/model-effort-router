@@ -27,8 +27,8 @@ DEFAULTS = {
                 "efforts": list(EFFORTS),
             },
             "reasoning": {
-                "primary": "gpt-6.1-sol",
-                "alternatives": ["gpt-6-astra"],
+                "primary": "gpt-6.2-astra",
+                "alternatives": ["gpt-6.2-sol"],
                 "efforts": list(EFFORTS),
             },
         },

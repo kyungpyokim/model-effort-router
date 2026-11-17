@@ -90,14 +90,14 @@ MER는 개발 요청을 3가지 독립된 축(**역할(role)**, **노력 수준(
 - **노력 수준 (Effort)**: `low`, `medium`, `high`, `xhigh`, `max`. 독립적인 위험 감지는 안전 민감 검토/설계 요청을 최소 `high`까지 올릴 수 있지만, 역할이나 모델 레인은 변경하지 않습니다. 모델 레인의 `efforts`에 `max`가 없고 `ultra`가 정의되어 있으면(`xhigh`에서 바로 `ultra`로 넘어가는 모델), 분류기의 `max`는 `ultra`로 자동 매핑됩니다.
 - **작업 체급 (Tier)**: `economy`, `balanced`, `frontier`. 모델의 지능 체급(지능 수준/규모)을 추론 노력 수준(effort)과 독립적으로 분리하여 판단합니다:
   - `economy`: 단일 함수/클래스/모듈 구현, 국소적인 버그 수정, 단위 테스트, 일상적 리팩터링 등 빠르고 가벼운 경제형 모델(Luna, Haiku 5.5, Flash 등)이 적절한 reasoning effort와 결합하여 잘 처리할 수 있는 자기완결적 작업. 범용 코드의 흔한 사용이고 테스트나 요청에 적힌 값으로 결과를 확인할 수 있어야 합니다. 지정된 값·이름·오타 변경은 도메인과 무관하게 economy입니다.
-  - `balanced`: 다중 모듈 및 컴포넌트 간 기능 개발, 서브시스템 간 상호작용, 상태 관리, 아키텍처 가이드 기반 변경 작업(Terra, Sonnet 5.5 등).
-  - `frontier`: 시스템 전반의 아키텍처 설계, 미묘한 크로스 시스템 추론, 동시성/보안/데이터 무결성이 결부된 미션 크리티컬 의사결정(Sol, Opus 5.5, Argon 등). 또는 작업 크기와 상관없이 3D/DCC 도구·게임 엔진·그래픽 API의 스크립팅 인터페이스(Blender `bpy` 등)를 쓰는 코드나 셰이더 로직, 공간·기하 수학, 테스트로 확인할 수 없는 렌더링 결과의 진단이 필요한 작업. 제품 이름이 나오는 것만으로는 해당하지 않으며, 그런 프로젝트의 범용 코드·문서·CI·커밋·지정된 값이나 이름 변경은 `economy`입니다. reasoning effort를 올려도 작은 모델이 모르는 도메인 지식은 생기지 않습니다.
+  - `balanced`: 다중 모듈 및 컴포넌트 간 기능 개발, 서브시스템 간 상호작용, 상태 관리, 아키텍처 가이드 기반 변경 작업(Sol 6.2, Sonnet 5.5 등).
+  - `frontier`: 시스템 전반의 아키텍처 설계, 미묘한 크로스 시스템 추론, 동시성/보안/데이터 무결성이 결부된 미션 크리티컬 의사결정(Astra 6.2, Opus 5.5, Argon 등). 또는 작업 크기와 상관없이 3D/DCC 도구·게임 엔진·그래픽 API의 스크립팅 인터페이스(Blender `bpy` 등)를 쓰는 코드나 셰이더 로직, 공간·기하 수학, 테스트로 확인할 수 없는 렌더링 결과의 진단이 필요한 작업. 제품 이름이 나오는 것만으로는 해당하지 않으며, 그런 프로젝트의 범용 코드·문서·CI·커밋·지정된 값이나 이름 변경은 `economy`입니다. reasoning effort를 올려도 작은 모델이 모르는 도메인 지식은 생기지 않습니다.
 
 ### 호스트별 기본 모델 매핑
 
 | 호스트 | Economy | Balanced | Frontier |
 |---|---|---|---|
-| **Codex** | `gpt-6-luna` | `gpt-6.1-terra` | `gpt-6.1-sol` |
+| **Codex** | `gpt-6-luna` | `gpt-6.2-sol` | `gpt-6.2-astra` |
 | **Claude** | `claude-haiku-5-5` | `claude-sonnet-5-5` | `claude-opus-5-5` |
 | **Antigravity** | `gemini-3.8-flash` | `claude-sonnet-5-5` | `gemini-4-argon` *(대안: `claude-opus-5-5`)* |
 | **OpenCode** | `opencode/mimo-v2.6-flash-free` | `opencode-go/glm-5.3` | `opencode/nemotron-3-ultra-free` *(대안: `opencode-go/glm-5.3`, `opencode-go/kimi-k3`, `opencode-go/grok-4.7`)* |
@@ -112,20 +112,20 @@ MER는 개발 요청을 3가지 독립된 축(**역할(role)**, **노력 수준(
         "primary": "gpt-6-luna",
         "tiers": {
           "economy": "gpt-6-luna",
-          "balanced": "gpt-6.1-terra",
-          "frontier": "gpt-6.1-sol"
+          "balanced": "gpt-6.2-sol",
+          "frontier": "gpt-6.2-astra"
         },
-        "alternatives": ["gpt-6-astra"],
+        "alternatives": ["gpt-6.2-sol"],
         "efforts": ["low", "medium", "high", "xhigh", "max"]
       },
       "reasoning": {
-        "primary": "gpt-6.1-sol",
+        "primary": "gpt-6.2-astra",
         "tiers": {
           "economy": "gpt-6-luna",
-          "balanced": "gpt-6.1-terra",
-          "frontier": "gpt-6.1-sol"
+          "balanced": "gpt-6.2-sol",
+          "frontier": "gpt-6.2-astra"
         },
-        "alternatives": ["gpt-6-astra"],
+        "alternatives": ["gpt-6.2-sol"],
         "efforts": ["low", "medium", "high", "xhigh", "max"]
       }
     }
@@ -262,8 +262,8 @@ OpenCode의 `mer` 도구도 같은 모델·effort 추천을 반환하며, `mer_r
   "difficulty": {"backend": "jev", "timeout_s": 10},
   "models": {
     "codex": {
-      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6-astra"], "efforts": ["low", "medium", "high", "xhigh"]},
-      "reasoning": {"primary": "gpt-6.1-sol", "alternatives": ["gpt-6-astra"], "efforts": ["low", "medium", "high", "xhigh"]}
+      "execution": {"primary": "gpt-6-luna", "alternatives": ["gpt-6.2-sol"], "efforts": ["low", "medium", "high", "xhigh"]},
+      "reasoning": {"primary": "gpt-6.2-astra", "alternatives": ["gpt-6.2-sol"], "efforts": ["low", "medium", "high", "xhigh"]}
     },
     "claude": {
       "execution": {"primary": "claude-sonnet-5-5", "alternatives": ["claude-fable-5-1"], "efforts": ["low", "medium", "high", "xhigh"]},

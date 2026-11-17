@@ -7,8 +7,8 @@ from model_effort_router.profiles.profiles import Profile
 class CodexAdapterTest(unittest.TestCase):
     def test_default_tier_models(self):
         self.assertEqual(resolve(Profile("economy", "medium")).model, "gpt-6-luna")
-        self.assertEqual(resolve(Profile("balanced", "high")).model, "gpt-6.1-terra")
-        self.assertEqual(resolve(Profile("frontier", "high")).model, "gpt-6.1-sol")
+        self.assertEqual(resolve(Profile("balanced", "high")).model, "gpt-6.2-sol")
+        self.assertEqual(resolve(Profile("frontier", "high")).model, "gpt-6.2-astra")
 
     def test_supported_effort_is_unchanged_and_both_reported(self):
         r = resolve(Profile("frontier", "xhigh"))
@@ -73,7 +73,7 @@ class CodexAdapterTest(unittest.TestCase):
         cfg = CodexConfig()
         luna = cfg.model_efforts["gpt-6-luna"]
         self.assertEqual(luna, ("low", "medium", "high", "xhigh", "max"))
-        for m in ("gpt-6-sol", "gpt-6.1-sol", "gpt-6.1-terra"):
+        for m in ("gpt-6-sol", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6.2-sol", "gpt-6.2-astra"):
             self.assertEqual(cfg.model_efforts[m], luna + ("ultra",))
 
 

@@ -49,7 +49,7 @@ class RouteTest(unittest.TestCase):
         b = FakeBackend("analysis", "high")
         p = route("Analyze the parser bug", registry=registry(b), repo_config={"difficulty": {"backend": "fake"}})
         self.assertEqual(
-            (p.decision.role, p.decision.effort, p.agent, p.model), ("analysis", "high", "reasoning", "gpt-6.1-sol")
+            (p.decision.role, p.decision.effort, p.agent, p.model), ("analysis", "high", "reasoning", "gpt-6.2-astra")
         )
 
     def test_explicit_role_effort_skips_classifier(self):
@@ -202,7 +202,7 @@ class TargetFromBackendTest(unittest.TestCase):
         p = route(
             "Do feature", registry=registry(b_balanced), repo_config={"difficulty": {"backend": "fake"}}, host="codex"
         )
-        self.assertEqual((p.model, p.applied_effort, p.agent), ("gpt-6.1-terra", "medium", "execution"))
+        self.assertEqual((p.model, p.applied_effort, p.agent), ("gpt-6.2-sol", "medium", "execution"))
 
         b_economy = FakeBackend("implementation", "low", tier="economy")
         p = route(
@@ -217,17 +217,17 @@ class TargetFromBackendTest(unittest.TestCase):
             repo_config={"difficulty": {"backend": "fake"}},
             host="codex",
         )
-        self.assertEqual((p.model, p.applied_effort, p.agent), ("gpt-6.1-sol", "high", "execution"))
+        self.assertEqual((p.model, p.applied_effort, p.agent), ("gpt-6.2-astra", "high", "execution"))
 
     def test_tier_and_effort_are_independent(self):
         b1 = FakeBackend("implementation", "low", tier="balanced")
         p1 = route(
-            "Quick routine task on terra",
+            "Quick routine task on sol-6.2",
             registry=registry(b1),
             repo_config={"difficulty": {"backend": "fake"}},
             host="codex",
         )
-        self.assertEqual((p1.model, p1.applied_effort), ("gpt-6.1-terra", "low"))
+        self.assertEqual((p1.model, p1.applied_effort), ("gpt-6.2-sol", "low"))
 
         b2 = FakeBackend("implementation", "high", tier="economy")
         p2 = route(
@@ -240,4 +240,4 @@ class TargetFromBackendTest(unittest.TestCase):
 
     def test_override_with_tier(self):
         p = route("/router role=implementation effort=medium tier=balanced\nDo task", host="codex")
-        self.assertEqual((p.model, p.applied_effort, p.decision.tier), ("gpt-6.1-terra", "medium", "balanced"))
+        self.assertEqual((p.model, p.applied_effort, p.decision.tier), ("gpt-6.2-sol", "medium", "balanced"))

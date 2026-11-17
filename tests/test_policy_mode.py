@@ -47,7 +47,7 @@ class PolicyAdviceTest(unittest.TestCase):
         text = advice.render_policy(self.lanes["codex"])
         for part in (
             "gpt-6-luna",
-            "gpt-6.1-sol",
+            "gpt-6.2-astra",
             "Choose a lane's model and supported effort",
             "does not change them",
         ):
@@ -75,7 +75,7 @@ class PolicyAdviceTest(unittest.TestCase):
                 "action": "policy",
                 "selection_only": True,
                 "main_model": "gpt-6-luna",
-                "lanes": {"execution": "gpt-6-luna", "reasoning": "gpt-6.1-sol"},
+                "lanes": {"execution": "gpt-6-luna", "reasoning": "gpt-6.2-astra"},
             },
         )
 
@@ -131,7 +131,7 @@ class PolicyHookTest(HookCase):
         self.assertEqual(ev["mode"], "policy")
         self.assertEqual(ev["advice"]["action"], "policy")
         self.assertNotIn("classifier_usage", ev)
-        corr = self.start(PLUGIN, "codex", model="gpt-6.1-sol")
+        corr = self.start(PLUGIN, "codex", model="gpt-6.2-astra")
         self.assertIs(corr["matched"], True)
         self.assertIs(self.start(PLUGIN, "codex", model="other")["matched"], False)
         self.assertIsNone(self.start(PLUGIN, "codex")["matched"])

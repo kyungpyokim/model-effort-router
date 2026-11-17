@@ -334,7 +334,7 @@ class HookTest(HookCase):
         )
         note = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         self.assertNotIn("claude-", note)
-        self.assertIn("gpt-6.1-sol", note)
+        self.assertIn("gpt-6.2-astra", note)
 
     def test_guard_and_host_messages_are_silent_but_no_route_guides_main_agent(self):
         self.assertEqual(self.submit_claude(MER_CLASSIFIER="1").stdout, "")

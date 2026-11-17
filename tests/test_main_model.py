@@ -190,7 +190,7 @@ class MainModelTest(unittest.TestCase):
         self.assertIsNone(main_model({"transcript_path": self.transcript("{not json", "[]")}, "claude"))
 
     def test_codex_uses_payload_model_and_other_hosts_are_unknown(self):
-        self.assertEqual(main_model({"model": "GPT-6.1-Sol"}, "codex"), "gpt-6.1-sol")
+        self.assertEqual(main_model({"model": "GPT-6.2-Astra"}, "codex"), "gpt-6.2-astra")
         self.assertIsNone(main_model({}, "codex"))
         self.assertIsNone(main_model({"model": "x", "transcript_path": "/x"}, "antigravity"))
 
@@ -248,7 +248,7 @@ class MainModelTest(unittest.TestCase):
 
 class AdviceRecommendationTest(unittest.TestCase):
     def test_advice_recommends_only_model_and_effort(self):
-        for host, model in ((hosts.CLAUDE, "claude-opus-5-5"), (hosts.CODEX, "gpt-6.1-sol")):
+        for host, model in ((hosts.CLAUDE, "claude-opus-5-5"), (hosts.CODEX, "gpt-6.2-astra")):
             with self.subTest(host=host.name):
                 note = advice.render(plan(model, "high", options=(model, "other-model")), host)
                 self.assertIn(f"Recommended model: {model}; effort: high", note)
